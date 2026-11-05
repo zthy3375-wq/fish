@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import {computed,ref,onMounted,onUnmounted} from 'vue';
 import {ShieldCheck,ExternalLink,RefreshCw,LogIn,LogOut} from 'lucide-vue-next';
-import {AcademicConnectionController,type AcademicSyncSnapshot} from '../services/academic-connection';
-import {getAuthorizedAcademicConnector} from '../services/authorized-connector-registry';
+import {type AcademicSyncSnapshot} from '../services/academic-connection';
+import {getAuthorizedAcademicConnector,getAcademicConnectionController} from '../services/authorized-connector-registry';
 
 const emit=defineEmits<{synced:[snapshot:AcademicSyncSnapshot];disconnected:[]}>();
 const provider=getAuthorizedAcademicConnector();
-const controller=provider?new AcademicConnectionController(provider):null;
+const controller=getAcademicConnectionController();
 const phase=ref(controller?.state.phase??'disconnected');
 const error=ref('');
 const busy=ref(false);
@@ -19,16 +19,16 @@ const status=computed(()=>!provider?'未接入学校授权接口':({
 function syncState(){if(controller){phase.value=controller.state.phase;syncedAt.value=controller.state.syncedAt;error.value=controller.state.error||''}}
 async function connect(){if(!controller||busy.value)return;busy.value=true;error.value='';try{
   const connected=await controller.connect();syncState();
-  if(connected)await refresh();
-  else if(phase.value==='disconnected')error.value='尚未收到学校授权确认；完成学校认证后可再次检查连接状态';
-}catch(e){error.value=String(e)}finally{busy.value=false;syncState()}}
+  if(!connected&&phase.value==='disconnected')error.value='尚未收到学校授权确认；完成学校认证后可再次检查连接状态';
+}catch(e){error.value=String(e)}finally{busy.value=false;syncState()}
+if(controller.state.phase==='ready')await refresh();}
 async function refresh(){if(!controller||busy.value)return;busy.value=true;try{
   const snapshot=await controller.refresh();syncState();if(snapshot)emit('synced',snapshot);
 }finally{busy.value=false;syncState()}}
 async function disconnect(){if(!controller||busy.value)return;busy.value=true;try{
   await controller.disconnect();emit('disconnected');
 }finally{busy.value=false;syncState()}}
-function resume(){if(controller&&!busy.value&&phase.value==='ready')void refresh()}
+function resume(){if(controller&&!busy.value&&document.visibilityState==='visible'&&phase.value==='ready')void refresh()}
 onMounted(()=>document.addEventListener('visibilitychange',resume));
 onUnmounted(()=>document.removeEventListener('visibilitychange',resume));
 </script>
