@@ -1,3 +1,4 @@
+import {semesterWeek,parseDate, type Semester} from './schedule';
 import type { Course } from './academic';
 import { coursesForDay, teachingWeek } from './academic';
 export const semesterStart = new Date(2026, 8, 7);
@@ -9,20 +10,23 @@ export function campusNow() {
 }
 export function dayNumber(date:Date) { return date.getDay() || 7; }
 export function timeOf(date:Date) { return `${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`; }
-export function currentWeek(date:Date) {return teachingWeek(date,semesterStart)}
+export function currentWeek(date:Date,semester?:Semester) {return semester?semesterWeek(date,semester):teachingWeek(date,semesterStart)}
 export function courseState(c:Course, now:Date, onToday=true) {
   if(!onToday)return 'scheduled';
   const time=timeOf(now);
   return time>=c.end?'ended':time>=c.start?'current':'scheduled';
 }
 export interface Occurrence {course:Course;date:Date;minutes:number;week:number}
-export function nextOccurrence(courses:Course[], now:Date):Occurrence|undefined {
-  const startWeek=currentWeek(now);
+export function nextOccurrence(courses:Course[], now:Date,semester?:Semester):Occurrence|undefined {
+  const totalWeeks=semester?.weekCount??semesterWeeks;
   // Bounded to the mock semester; never repeat expired sample classes indefinitely.
-  for(let offset=0;offset<=semesterWeeks*7;offset++) {
+  const first=semester?parseDate(semester.weekStartDate):semesterStart;
+  const midnight=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const initial=Math.max(0,Math.floor((Date.UTC(first.getFullYear(),first.getMonth(),first.getDate())-Date.UTC(midnight.getFullYear(),midnight.getMonth(),midnight.getDate()))/86400000));
+  for(let offset=initial;offset<=initial+totalWeeks*7;offset++) {
     const date=new Date(now.getFullYear(),now.getMonth(),now.getDate()+offset);
-    const week=currentWeek(date);
-    if(week>semesterWeeks)break;
+    const week=currentWeek(date,semester);
+    if(week>totalWeeks)break;
     if(week<1)continue;
     const course=coursesForDay(courses,dayNumber(date),week).find(c=>offset>0||c.start>timeOf(now));
     if(course){const [h,m]=course.start.split(':').map(Number);date.setHours(h,m,0,0);return {course,date,week,minutes:Math.ceil((date.getTime()-now.getTime())/60000)}}

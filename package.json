@@ -1,6 +1,6 @@
 {
   "name": "handan-campus",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -19,7 +19,15 @@
     "@capacitor/android": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
     "@capacitor/app": "^7.0.0",
-    "@capacitor/status-bar": "^7.0.0"
+    "@capacitor/status-bar": "^7.0.0",
+    "@capacitor/preferences": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
+    "exceljs": "^4.4.0",
+    "papaparse": "^5.5.0",
+    "ical.js": "^2.2.1",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "vite": "^6.0.0",
@@ -27,6 +35,8 @@
     "typescript": "^5.7.0",
     "vue-tsc": "^2.2.0",
     "vitest": "^3.0.0",
-    "@capacitor/cli": "^7.0.0"
+    "@capacitor/cli": "^7.0.0",
+    "@types/papaparse": "^5.3.16",
+    "fake-indexeddb": "^6.0.0"
   }
 }

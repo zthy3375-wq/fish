@@ -1,0 +1,7 @@
+import {Capacitor} from '@capacitor/core';
+import {Preferences} from '@capacitor/preferences';
+import {validateState,type ScheduleState} from '../domain/schedule';
+const KEY='handan-campus.schedule.v1';
+export async function database():Promise<IDBDatabase>{return new Promise((resolve,reject)=>{const r=indexedDB.open('handan-campus',1);r.onupgradeneeded=()=>r.result.createObjectStore('schedule');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error('请关闭其他校园 App 页面后重试'))})}
+export async function readSchedule():Promise<ScheduleState|null>{if(Capacitor.isNativePlatform()){const {value}=await Preferences.get({key:KEY});return value?validateState(JSON.parse(value)):null}const db=await database();try{return await new Promise((resolve,reject)=>{const r=db.transaction('schedule').objectStore('schedule').get(KEY);r.onsuccess=()=>{try{resolve(r.result?validateState(r.result):null)}catch(e){reject(e)}};r.onerror=()=>reject(r.error)})}finally{db.close()}}
+export async function writeSchedule(state:ScheduleState){const clean=validateState(state);if(Capacitor.isNativePlatform()){await Preferences.set({key:KEY,value:JSON.stringify(clean)});return}const db=await database();try{await new Promise<void>((resolve,reject)=>{const tx=db.transaction('schedule','readwrite');tx.objectStore('schedule').put(clean,KEY);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??Error('保存被中止'))})}finally{db.close()}}
