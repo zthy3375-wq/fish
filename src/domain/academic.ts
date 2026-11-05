@@ -1,4 +1,4 @@
-export interface Course { id: string; courseId?:string; arrangementId?:string; semesterId?:string; notes?:string; name: string; teacher: string; room: string; day: number; start: string; end: string; period: string; weeks: number[]; color: string }
+export interface Course { id: string; startPeriod?:number|null;endPeriod?:number|null;timeMode?:'custom'|'period'; courseId?:string; arrangementId?:string; semesterId?:string; notes?:string; name: string; teacher: string; room: string; day: number; start: string; end: string; period: string; weeks: number[]; color: string }
 export interface Grade { name: string; credit: number; score: number; term: string; kind: string }
 export interface Exam { name: string; date: string; time: string; room: string; seat: string }
 export interface AcademicData { courses: Course[]; grades: Grade[]; exams: Exam[]; source: 'mock'|'personal' }
