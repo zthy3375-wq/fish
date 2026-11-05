@@ -1,15 +1,19 @@
 # 邯郸校园 · Handan Campus
 
-面向邯郸学院学生的独立校园助手，Web 优先，未来提供 Android 与 iOS。当前 `v0.1.0` 为可交互模拟教务版本，非学校官方应用。
+面向邯郸学院学生的独立校园助手，Web 优先，未来提供 Android 与 iOS。当前 `v0.2.0` 为可交互模拟教务版本，非学校官方应用。
+
+[手机预览（需要项目所有者登录）](https://handan-campus-start.dewydahlia.chatgpt.site) · [v0.2 设计系统](docs/DESIGN-SYSTEM.md) · [验证记录](docs/VALIDATION-v0.2.md)
+
+![v0.2 三种手机尺寸预览](docs/mobile-preview.jpg)
 
 ## 已实现
 
-- 首页：今日课程、下一节课、教学周、教务快捷入口。
-- 教务：1–18 周课表、按日查看、课程详情、单双周过滤；成绩学期筛选和搜索、学分加权平均；考试、模拟学业进度、模拟校历、官方外链。
+- 首页：实时计算今日课程状态、跨日下一节课、教学周、快捷入口与近期安排。
+- 教务：概览与分组服务、1–18 周课表、紧凑日/周视图、周跳转、课程详情、单双周过滤；成绩学期筛选和搜索、学分加权平均；考试、模拟学业进度、模拟校历、官方外链。
 - 个人：昵称/专业编辑、浅色/深色/系统主题、紧凑布局、演示应用内提醒、重置本机偏好、隐私说明。
 - 响应式桌面侧栏/手机底栏、安全区、焦点圈、弹窗焦点约束与 Escape 关闭、减少动效支持。
 
-**所有课程、教师、教室、成绩、考试、学业进度、开学日期与教学周均为虚构演示。首页固定为 2026-11-05 09:40 的演示时钟，不是实时教务。** 当前专业与年级也不代表真实个人资料。
+**所有课程、教师、教室、成绩、考试、学业进度、开学日期与教学周均为虚构演示。首页按北京时间计算课程状态与下一次课程；模拟学期从 2026-09-07 开始，共18周，不代表官方学期。** 当前专业与年级也不代表真实个人资料。
 
 ## 运行
 
@@ -41,12 +45,17 @@ Android 需要 Android Studio/SDK/JDK；iOS 构建与签名需要 macOS/Xcode，
 - `src/domain/academic.ts`：类型、课表筛选、时间与成绩计算。
 - `src/services/academic.ts`：AcademicProvider 契约与独立模拟数据源。
 - `src/services/preferences.ts`：带字段校验的本机偏好与故障降级。
-- `src/App.vue`：三个业务页面；后续按模块继续拆分组件。
+- `src/App.vue`：三个模块与应用状态编排。
+- `src/components/`：统一页头、悬浮导航、概览、课程卡和分组列表等组件。
+- `src/composables/navigation.ts`：模块、子页面与浮层的返回历史。
+- `src/domain/presentation.ts`：北京时间、课程状态和跨日课程查找。
+- `src/tokens.css`：颜色、排版、间距、动效、暗色和安全区域设计变量。
 - `src/style.css`：响应式布局、设计变量、动效和主题。
 - `android/`、`ios/`：Capacitor 壳。
 - `tests/`：计算和存储边界测试。
 - `docs/RESEARCH.md`：四个参考仓库的架构、UI、许可证研究。
-- `docs/VALIDATION.md`：已执行检查与验证范围。
+- `docs/VALIDATION-v0.2.md`：本次已执行检查与验证范围。
+- `docs/DESIGN-SYSTEM.md`：v0.2 设计系统与交互规则。
 - `.github/workflows/ci.yml`：push/PR 自动测试及生产构建。
 
 ## 后续接入

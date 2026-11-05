@@ -1,0 +1,4 @@
+<script setup lang="ts">
+defineProps<{average:string;grades:number;credits:number;exams:number;examDate?:string;week:number;courses:number}>();defineEmits<{open:[id:string]}>();
+</script>
+<template><section class="academic-summary"><div class="summary-heading"><h2>学业概览</h2><span class="source-label">模拟数据</span></div><div class="summary-grid"><button @click="$emit('open','grades')"><small>成绩 · {{grades}} 门</small><strong>加权 {{average}}<span> 分</span></strong></button><button @click="$emit('open','exams')"><small>近期考试</small><strong>{{exams}} 场<span v-if="examDate"> · {{examDate.slice(5)}}</span></strong></button><button @click="$emit('open','study')"><small>成绩记录已获学分</small><strong>{{credits}}<span> 学分</span></strong></button><button @click="$emit('open','schedule')"><small>本周课程</small><strong>{{courses}} 节<span> · 第 {{week}} 周</span></strong></button></div></section></template>

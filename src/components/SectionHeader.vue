@@ -1,0 +1,2 @@
+<script setup lang="ts">defineProps<{title:string;meta?:string;action?:string}>();defineEmits<{action:[]}>();</script>
+<template><div class="section-heading"><h2>{{title}}<small v-if="meta&&action">{{meta}}</small></h2><button v-if="action" class="text-button" @click="$emit('action')">{{action}}<span aria-hidden="true"> ›</span></button><span v-else-if="meta" class="section-meta">{{meta}}</span></div></template>

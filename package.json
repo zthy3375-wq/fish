@@ -1,6 +1,32 @@
 {
- "name":"handan-campus","version":"0.1.0","private":true,"type":"module","license":"MIT",
- "scripts":{"dev":"vite --host 0.0.0.0","build":"vue-tsc --noEmit && vite build","test":"vitest run","cap:sync":"npm run build && cap sync","android:add":"cap add android","ios:add":"cap add ios"},
- "dependencies":{"vue":"^3.5.0","lucide-vue-next":"^0.468.0","@capacitor/core":"^7.0.0","@capacitor/android":"^7.0.0","@capacitor/ios":"^7.0.0"},
- "devDependencies":{"vite":"^6.0.0","@vitejs/plugin-vue":"^5.2.0","typescript":"^5.7.0","vue-tsc":"^2.2.0","vitest":"^3.0.0","@capacitor/cli":"^7.0.0"}
+  "name": "handan-campus",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run",
+    "cap:sync": "npm run build && cap sync",
+    "android:add": "cap add android",
+    "ios:add": "cap add ios"
+  },
+  "dependencies": {
+    "vue": "^3.5.0",
+    "lucide-vue-next": "^0.468.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "typescript": "^5.7.0",
+    "vue-tsc": "^2.2.0",
+    "vitest": "^3.0.0",
+    "@capacitor/cli": "^7.0.0"
+  }
 }
