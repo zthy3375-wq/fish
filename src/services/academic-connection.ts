@@ -1,4 +1,5 @@
 import type { AcademicData, Course, Exam, Grade } from '../domain/academic';
+import {validateSemester, type Semester} from '../domain/schedule';
 
 /**
  * Contract for a school-approved, student-scoped academic connection.
@@ -35,6 +36,7 @@ export interface AcademicConnectionState {
 }
 
 export interface AcademicSyncSnapshot {
+  semester: Semester;
   courses: Course[];
   grades: Grade[];
   exams: Exam[];
@@ -66,6 +68,10 @@ export function normalizeAuthorizedAcademicData(raw: unknown, providerId: string
     throw new Error('学校返回的数据格式不符合预期');
   if (raw.courses.length > 2000 || raw.grades.length > 500 || raw.exams.length > 500)
     throw new Error('教务记录数量超出合理范围');
+  if (!object(raw.semester)) throw new Error('缺少学校学期信息，无法正确计算教学周');
+  const semester = raw.semester as unknown as Semester;
+  validateSemester(semester);
+  const cleanSemester: Semester = {id: semester.id, academicYear: semester.academicYear, season: semester.season, startDate: semester.startDate, weekStartDate: semester.weekStartDate, weekCount: semester.weekCount};
   const courses: Course[] = raw.courses.map((item: unknown, index: number) => {
     if (!object(item) || !Number.isInteger(item.day) || !number(item.day, 1, 7) || !time(item.start) || !time(item.end) || item.start >= item.end || !Array.isArray(item.weeks))
       throw new Error('第 ' + (index + 1) + ' 门课程时间格式无效');
@@ -109,7 +115,7 @@ export function normalizeAuthorizedAcademicData(raw: unknown, providerId: string
       seat: text(item.seat, 80, '座位')
     };
   });
-  return { courses, grades, exams, fetchedAt: now.toISOString(), providerId };
+  return { semester: cleanSemester, courses, grades, exams, fetchedAt: now.toISOString(), providerId };
 }
 
 export function academicSnapshotToData(snapshot: AcademicSyncSnapshot): AcademicData {
