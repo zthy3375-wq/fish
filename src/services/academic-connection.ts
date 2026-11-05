@@ -164,6 +164,8 @@ export class AcademicConnectionController {
     try {
       const status = await this.connector.getSessionStatus();
       if (status !== 'connected') {
+        this.current = null;
+        this.state.syncedAt = null;
         this.state.phase = status === 'expired' ? 'expired' : 'disconnected';
         return null;
       }
@@ -174,6 +176,8 @@ export class AcademicConnectionController {
       this.state.phase = 'ready';
       return result;
     } catch (error) {
+      this.current = null;
+      this.state.syncedAt = null;
       this.state.phase = 'error';
       this.state.error = String(error);
       return null;
