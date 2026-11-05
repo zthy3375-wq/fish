@@ -12,3 +12,5 @@ public/__qa.html
 *.keystore
 *.p12
 *.mobileprovision
+public/__before/
+__qa/

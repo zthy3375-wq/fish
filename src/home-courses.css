@@ -1,0 +1,53 @@
+/* v0.2.1: home-only density; shared CourseCard keeps its timetable appearance. */
+.home-active .app-header{padding-top:calc(var(--space-4) + var(--safe-top));padding-bottom:var(--space-3)}
+.home-active .home-greeting{margin:0 0 var(--space-2);min-height:20px;flex-wrap:wrap;row-gap:4px}
+.home-active .home-greeting>span:first-child{min-width:0;overflow-wrap:anywhere}
+.home-active .section-heading{margin-top:var(--space-4);margin-bottom:var(--space-2)}
+.home-active .section-heading h2{min-width:0;flex-wrap:wrap;row-gap:3px}
+.compact-next-course{display:block;width:100%;text-align:left;padding:var(--space-3) 14px;border-radius:var(--radius-lg);box-shadow:none}
+.compact-next-course .next-top{gap:var(--space-2);flex-wrap:wrap}
+.compact-next-course .micro-label{font-size:11px;line-height:1.6}
+.compact-next-course .time-until{font-size:9px;line-height:1.6;padding:2px 6px;white-space:normal;overflow-wrap:anywhere;max-width:100%}
+.next-main{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) 18px;align-items:center;gap:var(--space-2);margin-top:7px;min-width:0}
+.next-main>strong{font-size:16px;line-height:1.5;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.next-room{display:flex;align-items:center;gap:var(--space-1);color:var(--color-primary);font-size:11px;line-height:1.6;min-width:0}
+.next-room>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next-main>svg{color:var(--color-primary)}
+.next-meta{display:flex;align-items:center;flex-wrap:wrap;gap:3px var(--space-2);font-size:10px;line-height:1.7;color:var(--color-muted);margin-top:5px}
+.next-meta>span{display:inline-flex;align-items:center;gap:var(--space-1);min-width:0;overflow-wrap:anywhere}
+.home-course-list{gap:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:none}
+.home-course-list>.course-card{position:relative;border:0;border-radius:0;box-shadow:none;min-height:68px;padding:11px 13px;gap:11px;background:transparent}
+.home-course-list>.course-card+.course-card:before{content:'';position:absolute;left:13px;right:13px;top:0;height:1px;background:var(--color-divider)}
+.home-course-list .course-time{width:38px;gap:4px}
+.home-course-list .course-time strong{font-size:13px}
+.home-course-list .course-time small{font-size:11px}
+.home-course-list .course-stripe{height:32px}
+.home-course-list .course-title{flex-wrap:nowrap;min-width:0;gap:7px}
+.home-course-list .course-title>strong{flex:0 1 auto;min-width:0;font-size:13px;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-course-list .course-status{flex-shrink:0;font-size:10px;line-height:1.5}
+.home-course-list .course-card.ended .course-status{padding:1px 5px;border-radius:4px;background:var(--color-bg);color:var(--color-muted)}
+.home-course-list .course-card.ended .course-title>strong{color:var(--color-text);font-weight:500}
+.home-course-list .course-card.ended .course-time strong{color:var(--color-muted)}
+.home-course-list .course-place{margin-top:5px;font-size:11px;line-height:1.6;overflow-wrap:anywhere;gap:3px}
+.home-course-list .course-place>span{font-size:11px}
+.home-course-list .course-card.current{background:var(--color-highlight)}
+.home-course-list .course-card.isNext{background:var(--color-highlight)}
+.home-course-list .course-card:hover{background:var(--color-tint)}
+.home-course-list .course-card:active{transform:none;background:var(--color-tint)}
+.home-course-list>.empty-state{border:0;border-radius:0;padding:22px 14px}
+.home-active .next-course:not(.compact-next-course) .empty-state{padding:6px 0}
+.home-active .home-quick .quick-action{padding-top:12px;padding-bottom:11px}
+.compact.home-active .home-course-list>.course-card{min-height:64px;padding-block:9px}
+/* Root viewport and scroll area deliberately reserve the pill's own space.
+   The dock never covers interactive content, including midway through a list. */
+.app-shell{height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.app-header{flex:0 0 auto}
+main{flex:1 1 auto;min-height:0;min-width:0;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:var(--space-5);scroll-padding-block:var(--space-4);-webkit-overflow-scrolling:touch}
+.navigation-dock{flex:0 0 auto;padding:var(--space-2) 0 calc(var(--space-3) + var(--safe-bottom));background:var(--color-bg)}
+.navigation-dock .floating-nav{position:relative;left:auto;bottom:auto;transform:none;margin:0 auto}
+.nav-suspended .floating-nav{visibility:hidden;pointer-events:none}
+.keyboard-open .navigation-dock{display:none}
+.home-course-list .course-card:focus-visible{outline-offset:-4px}
+@media(max-width:374px){.home-course-list>.course-card{padding-inline:11px;gap:9px}.home-course-list>.course-card+.course-card:before{left:11px;right:11px}.home-course-list .course-title>strong{font-size:13px}.next-main{gap:6px}.next-meta{gap:3px 6px}}
+
+.overlay-surface h2{overflow-wrap:anywhere}
