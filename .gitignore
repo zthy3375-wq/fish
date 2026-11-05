@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.openai/local/
+*.tar.gz
+.env*
+!.env.example
+android/.gradle/
+android/local.properties
+ios/App/Pods/
+public/__qa.html
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
