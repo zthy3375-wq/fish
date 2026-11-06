@@ -1,0 +1,69 @@
+name: iOS unsigned IPA (personal sideload test)
+
+# This build is not signed and cannot be installed by tapping the IPA.
+# Testers must sign it on their own iPhone using a tool such as AltStore Classic.
+# iOS official school login/sync is not yet implemented; see README.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.ts'
+      - 'vite.config.ts'
+      - '.github/workflows/ios-unsigned-ipa.yml'
+permissions:
+  contents: read
+
+jobs:
+  unsigned-ipa:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Run tests and build frontend
+        run: npm run check
+      - name: Sync web assets to Capacitor iOS
+        run: npx cap sync ios
+      - name: Compile unsigned app for physical iPhone
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/handan-ios-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+      - name: Assemble unsigned IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/handan-ios-build/Build/Products/Release-iphoneos/App.app"
+          test -d "$APP"
+          mkdir -p "$RUNNER_TEMP/handan-ipa/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/handan-ipa/Payload/App.app"
+          cd "$RUNNER_TEMP/handan-ipa"
+          /usr/bin/zip -qry "$RUNNER_TEMP/HandanCampus-unsigned.ipa" Payload
+      - name: Upload IPA for self-signing (7-day free Apple account limit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HandanCampus-iOS-unsigned-IPA
+          path: ${{ runner.temp }}/HandanCampus-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
