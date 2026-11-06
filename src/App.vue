@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onUnmounted,
+  nextTick,
+  defineAsyncComponent,
+} from "vue";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { App as NativeApp } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
@@ -50,6 +58,7 @@ import {
 } from "./domain/presentation";
 import ScheduleManager from "./components/ScheduleManager.vue";
 import CourseEditor from "./components/CourseEditor.vue";
+import { isSchoolPageSemester } from "./services/school-page-import";
 import { upsertCourse } from "./services/course-management";
 import {
   schedule,
@@ -68,9 +77,9 @@ import {
   type ManagedCourse,
 } from "./domain/schedule";
 import { reconcileReminders } from "./services/reminders";
-import { useAuthorizedAcademic } from "./composables/authorized-academic";
-import { selectAcademicData } from "./services/academic-connection";
-import { mockAcademicProvider } from "./services/academic";
+import {academicCache,schoolTerm,initAcademic,autoSyncAcademic,syncAcademic} from './composables/handan-academic';
+import SchoolConnection from './components/SchoolConnection.vue';
+import SchoolAcademicRecords from './components/SchoolAcademicRecords.vue';
 import {
   loadPreferences,
   savePreferences,
@@ -86,6 +95,14 @@ import ServiceGroup from "./components/ServiceGroup.vue";
 import CourseCard from "./components/CourseCard.vue";
 import AcademicSummary from "./components/AcademicSummary.vue";
 import AcademicDetail from "./components/AcademicDetail.vue";
+import {
+  DIAGNOSTIC_BUILD,
+  diagnosticAvailability,
+} from "./services/academic-diagnostics";
+const AcademicDiagnostics = DIAGNOSTIC_BUILD
+  ? defineAsyncComponent(() => import("./components/AcademicDiagnostics.vue"))
+  : null;
+const diagnosticsEnabled = ref(false);
 import EmptyState from "./components/EmptyState.vue";
 import LoadingState from "./components/LoadingState.vue";
 import SettingsRow from "./components/SettingsRow.vue";
@@ -114,60 +131,22 @@ const prefs = ref(loadPreferences()),
   toast = ref(""),
   read = ref(false),
   now = ref(campusNow());
-const {
-  snapshot: officialSnapshot,
-  showOfficial,
-  refreshIfReady,
-} = useAuthorizedAcademic();
-function onOfficialSync() {
-  if (modal.value || page.value !== "academic" || section.value !== "official")
-    return;
-  showOfficial.value = !!officialSnapshot.value;
-  notify("正在查看本次授权数据，只读且未覆盖个人课表");
-}
-function onOfficialDisconnect() {
-  showOfficial.value = false;
-  notify("本机授权数据已清除，恢复本地课表");
-}
-function showLocal() {
-  showOfficial.value = false;
-}
-const localSemester = computed(() =>
-  schedule.value.mode === "demo"
-    ? defaultState().semesters[0]
-    : personalSemester.value,
-);
-const localData = computed<AcademicData>(() => ({
-  ...mockData.value,
-  courses:
-    schedule.value.mode === "demo"
-      ? mockData.value.courses
-      : flatten(schedule.value.courses, schedule.value.activeSemesterId),
-  source: schedule.value.mode === "demo" ? "mock" : "personal",
-}));
-const localTable = computed(() =>
-  schedule.value.mode === "demo"
-    ? standardTimeTable()
-    : tableForSemester(schedule.value),
-);
-const officialActive = computed(
-  () => showOfficial.value && !!officialSnapshot.value,
-);
-const semester = computed(() =>
-  officialActive.value ? officialSnapshot.value!.semester : localSemester.value,
-);
-const table = computed(() =>
-  officialActive.value
-    ? (officialSnapshot.value!.timeTable ?? standardTimeTable())
-    : localTable.value,
-);
-const data = computed(() =>
-  selectAcademicData(
-    localData.value,
-    officialSnapshot.value,
-    showOfficial.value,
-  ),
-);
+function showLocal() {}
+function onOfficialSync() {}
+function onOfficialDisconnect() {}
+const localSemester = personalSemester;
+const localTable = computed(() => tableForSemester(schedule.value));
+const officialActive = computed(() => !!schoolTerm.value?.data);
+const semester = computed(() => schoolTerm.value?.data?.semester ?? localSemester.value);
+const table = computed(() => schoolTerm.value?.data?.table ?? localTable.value);
+const data = computed<AcademicData>(() => {
+ const cached=schoolTerm.value?.data;
+ const personal=cached ? schedule.value.courses.filter(c=>{
+   const t=schedule.value.semesters.find(t=>t.id===c.semesterId);
+   return !isSchoolPageSemester(c.semesterId)&&t?.academicYear===cached.semester.academicYear&&t?.season===cached.semester.season;
+ }) : schedule.value.courses;
+ return {source:cached?'official':'personal',courses:cached?[...flatten(cached.courses,cached.semester.id,cached.table),...personal.flatMap(c=>flatten([c],c.semesterId,cached.table))]:flatten(personal,schedule.value.activeSemesterId,localTable.value),grades:[],exams:academicCache.value.exams.data??[]};
+});
 const editorRef = ref<InstanceType<typeof CourseEditor>>(),
   editorCourse = ref<ManagedCourse>(),
   editorPreset = ref<CellPreset>(),
@@ -177,8 +156,15 @@ const editorRef = ref<InstanceType<typeof CourseEditor>>(),
   deleteIntent = ref(""),
   detailError = ref(""),
   conflictCourses = ref<Course[]>([]);
-function createCourse(preset?: CellPreset) {
+async function createCourse(preset?: CellPreset) {
   showLocal();
+  if (schoolTerm.value?.data) {
+    const school=schoolTerm.value.data;
+    const match=schedule.value.semesters.find(s=>s.academicYear.replace(/[–—]/g,'-')===school.semester.academicYear.replace(/[–—]/g,'-')&&s.season===school.semester.season&&!isSchoolPageSemester(s.id));
+    if(match){
+      await changeSchedule(s=>{s.activeSemesterId=match.id;if(!s.timeTables.some(t=>t.id===school.table.id))s.timeTables.push(school.table);s.semesters.find(t=>t.id===match.id)!.timeTableId=school.table.id;s.mode='personal'});
+    }
+  }
   if (preset && preset.period > tableForSemester(schedule.value).slots.length) {
     notify("个人作息中没有该节次，请先设置作息");
     manage(undefined, "times");
@@ -255,13 +241,6 @@ async function removeSelected(whole: boolean) {
     detailError.value = (e as Error).message;
   }
 }
-watch(officialSnapshot, (value, previous) => {
-  if (previous && !value) {
-    selected.value = undefined;
-    conflictCourses.value = [];
-    if (modal.value === "course" || modal.value === "course-conflicts") close();
-  }
-});
 function showConflicts(courses: Course[]) {
   conflictCourses.value = courses;
   open("course-conflicts");
@@ -296,19 +275,19 @@ const entries = computed(() => [
   {
     id: "grades",
     title: "成绩查询",
-    subtitle: `${data.value.grades.length} 门${officialActive.value ? "授权记录" : "演示"}`,
+    subtitle: academicCache.value.grades.updatedAt ? `${academicCache.value.grades.data?.length??0} 门成绩` : "尚未同步",
     icon: ChartNoAxesColumnIncreasing,
   },
   {
     id: "exams",
     title: "考试安排",
-    subtitle: `${exams.value.length} 场${officialActive.value ? "授权记录" : "演示"}`,
+    subtitle: academicCache.value.exams.updatedAt ? `${exams.value.length} 场考试` : "尚未同步",
     icon: CalendarDays,
   },
   {
     id: "study",
     title: "学业信息",
-    subtitle: `${officialActive.value ? "成绩学分 · 规划演示" : "演示"} ${credits.value} 学分`,
+    subtitle: "本人专业、班级与年级",
     icon: GraduationCap,
   },
 ]);
@@ -317,7 +296,7 @@ const planning = [
   {
     id: "study",
     title: "学业信息",
-    subtitle: "查看模拟培养方案与学分进度",
+    subtitle: "本人专业、班级与年级",
     icon: GraduationCap,
   },
   {
@@ -376,7 +355,7 @@ const about = [
     icon: MessageSquare,
     href: "https://github.com/zthy3375-wq/fish/issues",
   },
-  { id: "about", title: "版本信息", subtitle: "邯郸校园 · v0.3.1", icon: Info },
+  { id: "about", title: "版本信息", subtitle: "邯郸校园 · v0.5.0", icon: Info },
 ];
 const sectionNames: Record<string, string> = {
   overview: "教务中心",
@@ -386,20 +365,21 @@ const sectionNames: Record<string, string> = {
   study: "学业信息",
   calendar: "学期校历",
   official: "官方教务",
+  diagnostics: "教务诊断",
 };
 const title = computed(() =>
   page.value === "home"
     ? "今日"
-    : page.value === "academic"
+    : page.value === "schedule" ? "课程表" : page.value === "academic"
       ? sectionNames[section.value]
       : "我的",
 );
 const subtitle = computed(() =>
   page.value === "home"
-    ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校授权课表" : schedule.value.mode === "demo" ? "演示课表" : "个人课表"}`
-    : page.value === "academic"
-      ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校授权课表" : schedule.value.mode === "demo" ? "演示课表" : "个人课表"}`
-      : "本地资料 · 设置自动保存",
+    ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
+    : page.value === "academic" || page.value === "schedule"
+      ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
+      : "学校账号 · 本机设置",
 );
 const greeting = computed(() =>
   now.value.getHours() < 12
@@ -416,11 +396,10 @@ watch(data, (d) => {
   }
 });
 function go(id: string) {
-  move("academic", id);
+  if (id === "diagnostics" && !diagnosticsEnabled.value) return;
+  move(id === "schedule" ? "schedule" : "academic", id);
 }
-function nav(p: Page) {
-  move(p, p === "academic" ? "schedule" : "overview");
-}
+function nav(p: Page) { move(p, p === "schedule" ? "schedule" : "overview"); }
 function details(c: Course) {
   selected.value = c;
   deleteIntent.value = "";
@@ -443,9 +422,10 @@ async function load() {
   error.value = "";
   try {
     await initSchedule();
-    mockData.value = await mockAcademicProvider.load();
+    await initAcademic();
+    void autoSyncAcademic();
     await reconcileReminders(schedule.value);
-    void refreshIfReady();
+    void autoSyncAcademic();
   } catch (e) {
     error.value = storageError.value || "教务信息加载失败：" + String(e);
   } finally {
@@ -546,10 +526,13 @@ async function recalibrate() {
   if (document.visibilityState === "visible") {
     await refreshSchedule();
     await reconcileReminders(schedule.value);
-    void refreshIfReady();
+    void autoSyncAcademic();
   }
 }
 watch(schedule, (s) => reconcileReminders(s));
+let pullY=0;
+function pullStart(e:TouchEvent){pullY=window.scrollY<=0?e.changedTouches[0].clientY:-1}
+function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100)void syncAcademic()}
 function viewportChange() {
   const v = window.visualViewport;
   document.documentElement.classList.toggle(
@@ -558,6 +541,9 @@ function viewportChange() {
   );
 }
 onMounted(async () => {
+  void diagnosticAvailability().then((enabled) => {
+    if (!disposed) diagnosticsEnabled.value = enabled;
+  });
   load();
   clockTimer = setInterval(() => (now.value = campusNow()), 30000);
   media.addEventListener("change", systemChange);
@@ -605,14 +591,14 @@ onUnmounted(() => {
       :title="title"
       :subtitle="subtitle"
       :back="page === 'academic' && section !== 'overview'"
-      :academic="page === 'academic' && section === 'overview'"
+      :academic="false"
       :unread="!read && prefs.notifications"
       @back="back"
       @menu="open('drawer')"
       @notifications="open('notifications')"
       @import="manage(undefined, 'import')"
     />
-    <main :inert="!!modal" tabindex="-1" aria-label="页面内容">
+    <main @touchstart.passive="pullStart" @touchend.passive="pullEnd" :inert="!!modal" tabindex="-1" aria-label="页面内容">
       <LoadingState v-if="loading" />
       <div v-else-if="error" class="error-state" role="alert">
         <Info />
@@ -623,8 +609,9 @@ onUnmounted(() => {
       <Transition v-else name="page" mode="out-in"
         ><div :key="page" class="page-content">
           <template v-if="page === 'home'">
+            <SchoolConnection compact @connected="move('home')" />
             <div class="home-greeting">
-              <span>{{ greeting }}，{{ prefs.name }}</span
+              <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
               ><span class="quiet-label">北京时间 {{ timeOf(now) }}</span>
             </div>
             <button
@@ -663,8 +650,8 @@ onUnmounted(() => {
             </button>
             <div v-else class="next-course">
               <EmptyState
-                title="本学期没有后续课程"
-                description="可以在教务中心管理课程，或检查当前学期配置。"
+                :title="academicCache.connected && !schoolTerm?.data ? '课表尚未同步成功' : '本学期没有后续课程'"
+                :description="academicCache.connected && !schoolTerm?.data ? '当前无法判断课程安排，请查看上方连接状态。' : '可以在教务中心管理课程，或检查当前学期配置。'"
               />
             </div>
             <SectionHeader
@@ -688,7 +675,7 @@ onUnmounted(() => {
                 @select="details"
               /><EmptyState
                 v-if="!todayCourses.length"
-                title="今天没有课程"
+                :title="academicCache.connected && !schoolTerm?.data ? '尚未取得今日课程' : '今天没有课程'"
                 :description="
                   next ? '下一次课程会显示在上方。' : '当前学期没有后续安排。'
                 "
@@ -715,13 +702,7 @@ onUnmounted(() => {
             </div>
             <SectionHeader
               title="近期安排"
-              :meta="
-                officialActive
-                  ? '学校授权数据'
-                  : schedule.mode === 'demo'
-                    ? '演示数据'
-                    : '个人课表 · 官方通知未同步'
-              "
+              :meta="officialActive ? '学校缓存' : '个人安排'"
             />
             <div class="service-group upcoming-group">
               <button
@@ -738,9 +719,7 @@ onUnmounted(() => {
                   }}</small></span
                 ><ChevronRight class="row-chevron" :size="18" /></button
               ><button
-                v-for="e in officialActive || schedule.mode === 'demo'
-                  ? exams.slice(0, 1)
-                  : []"
+                v-for="e in exams.slice(0, 2)"
                 :key="e.name"
                 class="service-row"
                 @click="go('exams')"
@@ -752,7 +731,7 @@ onUnmounted(() => {
                   ></span
                 ><ChevronRight class="row-chevron" :size="18" /></button
               ><button
-                v-if="!officialActive && schedule.mode === 'demo'"
+                v-if="false"
                 class="service-row"
                 @click="go('study')"
               >
@@ -768,32 +747,26 @@ onUnmounted(() => {
               </button>
             </div>
           </template>
-          <template v-else-if="page === 'academic'">
-            <template v-if="section === 'overview'">
+          <template v-else-if="page === 'academic' || page === 'schedule'">
+            <SchoolAcademicRecords v-if="['grades','exams','study','official'].includes(section)" :section="section" />
+            <AcademicDiagnostics
+              v-else-if="
+                section === 'diagnostics' &&
+                diagnosticsEnabled &&
+                AcademicDiagnostics
+              "
+              @back="go('official')"
+              @saved="
+                showLocal();
+                go('schedule');
+              "
+            />
+            <template v-else-if="section === 'overview'">
+              <SchoolConnection compact />
               <button class="secondary full" @click="manage()">
                 管理个人课表 ·
-                {{ schedule.mode === "demo" ? "当前演示模式" : "本机已保存" }}
+                {{ schedule.mode === "demo" ? "未设置个人课程" : "本机已保存" }}
               </button>
-              <p class="footnote">
-                <span v-if="officialActive"
-                  >课程、成绩、考试来自本次授权会话；培养方案仍为演示。</span
-                ><span v-else
-                  >成绩、考试、学分仍为独立演示数据，课程表使用{{
-                    schedule.mode === "demo" ? "演示" : "个人"
-                  }}数据。</span
-                >
-              </p>
-              <AcademicSummary
-                :mode="data.source === 'official' ? 'official' : schedule.mode"
-                :average="weightedAverage(data.grades).toFixed(1)"
-                :grades="data.grades.length"
-                :credits="credits"
-                :exams="exams.length"
-                :exam-date="exams[0]?.date"
-                :week="week"
-                :courses="weekCount"
-                @open="go"
-              />
               <div class="quick-grid academic-quick">
                 <QuickAction
                   v-for="e in entries"
@@ -816,13 +789,7 @@ onUnmounted(() => {
                 title="校园教务入口"
                 meta="官方外链"
               /><ServiceGroup :items="official" @select="go" />
-              <p class="footnote source-footnote">
-                <ShieldCheck :size="13" />{{
-                  officialActive
-                    ? "授权数据仅本次会话有效"
-                    : "课表可在本机管理 · 未连接学校接口"
-                }}
-              </p>
+
             </template>
             <Transition v-else name="content" mode="out-in"
               ><AcademicDetail
@@ -831,9 +798,10 @@ onUnmounted(() => {
                     ? 'schedule-family'
                     : section
                 "
+                :practice="schoolTerm?.data?.practice ?? []"
                 :table="table"
                 :semester="semester"
-                :mode="data.source === 'official' ? 'official' : schedule.mode"
+                :mode="data.source === 'official' ? 'official' : 'personal'"
                 :section="section"
                 :data="data"
                 :now="now"
@@ -843,7 +811,9 @@ onUnmounted(() => {
                 @manage="(tab) => manage(undefined, tab)"
                 @create="createCourse"
                 @conflict="showConflicts"
-                :official-has-time-table="!!officialSnapshot?.timeTable"
+                :official-has-time-table="!!schoolTerm?.data?.table"
+                :diagnostics-enabled="diagnosticsEnabled"
+                :school-page-import="data.source === 'school-import'"
                 @official-sync="onOfficialSync"
                 @official-disconnect="onOfficialDisconnect"
                 @local="showLocal"
@@ -853,11 +823,12 @@ onUnmounted(() => {
             <button class="profile-strip" @click="open('edit')">
               <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
               ><span class="profile-copy"
-                ><strong>{{ prefs.name }}</strong
-                ><small>{{ prefs.major }}</small
-                ><span>模拟学生 · 本地资料</span></span
+                ><strong>{{ academicCache.profile.data?.name || prefs.name }}</strong
+                ><small>{{ academicCache.profile.data?.major || prefs.major }}</small
+                ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
+            <SchoolConnection />
             <SectionHeader title="外观设置" />
             <section class="settings-group">
               <div class="theme-row">
@@ -950,13 +921,13 @@ onUnmounted(() => {
           <template v-if="modal === 'drawer'"
             ><div class="drawer-brand">
               <span class="brand-mark"><GraduationCap :size="25" /></span
-              ><strong>邯郸校园</strong><span>v0.3.1</span>
+              ><strong>邯郸校园</strong><span>v0.5.0</span>
             </div>
             <button class="drawer-profile" @click="move('profile')">
               <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
               ><span
-                ><strong>{{ prefs.name }}</strong
-                ><small>{{ prefs.major }}</small></span
+                ><strong>{{ academicCache.profile.data?.name || prefs.name }}</strong
+                ><small>{{ academicCache.profile.data?.major || prefs.major }}</small></span
               ><ChevronRight :size="17" /></button
             ><SectionHeader title="我的校园" /><ServiceGroup
               :items="[
@@ -1019,13 +990,7 @@ onUnmounted(() => {
             <h2 class="course-detail-title">{{ selected.name }}</h2>
             <p class="muted">
               课程详情 ·
-              {{
-                officialActive
-                  ? "学校授权 · 只读"
-                  : schedule.mode === "demo"
-                    ? "演示数据"
-                    : "个人课表"
-              }}
+              {{selected.courseId?.startsWith('school-') ? '学校课程 · 只读' : '个人事项'}}
             </p>
             <dl>
               <dt>时间</dt>
@@ -1066,7 +1031,7 @@ onUnmounted(() => {
               <dt v-if="selected.notes">备注</dt>
               <dd v-if="selected.notes">{{ selected.notes }}</dd>
             </dl>
-            <div v-if="selected.courseId" class="course-detail-actions">
+            <div v-if="selected.courseId && !selected.courseId.startsWith('school-')" class="course-detail-actions">
               <button
                 class="primary full"
                 @click="openEditor(selected.courseId)"
@@ -1109,7 +1074,7 @@ onUnmounted(() => {
               设置课程提醒与系统权限</button
             ><SettingsRow
               title="应用内提醒"
-              description="显示演示消息和顶部未读标记"
+              description="显示应用消息和顶部未读标记"
               v-model="prefs.notifications"
             /><EmptyState
               v-if="!prefs.notifications"
@@ -1119,9 +1084,9 @@ onUnmounted(() => {
               ><article class="notice">
                 <Info :size="20" />
                 <div>
-                  <h3>欢迎体验邯郸校园 v0.2</h3>
+                  <h3>欢迎使用邯郸校园 v0.5</h3>
                   <p>
-                    个人课表可在本机管理，成绩与考试默认为演示。学校授权连接尚未接入，公开通知请前往官方入口查看。
+                    连接学校后自动同步，离线时可查看上次数据。公开通知请前往学校官网查看。
                   </p>
                   <small>{{ read ? "已读" : "未读" }} · 项目公告</small>
                 </div>
@@ -1160,9 +1125,7 @@ onUnmounted(() => {
             <div class="storage-line">
               <span>离线教务缓存</span><strong>已启用本机课表存储</strong>
             </div>
-            <div class="storage-line">
-              <span>模拟教务数据</span><strong>应用资源 / 内存</strong>
-            </div>
+
             <p>
               个人课表保存在 Web IndexedDB /
               原生设备偏好存储；应用资源缓存供离线查看。备份可在课表数据管理中导出。
@@ -1172,10 +1135,10 @@ onUnmounted(() => {
               @click="
                 load();
                 close();
-                notify('演示数据已重新加载');
+                notify('本机数据已重新加载');
               "
             >
-              <RefreshCw :size="17" />重新加载演示数据
+              <RefreshCw :size="17" />重新加载本机数据
             </button></template
           >
           <template v-else-if="modal === 'reset'"
@@ -1193,12 +1156,11 @@ onUnmounted(() => {
             ><ShieldCheck :size="27" />
             <h2>隐私政策</h2>
             <p>
-              本版本未内置学校连接器，不采集学校密码或
-              Cookie。未来经学校允许的连接器只读取本人数据；授权记录只在本次运行内存显示，断开或失效后清除。
+              学校密码只在官方页面输入。Android 原生模块使用系统密钥库加密保存学校会话，供本人数据查询复用。退出学校账号后清除会话与学校缓存。
             </p>
             <p>
               昵称、专业、主题和偏好保存在本机。个人课表通过
-              IndexedDB（Web）或原生设备存储保存，导入文件仅在本机解析，不会上传服务器。成绩、考试与演示课表属于虚构示例。
+              IndexedDB（Web）或原生设备存储保存，导入文件仅在本机解析，不会上传服务器。学校数据保存在本机缓存，个人课表与备份独立保留。
             </p>
             <p>
               托管平台可能产生运行必需的访问日志。外部网站受其各自隐私政策约束。
@@ -1209,7 +1171,7 @@ onUnmounted(() => {
           >
           <template v-else
             ><span class="brand-mark"><GraduationCap :size="27" /></span>
-            <h2>邯郸校园 <small>v0.3.1</small></h2>
+            <h2>邯郸校园 <small>v0.5.0</small></h2>
             <p>
               为同学，由同学。独立开源的学生校园助手，未获邯郸学院官方认证或合作授权。
             </p>

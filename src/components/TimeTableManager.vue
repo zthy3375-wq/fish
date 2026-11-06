@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {handanTimeTable} from "../domain/handan-time-table";
 import { computed, ref } from "vue";
 import { Plus, Clock3 } from "lucide-vue-next";
 import { schedule, semester, changeSchedule } from "../composables/schedule";
@@ -21,6 +22,7 @@ const selected = ref(table.value.id),
   conflicts = ref<string[]>([]),
   confirmed = ref(false),
   busy = ref(false);
+function loadHandan(){draft.value=handanTimeTable();prepare(true);}
 function choose() {
   draft.value = JSON.parse(
     JSON.stringify(
@@ -123,6 +125,8 @@ async function apply() {
     <p class="muted">
       当前课表关联一份作息。仅“按节次”安排随作息联动，旧版及自定义时间课程保持原时间。
     </p>
+    <button class="secondary full" @click="loadHandan">载入邯郸学院作息 · 40分钟 / 13节</button>
+    <p class="muted">依据你提供的上课时间表。先预览变化，再确认应用到当前学期；其他学期和自定义时间安排不变。</p>
     <p class="source-label">当前使用：{{ table.name }}</p>
     <label class="form-label"
       >选择作息方案<select v-model="selected" @change="choose">

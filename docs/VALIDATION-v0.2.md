@@ -1,5 +1,7 @@
 # v0.2 · 实际验证记录
 
+> 历史记录：本文描述对应版本开发时点；当前功能和最新真机反馈以 [STATUS.md](STATUS.md) 为准。
+
 2026-11-05，基于原仓库提交 `41f0716` 升级。保留原 Git 历史、mockAcademicProvider、AcademicData/Course/Grade/Exam 类型、成绩加权逻辑、v1 偏好存储键和双平台工程；未读取受限学校系统。
 
 ## 已执行并通过

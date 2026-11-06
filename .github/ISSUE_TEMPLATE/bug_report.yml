@@ -1,0 +1,34 @@
+name: 问题反馈
+description: 报告可以复现的应用问题（请勿提交账号、密码或未脱敏截图）
+body:
+  - type: markdown
+    attributes:
+      value: 请先核对当前版本。不要包含密码、Cookie、令牌、学号或未脱敏个人数据。
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      placeholder: 例如 v0.5.0.5-test
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 设备与系统
+      placeholder: 手机型号、Android版本；Web问题补充浏览器版本
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从哪个页面开始，依次做了什么？
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 预期与实际结果
+      description: 可附脱敏后的状态提示；不要粘贴完整网络日志。
+    validations:
+      required: true

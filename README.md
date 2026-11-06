@@ -1,46 +1,39 @@
 # 邯郸校园 · Handan Campus
 
-面向邯郸学院学生的独立校园助手，Web 优先，未来提供 Android 与 iOS。当前 `v0.3.1` 支持个人真实课表管理与通用文件导入，非学校官方应用。
+面向邯郸学院学生的独立开源校园客户端。Vue 3 + TypeScript + Vite + Capacitor，Android 通过 Kotlin 原生模块连接学校教务系统。非学校官方应用。
 
-[手机预览（需要项目所有者登录）](https://handan-campus-start.dewydahlia.chatgpt.site) · [v0.2 设计系统](docs/DESIGN-SYSTEM.md) · [验证记录](docs/VALIDATION-v0.2.md)
+**当前可用测试基线：v0.5.0.5（Android versionCode 55）。** 2026-11-06，项目所有者已在本人手机上确认：官方登录后自动同步真实课表，关闭重开仍可查看，当前会话无需重新登录。
 
-![v0.2 历史预览（非 v0.2.1 截图）](docs/mobile-preview.jpg)
+> 当前成果位于 [`feature/academic-integrated-v050`](https://github.com/zthy3375-wq/fish/tree/feature/academic-integrated-v050)，由 [PR #5](https://github.com/zthy3375-wq/fish/pull/5) 汇总，尚未合并 main。历史网页版与 main 不代表此测试版功能。
 
-## v0.3.1 课表核心体验
+[功能与验证状态](docs/STATUS.md) · [文档导航](docs/README.md) · [版本记录](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md)
 
-教务主导航直接打开周课表。按节次和真实时间定位，跨节课程占据对应高度；重叠课程以可展开列表逐门查看。点击空白格直接添加，完整编辑使用独立页面；支持多个安排与按组设置教学周。
+## 当前功能
 
-在“作息与设置 → 作息”配置每节课的时间，切换/另存前可预览联动课程的时间变化与冲突。旧v0.3安排迁移为独立时间，保留原值；新建课程默认按节次随作息联动。payload版本2同时支持恢复v1备份。
+| 模块 | 当前能力 | 验证范围 |
+| --- | --- | --- |
+| 学校连接 | 官方网页登录、原生加密保存会话、复用认证、退出清理 | 本人 Android 设备的登录与重开已确认；长期有效期由学校决定 |
+| 课表 | 自动查询、日/周展示、多安排与单双周、缓存、刷新、失败保留旧数据 | 真实同步与关闭重开查看已确认；完整性持续核对 |
+| 实践课 | 按学校返回的教学周单独显示 | 网页结构与解析已检查；具体显示持续核对 |
+| 成绩 | 真实查询、学期筛选、等级成绩、学校绩点、适用时的数值加权 | 手机曾显示92门记录；不是175项单测生成的数据 |
+| 考试 | 真实查询、独立更新时间、无安排空状态 | 手机查询已完成；尚无非空考试样本验收 |
+| 个人事项 | 独立管理、CSV/XLSX/ICS 导入、备份恢复 | 原有功能保留；不覆盖学校课程 |
+| 首页与设置 | 下一节课、今日课程、近期考试、四导航、主题与紧凑布局 | Web/Android 已实现 |
+| iOS | 保留 Capacitor 工程 | Swift 学校会话尚未实现，不宣称支持学校直连 |
 
-[源码对比与技术取舍](docs/RESEARCH-v0.3.1.md) · [本轮验证与操作说明](docs/VALIDATION-v0.3.1.md)
+学校第一教学周日期仍来自本机配置，不能视为已验证的官方校历。当前结论只覆盖本人设备和本人账号，尚不代表全校兼容性验收。
 
-## v0.3 实用课表
+## 安装 Android 测试包
 
-- 多学期配置、课程多时间安排、手动增删改、单双周与冲突校验。
-- CSV / XLSX / ICS 本机解析、字段映射、预览、合并/替换；版本化 JSON 备份恢复。
-- 首页与日/周课表实时联动，Web IndexedDB / 原生 Preferences 持久化，生产 Web 资源离线缓存。
-- 原生本地课程提醒已接入；Web 明确提示后台提醒不可用。
+1. 打开 [PR #5 的检查记录](https://github.com/zthy3375-wq/fish/pull/5/checks) 或 [Android 构建工作流](https://github.com/zthy3375-wq/fish/actions/workflows/android-test.yml)。
+2. 选择对应分支且**成功完成**的运行，在 Artifacts 下载测试 APK 压缩包，解压后安装 APK。GitHub 下载 Artifacts 通常需要登录；保留期限以该次构建为准。
+3. 首次点击“连接邯郸学院”，在官方页面自行登录，之后自动查询。日常直接查看或刷新，学校会话过期时重新认证。
 
-[使用说明与导入限制](docs/V0.3-GUIDE.md) · [实际测试结果](docs/VALIDATION-v0.3.md)
+APK 使用测试签名。覆盖安装优先；签名冲突时先保留原应用和备份，不默认卸载。旧诊断包 `org.handancampus.app.diagnostic` 与当前包 `org.handancampus.app` 的数据彼此隔离。
 
-## v0.2.1 补充改造
+## 本地开发
 
-首页下一节课改为可整卡点击的紧凑三行布局，今日课程合并为单个分隔列表。悬浮胶囊置于内容滚动区之外的专用底部空间，避免仅依靠页面尾部 padding 导致的中途遮挡。课程数据与状态算法保持不变。
-
-[本轮验证与未执行项目](docs/VALIDATION-v0.2.1.md) · [本地场景测试说明](tests/manual/README.md)
-
-## 已实现
-
-- 首页：实时计算今日课程状态、跨日下一节课、教学周、快捷入口与近期安排。
-- 教务：概览与分组服务、1–18 周课表、紧凑日/周视图、周跳转、课程详情、单双周过滤；成绩学期筛选和搜索、学分加权平均；考试、模拟学业进度、模拟校历、官方外链。
-- 个人：昵称/专业编辑、浅色/深色/系统主题、紧凑布局、演示应用内提醒、重置本机偏好、隐私说明。
-- 独立内容滚动区/悬浮胶囊底栏、安全区、焦点圈、弹窗焦点约束与 Escape 关闭、减少动效支持。
-
-**演示模式所有数据均为虚构。个人模式仅课程与学期来自用户创建/导入，成绩、考试、学业进度仍是独立演示。** 首页按北京时间计算课程状态与下一次课程；演示学期从 2026-09-07 开始，共18周，个人学期由用户设置，均不代表学校官方数据。
-
-## 运行
-
-Node.js 22 LTS 或以上，使用仓库中的 package-lock.json。
+Node.js 22+；依赖以 `package-lock.json` 为准。
 
 ```sh
 npm ci
@@ -49,48 +42,30 @@ npm test
 npm run build
 ```
 
-Vue 3 + TypeScript + Vite；无远端教务 API，无账号注册，无追踪 SDK，无第三方字体请求。默认浅色，以本地 localStorage 保存非敏感偏好。课表存储不可用时不覆盖原数据，显示错误和重试入口。个人课表与演示数据独立。
-
-## 原生平台
-
-Android/iOS 工程已生成，`capacitor.config.ts` 使用 `dist/`；本期未构建签名安装包。
+Android 需要完整 JDK 21（含 javac）、Android SDK 35 与 build-tools 35.0.0：
 
 ```sh
-npm run cap:sync
-npx cap open android
-npx cap open ios
+npm run build
+npx cap sync android
+cd android
+./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest assembleDebug
 ```
 
-Android 需要 Android Studio/SDK/JDK；iOS 构建与签名需要 macOS/Xcode，发布需相应开发者账号。修改应用标识、签名与版本后再发布。Android/iOS 不申请相机、定位权限；课程提醒仅在用户主动开启时申请通知权限。原生构建及真机提醒待验证；iOS 还需 macOS 上执行 pod install。
+Windows 使用 `gradlew.bat`。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。iOS 编译需要 macOS/Xcode，并有独立的手动 CI；编译成功也不等于已实现学校会话。
 
-## 结构
+## 架构与数据
 
-- `src/domain/academic.ts`：类型、课表筛选、时间与成绩计算。
-- `src/services/academic.ts`：AcademicProvider 契约与独立模拟数据源。
-- `src/services/preferences.ts`：带字段校验的本机偏好与故障降级。
-- `src/App.vue`：三个模块与应用状态编排。
-- `src/components/`：统一页头、悬浮导航、概览、课程卡和分组列表等组件。
-- `src/composables/navigation.ts`：模块、子页面与浮层的返回历史。
-- `src/domain/presentation.ts`：北京时间、课程状态和跨日课程查找。
-- `src/tokens.css`：颜色、排版、间距、动效、暗色和安全区域设计变量。
-- `src/style.css`：响应式布局、设计变量、动效和主题。
-- `android/`、`ios/`：Capacitor 壳。
-- `tests/`：计算和存储边界测试。
-- `docs/RESEARCH.md`：四个参考仓库的架构、UI、许可证研究。
-- `docs/VALIDATION-v0.2.md`：本次已执行检查与验证范围。
-- `docs/DESIGN-SYSTEM.md`：v0.2 设计系统与交互规则。
-- `.github/workflows/ci.yml`：push/PR 自动测试及生产构建。
+- `src/components/`、`src/composables/`：Vue 展示、导航、个人课表与学校数据状态。
+- `src/services/academic-sync-engine.ts`：学校缓存、分模块更新、重复请求合并、错误保护。
+- `src/services/handan-academic-client.ts`：类型化原生客户端接口；Vue 不处理 Cookie 或密码。
+- `android/.../academic/`：官方 WebView、CookieManager、Android Keystore AES-GCM 会话存储。
+- `android/app/src/main/assets/handan-*.js`：随 APK 编译的固定查询和页面读取脚本。
+- `src/domain/`：课程、学期、作息与时间计算；`tests/`：格式、状态、存储和边界回归。
 
-## 后续接入
+个人课表与学校缓存分开保存；查询失败或异常空响应不会清空上次成功课表。没有业务后端或分析追踪 SDK；学校正常查询仍需设备直接连接官方服务。
 
-先取得学校系统访问与数据使用授权，再实现新的 AcademicProvider。不要在前端硬编码凭据或尝试绕过验证码、认证、网络限制。真实会话管理、数据规范化、接口错误与隐私策略需要随接入方案一起设计；当前没有用假后端冒充真实服务。
+## 贡献与许可
 
-## 贡献
+原创代码采用 [MIT](LICENSE)。上游研究与历史设计记录见 [文档导航](docs/README.md)。第一版范围为首页、课表、教务和个人设置；社区、二手交易、商家与失物招领尚未开发。
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.md)。原创代码 MIT；设计研究来源与上游许可记录见 [docs/RESEARCH.md](docs/RESEARCH.md)。本期不包含交易、社区、商家或失物招领。
-
-## 学校授权连接框架（尚未接入学校）
-
-主线保留学校授权连接的接口、状态机、只读数据视图与严格校验，默认没有注册真实连接器。“教务 → 教务服务 → 官方教务”明确显示未接入；不能据此声称可以登录邯郸学院或自动同步课表。原本个人课表和导入仍独立可用。
-
-[接入边界与后续条件](docs/V0.4-ACADEMIC-CONNECTION.md) · [PR #1 审查与验证](docs/PR-1-REVIEW.md)
+请勿向 Issue、日志、截图或 PR 提交密码、Cookie、令牌及未脱敏学籍信息。查看 [安全说明](SECURITY.md) 与 [贡献指南](CONTRIBUTING.md)。

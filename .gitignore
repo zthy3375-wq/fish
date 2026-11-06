@@ -14,3 +14,22 @@ public/__qa.html
 *.mobileprovision
 public/__before/
 __qa/
+!.env.android-diagnostic
+android/app/build/
+android/build/
+android/capacitor-cordova-android-plugins/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Local diagnostics, installers and IDE artifacts
+*.apk
+*.aab
+*.apks
+*.log
+coverage/
+playwright-report/
+test-results/
+.idea/
+.DS_Store
+ios/App/App/DerivedData/
