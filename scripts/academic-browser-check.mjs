@@ -138,7 +138,7 @@ try{
   await page.getByLabel('待办标题',{exact:true}).fill('人工未设日期');
   await page.getByRole('button',{name:'保存待办',exact:true}).click();
   await page.getByRole('button',{name:'完成待办 人工未设日期',exact:true}).waitFor();
-  assert(await page.getByText('未设截止时间',{exact:true}).count()===1,`${width}: undated tasks are not assigned fake deadlines`);
+  assert(await page.getByRole('heading',{name:/^未设截止时间/}).count()===1,`${width}: undated tasks are not assigned fake deadlines`);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: timeline fits mobile width`);
 
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
