@@ -7,3 +7,4 @@ createApp(App).mount('#app');
 import './schedule.css';
 import {prepareOffline} from './services/offline';
 if(import.meta.env.PROD)window.addEventListener('load',prepareOffline);
+import './navigation.css';

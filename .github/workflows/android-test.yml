@@ -73,5 +73,5 @@ jobs:
         if: always()
         with:
           name: handan-campus-browser-checks-${{ github.sha }}
-          path: /tmp/handan-v050-qa
+          path: /tmp/handan-v051-qa
           if-no-files-found: warn

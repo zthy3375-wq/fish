@@ -25,7 +25,7 @@
 
 ## 安装 Android 测试包
 
-1. 打开 [PR #5 的检查记录](https://github.com/zthy3375-wq/fish/pull/5/checks) 或 [Android 构建工作流](https://github.com/zthy3375-wq/fish/actions/workflows/android-test.yml)。
+1. 打开 [Android 构建工作流](https://github.com/zthy3375-wq/fish/actions/workflows/android-test.yml)，选择要测试的 PR 或 main 对应的构建。
 2. 选择对应分支且**成功完成**的运行，在 Artifacts 下载测试 APK 压缩包，解压后安装 APK。GitHub 下载 Artifacts 通常需要登录；保留期限以该次构建为准。
 3. 首次点击“连接邯郸学院”，在官方页面自行登录，之后自动查询。日常直接查看或刷新，学校会话过期时重新认证。
 
@@ -49,6 +49,12 @@ npm run android:apk
 ```
 
 以上 npm 命令会自动选择 Windows/Linux 的 Gradle Wrapper。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。iOS 编译需要 macOS/Xcode，并有独立的手动 CI；编译成功也不等于已实现学校会话。
+
+## 导航与页面状态
+
+四个根页：首页、课表、教务、我的。一级 Tab 替换当前根页，二级页记住进入它的页面；返回依次处理弹窗、二级页、首页。学校账号、学期和数据备份管理集中在“我的”；课表右上角“＋”添加个人事项。
+
+Tab 切换保留各页滚动、按学期区分的课表周次/日周视图/星期和成绩筛选。本轮 UI 状态在应用运行期间保留，学校数据与选择的学校学期继续采用原有持久化缓存。浏览器刷新与进程重启保留数据，但 UI 筛选恢复为默认值。
 
 ## 架构与数据
 

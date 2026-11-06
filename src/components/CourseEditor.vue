@@ -124,6 +124,7 @@ function add() {
 }
 function requestCancel() {
   if (props.saving) return;
+  if (exitConfirm.value) { exitConfirm.value = false; return; }
   if (dirty.value) exitConfirm.value = true;
   else emit("cancel");
 }
