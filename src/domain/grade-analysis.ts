@@ -1,6 +1,6 @@
 import type {SchoolGrade} from '../services/handan-academic-client';
 export type GradeState='passed'|'failed'|'pending'|'unknown';
-export interface GradeRecord extends SchoolGrade {key:string;state:GradeState;numeric:number|null;termLabel:string;termOrder:number|null}
+export interface GradeRecord extends SchoolGrade {key:string;state:GradeState;numeric:number|null;termLabel:string;termOrder:number|null;analysisKind:string}
 export interface CourseGroup {key:string;name:string;records:GradeRecord[];ambiguous:boolean;state:GradeState;resolved:boolean;credit:number|null;creditTerm:string|null;representative:GradeRecord|null}
 export interface GradeFilter {term:string;query:string;kind:string;band:string;state:string;sort:string}
 export const defaultGradeFilter=():GradeFilter=>({term:'all',query:'',kind:'all',band:'all',state:'all',sort:'term'});
@@ -33,13 +33,15 @@ export const gradeBands=[['0-59','0–59'],['60-69','60–69'],['70-79','70–79
 export function buildGradeReport(raw:unknown) {
  const source=Array.isArray(raw)?raw.slice(0,2000):[];
  const records:GradeRecord[]=[],seen=new Set<string>();let invalid=Array.isArray(raw)?Math.max(0,raw.length-2000):1,duplicates=0;
- for(const item of source){try{const g=normalizeGrade(item),key=signature(g);if(seen.has(key)){duplicates++;continue}seen.add(key);const term=gradeTerm(g);records.push({...g,key,...gradeValue(g),termLabel:term.label,termOrder:term.order})}catch{invalid++}}
+ for(const item of source){try{const g=normalizeGrade(item),key=signature(g);if(seen.has(key)){duplicates++;continue}seen.add(key);const term=gradeTerm(g);records.push({...g,key,...gradeValue(g),termLabel:term.label,termOrder:term.order,analysisKind:g.kind||'性质未提供'})}catch{invalid++}}
  // If any record lacks a code for a shared name, keep that whole name cluster uncertain.
  const missingCodeNames=new Set(records.filter(r=>!r.courseCode).map(r=>r.name));
  const grouped=new Map<string,GradeRecord[]>();
  for(const r of records){const key=missingCodeNames.has(r.name)?`name:${r.name}`:`code:${r.courseCode}`;const list=grouped.get(key)||[];list.push(r);grouped.set(key,list)}
  const groups:CourseGroup[]=[];
  for(const [key,list] of grouped){
+  const kinds=new Set(list.map(r=>r.kind||'性质未提供'));
+  if(kinds.size>1)for(const r of list)r.analysisKind='性质待核对';
   const ambiguous=key.startsWith('name:')&&list.length>1;
   const passed=list.filter(r=>r.state==='passed'),failed=list.some(r=>r.state==='failed');
   const state:GradeState=ambiguous?'unknown':passed.length?'passed':list.some(r=>r.state==='pending')?'pending':list.every(r=>r.state==='failed')?'failed':'unknown';
@@ -64,11 +66,11 @@ export function buildGradeReport(raw:unknown) {
  }
  return {records,groups,terms,summary,overview:summary(),semesters:terms.map(term=>({term,order:records.find(r=>r.termLabel===term)!.termOrder,...summary(term)})),invalid,duplicates,
   failures:groups.filter(g=>g.state==='failed'),resolved:groups.filter(g=>g.resolved),ambiguous:groups.filter(g=>g.ambiguous),unknown:groups.filter(g=>g.state==='unknown'),
-  types:[...new Set(records.map(r=>r.kind||'性质未提供'))].map(kind=>({kind,courses:groups.filter(g=>g.records.some(r=>(r.kind||'性质未提供')===kind)).length,credits:groups.filter(g=>g.credit!==null&&new Set(g.records.map(r=>r.kind||'性质未提供')).size===1&&(g.records[0].kind||'性质未提供')===kind).reduce((s,g)=>s+g.credit!,0)}))};
+  types:[...new Set(records.map(r=>r.analysisKind))].map(kind=>({kind,courses:groups.filter(g=>g.records[0].analysisKind===kind).length,credits:groups.filter(g=>g.credit!==null&&g.records[0].analysisKind===kind).reduce((s,g)=>s+g.credit!,0)}))};
 }
 export type GradeReport=ReturnType<typeof buildGradeReport>;
 export function filterGradeRecords(records:GradeRecord[],f:GradeFilter):GradeRecord[]{
- const q=clean(f.query).toLocaleLowerCase();return records.filter(r=>(f.term==='all'||r.termLabel===f.term)&&(!q||r.name.toLocaleLowerCase().includes(q))&&(f.kind==='all'||(r.kind||'性质未提供')===f.kind)&&(f.band==='all'||bandOf(r)===f.band)&&(f.state==='all'||r.state===f.state)).sort((a,b)=>{
+ const q=clean(f.query).toLocaleLowerCase();return records.filter(r=>(f.term==='all'||r.termLabel===f.term)&&(!q||r.name.toLocaleLowerCase().includes(q))&&(f.kind==='all'||r.analysisKind===f.kind)&&(f.band==='all'||bandOf(r)===f.band)&&(f.state==='all'||r.state===f.state)).sort((a,b)=>{
   if(f.sort==='name')return a.name.localeCompare(b.name,'zh-CN');
   if(f.sort==='score-desc'||f.sort==='score-asc'){if(a.numeric===null)return b.numeric===null?0:1;if(b.numeric===null)return -1;return f.sort==='score-desc'?b.numeric-a.numeric:a.numeric-b.numeric}
   if(f.sort==='credit')return (b.credit??-1)-(a.credit??-1);

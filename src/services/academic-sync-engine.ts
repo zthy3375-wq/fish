@@ -63,6 +63,7 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
    let data:unknown=module.data;
    if(name==='semesters')data=validateArray<SchoolTerm>(data,r=>{try{validTerm(r);return true}catch{return false}});
    if(name==='grades'){
+    if(module.scope==='term'&&target.scope==='all'&&target.data?.length)throw Error('GRADE_SCOPE');
     if(!Array.isArray(data)||data.length>2000)throw Error('SCHEMA');
     data=data.map(normalizeGrade);
     if(!(data as SchoolGrade[]).length&&target.data?.length)throw Error('EMPTY');
@@ -75,7 +76,7 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
    if(name==='exams')data=(data as SchoolExam[]).map(({name,date,time,room,seat})=>({name,date,time,room,seat}));
    if(name==='grades')target.scope=module.scope??'unknown';
    target.data=data;target.updatedAt=new Date().toISOString();target.error=null;
-  }catch(e){target.error=(e as Error).message==='EMPTY'?'学校返回空成绩，保留上次记录':schoolError('SCHEMA')}
+  }catch(e){target.error=(e as Error).message==='EMPTY'?'学校返回空成绩，保留上次记录':(e as Error).message==='GRADE_SCOPE'?'仅收到单学期成绩，保留历年缓存':schoolError('SCHEMA')}
  }
  return next;
 }

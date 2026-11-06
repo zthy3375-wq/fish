@@ -43,9 +43,9 @@ const groupFor=(r:GradeRecord)=>report.value.groups.find(g=>g.records.some(x=>x.
   <div v-if="!report.records.length" class="ga-empty"><GraduationCap :size="30"/><h3>{{academicCache.grades.updatedAt?'学校暂无可分析的成绩':'还没有本人已同步成绩'}}</h3><p>首次连接后自动读取。不会使用演示成绩或虚构学分。</p></div>
   <template v-else>
    <div v-if="!center" class="ga-tabs" role="tablist" aria-label="成绩视图"><button v-for="t in [['overview','分析概览'],['details','成绩明细']]" :key="t[0]" role="tab" :aria-selected="tab===t[0]" @click="gradeView.tab=t[0]">{{t[1]}}</button></div>
-   <div class="ga-toolbar"><select v-model="f.term" aria-label="成绩学期"><option value="all">全部已同步学期</option><option v-for="t in report.terms" :key="t" :value="t">{{t}}</option></select><button v-if="!center" class="secondary" aria-label="筛选" :aria-expanded="showFilters" @click="showFilters=!showFilters;gradeView.tab='details'"><Filter :size="15"/>筛选<span v-if="activeFilters">({{activeFilters}})</span></button></div>
+   <div class="ga-toolbar"><select v-model="f.term" aria-label="成绩学期"><option value="all">全部已同步学期</option><option v-for="t in report.terms" :key="t" :value="t">{{t}}</option></select><button class="secondary" aria-label="筛选" :aria-expanded="showFilters" @click="showFilters=!showFilters;if(!center)gradeView.tab='details'"><Filter :size="15"/>筛选<span v-if="activeFilters">({{activeFilters}})</span></button></div>
    <div v-if="center||tab==='details'" class="ga-search"><input v-model="f.query" aria-label="搜索成绩课程" placeholder="搜索课程名称"/><span>{{rows.length}} 条</span></div>
-   <div v-if="center||(tab==='details'&&showFilters)" class="ga-filters">
+   <div v-if="showFilters&&(center||tab==='details')" class="ga-filters">
     <p class="ga-filter-note">筛选仅作用于下方明细，概览统计按所选学期展示。</p>
     <label>课程性质<select v-model="f.kind" aria-label="课程性质"><option value="all">全部性质</option><option v-for="k in report.types" :key="k.kind" :value="k.kind">{{k.kind}}</option></select></label>
     <label>成绩区间<select v-model="f.band" aria-label="成绩区间"><option value="all">全部成绩类型</option><option v-for="[id,label] in gradeBands" :key="id" :value="id">{{label}}</option></select></label>

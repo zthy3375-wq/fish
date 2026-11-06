@@ -61,3 +61,5 @@ it('preserves successful grade history on empty, malformed and expired results',
  const c=applyAcademicResult(emptyAcademicCache(),r,calendar());expect(c.grades.data![0].courseCode).toBe('C1');
  for(const m of [{status:'ok',data:[]},{status:'ok',data:[{}]},{status:'error',code:'EXPIRED'}]){const n=applyAcademicResult(c,{session:'expired',modules:{grades:m as any}},calendar());expect(n.grades.data).toEqual(c.grades.data);expect(n.grades.updatedAt).toBe(c.grades.updatedAt);expect(n.grades.error).toBeTruthy()}
 });
+
+it('an explicit single-term response cannot replace a known all-term grade cache',()=>{const r=result();r.modules!.grades={status:'ok',scope:'all',data:[{name:'历史课',scoreText:'80',credit:2,gpa:3,term:'2025 秋季',kind:'必修'}]};const c=applyAcademicResult(emptyAcademicCache(),r,calendar());const n=applyAcademicResult(c,{session:'valid',modules:{grades:{status:'ok',scope:'term',data:[{name:'当前课',scoreText:'90',credit:2,gpa:4,term:'2026 秋季',kind:'必修'}]}}},calendar());expect(n.grades.data).toEqual(c.grades.data);expect(n.grades.error).toContain('单学期');expect(n.grades.scope).toBe('all')});
