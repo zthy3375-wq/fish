@@ -1,19 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
-import {
-  ChevronLeft,
-  ChevronRight,
-  MapPin,
-  BookOpen,
-  GraduationCap,
-  LibraryBig,
-  ArrowUpRight,
-  CalendarDays,
-  Info,
-  Search,
-} from "lucide-vue-next";
+import { computed } from "vue";
+import { ChevronLeft, ChevronRight, Info } from 'lucide-vue-next';
 import type { AcademicData, Course } from "../domain/academic";
-import { coursesForDay, weightedAverage } from "../domain/academic";
+import { coursesForDay } from "../domain/academic";
 import {
   currentWeek,
   dayNumber,
@@ -26,6 +15,8 @@ import {
   type TimeTable,
   type CellPreset,
 } from "../domain/schedule";
+import { scheduleViews } from '../composables/view-state';
+import { academicCache, academicBusy, selectSchoolTerm } from '../composables/handan-academic';
 import ScheduleGrid from "./ScheduleGrid.vue";
 import CourseCard from "./CourseCard.vue";
 import EmptyState from "./EmptyState.vue";
@@ -34,32 +25,31 @@ const props = defineProps<{
   table: TimeTable;
   semester: Semester;
   mode: "demo" | "personal" | "official";
-  officialHasTimeTable?: boolean;
   section: string;
   data: AcademicData;
   now: Date;
-  major: string;
 }>();
 const emit = defineEmits<{
   navigate: [section: string];
   course: [course: Course];
-  manage: [tab?: string];
   create: [preset?: CellPreset];
   conflict: [courses: Course[]];
 }>();
-const week = ref(
-    Math.max(
-      1,
-      Math.min(
-        props.semester.weekCount,
-        currentWeek(props.now, props.semester),
-      ),
-    ),
-  ),
-  day = ref(dayNumber(props.now)),
-  view = ref("week");
+const state = computed(() => {
+  scheduleViews[props.semester.id] ??= {
+  week: Math.max(1, Math.min(props.semester.weekCount, currentWeek(props.now, props.semester))),
+  day: dayNumber(props.now), view: 'week',
+  };
+  return scheduleViews[props.semester.id];
+});
+const week = computed({get:()=>Math.min(props.semester.weekCount,state.value.week),set:(value:number)=>{state.value.week=value}});
+const day = computed({get:()=>state.value.day,set:(value:number)=>{state.value.day=value}});
+const view = computed({get:()=>state.value.view,set:(value:'day'|'week')=>{state.value.view=value}});
+function termChange(event:Event) {
+  const [xnm,xqm]=(event.target as HTMLSelectElement).value.split('-');
+  void selectSchoolTerm({xnm,xqm});
+}
 const actualWeek = computed(() => currentWeek(props.now, props.semester));
-const prefs = computed(() => ({ major: props.major }));
 const selectedCourses = computed(() =>
   coursesForDay(props.data.courses, day.value, week.value),
 );
@@ -82,19 +72,6 @@ function weekDate(week: number, day: number) {
   const d = semesterDate(props.semester, week, day);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
-watch(
-  () =>
-    `${props.semester.id}/${props.semester.weekStartDate}/${props.semester.weekCount}`,
-  () => {
-    week.value = Math.max(
-      1,
-      Math.min(
-        props.semester.weekCount,
-        currentWeek(props.now, props.semester),
-      ),
-    );
-  },
-);
 let touchX = 0,
   touchY = 0;
 function touchStart(e: TouchEvent) {
@@ -119,7 +96,9 @@ function touchEnd(e: TouchEvent) {
     @touchstart.passive="touchStart"
     @touchend.passive="touchEnd"
   >
-    <div class="schedule-actions"><button class="primary" @click="emit('create')">＋ 添加个人事项</button><button class="secondary" @click="emit('manage','courses')">个人课表与备份</button><button class="secondary" @click="emit('navigate','official')">学校账号</button></div>
+    <label v-if="academicCache.semesters.data?.length" class="schedule-term">
+      <span>学期</span><select :value="academicCache.selectedTerm" :disabled="academicBusy" aria-label="课表学期" @change="termChange"><option v-for="t in academicCache.semesters.data" :key="`${t.xnm}-${t.xqm}`" :value="`${t.xnm}-${t.xqm}`">{{t.xnm}}–{{Number(t.xnm)+1}} {{t.xqm==='3'?'秋季':'春季'}}</option></select>
+    </label>
     <div class="schedule-toolbar">
       <div class="segmented" aria-label="课表视图">
         <button
@@ -188,8 +167,7 @@ function touchEnd(e: TouchEvent) {
         ><i />
       </button>
     </div>
-    <Transition name="content" mode="out-in"
-      ><div :key="`${view}-${week}-${day}`">
+    <div :key="`${view}-${week}-${day}`" class="schedule-view">
         <template v-if="view === 'day'"
           ><div class="section-heading agenda-heading">
             <h2>周{{ weekdays[day - 1] }}的安排</h2>
@@ -229,8 +207,8 @@ function touchEnd(e: TouchEvent) {
           @course="details"
           @create="emit('create', $event)"
           @conflict="emit('conflict', $event)"
-        /></div
-    ></Transition>
+        />
+    </div>
     <section v-if="practice?.length" class="panel"><h2>实践课程</h2><p class="muted">学校按教学周安排，未提供具体星期与节次。</p><article v-for="(p,i) in practice" :key="i" class="service-row"><span class="row-copy"><strong>{{p.name}}</strong><small>{{p.weeks}} · {{p.teacher}}</small></span></article></section>
     <p class="footnote">
       {{
@@ -244,12 +222,6 @@ function touchEnd(e: TouchEvent) {
       {{ mode === "official" ? "学校课程只读，个人事项可编辑" : "点击空白格添加" }} ·
       重叠课程点开逐门查看
     </p>
-    <button
-      class="text-button academic-services-link"
-      @click="emit('navigate', 'overview')"
-    >
-      成绩、考试与其他教务服务 <ChevronRight :size="15" />
-    </button>
   </section>
   <section v-else-if="section === 'calendar'" class="panel">
     <div class="section-heading">
@@ -261,7 +233,7 @@ function touchEnd(e: TouchEvent) {
       </div>
       <span class="soft-pill">{{
         mode === "official"
-          ? "学校授权学期"
+          ? "本机教学周"
           : mode === "demo"
             ? "演示校历"
             : "个人学期"
@@ -284,7 +256,7 @@ function touchEnd(e: TouchEvent) {
     <p class="inline-note">
       <Info :size="17" />{{
         mode === "official"
-          ? "学期信息来自本次授权接口，实际安排以学校通知为准。"
+          ? "教学周日期采用本机学期设置，实际放假与调课以学校通知为准。"
           : "此为本机配置的学期日历，并非学校官方校历。"
       }}
     </p>
