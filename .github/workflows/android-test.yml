@@ -2,7 +2,7 @@ name: Android test APK
 on:
   workflow_dispatch:
   push:
-    branches: [feature/academic-integrated-v050]
+    branches: [main]
   pull_request:
     branches: [main]
     paths:
@@ -10,15 +10,21 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'package*.json'
+      - 'capacitor.config.ts'
+      - 'vite.config.ts'
+      - 'scripts/academic-browser-check.mjs'
       - '.env.android-diagnostic'
       - '.github/workflows/android-test.yml'
 concurrency:
-  group: android-diagnostic-${{ github.head_ref || github.ref_name }}
+  group: android-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+permissions:
+  contents: read
 jobs:
   apk:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -45,12 +51,13 @@ jobs:
         working-directory: android
       - uses: actions/upload-artifact@v4
         with:
-          name: handan-campus-v0.5.0-test-apk
+          name: handan-campus-test-apk-${{ github.sha }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
   browser:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -66,6 +73,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: handan-campus-v0.5.0-browser-checks
+          name: handan-campus-browser-checks-${{ github.sha }}
           path: /tmp/handan-v050-qa
           if-no-files-found: warn
