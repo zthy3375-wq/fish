@@ -54,12 +54,12 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Build parallel grade analysis test APK
-        run: ./gradlew --no-daemon -PgradePreview=true assembleDebug
+      - name: Build parallel campus agenda test APK
+        run: ./gradlew --no-daemon -PagendaPreview=true assembleDebug
         working-directory: android
       - uses: actions/upload-artifact@v4
         with:
-          name: handan-campus-grades-test-${{ github.sha }}
+          name: handan-campus-agenda-test-${{ github.sha }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

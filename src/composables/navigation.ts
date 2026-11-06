@@ -2,6 +2,7 @@ import { ref, onMounted, onUnmounted } from "vue";
 export type Page = "home" | "schedule" | "academic" | "profile";
 const sections = [
   "overview",
+  "agenda",
   "schedule",
   "grades",
   "exams",
