@@ -132,5 +132,6 @@ async function(operation, requestedTerm) {
       });
     });
   }catch(e){result.session=e.message==='EXPIRED'?'expired':'unknown';result.error=controlled.has(e.message)?e.message:'SCHEMA'}
+  if(result.modules.timetable?.code==='TIMETABLE_JSON')result.renderedPage={url:timetablePage,term};
   window.__handanResult=result;
 }

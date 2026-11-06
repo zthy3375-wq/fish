@@ -29,6 +29,7 @@ class HandanAcademicPlugin : Plugin() {
     private var login = false
     private var script = ""
     private var method = "syncAll"
+    private var renderedResult: JSONObject? = null
     private var term = JSONObject()
 
     @PluginMethod fun login(call: PluginCall) = start(call, true, "timetable")
@@ -43,7 +44,7 @@ class HandanAcademicPlugin : Plugin() {
     private fun start(next: PluginCall, interactive: Boolean, operation: String) {
         activity.runOnUiThread {
             if (call != null) { next.reject("同步正在进行", "BUSY"); return@runOnUiThread }
-            call = next; login = interactive; method = operation; started = false; authenticated = false
+            renderedResult = null; call = next; login = interactive; method = operation; started = false; authenticated = false
             term = JSONObject().apply {
                 val year = next.getString("xnm") ?: ""
                 val code = next.getString("xqm") ?: ""
@@ -86,9 +87,10 @@ class HandanAcademicPlugin : Plugin() {
                 override fun onPageFinished(v: WebView, url: String) {
                     if (call == null) return
                     if (AcademicPolicy.loginPage(url)) {
-                        if (!login) { authenticated = false; vault.clear(); finish(JSONObject().put("session", "expired")) }
+                        if (!login || renderedResult != null) { authenticated = false; vault.clear(); finish(JSONObject().put("session", "expired")) }
                         return
                     }
+                    if (renderedResult != null) { readRendered(0, generation); return }
                     if (started) return
                     checkAuthenticated(v, generation, 0)
                 }
@@ -141,23 +143,63 @@ class HandanAcademicPlugin : Plugin() {
                         val result = JSONObject(decoded as String)
                         if (result.toString().length > 700000) throw IllegalArgumentException()
                         if (result.optString("session") == "expired") { vault.clear(); authenticated = false }
-                        finish(result)
+                        val fallback=result.optJSONObject("renderedPage")
+                        val url=fallback?.optString("url") ?: ""
+                        val uri=try { java.net.URI(AcademicPolicy.ORIGIN).resolve(url) } catch (_:Exception) { null }
+                        if(fallback != null && uri != null && AcademicPolicy.allowed(uri.toString()) && Regex("/kbcx/xskbcx_cxXsgrkb(?:Index)?\\.html").matches(uri.path)) {
+                            renderedResult=result
+                            // Attach a tiny transparent WebView so the school page's AJAX/render lifecycle actually runs.
+                            val view=web!!
+                            (view.parent as? android.view.ViewGroup)?.removeView(view)
+                            view.alpha=0f; view.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                            activity.addContentView(view,android.view.ViewGroup.LayoutParams(1,1))
+                            view.loadUrl(uri.toString())
+                        } else finish(result)
                     }
                 } catch (_: Exception) { fail("学校返回数据无法识别，保留上次数据", "SCHEMA") }
             }
         }
         handler.postDelayed({ poll() }, 200)
     }
+    private fun readRendered(attempt: Int, token: Int) {
+        val result=renderedResult ?: return
+        if(token != generation || call == null) return
+        val reader=try { context.assets.open("academic-diagnostic-reader.js").bufferedReader().use { it.readText() } } catch (_:Exception) { finish(result); return }
+        web?.evaluateJavascript("($reader)(true)") { raw ->
+            if(token != generation || call == null) return@evaluateJavascript
+            try {
+                val decoded=JSONTokener(raw ?: "null").nextValue() as? String ?: throw IllegalArgumentException()
+                if(decoded.length>400000) throw IllegalArgumentException()
+                val payload=JSONObject(decoded); val observation=payload.getJSONObject("observation")
+                val rows=payload.getJSONArray("kbList")
+                val source=result.optJSONObject("renderedPage")?.optJSONObject("term")
+                val year=observation.optString("termYear"); val code=observation.optString("termCode")
+                if(rows.length()>0 && observation.optInt("invalidCount")==0 && !observation.optBoolean("specialArrangements") && !observation.optBoolean("frameLimit") && Regex("20\\d{2}").matches(year) && code in listOf("3","12")) {
+                    if(source != null && (source.optString("xnm")!=year || source.optString("xqm")!=code)) {
+                        result.getJSONObject("modules").put("timetable",JSONObject().put("status","error").put("code","TERM"))
+                    } else {
+                        val data=JSONObject().put("term",JSONObject().put("xnm",year).put("xqm",code)).put("kbList",rows).put("practice",org.json.JSONArray())
+                        result.getJSONObject("modules").put("timetable",JSONObject().put("status","ok").put("data",data))
+                    }
+                    result.remove("renderedPage");finish(result)
+                } else if(attempt<30) handler.postDelayed({ readRendered(attempt+1,token) },700)
+                else {
+                    result.getJSONObject("modules").put("timetable",JSONObject().put("status","error").put("code",if(observation.optBoolean("specialArrangements")) "LIVE_SPECIAL" else "LIVE_EMPTY"))
+                    result.remove("renderedPage");finish(result)
+                }
+            } catch (_:Exception) { result.remove("renderedPage"); finish(result) }
+        }
+    }
     private fun finish(result: JSONObject) {
         val pending = call ?: return
-        call = null; generation++; handler.removeCallbacksAndMessages(null)
+        renderedResult = null; call = null; generation++; handler.removeCallbacksAndMessages(null)
         cookies.flush()
         if (authenticated) try { cookies.getCookie(AcademicPolicy.ORIGIN)?.let { vault.save(it) } } catch (_: Exception) { /* next start may require authentication */ }
         destroyWeb(); pending.resolve(JSObject(result.toString()))
     }
     private fun fail(message: String, code: String) {
         val pending = call ?: return
-        call = null; generation++; handler.removeCallbacksAndMessages(null); cookies.flush(); destroyWeb()
+        renderedResult = null; call = null; generation++; handler.removeCallbacksAndMessages(null); cookies.flush(); destroyWeb()
         pending.reject(message, code)
     }
     private fun destroyWeb() { dialog?.dismiss(); dialog = null; web?.let { (it.parent as? android.view.ViewGroup)?.removeView(it); it.stopLoading(); it.destroy() }; web = null }

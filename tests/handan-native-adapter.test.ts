@@ -38,3 +38,10 @@ it('paginates history rather than silently returning the first grade page',async
  },'grades');
  expect(result.modules.grades.data).toHaveLength(2);expect(result.modules.grades.data[0]).toMatchObject({scoreText:'优秀',credit:2,gpa:4});
 });
+
+it('hands an HTML-only timetable response to the native rendered-page reader without claiming data success',async()=>{
+ const {result}=await run((url,init)=>!init.body?termHtml:url.includes('/kbcx/')?'<html>AJAX page shell</html>':{items:[],totalPage:0},'timetable');
+ expect(result.modules.timetable.code).toBe('TIMETABLE_JSON');
+ expect(result.renderedPage.url).toContain('/kbcx/');expect(result.renderedPage.term).toEqual({xnm:'2026',xqm:'3'});
+ expect(result.modules.timetable.data).toBeUndefined();
+});

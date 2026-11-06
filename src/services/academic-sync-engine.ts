@@ -13,7 +13,7 @@ export const emptyModule=<T>():CachedModule<T>=>({data:null,updatedAt:null,error
 export const emptyAcademicCache=():AcademicCache=>({version:1,connected:false,session:'disconnected',selectedTerm:null,lastError:null,terms:{},semesters:emptyModule(),profile:emptyModule(),grades:emptyModule(),exams:emptyModule()});
 export const termKey=(t:SchoolTerm)=>`${t.xnm}-${t.xqm}`;
 export function validTerm(t:SchoolTerm){if(!t||!/^20\d{2}$/.test(t.xnm)||!['3','12'].includes(t.xqm))throw Error('TERM');return t}
-const messages:Record<string,string>={EMPTY:'学校本次未返回课程，保留上次课表',TERM:'未能确认学校当前学期',SCHEMA:'学校数据格式需要适配',NETWORK:'学校网络暂不可用',TIMETABLE_JSON:'课表查询未返回课程 JSON（成绩连接正常时仍可能是课表请求参数问题）',COURSE_FIELDS:'课表已返回，但课程的星期、节次或周次字段尚不兼容',WEEKS:'课表教学周表达式尚不兼容',PERIODS:'课表节次超出可用作息范围',LOCAL_SCHEMA:'课表返回成功，本机课程转换尚不兼容',HTTP:'学校请求未成功，尚未取得课表',EXPIRED:'登录已过期，请重新连接',LIMIT:'学校返回的数据超过处理范围'};
+const messages:Record<string,string>={LIVE_EMPTY:'已自动加载学校课表页面，但未识别到完整课程，请反馈此提示',LIVE_SPECIAL:'学校课表含特殊实践安排，需要补充适配，未保存部分课表',EMPTY:'学校本次未返回课程，保留上次课表',TERM:'未能确认学校当前学期',SCHEMA:'学校数据格式需要适配',NETWORK:'学校网络暂不可用',TIMETABLE_JSON:'课表查询未返回课程 JSON（成绩连接正常时仍可能是课表请求参数问题）',COURSE_FIELDS:'课表已返回，但课程的星期、节次或周次字段尚不兼容',WEEKS:'课表教学周表达式尚不兼容',PERIODS:'课表节次超出可用作息范围',LOCAL_SCHEMA:'课表返回成功，本机课程转换尚不兼容',HTTP:'学校请求未成功，尚未取得课表',EXPIRED:'登录已过期，请重新连接',LIMIT:'学校返回的数据超过处理范围'};
 export const schoolError=(code?:string)=>messages[code||'']||'同步未完成，保留上次数据';
 function normalizeTimetable(value:unknown,calendar:Semester[],previous?:SchoolTermCache|null):SchoolTermCache {
  const t=value as SchoolTimetable;validTerm(t.term);if(!Array.isArray(t.kbList)||!Array.isArray(t.practice)||t.practice.length>500)throw Error('SCHEMA');
