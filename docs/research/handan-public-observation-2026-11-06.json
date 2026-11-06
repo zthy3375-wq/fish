@@ -1,0 +1,22 @@
+{
+  "observedAt": "2026-11-06T02:34:57.603Z",
+  "url": "https://jwgl.hdc.edu.cn/xtgl/login_slogin.html",
+  "method": "GET",
+  "status": 200,
+  "xFrameOptions": "SAMEORIGIN",
+  "sha256": "6da9968168afbe828b15d8143108157a707e5b5ffe64a07008dc19320262473e",
+  "bytes": 20206,
+  "publicVersionLabel": "V-9.0",
+  "zftalAssetsPresent": true,
+  "directLoginFormPresent": true,
+  "unifiedAuthTarget": {
+    "present": true,
+    "nonempty": false
+  },
+  "unifiedAuthDisplayFlag": {
+    "present": true,
+    "nonempty": false
+  },
+  "unifiedAuthLabelPresent": true,
+  "authorizationProtocol": "not-established"
+}
