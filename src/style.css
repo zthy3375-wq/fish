@@ -11,3 +11,7 @@
 .overlay-leave-active{pointer-events:none}
 
 .import-button span{display:grid;gap:2px;text-align:center}.import-button small{font-size:8px;color:var(--color-muted)}
+
+/* v0.5 keeps the original visual system, four equal navigation targets. */
+.floating-nav{grid-template-columns:repeat(4,1fr)}.floating-nav .nav-indicator{width:calc((100% - 12px)/4)}
+.school-connection{background:var(--color-surface);border:1px solid var(--color-border);border-radius:16px;padding:13px;margin-bottom:14px}.school-status{display:flex;align-items:center;justify-content:space-between;gap:10px}.school-status strong,.school-status small{display:block}.school-status small{font-size:10px;color:var(--color-muted);margin-top:4px}.school-status button{white-space:nowrap;min-height:40px}.school-module{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--color-border);font-size:12px}.school-module span{color:var(--color-muted);text-align:right}.school-connection .inline-note{margin-top:8px}.school-connection.compact{padding:11px 13px}.schedule-toolbar input{min-width:0;max-width:52%;padding:8px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:inherit}

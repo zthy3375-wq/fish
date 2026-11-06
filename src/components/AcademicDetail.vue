@@ -26,7 +26,6 @@ import {
   type TimeTable,
   type CellPreset,
 } from "../domain/schedule";
-import AcademicConnection from "./AcademicConnection.vue";
 import ScheduleGrid from "./ScheduleGrid.vue";
 import CourseCard from "./CourseCard.vue";
 import EmptyState from "./EmptyState.vue";
@@ -140,22 +139,7 @@ function touchEnd(e: TouchEvent) {
       学校网页导入 · 已保存到独立本机学期，可离线查看。不是学校授权 API
       同步；本机修改不会回写学校。
     </p>
-    <div v-if="mode === 'official'" class="schedule-actions">
-      <button class="secondary" @click="emit('local')">查看本机课表</button
-      ><button class="secondary" @click="emit('navigate', 'official')">
-        教务连接
-      </button>
-    </div>
-    <p v-if="mode === 'official' && !officialHasTimeTable" class="inline-note">
-      学校未提供作息方案；背景节次为示例，授权课程按实际起止时间定位。
-    </p>
-    <div v-if="mode !== 'official'" class="schedule-actions">
-      <button class="primary" @click="emit('create')">＋ 添加课程</button
-      ><button class="secondary" @click="emit('manage', 'import')">导入</button
-      ><button class="secondary" @click="emit('manage', 'times')">
-        作息与设置
-      </button>
-    </div>
+    <div class="schedule-actions"><button class="primary" @click="emit('create')">＋ 添加个人事项</button><button class="secondary" @click="emit('manage','courses')">个人课表与备份</button><button class="secondary" @click="emit('navigate','official')">学校账号</button></div>
     <div class="schedule-toolbar">
       <div class="segmented" aria-label="课表视图">
         <button
@@ -256,7 +240,7 @@ function touchEnd(e: TouchEvent) {
         ></template>
         <ScheduleGrid
           v-else
-          :read-only="mode === 'official'"
+          :read-only="false"
           :courses="data.courses"
           :table="table"
           :semester="semester"
@@ -270,13 +254,13 @@ function touchEnd(e: TouchEvent) {
     <p class="footnote">
       {{
         mode === "official"
-          ? "学校授权课表 · 只读 · 仅本次会话"
+          ? "学校课表已缓存 · 教学周按本机校历"
           : mode === "demo"
             ? "演示课表"
             : "个人课表 · 已保存在本机"
       }}
       · 左右滑动切周 ·
-      {{ mode === "official" ? "授权课程只读" : "点击空白格添加" }} ·
+      {{ mode === "official" ? "学校课程只读，个人事项可编辑" : "点击空白格添加" }} ·
       重叠课程点开逐门查看
     </p>
     <button
@@ -285,124 +269,6 @@ function touchEnd(e: TouchEvent) {
     >
       成绩、考试与其他教务服务 <ChevronRight :size="15" />
     </button>
-  </section>
-  <section v-else-if="section === 'grades'" class="panel">
-    <div class="section-heading">
-      <div>
-        <h2>成绩查询</h2>
-        <p class="muted">
-          {{
-            mode === "official"
-              ? "成绩来自本次学校授权接口"
-              : "成绩与学分均为演示内容"
-          }}
-        </p>
-      </div>
-      <select v-model="term" aria-label="筛选学期">
-        <option value="all">全部学期</option>
-        <option
-          v-for="value in [...new Set(data.grades.map((g) => g.term))]"
-          :key="value"
-        >
-          {{ value }}
-        </option>
-      </select>
-    </div>
-    <div class="grade-stats">
-      <div>
-        <small>加权平均分</small><strong>{{ average }}</strong>
-      </div>
-      <div>
-        <small>已获学分（当前筛选）</small
-        ><strong>{{ filteredGrades.reduce((s, g) => s + g.credit, 0) }}</strong>
-      </div>
-      <div>
-        <small>通过课程</small
-        ><strong
-          >{{ filteredGrades.filter((g) => g.score >= 60).length
-          }}<em> / {{ filteredGrades.length }}</em></strong
-        >
-      </div>
-    </div>
-    <label class="search"
-      ><Search :size="18" /><input
-        v-model="query"
-        placeholder="搜索课程名称"
-        aria-label="搜索课程名称"
-    /></label>
-    <div class="grade-list">
-      <div v-for="g in filteredGrades" :key="g.name" class="grade-row">
-        <span class="entry-icon blue"><BookOpen :size="20" /></span>
-        <div>
-          <h3>{{ g.name }}</h3>
-          <small>{{ g.term }} · {{ g.kind }} · {{ g.credit }} 学分</small>
-        </div>
-        <strong>{{ g.score }}<small>分</small></strong>
-      </div>
-      <EmptyState
-        v-if="!filteredGrades.length"
-        title="没有找到匹配的课程"
-        description="试试其他名称或学期。"
-      />
-    </div>
-    <p class="muted">
-      加权平均分 = Σ（成绩 × 学分）/ Σ学分；暂不推算学校官方 GPA。
-    </p>
-  </section>
-  <section v-else-if="section === 'exams'" class="panel">
-    <div class="section-heading">
-      <h2>考试安排</h2>
-      <span class="soft-pill"
-        >{{ data.exams.length }} 场{{
-          mode === "official" ? "授权" : "模拟"
-        }}考试</span
-      >
-    </div>
-    <div class="exam-list">
-      <article v-for="(e, i) in data.exams" :key="e.name" class="exam-card">
-        <span class="exam-number">0{{ i + 1 }}</span>
-        <div>
-          <h3>{{ e.name }}</h3>
-          <p><CalendarDays :size="15" />{{ e.date }} · {{ e.time }}</p>
-          <p><MapPin :size="15" />{{ e.room }} · 座位 {{ e.seat }}</p>
-        </div>
-        <span class="soft-pill">期末考试</span>
-      </article>
-    </div>
-    <div class="inline-note">
-      <Info :size="17" />实际考试时间、地点请以学校发布的信息为准。
-    </div>
-  </section>
-  <section v-else-if="section === 'study'" class="panel">
-    <h2>学业信息</h2>
-    <p class="muted">模拟培养方案 · 非官方毕业资格判断</p>
-    <div class="study-summary">
-      <GraduationCap :size="43" />
-      <div>
-        <h3>{{ prefs.major }}</h3>
-        <p>四年制本科 · 演示学籍</p>
-      </div>
-    </div>
-    <div
-      class="credit-block"
-      v-for="c in [
-        { name: '通识教育', done: 28, total: 40 },
-        { name: '专业教育', done: 52, total: 90 },
-        { name: '实践教学', done: 12, total: 30 },
-      ]"
-      :key="c.name"
-    >
-      <div>
-        <strong>{{ c.name }}</strong
-        ><span>{{ c.done }} / {{ c.total }} 学分</span>
-      </div>
-      <div class="progress">
-        <span :style="{ width: (c.done / c.total) * 100 + '%' }" />
-      </div>
-    </div>
-    <p class="inline-note">
-      学分进度为独立模拟示例，与成绩页的演示课程不构成完整对应。
-    </p>
   </section>
   <section v-else-if="section === 'calendar'" class="panel">
     <div class="section-heading">
@@ -441,21 +307,5 @@ function touchEnd(e: TouchEvent) {
           : "此为本机配置的学期日历，并非学校官方校历。"
       }}
     </p>
-  </section>
-  <section v-else class="panel official-panel">
-    <AcademicConnection
-      :diagnostics-enabled="diagnosticsEnabled"
-      @diagnostics="emit('navigate', 'diagnostics')"
-      @synced="emit('officialSync')"
-      @disconnected="emit('officialDisconnect')"
-    /><a
-      href="https://www.hdc.edu.cn/"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="official-link"
-      ><span
-        ><strong>邯郸学院官方网站</strong><small>www.hdc.edu.cn</small></span
-      ><ArrowUpRight :size="22"
-    /></a>
   </section>
 </template>

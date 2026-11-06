@@ -2,7 +2,7 @@ name: Android test APK
 on:
   workflow_dispatch:
   push:
-    branches: [feature/academic-diagnostics-v042]
+    branches: [feature/academic-integrated-v050]
   pull_request:
     branches: [main]
     paths:
@@ -39,16 +39,14 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: cp -r dist /tmp/handan-normal-web
-      - run: npm run build:diagnostic
       - run: npx cap sync android
       - run: chmod +x android/gradlew
-      - run: ./gradlew --no-daemon testDiagnosticUnitTest testReleaseUnitTest assembleDiagnostic assembleRelease
+      - run: ./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease
         working-directory: android
       - uses: actions/upload-artifact@v4
         with:
-          name: handan-campus-v0.4.2-diagnostic-debug-apk
-          path: android/app/build/outputs/apk/diagnostic/app-diagnostic.apk
+          name: handan-campus-v0.5.0-test-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
   browser:
@@ -63,13 +61,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: cp -r dist /tmp/handan-normal-web
-      - run: npm run build:diagnostic
       - run: npx playwright install --with-deps chromium
-      - run: node scripts/diagnostic-browser-check.mjs
+      - run: node scripts/academic-browser-check.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: handan-campus-v0.4.2-browser-checks
-          path: /tmp/handan-v042-qa
+          name: handan-campus-v0.5.0-browser-checks
+          path: /tmp/handan-v050-qa
           if-no-files-found: warn

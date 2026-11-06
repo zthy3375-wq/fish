@@ -1,6 +1,6 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { DIAGNOSTIC_BUILD } from "../services/academic-diagnostics";
-export type Page = "home" | "academic" | "profile";
+export type Page = "home" | "schedule" | "academic" | "profile";
 const sections = [
   "overview",
   "schedule",
@@ -12,11 +12,11 @@ const sections = [
 ];
 export function parseRoute(hash: string, allowDiagnostics = false) {
   const [raw, sub] = hash.replace(/^#\/?/, "").split("/");
-  const page: Page = raw === "academic" || raw === "profile" ? raw : "home";
+  const page: Page = raw === "academic" || raw === "profile" || raw === "schedule" ? raw : "home";
   return {
     page,
     section:
-      page === "academic" &&
+      page === "schedule" ? "schedule" : page === "academic" &&
       (sections.includes(sub) || (allowDiagnostics && sub === "diagnostics"))
         ? sub
         : "overview",
