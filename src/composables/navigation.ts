@@ -1,5 +1,4 @@
 import { ref, onMounted, onUnmounted } from "vue";
-import { DIAGNOSTIC_BUILD } from "../services/academic-diagnostics";
 export type Page = "home" | "schedule" | "academic" | "profile";
 const sections = [
   "overview",
@@ -10,20 +9,20 @@ const sections = [
   "calendar",
   "official",
 ];
-export function parseRoute(hash: string, allowDiagnostics = false) {
+export function parseRoute(hash: string) {
   const [raw, sub] = hash.replace(/^#\/?/, "").split("/");
   const page: Page = raw === "academic" || raw === "profile" || raw === "schedule" ? raw : "home";
   return {
     page,
     section:
       page === "schedule" ? "schedule" : page === "academic" &&
-      (sections.includes(sub) || (allowDiagnostics && sub === "diagnostics"))
+      sections.includes(sub)
         ? sub
         : "overview",
   };
 }
 export function useNavigation() {
-  const initial = parseRoute(location.hash, DIAGNOSTIC_BUILD),
+  const initial = parseRoute(location.hash),
     page = ref<Page>(initial.page),
     section = ref(initial.section),
     overlay = ref("");
@@ -48,7 +47,7 @@ export function useNavigation() {
       return;
     }
     activeUrl = location.href;
-    const r = parseRoute(location.hash, DIAGNOSTIC_BUILD);
+    const r = parseRoute(location.hash);
     page.value = r.page;
     section.value = r.section;
     overlay.value = history.state?.campusOverlay || "";

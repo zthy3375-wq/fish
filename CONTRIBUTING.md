@@ -4,16 +4,27 @@
 
 ## 开始开发
 
-当前v0.5功能在 `feature/academic-integrated-v050`，PR #5尚未合并。依赖直连功能的改动从该分支建立短期分支，并将PR目标设为该分支；PR #5合并后从更新的main开发。不要反复合并已经被整合的旧研究/诊断分支。
+PR #5 已合并。统一从更新后的 main 创建 `feature/*`、`fix/*` 或 `chore/*` 短期分支，PR 目标均为 main。一个 PR 解决一个明确问题；合并后删除已确认无独立工作的短期分支。不要重复合并已被替代的研究/诊断分支。
 
 ```sh
 npm ci
 npm run dev
-npm test
-npm run build
+npm run check
 ```
 
 每个PR解决一个明确问题，说明触发条件、最终行为、验证结果和仍未验证的部分。文档或CI改动按影响范围验证；涉及学校会话或原生代码时，完成Capacitor同步和对应Android单测/构建。UI有变化时检查移动端宽度及返回、键盘和安全区。
+
+## 常用检查
+
+| 命令 | 用途 |
+| --- | --- |
+| `npm run check` | 单元测试、类型检查、生产构建 |
+| `npm run test:watch` | 本地增量测试 |
+| `npm run android:check` | 构建网页、同步Android、原生debug/release测试 |
+| `npm run android:apk` | 构建网页、同步Android、原生测试并生成debug APK |
+| `npm run test:ui` | 构建后运行人工原生替身界面检查；先安装Playwright Chromium |
+
+`JAVA_HOME` 需指向完整JDK 21。不要把本机SDK路径提交仓库。旧诊断窗口与空授权框架已删除；人工数据只在tests/fixtures中使用。
 
 ## 学校适配
 

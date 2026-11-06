@@ -12,8 +12,7 @@ on:
       - 'package*.json'
       - 'capacitor.config.ts'
       - 'vite.config.ts'
-      - 'scripts/academic-browser-check.mjs'
-      - '.env.android-diagnostic'
+      - 'scripts/**'
       - '.github/workflows/android-test.yml'
 concurrency:
   group: android-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

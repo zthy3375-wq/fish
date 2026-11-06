@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {nextOccurrence,courseState,untilLabel,upcomingExams} from '../src/domain/presentation';
-import {mockAcademicProvider} from '../src/services/academic';
+import {mockAcademicProvider} from './fixtures/academic/mock-provider';
 import {parseRoute} from '../src/composables/navigation';
 describe('课程呈现与跨日边界',()=>{
  it('当前课与结束课按时间边界区分',async()=>{const c=(await mockAcademicProvider.load()).courses[0];expect(courseState(c,new Date(2026,10,2,7,59))).toBe('scheduled');expect(courseState(c,new Date(2026,10,2,8))).toBe('current');expect(courseState(c,new Date(2026,10,2,9,35))).toBe('ended');expect(courseState(c,new Date(2026,10,2,8),false)).toBe('scheduled')});

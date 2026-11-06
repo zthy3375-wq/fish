@@ -20,19 +20,7 @@ android {
     kotlinOptions { jvmTarget = "21" }
     buildFeatures { buildConfig true }
     buildTypes {
-        debug { buildConfigField "boolean", "ACADEMIC_DIAGNOSTICS", "false" }
-        diagnostic {
-            initWith debug
-            matchingFallbacks = ["debug"]
-            applicationIdSuffix ".diagnostic"
-            versionNameSuffix "-diagnostic"
-            signingConfig signingConfigs.debug
-            buildConfigField "boolean", "ACADEMIC_DIAGNOSTICS", "true"
-            resValue "string", "app_name", "邯郸校园·诊断"
-            resValue "string", "title_activity_main", "邯郸校园·诊断"
-        }
         release {
-            buildConfigField "boolean", "ACADEMIC_DIAGNOSTICS", "false"
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

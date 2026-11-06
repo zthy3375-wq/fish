@@ -19,8 +19,6 @@ import { coursesForDay } from "../src/domain/academic";
 import { nextOccurrence } from "../src/domain/presentation";
 import { upsertCourse } from "../src/services/course-management";
 import { readSchedule, writeSchedule } from "../src/services/schedule-storage";
-import { normalizeAuthorizedAcademicData } from "../src/services/academic-connection";
-import { getAuthorizedAcademicConnector } from "../src/services/authorized-connector-registry";
 function context(): ZhengfangContext {
   const state = defaultState();
   return {
@@ -221,23 +219,6 @@ describe("offline Zhengfang adapter — synthetic fixtures, no school connection
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-  it("adapts to v0.4 normalization without claiming that authentication was performed", () => {
-    const c = context(),
-      result = previewZhengfangTimetable(fixture, c);
-    const normalized = normalizeAuthorizedAcademicData(
-      {
-        semester: result.semester,
-        timeTable: result.timeTable,
-        courses: flatten(result.preview.courses, c.semester.id, c.timeTable),
-        grades: [],
-        exams: [],
-      },
-      "format-test-only",
-    );
-    expect(normalized.courses).toHaveLength(3);
-    expect(normalized.grades).toEqual([]);
-    expect(getAuthorizedAcademicConnector()).toBeNull();
   });
   it("round-trips reviewed synthetic courses through existing CRUD, backup, IndexedDB and shared selectors", async () => {
     const c = context(),
