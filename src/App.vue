@@ -76,6 +76,7 @@ import {
 import { reconcileReminders } from "./services/reminders";
 import {academicCache,schoolTerm,initAcademic,autoSyncAcademic,syncAcademic} from './composables/handan-academic';
 import SchoolConnection from './components/SchoolConnection.vue';
+import FreeClassrooms from './components/FreeClassrooms.vue';
 import SchoolAcademicRecords from './components/SchoolAcademicRecords.vue';
 import {
   loadPreferences,
@@ -269,7 +270,7 @@ const entries = computed(() => [
     icon: GraduationCap,
   },
 ]);
-const teaching = computed(() => entries.value.slice(0, 3));
+const teaching = computed(() => [...entries.value.slice(0, 3), {id:'classrooms',title:'空闲教室',subtitle:'查找真实可用教室与全天占用',icon:LibraryBig}]);
 const planning = [
   {
     id: "study",
@@ -342,6 +343,7 @@ const sectionNames: Record<string, string> = {
   exams: "考试安排",
   study: "学业信息",
   calendar: "学期校历",
+  classrooms: "空闲教室",
   official: "官方教务",
 };
 const title = computed(() =>
@@ -352,6 +354,7 @@ const title = computed(() =>
       : "我的",
 );
 const subtitle = computed(() =>
+  section.value === "classrooms" ? "日期与节次 · 邯郸学院真实教室数据" :
   page.value === "home"
     ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
     : page.value === "academic" || page.value === "schedule"
@@ -721,7 +724,8 @@ onUnmounted(() => {
             </div>
           </template>
           <template v-else-if="page === 'academic' || page === 'schedule'">
-            <SchoolAcademicRecords v-if="['grades','exams','study','official'].includes(section)" :section="section" />
+            <FreeClassrooms v-if="section==='classrooms'" />
+            <SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
             <template v-else-if="section === 'overview'">
               <SchoolConnection compact />
               <button class="secondary full" @click="manage()">
@@ -738,7 +742,7 @@ onUnmounted(() => {
                   @select="go(e.id)"
                 />
               </div>
-              <SectionHeader title="教学管理" meta="3 项" /><ServiceGroup
+              <SectionHeader title="教学管理" meta="4 项" /><ServiceGroup
                 :items="teaching"
                 @select="go"
               />

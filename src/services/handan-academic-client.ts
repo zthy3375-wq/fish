@@ -14,5 +14,6 @@ export interface HandanAcademicClient {
  getExams(term?:SchoolTerm):Promise<NativeAcademicResult>;syncAll(term?:SchoolTerm):Promise<NativeAcademicResult>;logout():Promise<NativeAcademicResult>;
 }
 const native=registerPlugin<HandanAcademicClient>('HandanAcademicClient');
+export const handanNativeTransport=native;
 export const schoolConnectionSupported=()=>Capacitor.getPlatform()==='android';
 export const handanAcademicClient:HandanAcademicClient=native;

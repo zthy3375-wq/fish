@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import {
+  DoorOpen,
   ChevronLeft,
   ChevronRight,
   MapPin,
@@ -120,6 +121,7 @@ function touchEnd(e: TouchEvent) {
     @touchend.passive="touchEnd"
   >
     <div class="schedule-actions"><button class="primary" @click="emit('create')">＋ 添加个人事项</button><button class="secondary" @click="emit('manage','courses')">个人课表与备份</button><button class="secondary" @click="emit('navigate','official')">学校账号</button></div>
+    <button class="classroom-schedule-link" @click="emit('navigate','classrooms')"><DoorOpen :size="16"/>查空闲教室 <ChevronRight :size="15"/></button>
     <div class="schedule-toolbar">
       <div class="segmented" aria-label="课表视图">
         <button

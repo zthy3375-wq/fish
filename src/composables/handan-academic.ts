@@ -1,3 +1,4 @@
+import {clearClassroomCache} from '../services/classroom-client';
 import {computed,ref,toRaw} from 'vue';
 import {Preferences} from '@capacitor/preferences';
 import {AcademicSyncEngine,emptyAcademicCache,validateAcademicCache,termKey,type AcademicCache} from '../services/academic-sync-engine';
@@ -14,10 +15,11 @@ export async function initAcademic(){if(initialized)return;try{const {value}=awa
 export async function syncAcademic(login=false,term?:SchoolTerm){
  if(!schoolConnectionSupported()){academicError.value='学校连接目前支持 Android，iOS 待适配';return}
  if(academicBusy.value)return;
+ if(login)clearClassroomCache();
  academicBusy.value=true;academicError.value='';
  try{await engine.sync(term,login);lastAuto=Date.now();if(academicCache.value.session==='expired')academicError.value='学校登录已过期，请重新连接'}
  catch(e){if((e as {code?:string}).code!=='CANCELLED')academicError.value='学校连接未完成，已保留上次数据'}finally{academicBusy.value=false;if(login&&academicCache.value.connected)setTimeout(()=>void syncAcademic(),0)}
 }
 export function autoSyncAcademic(){if(academicCache.value.connected&&Date.now()-lastAuto>120000)return syncAcademic()}
-export async function disconnectAcademic(){if(academicBusy.value)return;try{await engine.logout();academicError.value=''}catch{academicError.value='退出未完成，请重试'}}
+export async function disconnectAcademic(){if(academicBusy.value)return;try{await engine.logout();clearClassroomCache();academicError.value=''}catch{academicError.value='退出未完成，请重试'}}
 export async function selectSchoolTerm(t:SchoolTerm){const key=termKey(t);if(academicCache.value.terms[key]?.data)await commit({...toRaw(academicCache.value),selectedTerm:key});await syncAcademic(false,t)}

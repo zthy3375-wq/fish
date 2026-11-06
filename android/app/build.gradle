@@ -5,11 +5,12 @@ android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "org.handancampus.app"
+        applicationId (project.findProperty('classroomSidecar') == 'true' ? 'org.handancampus.app.classrooms' : 'org.handancampus.app')
+        manifestPlaceholders = [campusLabel: project.findProperty('classroomSidecar') == 'true' ? '邯郸校园·教室测试' : '@string/app_name', campusActivityLabel: project.findProperty('classroomSidecar') == 'true' ? '邯郸校园·教室测试' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 55
-        versionName "0.5.0.5-test"
+        versionCode 60
+        versionName "0.6.0-test"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

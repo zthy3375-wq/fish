@@ -1,5 +1,8 @@
 # 当前进度与验证范围
 
+v0.6.0 空闲教室在 `feature/free-classrooms-v060` 独立分支开发，未合并main。学校N2155菜单、筛选、JSON分页、学校校历与全天占用已在本人云端认证会话中核实；新APK完整链路待真机验证。Web目前139项测试、类型检查与生产构建通过。详见 [v0.6.0测试说明](V060-VALIDATION.md) 和 [实际接口记录](research/HANDAN-CLASSROOMS.md)。
+
+
 更新：2026-11-06。当前已验证测试基线 `v0.5.0.5-test` / Android versionCode 55；代码提交 `42ef52198f252999d8aa3beddb1aa2513cae8409`，后续仓库整理不改变该版本业务逻辑。开发成果汇总在 [PR #5](https://github.com/zthy3375-wq/fish/pull/5)，PR #5 已于2026-11-06合并main，未部署正式站点。
 
 ## 用户实际确认

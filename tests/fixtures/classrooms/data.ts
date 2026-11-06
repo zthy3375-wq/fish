@@ -1,0 +1,5 @@
+import type {ClassroomOptions,ClassroomQuery,ClassroomResults} from '../../../src/domain/classrooms';
+// Artificial labels only. Never shipped as school data.
+export const roomOptions:ClassroomOptions={term:{xnm:'2026',xqm:'3'},campusId:'1',terms:[{id:'2026-3',name:'人工学期'}],campuses:[{id:'1',name:'人工校区'}],buildings:[{id:'b1',name:'人工教学楼'},{id:'b2',name:'另一教学楼'}],periods:[{number:1,start:'08:00',end:'08:40'},{number:2,start:'08:45',end:'09:25'},{number:3,start:'09:45',end:'10:25'}],weeks:Array.from({length:19},(_,i)=>i+1),weekStartDate:'2026-09-14',minDate:'2026-09-14',maxDate:'2027-01-24'};
+export const roomQuery:ClassroomQuery={xnm:'2026',xqm:'3',date:'2026-11-06',week:8,weekday:5,campusId:'1',buildingId:'',startPeriod:1,endPeriod:2};
+export function roomResults(q=roomQuery):ClassroomResults{return {rooms:[{id:'room1',termRoomId:'termRoom1',number:'R001',name:'人工测试教室',buildingId:'b1',building:'人工教学楼',campus:'人工校区',type:'测试类型',capacity:40}],total:1,query:{...q},periods:roomOptions.periods}}

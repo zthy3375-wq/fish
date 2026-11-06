@@ -41,6 +41,10 @@ class HandanAcademicPlugin : Plugin() {
     @PluginMethod fun getGrades(call: PluginCall) = start(call, false, "grades")
     @PluginMethod fun getExams(call: PluginCall) = start(call, false, "exams")
 
+    @PluginMethod fun getClassroomOptions(call: PluginCall) = start(call, false, "rooms-options")
+    @PluginMethod fun getFreeClassrooms(call: PluginCall) = start(call, false, "rooms-query")
+    @PluginMethod fun getClassroomDay(call: PluginCall) = start(call, false, "rooms-day")
+
     private fun start(next: PluginCall, interactive: Boolean, operation: String) {
         activity.runOnUiThread {
             if (call != null) { next.reject("同步正在进行", "BUSY"); return@runOnUiThread }
@@ -50,10 +54,18 @@ class HandanAcademicPlugin : Plugin() {
                 val code = next.getString("xqm") ?: ""
                 if (Regex("20\\d{2}").matches(year) && code in listOf("3", "12")) { put("xnm", year); put("xqm", code) }
             }
+            if (operation.startsWith("rooms-")) {
+                term = JSONObject().apply {
+                    for (key in listOf("xnm","xqm","campusId","buildingId","date","week","weekday","startPeriod","endPeriod","roomId","roomName")) {
+                        val value=next.data.opt(key)
+                        if (value is String && value.length <= 150 || value is Number) put(key,value)
+                    }
+                }
+            }
             val token = ++generation
             handler.postDelayed({ if (token == generation) fail("学校连接超时，保留上次数据", "NETWORK") }, if (interactive) 300000 else 80000)
             try {
-                script = context.assets.open("handan-academic.js").bufferedReader().use { it.readText() }
+                script = context.assets.open(if(operation.startsWith("rooms-")) "handan-classrooms.js" else "handan-academic.js").bufferedReader().use { it.readText() }
                 createWeb()
                 val saved = vault.restore()
                 // Restore before navigation. Cookie values never cross the native boundary.
