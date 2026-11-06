@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "android:check": "npm run build && cap sync android && node scripts/android.mjs check",
     "android:apk": "npm run build && cap sync android && node scripts/android.mjs apk",
-    "test:ui": "npm run build && node scripts/academic-browser-check.mjs"
+    "test:ui": "npm run build && node scripts/academic-browser-check.mjs",
+    "ios:package": "npm run build && cap sync ios && bash scripts/ios-package.sh"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

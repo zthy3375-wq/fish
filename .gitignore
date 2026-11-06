@@ -32,3 +32,10 @@ test-results/
 .idea/
 .DS_Store
 ios/App/App/DerivedData/
+
+# iPhone generated packages and archives
+*.ipa
+*.xcarchive/
+build/ios/
+ios/App/App/public/
+ios/App/App/capacitor.config.json

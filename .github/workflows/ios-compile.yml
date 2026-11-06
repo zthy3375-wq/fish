@@ -1,17 +1,21 @@
-name: iOS simulator compile
+name: iOS device test package
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'scripts/ios-package.sh'
+      - '.github/workflows/ios-compile.yml'
 permissions:
   contents: read
 concurrency:
-  group: ios-${{ github.ref }}
+  group: ios-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   ios:
     runs-on: macos-15
     timeout-minutes: 30
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,4 +26,14 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npx cap sync ios
-      - run: xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Archive iPhone device app and package unsigned IPA
+        run: bash scripts/ios-package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: handan-campus-ios-unsigned-${{ github.sha }}
+          path: |
+            build/ios/*.ipa
+            build/ios/README.txt
+            build/ios/manifest.json
+          if-no-files-found: error
+          retention-days: 14

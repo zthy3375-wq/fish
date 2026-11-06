@@ -48,7 +48,7 @@ npm run android:check
 npm run android:apk
 ```
 
-以上 npm 命令会自动选择 Windows/Linux 的 Gradle Wrapper。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。iOS 编译需要 macOS/Xcode，并有独立的手动 CI；编译成功也不等于已实现学校会话。
+以上 npm 命令会自动选择 Windows/Linux 的 Gradle Wrapper。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。iOS 设备包编译需要 macOS/Xcode/CocoaPods，可运行 `npm run ios:package`，或使用 iOS 工作流。产物为待签名 IPA，不能直接安装；学校会话尚未实现。详见 [iPhone 测试说明](docs/IOS-TESTING.md)。
 
 ## 导航与页面状态
 
