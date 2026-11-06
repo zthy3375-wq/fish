@@ -48,9 +48,10 @@ try{
   const homeRoomEntry=page.getByRole('button',{name:'空闲教室',exact:true});await homeRoomEntry.waitFor();
   assert(await homeRoomEntry.evaluate(el=>el.getBoundingClientRect().top)<180,`${width}: classroom shortcut at top of home`);
   await page.screenshot({path:path.join(output,`classroom-home-entry-${width}.png`),fullPage:true,animations:'disabled'});
-  await homeRoomEntry.click();await page.getByRole('button',{name:'返回上一页',exact:true}).click();await homeRoomEntry.waitFor();
+  await homeRoomEntry.click();await page.getByLabel('查询日期',{exact:true}).waitFor();await page.getByRole('button',{name:'返回上一页',exact:true}).click();await homeRoomEntry.waitFor();
   assert(await page.locator('.floating-nav button.active').innerText()==='首页',`${width}: classroom shortcut returns to home`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'教务',exact:true}).click();
+  await page.getByRole('button',{name:/管理个人课表/}).waitFor();
   const academicRoomEntry=page.getByRole('button',{name:'空闲教室',exact:true});await academicRoomEntry.waitFor();
   assert(await academicRoomEntry.evaluate(el=>el.getBoundingClientRect().top)<180,`${width}: classroom first entry in academic`);
   assert(await page.getByRole('button',{name:/空闲教室/}).count()===1,`${width}: no duplicate academic classroom row`);
