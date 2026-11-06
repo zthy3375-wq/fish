@@ -14,7 +14,7 @@ async function(operation, requestedTerm) {
         headers:form?{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-Requested-With':'XMLHttpRequest'}:{},
         body:form?new URLSearchParams(form).toString():undefined});
       if(new URL(response.url).origin!==origin||/\/xtgl\/login/.test(response.url))error('EXPIRED');
-      if(!response.ok)error('HTTP');
+      if(!response.ok){const e=new Error('HTTP');e.httpStatus=response.status;e.stage=form?'query':'page';throw e;}
       const data=await response.text();if(data.length>2500000)error('LIMIT');
       if(/<input[^>]+(?:type=["']password|id=["']mm)/i.test(data))error('EXPIRED');
       return data;
@@ -25,13 +25,17 @@ async function(operation, requestedTerm) {
     for(const el of document.querySelectorAll('a[href],a[data-url],a[onclick]')){
       for(const value of [el.getAttribute('href'),el.getAttribute('data-url'),el.getAttribute('onclick')]){
         const match=(value||'').match(new RegExp('('+prefix+'[a-zA-Z0-9_]+\\.html(?:\\?[^\\s\'"<>)]*)?)'));
-        if(match){const u=new URL(match[1],origin);if(u.origin===origin)return u.pathname+u.search}
+        if(match){const u=new URL(match[1],origin);if(u.origin===origin){
+          const code=[el.id,el.getAttribute('data-gnmkdm'),el.getAttribute('onclick'),el.closest('[id^=N]')?.id].map(v=>(v||'').match(/\bN\d{4,12}\b/)?.[0]).find(Boolean);
+          if(code&&!u.searchParams.has('gnmkdm'))u.searchParams.set('gnmkdm',code);
+          return u.pathname+u.search;
+        }}
       }
     }return candidate;
   }
   async function module(name,task){
     try{const data=await task();result.modules[name]={status:'ok',data,updatedAt:new Date().toISOString()}}
-    catch(e){const code=controlled.has(e.message)?e.message:'SCHEMA';result.modules[name]={status:'error',code};if(code==='EXPIRED')result.session='expired'}
+    catch(e){const code=controlled.has(e.message)?e.message:'SCHEMA';result.modules[name]={status:'error',code,httpStatus:Number.isInteger(e.httpStatus)?e.httpStatus:undefined,stage:e.stage};if(code==='EXPIRED')result.session='expired'}
   }
   const timetablePage=menu('/kbcx/','/kbcx/xskbcx_cxXsgrkb.html?gnmkdm=N253508&layout=default');
   let doc,term;

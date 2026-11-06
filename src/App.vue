@@ -650,8 +650,8 @@ onUnmounted(() => {
             </button>
             <div v-else class="next-course">
               <EmptyState
-                title="本学期没有后续课程"
-                description="可以在教务中心管理课程，或检查当前学期配置。"
+                :title="academicCache.connected && !schoolTerm?.data ? '课表尚未同步成功' : '本学期没有后续课程'"
+                :description="academicCache.connected && !schoolTerm?.data ? '当前无法判断课程安排，请查看上方连接状态。' : '可以在教务中心管理课程，或检查当前学期配置。'"
               />
             </div>
             <SectionHeader
@@ -675,7 +675,7 @@ onUnmounted(() => {
                 @select="details"
               /><EmptyState
                 v-if="!todayCourses.length"
-                title="今天没有课程"
+                :title="academicCache.connected && !schoolTerm?.data ? '尚未取得今日课程' : '今天没有课程'"
                 :description="
                   next ? '下一次课程会显示在上方。' : '当前学期没有后续安排。'
                 "

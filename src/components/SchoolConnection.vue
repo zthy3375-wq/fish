@@ -3,7 +3,7 @@ import {computed} from 'vue';
 import {academicCache,academicBusy,academicError,schoolTerm,syncAcademic,disconnectAcademic,selectSchoolTerm} from '../composables/handan-academic';
 const props=defineProps<{compact?:boolean}>();
 const emit=defineEmits<{connected:[]}>();
-const status=computed(()=>academicBusy.value?'正在同步':academicCache.value.session==='expired'?'登录已过期':academicCache.value.connected?'已连接邯郸学院':'连接邯郸学院');
+const status=computed(()=>academicBusy.value?'正在同步':academicCache.value.session==='expired'?'登录已过期':academicCache.value.connected?(schoolTerm.value?.data?'已连接邯郸学院':'已登录 · 课表尚未同步'):'连接邯郸学院');
 const stamp=(v?:string|null)=>v?new Date(v).toLocaleString('zh-CN',{hour12:false}):'尚未同步';
 async function connect(){await syncAcademic(true);if(academicCache.value.connected)emit('connected')}
 function termChange(e:Event){const [xnm,xqm]=(e.target as HTMLSelectElement).value.split('-');selectSchoolTerm({xnm,xqm})}
