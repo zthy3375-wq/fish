@@ -25,6 +25,7 @@ const props = defineProps<{
   semester: Semester;
   week: number;
   now: Date;
+  readOnly?: boolean;
 }>();
 const emit = defineEmits<{
   course: [course: Course];
@@ -102,7 +103,7 @@ const currentPosition = computed(() =>
         :class="{ today: today(d) }"
       >
         <button
-          v-for="s in rows"
+          v-for="s in readOnly ? [] : rows"
           :key="s.slot!.number"
           class="empty-period"
           :style="pos(s.from, s.to)"

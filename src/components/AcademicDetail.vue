@@ -26,13 +26,15 @@ import {
   type TimeTable,
   type CellPreset,
 } from "../domain/schedule";
+import AcademicConnection from "./AcademicConnection.vue";
 import ScheduleGrid from "./ScheduleGrid.vue";
 import CourseCard from "./CourseCard.vue";
 import EmptyState from "./EmptyState.vue";
 const props = defineProps<{
   table: TimeTable;
   semester: Semester;
-  mode: "demo" | "personal";
+  mode: "demo" | "personal" | "official";
+  officialHasTimeTable?: boolean;
   section: string;
   data: AcademicData;
   now: Date;
@@ -44,6 +46,9 @@ const emit = defineEmits<{
   manage: [tab?: string];
   create: [preset?: CellPreset];
   conflict: [courses: Course[]];
+  officialSync: [];
+  officialDisconnect: [];
+  local: [];
 }>();
 const week = ref(
     Math.max(
@@ -129,7 +134,16 @@ function touchEnd(e: TouchEvent) {
     @touchstart.passive="touchStart"
     @touchend.passive="touchEnd"
   >
-    <div class="schedule-actions">
+    <div v-if="mode === 'official'" class="schedule-actions">
+      <button class="secondary" @click="emit('local')">查看本机课表</button
+      ><button class="secondary" @click="emit('navigate', 'official')">
+        教务连接
+      </button>
+    </div>
+    <p v-if="mode === 'official' && !officialHasTimeTable" class="inline-note">
+      学校未提供作息方案；背景节次为示例，授权课程按实际起止时间定位。
+    </p>
+    <div v-if="mode !== 'official'" class="schedule-actions">
       <button class="primary" @click="emit('create')">＋ 添加课程</button
       ><button class="secondary" @click="emit('manage', 'import')">导入</button
       ><button class="secondary" @click="emit('manage', 'times')">
@@ -211,7 +225,13 @@ function touchEnd(e: TouchEvent) {
             <h2>周{{ weekdays[day - 1] }}的安排</h2>
             <span class="section-meta"
               >{{ selectedCourses.length }} 节课程 ·
-              {{ mode === "demo" ? "演示" : "个人" }}</span
+              {{
+                mode === "official"
+                  ? "学校授权"
+                  : mode === "demo"
+                    ? "演示"
+                    : "个人"
+              }}</span
             >
           </div>
           <div class="course-list">
@@ -230,6 +250,7 @@ function touchEnd(e: TouchEvent) {
         ></template>
         <ScheduleGrid
           v-else
+          :read-only="mode === 'official'"
           :courses="data.courses"
           :table="table"
           :semester="semester"
@@ -241,8 +262,14 @@ function touchEnd(e: TouchEvent) {
         /></div
     ></Transition>
     <p class="footnote">
-      {{ mode === "demo" ? "演示课表" : "个人课表 · 已保存在本机" }} ·
-      左右滑动切周 · 点击空白格添加 · 重叠课程点开逐门查看
+      {{
+        mode === "official"
+          ? "学校授权课表 · 只读 · 仅本次会话"
+          : mode === "demo"
+            ? "演示课表"
+            : "个人课表 · 已保存在本机"
+      }}
+      · 左右滑动切周 · {{ mode === "official" ? "授权课程只读" : "点击空白格添加" }} · 重叠课程点开逐门查看
     </p>
     <button
       class="text-button academic-services-link"
@@ -255,12 +282,22 @@ function touchEnd(e: TouchEvent) {
     <div class="section-heading">
       <div>
         <h2>成绩查询</h2>
-        <p class="muted">成绩与学分均为演示内容</p>
+        <p class="muted">
+          {{
+            mode === "official"
+              ? "成绩来自本次学校授权接口"
+              : "成绩与学分均为演示内容"
+          }}
+        </p>
       </div>
       <select v-model="term" aria-label="筛选学期">
         <option value="all">全部学期</option>
-        <option>2025–2026 春季</option>
-        <option>2025–2026 秋季</option>
+        <option
+          v-for="value in [...new Set(data.grades.map((g) => g.term))]"
+          :key="value"
+        >
+          {{ value }}
+        </option>
       </select>
     </div>
     <div class="grade-stats">
@@ -307,7 +344,11 @@ function touchEnd(e: TouchEvent) {
   <section v-else-if="section === 'exams'" class="panel">
     <div class="section-heading">
       <h2>考试安排</h2>
-      <span class="soft-pill">{{ data.exams.length }} 场模拟考试</span>
+      <span class="soft-pill"
+        >{{ data.exams.length }} 场{{
+          mode === "official" ? "授权" : "模拟"
+        }}考试</span
+      >
     </div>
     <div class="exam-list">
       <article v-for="(e, i) in data.exams" :key="e.name" class="exam-card">
@@ -364,7 +405,11 @@ function touchEnd(e: TouchEvent) {
         </p>
       </div>
       <span class="soft-pill">{{
-        mode === "demo" ? "演示校历" : "个人学期"
+        mode === "official"
+          ? "学校授权学期"
+          : mode === "demo"
+            ? "演示校历"
+            : "个人学期"
       }}</span>
     </div>
     <div class="calendar-grid">
@@ -382,25 +427,18 @@ function touchEnd(e: TouchEvent) {
       </button>
     </div>
     <p class="inline-note">
-      <Info :size="17" />本校历不是邯郸学院官方校历，不用于实际教学安排。
+      <Info :size="17" />{{
+        mode === "official"
+          ? "学期信息来自本次授权接口，实际安排以学校通知为准。"
+          : "此为本机配置的学期日历，并非学校官方校历。"
+      }}
     </p>
   </section>
   <section v-else class="panel official-panel">
-    <span class="entry-icon blue"><LibraryBig :size="30" /></span>
-    <h2>连接官方，获取准确信息。</h2>
-    <p>
-      在学校官方网站查询正式教务信息。<br />本应用不会读取或保存你在学校网站输入的账号与密码。
-    </p>
-    <a
-      href="https://jwgl.hdc.edu.cn/xtgl/login_slogin.html"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="official-link"
-      ><span
-        ><strong>教学综合信息服务平台</strong
-        ><small>jwgl.hdc.edu.cn</small></span
-      ><ArrowUpRight :size="22" /></a
-    ><a
+    <AcademicConnection
+      @synced="emit('officialSync')"
+      @disconnected="emit('officialDisconnect')"
+    /><a
       href="https://www.hdc.edu.cn/"
       target="_blank"
       rel="noopener noreferrer"
@@ -409,6 +447,5 @@ function touchEnd(e: TouchEvent) {
         ><strong>邯郸学院官方网站</strong><small>www.hdc.edu.cn</small></span
       ><ArrowUpRight :size="22"
     /></a>
-    <p class="muted">链接将于外部浏览器打开；能否访问取决于学校网络服务。</p>
   </section>
 </template>

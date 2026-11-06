@@ -88,3 +88,9 @@ Android 需要 Android Studio/SDK/JDK；iOS 构建与签名需要 macOS/Xcode，
 ## 贡献
 
 参见 [CONTRIBUTING.md](CONTRIBUTING.md)。原创代码 MIT；设计研究来源与上游许可记录见 [docs/RESEARCH.md](docs/RESEARCH.md)。本期不包含交易、社区、商家或失物招领。
+
+## 学校授权连接框架（尚未接入学校）
+
+主线保留学校授权连接的接口、状态机、只读数据视图与严格校验，默认没有注册真实连接器。“教务 → 教务服务 → 官方教务”明确显示未接入；不能据此声称可以登录邯郸学院或自动同步课表。原本个人课表和导入仍独立可用。
+
+[接入边界与后续条件](docs/V0.4-ACADEMIC-CONNECTION.md) · [PR #1 审查与验证](docs/PR-1-REVIEW.md)

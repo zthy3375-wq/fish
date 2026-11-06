@@ -68,6 +68,8 @@ import {
   type ManagedCourse,
 } from "./domain/schedule";
 import { reconcileReminders } from "./services/reminders";
+import { useAuthorizedAcademic } from "./composables/authorized-academic";
+import { selectAcademicData } from "./services/academic-connection";
 import { mockAcademicProvider } from "./services/academic";
 import {
   loadPreferences,
@@ -112,12 +114,30 @@ const prefs = ref(loadPreferences()),
   toast = ref(""),
   read = ref(false),
   now = ref(campusNow());
-const semester = computed(() =>
+const {
+  snapshot: officialSnapshot,
+  showOfficial,
+  refreshIfReady,
+} = useAuthorizedAcademic();
+function onOfficialSync() {
+  if (modal.value || page.value !== "academic" || section.value !== "official")
+    return;
+  showOfficial.value = !!officialSnapshot.value;
+  notify("正在查看本次授权数据，只读且未覆盖个人课表");
+}
+function onOfficialDisconnect() {
+  showOfficial.value = false;
+  notify("本机授权数据已清除，恢复本地课表");
+}
+function showLocal() {
+  showOfficial.value = false;
+}
+const localSemester = computed(() =>
   schedule.value.mode === "demo"
     ? defaultState().semesters[0]
     : personalSemester.value,
 );
-const data = computed<AcademicData>(() => ({
+const localData = computed<AcademicData>(() => ({
   ...mockData.value,
   courses:
     schedule.value.mode === "demo"
@@ -125,10 +145,28 @@ const data = computed<AcademicData>(() => ({
       : flatten(schedule.value.courses, schedule.value.activeSemesterId),
   source: schedule.value.mode === "demo" ? "mock" : "personal",
 }));
-const table = computed(() =>
+const localTable = computed(() =>
   schedule.value.mode === "demo"
     ? standardTimeTable()
     : tableForSemester(schedule.value),
+);
+const officialActive = computed(
+  () => showOfficial.value && !!officialSnapshot.value,
+);
+const semester = computed(() =>
+  officialActive.value ? officialSnapshot.value!.semester : localSemester.value,
+);
+const table = computed(() =>
+  officialActive.value
+    ? (officialSnapshot.value!.timeTable ?? standardTimeTable())
+    : localTable.value,
+);
+const data = computed(() =>
+  selectAcademicData(
+    localData.value,
+    officialSnapshot.value,
+    showOfficial.value,
+  ),
 );
 const editorRef = ref<InstanceType<typeof CourseEditor>>(),
   editorCourse = ref<ManagedCourse>(),
@@ -140,6 +178,7 @@ const editorRef = ref<InstanceType<typeof CourseEditor>>(),
   detailError = ref(""),
   conflictCourses = ref<Course[]>([]);
 function createCourse(preset?: CellPreset) {
+  showLocal();
   if (preset && preset.period > tableForSemester(schedule.value).slots.length) {
     notify("个人作息中没有该节次，请先设置作息");
     manage(undefined, "times");
@@ -151,6 +190,7 @@ function createCourse(preset?: CellPreset) {
   open("course-editor");
 }
 function openEditor(id: string) {
+  showLocal();
   const c = schedule.value.courses.find((c) => c.id === id);
   if (!c) {
     notify("课程不存在或已被删除");
@@ -162,6 +202,7 @@ function openEditor(id: string) {
   open("course-editor");
 }
 function manage(id?: string, initial = "courses") {
+  showLocal();
   if (id) {
     openEditor(id);
     return;
@@ -174,6 +215,7 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
   editorError.value = "";
   try {
     await changeSchedule((s) => upsertCourse(s, course, allow));
+    showLocal();
     close();
     notify("课程已保存，首页与课表已同步");
   } catch (e) {
@@ -213,6 +255,13 @@ async function removeSelected(whole: boolean) {
     detailError.value = (e as Error).message;
   }
 }
+watch(officialSnapshot, (value, previous) => {
+  if (previous && !value) {
+    selected.value = undefined;
+    conflictCourses.value = [];
+    if (modal.value === "course" || modal.value === "course-conflicts") close();
+  }
+});
 function showConflicts(courses: Course[]) {
   conflictCourses.value = courses;
   open("course-conflicts");
@@ -247,19 +296,19 @@ const entries = computed(() => [
   {
     id: "grades",
     title: "成绩查询",
-    subtitle: `${data.value.grades.length} 门演示`,
+    subtitle: `${data.value.grades.length} 门${officialActive.value ? "授权记录" : "演示"}`,
     icon: ChartNoAxesColumnIncreasing,
   },
   {
     id: "exams",
     title: "考试安排",
-    subtitle: `${exams.value.length} 场演示`,
+    subtitle: `${exams.value.length} 场${officialActive.value ? "授权记录" : "演示"}`,
     icon: CalendarDays,
   },
   {
     id: "study",
     title: "学业信息",
-    subtitle: `演示 ${credits.value} 学分`,
+    subtitle: `${officialActive.value ? "成绩学分 · 规划演示" : "演示"} ${credits.value} 学分`,
     icon: GraduationCap,
   },
 ]);
@@ -347,9 +396,9 @@ const title = computed(() =>
 );
 const subtitle = computed(() =>
   page.value === "home"
-    ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${schedule.value.mode === "demo" ? "演示课表" : "个人课表"}`
+    ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校授权课表" : schedule.value.mode === "demo" ? "演示课表" : "个人课表"}`
     : page.value === "academic"
-      ? `${semester.value.academicYear} ${semester.value.season} · ${schedule.value.mode === "demo" ? "演示课表" : "个人课表"}`
+      ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校授权课表" : schedule.value.mode === "demo" ? "演示课表" : "个人课表"}`
       : "本地资料 · 设置自动保存",
 );
 const greeting = computed(() =>
@@ -396,6 +445,7 @@ async function load() {
     await initSchedule();
     mockData.value = await mockAcademicProvider.load();
     await reconcileReminders(schedule.value);
+    void refreshIfReady();
   } catch (e) {
     error.value = storageError.value || "教务信息加载失败：" + String(e);
   } finally {
@@ -496,6 +546,7 @@ async function recalibrate() {
   if (document.visibilityState === "visible") {
     await refreshSchedule();
     await reconcileReminders(schedule.value);
+    void refreshIfReady();
   }
 }
 watch(schedule, (s) => reconcileReminders(s));
@@ -665,9 +716,11 @@ onUnmounted(() => {
             <SectionHeader
               title="近期安排"
               :meta="
-                schedule.mode === 'demo'
-                  ? '演示数据'
-                  : '个人课表 · 官方通知未同步'
+                officialActive
+                  ? '学校授权数据'
+                  : schedule.mode === 'demo'
+                    ? '演示数据'
+                    : '个人课表 · 官方通知未同步'
               "
             />
             <div class="service-group upcoming-group">
@@ -679,13 +732,15 @@ onUnmounted(() => {
                 <BookOpen class="row-icon" /><span class="row-copy"
                   ><strong>管理个人课表</strong
                   ><small>{{
-                    next
+                    !officialActive && next
                       ? next.course.name + " · " + dateLabel(next.date)
                       : "添加或导入课程，安排你的学期"
                   }}</small></span
                 ><ChevronRight class="row-chevron" :size="18" /></button
               ><button
-                v-for="e in schedule.mode === 'demo' ? exams.slice(0, 1) : []"
+                v-for="e in officialActive || schedule.mode === 'demo'
+                  ? exams.slice(0, 1)
+                  : []"
                 :key="e.name"
                 class="service-row"
                 @click="go('exams')"
@@ -697,7 +752,7 @@ onUnmounted(() => {
                   ></span
                 ><ChevronRight class="row-chevron" :size="18" /></button
               ><button
-                v-if="schedule.mode === 'demo'"
+                v-if="!officialActive && schedule.mode === 'demo'"
                 class="service-row"
                 @click="go('study')"
               >
@@ -720,12 +775,16 @@ onUnmounted(() => {
                 {{ schedule.mode === "demo" ? "当前演示模式" : "本机已保存" }}
               </button>
               <p class="footnote">
-                成绩、考试、学分仍为独立演示数据，课程表使用{{
-                  schedule.mode === "demo" ? "演示" : "个人"
-                }}数据。
+                <span v-if="officialActive"
+                  >课程、成绩、考试来自本次授权会话；培养方案仍为演示。</span
+                ><span v-else
+                  >成绩、考试、学分仍为独立演示数据，课程表使用{{
+                    schedule.mode === "demo" ? "演示" : "个人"
+                  }}数据。</span
+                >
               </p>
               <AcademicSummary
-                :mode="schedule.mode"
+                :mode="data.source === 'official' ? 'official' : schedule.mode"
                 :average="weightedAverage(data.grades).toFixed(1)"
                 :grades="data.grades.length"
                 :credits="credits"
@@ -758,8 +817,11 @@ onUnmounted(() => {
                 meta="官方外链"
               /><ServiceGroup :items="official" @select="go" />
               <p class="footnote source-footnote">
-                <ShieldCheck :size="13" />课表可在本机管理 ·
-                未连接邯郸学院教务系统
+                <ShieldCheck :size="13" />{{
+                  officialActive
+                    ? "授权数据仅本次会话有效"
+                    : "课表可在本机管理 · 未连接学校接口"
+                }}
               </p>
             </template>
             <Transition v-else name="content" mode="out-in"
@@ -771,7 +833,7 @@ onUnmounted(() => {
                 "
                 :table="table"
                 :semester="semester"
-                :mode="schedule.mode"
+                :mode="data.source === 'official' ? 'official' : schedule.mode"
                 :section="section"
                 :data="data"
                 :now="now"
@@ -781,6 +843,10 @@ onUnmounted(() => {
                 @manage="(tab) => manage(undefined, tab)"
                 @create="createCourse"
                 @conflict="showConflicts"
+                :official-has-time-table="!!officialSnapshot?.timeTable"
+                @official-sync="onOfficialSync"
+                @official-disconnect="onOfficialDisconnect"
+                @local="showLocal"
             /></Transition>
           </template>
           <template v-else>
@@ -827,7 +893,7 @@ onUnmounted(() => {
               @select="(id) => (id === 'manager' ? manage() : open(id))"
             />
             <p class="footnote source-footnote">
-              <ShieldCheck :size="13" />没有学校账号 · 没有广告与分析追踪
+              <ShieldCheck :size="13" />不保存教务密码 · 没有广告与分析追踪
             </p>
           </template>
           <footer>
@@ -930,9 +996,7 @@ onUnmounted(() => {
           <template v-else-if="modal === 'course-conflicts'"
             ><h2>重叠的课程</h2>
             <p class="muted">
-              {{
-                conflictCourses.length
-              }}
+              {{ conflictCourses.length }}
               个安排在同一天发生时间重叠，逐门查看与编辑。
             </p>
             <div class="service-group">
@@ -955,7 +1019,13 @@ onUnmounted(() => {
             <h2 class="course-detail-title">{{ selected.name }}</h2>
             <p class="muted">
               课程详情 ·
-              {{ schedule.mode === "demo" ? "演示数据" : "个人课表" }}
+              {{
+                officialActive
+                  ? "学校授权 · 只读"
+                  : schedule.mode === "demo"
+                    ? "演示数据"
+                    : "个人课表"
+              }}
             </p>
             <dl>
               <dt>时间</dt>
@@ -988,7 +1058,9 @@ onUnmounted(() => {
                             (a) => a.id === selected?.arrangementId,
                           )?.rule || "custom"
                       ]
-                    : "演示周安排"
+                    : officialActive
+                      ? "授权周安排"
+                      : "演示周安排"
                 }}
               </dd>
               <dt v-if="selected.notes">备注</dt>
@@ -1049,7 +1121,7 @@ onUnmounted(() => {
                 <div>
                   <h3>欢迎体验邯郸校园 v0.2</h3>
                   <p>
-                    课程、成绩和校历均为模拟；公开教务通知尚未同步，请前往学校官方入口查看。
+                    个人课表可在本机管理，成绩与考试默认为演示。学校授权连接尚未接入，公开通知请前往官方入口查看。
                   </p>
                   <small>{{ read ? "已读" : "未读" }} · 项目公告</small>
                 </div>
@@ -1121,7 +1193,8 @@ onUnmounted(() => {
             ><ShieldCheck :size="27" />
             <h2>隐私政策</h2>
             <p>
-              本版本不连接学校教务系统，不采集学校账号、密码或学号，不包含广告与分析追踪代码。
+              本版本未内置学校连接器，不采集学校密码或
+              Cookie。未来经学校允许的连接器只读取本人数据；授权记录只在本次运行内存显示，断开或失效后清除。
             </p>
             <p>
               昵称、专业、主题和偏好保存在本机。个人课表通过
