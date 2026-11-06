@@ -12,7 +12,7 @@ const engine=new AcademicSyncEngine(handanAcademicClient,()=>structuredClone(toR
 let initialized=false,lastAuto=0;
 export async function initAcademic(){if(initialized)return;try{const {value}=await Preferences.get({key:KEY});if(value)academicCache.value=validateAcademicCache(JSON.parse(value));initialized=true}catch{academicError.value='无法读取学校缓存，个人课表仍可使用'}}
 export async function syncAcademic(login=false,term?:SchoolTerm){
- if(!schoolConnectionSupported()){academicError.value='学校连接目前支持 Android，iOS 待适配';return}
+ if(!schoolConnectionSupported()){academicError.value='学校连接仅支持 Android 客户端';return}
  if(academicBusy.value)return;
  academicBusy.value=true;academicError.value='';
  try{await engine.sync(term,login);lastAuto=Date.now();if(academicCache.value.session==='expired')academicError.value='学校登录已过期，请重新连接'}
