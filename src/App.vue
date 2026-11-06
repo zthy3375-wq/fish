@@ -76,6 +76,7 @@ import {
 import { reconcileReminders } from "./services/reminders";
 import {academicCache,schoolTerm,initAcademic,autoSyncAcademic,syncAcademic} from './composables/handan-academic';
 import SchoolConnection from './components/SchoolConnection.vue';
+import ClassroomEntry from './components/ClassroomEntry.vue';
 import FreeClassrooms from './components/FreeClassrooms.vue';
 import SchoolAcademicRecords from './components/SchoolAcademicRecords.vue';
 import {
@@ -270,7 +271,7 @@ const entries = computed(() => [
     icon: GraduationCap,
   },
 ]);
-const teaching = computed(() => [...entries.value.slice(0, 3), {id:'classrooms',title:'空闲教室',subtitle:'查找真实可用教室与全天占用',icon:LibraryBig}]);
+const teaching = computed(() => entries.value.slice(0, 3));
 const planning = [
   {
     id: "study",
@@ -334,7 +335,7 @@ const about = [
     icon: MessageSquare,
     href: "https://github.com/zthy3375-wq/fish/issues",
   },
-  { id: "about", title: "版本信息", subtitle: "邯郸校园 · v0.5.0", icon: Info },
+  { id: "about", title: "版本信息", subtitle: "邯郸校园 · v0.6.0.1", icon: Info },
 ];
 const sectionNames: Record<string, string> = {
   overview: "教务中心",
@@ -585,6 +586,7 @@ onUnmounted(() => {
       <Transition v-else name="page" mode="out-in"
         ><div :key="page" class="page-content">
           <template v-if="page === 'home'">
+            <ClassroomEntry @select="go('classrooms')" />
             <SchoolConnection compact @connected="move('home')" />
             <div class="home-greeting">
               <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
@@ -727,6 +729,7 @@ onUnmounted(() => {
             <FreeClassrooms v-if="section==='classrooms'" />
             <SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
             <template v-else-if="section === 'overview'">
+              <ClassroomEntry @select="go('classrooms')" />
               <SchoolConnection compact />
               <button class="secondary full" @click="manage()">
                 管理个人课表 ·
@@ -742,7 +745,7 @@ onUnmounted(() => {
                   @select="go(e.id)"
                 />
               </div>
-              <SectionHeader title="教学管理" meta="4 项" /><ServiceGroup
+              <SectionHeader title="教学管理" meta="3 项" /><ServiceGroup
                 :items="teaching"
                 @select="go"
               />
@@ -884,7 +887,7 @@ onUnmounted(() => {
           <template v-if="modal === 'drawer'"
             ><div class="drawer-brand">
               <span class="brand-mark"><GraduationCap :size="25" /></span
-              ><strong>邯郸校园</strong><span>v0.5.0</span>
+              ><strong>邯郸校园</strong><span>v0.6.0.1</span>
             </div>
             <button class="drawer-profile" @click="move('profile')">
               <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
@@ -1150,7 +1153,7 @@ onUnmounted(() => {
           >
           <template v-else
             ><span class="brand-mark"><GraduationCap :size="27" /></span>
-            <h2>邯郸校园 <small>v0.5.0</small></h2>
+            <h2>邯郸校园 <small>v0.6.0.1</small></h2>
             <p>
               为同学，由同学。独立开源的学生校园助手，未获邯郸学院官方认证或合作授权。
             </p>

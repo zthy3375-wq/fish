@@ -5,8 +5,13 @@ const script=readFileSync('android/app/src/main/assets/handan-classrooms.js','ut
 const q={xnm:'2026',xqm:'3',date:'2026-11-06',week:8,weekday:5,campusId:'1',buildingId:'',startPeriod:1,endPeriod:2};
 const rawRoom={cd_id:'r1',cdxqxx_id:'tr1',cdbh:'R001',cdmc:'人工测试教室',lh:'b1',jxlmc:'人工教学楼',xqmc:'人工校区',cdlbmc:'测试类型',zws:'40',userModel:{password:'PRIVATE'},cdgly:'PRIVATE'};
 const html='<select id="dm_cx"><option value="2026-3" selected>人工学期</option></select><select id="xqh_id"><option value="1">人工校区</option></select>';
-async function run(operation:string,overrides:(u:URL)=>unknown=()=>undefined,query:any=q){
+async function run(operation:string,overrides:(u:URL)=>unknown=()=>undefined,query:any=q,legacyArrays=false){
  const dom=new JSDOM('<div id="menu"></div>',{url:'https://jwgl.hdc.edu.cn/xtgl/index_initMenu.html',runScripts:'outside-only'});
+ if(legacyArrays)dom.window.eval(`
+  Array.prototype.filter=function(fn,scope){const out=[];for(let i=0;i<this.length;i++)if(fn.call(scope||window,i,this[i],this))out.push(this[i]);return out};
+  Array.prototype.some=function(fn,scope){for(let i=0;i<this.length;i++)if(fn.call(scope||window,i,this[i],this))return true;return false};
+  Array.prototype.every=function(){return true};
+ `);
  const fetch=vi.fn(async(url:string)=>{const u=new URL(url);let value=overrides(u);
  if(value===undefined){
   if(u.pathname.includes('cxKxcdlb'))value=u.searchParams.get('doType')==='query'?{items:[rawRoom],totalCount:1,totalPage:1}:html;
@@ -33,4 +38,18 @@ describe('Handan N2155 compiled native connector',()=>{
  it('recognizes actual login markup without disclosing credentials or treating it as an empty list',async()=>{const {result}=await run('rooms-query',()=>'<input type="password" id="mm">');expect(result.session).toBe('expired');expect(result.classrooms.code).toBe('EXPIRED')});
  it('parses sparse school day occupancy and strips all occupation text',async()=>{const {result}=await run('rooms-day',()=>undefined,{...q,roomId:'r1',roomName:'人工测试教室'});expect(result.classrooms.data.slots.map((p:any)=>p.state)).toEqual(['free','occupied','free']);expect(JSON.stringify(result)).not.toContain('PRIVATE')});
  it('marks missing period mappings unknown; missing rooms fail rather than become free all day',async()=>{const missing=await run('rooms-day',u=>u.pathname.includes('cxAtyy')?{jcList:[{jcmc:'1',jcm:'1'}],scheduleList:[rawRoom]}:undefined,{...q,roomId:'r1',roomName:'人工测试教室'});expect(missing.result.classrooms.data.slots[1].state).toBe('unknown');expect((await run('rooms-day',()=>undefined,{...q,roomId:'other',roomName:'人工测试教室'})).result.classrooms.code).toBe('SCHEMA')});
+});
+
+describe('school legacy Array overrides',()=>{
+ it.each(['rooms-options','rooms-query','rooms-day'])('keeps %s working when the school reverses filter/some callback arguments',async operation=>{
+  const {result}=await run(operation,()=>undefined,{...q,roomId:'r1',roomName:'人工测试教室'},true);
+  expect(result.classrooms.status).toBe('ok');
+  if(operation==='rooms-query')expect(result.classrooms.data.rooms[0].name).toBe('人工测试教室');
+  if(operation==='rooms-day')expect(result.classrooms.data.slots[1].state).toBe('occupied');
+ });
+});
+
+it('still rejects an invalid period sequence when the school every() always returns true',async()=>{
+ const {result}=await run('rooms-options',u=>u.pathname.includes('cxXqjc')?{lhList:[],jcList:[{JCMC:1,SJD:'08:00-08:40'},{JCMC:3,SJD:'09:45-10:25'}]}:undefined,q,true);
+ expect(result.classrooms.code).toBe('SCHEMA');
 });

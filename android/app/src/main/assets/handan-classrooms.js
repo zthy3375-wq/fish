@@ -25,25 +25,27 @@ async function(operation, query) {
       try{return JSON.parse(s)}catch{fail('SCHEMA')}
     }catch(e){if(known.has(e.message))throw e;fail('NETWORK')}finally{clearTimeout(timer)}
   }
-  function options(doc,id){return list(Array.from(doc.querySelectorAll('#'+id+' option')),150).map(o=>({id:o.value,name:text(o.textContent)})).filter(o=>o.id&&o.name)}
+  // The school overrides Array.filter/some to pass (index,value), not ES (value,index).
+  // Use explicit loops inside this untrusted page realm; do not patch school globals.
+  function options(doc,id){const out=[];for(const o of list(Array.from(doc.querySelectorAll('#'+id+' option')),150)){if(o.value&&text(o.textContent))out.push({id:o.value,name:text(o.textContent)})}return out}
   async function dates(term,week,weekday){const d=list(await get('cdjy_cxDateInforma.html',{...term,zcd:String(2**(week-1)),xqj:String(weekday)}),7);if(d.length!==1)fail('CALENDAR');return day(d[0])}
   async function context(){
     const doc=await get('cdjy_cxKxcdlb.html',{layout:'default'},true);
     const terms=options(doc,'dm_cx'),campuses=options(doc,'xqh_id');
     if(!terms.length||!campuses.length)fail('SCHEMA');
     const termId=query.xnm&&query.xqm?`${query.xnm}-${query.xqm}`:doc.querySelector('#dm_cx')?.value;
-    if(!terms.some(t=>t.id===termId))fail('FILTER');
+    if(!terms.find(t=>t.id===termId))fail('FILTER');
     const [xnm,xqm]=termId.split('-');if(!/^20\d{2}$/.test(xnm)||!['3','12','16'].includes(xqm))fail('FILTER');
     const campusId=query.campusId||doc.querySelector('#xqh_id')?.value;
-    if(!campuses.some(c=>c.id===campusId))fail('FILTER');
+    if(!campuses.find(c=>c.id===campusId))fail('FILTER');
     const term={xnm,xqm},params={...term,xqh_id:campusId};
     const meta=await get('cdjy_cxXqjc.html',params),cal=await get('cdjy_cxQtlb.html',{...params,flag:'0'});
     if(!cal.dqzcxq)fail('CALENDAR');
-    const weeks=list(cal.nxqzcList,53).filter(w=>String(w.zczt)!=='0').map(w=>int(w.dxqzc,1,53));
+    const weeks=[];for(const w of list(cal.nxqzcList,53))if(String(w.zczt)!=='0')weeks.push(int(w.dxqzc,1,53));
     if(!weeks.length)fail('CALENDAR');
     const periods=list(meta.jcList,24).map(p=>{const [start,end]=text(p.SJD).split('-');if(time(end)<=time(start))fail('SCHEMA');return {number:int(p.JCMC,1,24),start:time(start),end:time(end)}}).sort((a,b)=>a.number-b.number);
-    if(!periods.length||periods.some((p,i)=>p.number!==i+1))fail('SCHEMA');
-    const buildings=list(meta.lhList,300).map(b=>({id:text(b.JXLDM,80),name:text(b.JXLMC)}));if(buildings.some(b=>!b.id||!b.name))fail('SCHEMA');
+    if(!periods.length)fail('SCHEMA');for(let i=0;i<periods.length;i++)if(periods[i].number!==i+1)fail('SCHEMA');
+    const buildings=list(meta.lhList,300).map(b=>({id:text(b.JXLDM,80),name:text(b.JXLMC)}));for(const b of buildings)if(!b.id||!b.name)fail('SCHEMA');
     return {term,campusId,terms,campuses,buildings,periods,weeks,weekStartDate:await dates(term,1,1),minDate:day(cal.dqzcxq.ZXRQ),maxDate:day(cal.dqzcxq.ZDRQ)};
   }
   function room(r){
@@ -57,7 +59,7 @@ async function(operation, query) {
     else{
       const date=day(query.date),week=int(query.week,1,53),weekday=int(query.weekday,1,7);
       if(!ctx.weeks.includes(week)||date<ctx.minDate||date>ctx.maxDate||await dates(ctx.term,week,weekday)!==date)fail('DATE');
-      if(query.buildingId&&!ctx.buildings.some(b=>b.id===query.buildingId))fail('FILTER');
+      if(query.buildingId&&!ctx.buildings.find(b=>b.id===query.buildingId))fail('FILTER');
       if(operation==='rooms-query'){
         const start=int(query.startPeriod,1,ctx.periods.length),end=int(query.endPeriod,start,ctx.periods.length);
         const params={...ctx.term,xqh_id:ctx.campusId,lh:query.buildingId||'',jyfs:'0',zcd:String(2**(week-1)),xqj:String(weekday),jcd:String(2**end-2**(start-1)),cdlb_id:'',cdejlb_id:'',qszws:'',jszws:'',cdmc:'',cdjylx:'',sfbhkc:'','queryModel.showCount':'100','queryModel.sortName':'cdbh','queryModel.sortOrder':'asc',_search:'false'};
