@@ -1,0 +1,32 @@
+{
+  "exampleOnly": true,
+  "notObtainedFromSchool": true,
+  "report": {
+    "schemaVersion": 1,
+    "toolVersion": "0.4.2",
+    "source": "native-webview-user-action",
+    "schoolPermission": "not-independently-verified",
+    "officialLogin": "not-attested-by-app",
+    "pageRead": true,
+    "personalCoursesParsed": false,
+    "thirdPartySyncAuthorized": false,
+    "automaticSync": false,
+    "parserCompatibility": "awaiting-local-preview-and-student-check",
+    "observation": {
+      "container": "zf-grid",
+      "fields": {
+        "courseName": true,
+        "teacher": true,
+        "room": true,
+        "weekday": true,
+        "periods": true,
+        "weeks": true
+      },
+      "recordCount": 1,
+      "invalidCount": 0,
+      "specialArrangements": false,
+      "exportControl": false,
+      "frameLimit": false
+    }
+  }
+}

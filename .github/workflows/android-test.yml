@@ -1,8 +1,23 @@
 name: Android test APK
 on:
   workflow_dispatch:
+  push:
+    branches: [feature/academic-diagnostics-v042]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.env.android-diagnostic'
+      - '.github/workflows/android-test.yml'
+concurrency:
+  group: android-diagnostic-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   apk:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,13 +36,37 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: cp -r dist /tmp/handan-normal-web
+      - run: npm run build:diagnostic
       - run: npx cap sync android
       - run: chmod +x android/gradlew
-      - run: ./gradlew --no-daemon assembleDebug
+      - run: ./gradlew --no-daemon testDiagnosticUnitTest testReleaseUnitTest assembleDiagnostic assembleRelease
         working-directory: android
       - uses: actions/upload-artifact@v4
         with:
-          name: handan-campus-v0.3.1-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: handan-campus-v0.4.2-diagnostic-debug-apk
+          path: android/app/build/outputs/apk/diagnostic/app-diagnostic.apk
           if-no-files-found: error
           retention-days: 14
+  browser:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: cp -r dist /tmp/handan-normal-web
+      - run: npm run build:diagnostic
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/diagnostic-browser-check.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: handan-campus-v0.4.2-browser-checks
+          path: /tmp/handan-v042-qa
+          if-no-files-found: warn

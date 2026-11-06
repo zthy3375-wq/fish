@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onUnmounted,
+  nextTick,
+  defineAsyncComponent,
+} from "vue";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { App as NativeApp } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
@@ -50,6 +58,7 @@ import {
 } from "./domain/presentation";
 import ScheduleManager from "./components/ScheduleManager.vue";
 import CourseEditor from "./components/CourseEditor.vue";
+import { isSchoolPageSemester } from "./services/school-page-import";
 import { upsertCourse } from "./services/course-management";
 import {
   schedule,
@@ -86,6 +95,14 @@ import ServiceGroup from "./components/ServiceGroup.vue";
 import CourseCard from "./components/CourseCard.vue";
 import AcademicSummary from "./components/AcademicSummary.vue";
 import AcademicDetail from "./components/AcademicDetail.vue";
+import {
+  DIAGNOSTIC_BUILD,
+  diagnosticAvailability,
+} from "./services/academic-diagnostics";
+const AcademicDiagnostics = DIAGNOSTIC_BUILD
+  ? defineAsyncComponent(() => import("./components/AcademicDiagnostics.vue"))
+  : null;
+const diagnosticsEnabled = ref(false);
 import EmptyState from "./components/EmptyState.vue";
 import LoadingState from "./components/LoadingState.vue";
 import SettingsRow from "./components/SettingsRow.vue";
@@ -143,7 +160,12 @@ const localData = computed<AcademicData>(() => ({
     schedule.value.mode === "demo"
       ? mockData.value.courses
       : flatten(schedule.value.courses, schedule.value.activeSemesterId),
-  source: schedule.value.mode === "demo" ? "mock" : "personal",
+  source:
+    schedule.value.mode === "demo"
+      ? "mock"
+      : isSchoolPageSemester(schedule.value.activeSemesterId)
+        ? "school-import"
+        : "personal",
 }));
 const localTable = computed(() =>
   schedule.value.mode === "demo"
@@ -386,6 +408,7 @@ const sectionNames: Record<string, string> = {
   study: "学业信息",
   calendar: "学期校历",
   official: "官方教务",
+  diagnostics: "教务诊断",
 };
 const title = computed(() =>
   page.value === "home"
@@ -396,9 +419,9 @@ const title = computed(() =>
 );
 const subtitle = computed(() =>
   page.value === "home"
-    ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校授权课表" : schedule.value.mode === "demo" ? "演示课表" : "个人课表"}`
+    ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校授权课表" : schedule.value.mode === "demo" ? "演示课表" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "学校网页导入 · 非自动同步" : "个人课表"}`
     : page.value === "academic"
-      ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校授权课表" : schedule.value.mode === "demo" ? "演示课表" : "个人课表"}`
+      ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校授权课表" : schedule.value.mode === "demo" ? "演示课表" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "学校网页导入 · 非自动同步" : "个人课表"}`
       : "本地资料 · 设置自动保存",
 );
 const greeting = computed(() =>
@@ -416,6 +439,7 @@ watch(data, (d) => {
   }
 });
 function go(id: string) {
+  if (id === "diagnostics" && !diagnosticsEnabled.value) return;
   move("academic", id);
 }
 function nav(p: Page) {
@@ -558,6 +582,9 @@ function viewportChange() {
   );
 }
 onMounted(async () => {
+  void diagnosticAvailability().then((enabled) => {
+    if (!disposed) diagnosticsEnabled.value = enabled;
+  });
   load();
   clockTimer = setInterval(() => (now.value = campusNow()), 30000);
   media.addEventListener("change", systemChange);
@@ -769,7 +796,19 @@ onUnmounted(() => {
             </div>
           </template>
           <template v-else-if="page === 'academic'">
-            <template v-if="section === 'overview'">
+            <AcademicDiagnostics
+              v-if="
+                section === 'diagnostics' &&
+                diagnosticsEnabled &&
+                AcademicDiagnostics
+              "
+              @back="go('official')"
+              @saved="
+                showLocal();
+                go('schedule');
+              "
+            />
+            <template v-else-if="section === 'overview'">
               <button class="secondary full" @click="manage()">
                 管理个人课表 ·
                 {{ schedule.mode === "demo" ? "当前演示模式" : "本机已保存" }}
@@ -844,6 +883,8 @@ onUnmounted(() => {
                 @create="createCourse"
                 @conflict="showConflicts"
                 :official-has-time-table="!!officialSnapshot?.timeTable"
+                :diagnostics-enabled="diagnosticsEnabled"
+                :school-page-import="data.source === 'school-import'"
                 @official-sync="onOfficialSync"
                 @official-disconnect="onOfficialDisconnect"
                 @local="showLocal"

@@ -35,6 +35,8 @@ const props = defineProps<{
   semester: Semester;
   mode: "demo" | "personal" | "official";
   officialHasTimeTable?: boolean;
+  diagnosticsEnabled?: boolean;
+  schoolPageImport?: boolean;
   section: string;
   data: AcademicData;
   now: Date;
@@ -134,6 +136,10 @@ function touchEnd(e: TouchEvent) {
     @touchstart.passive="touchStart"
     @touchend.passive="touchEnd"
   >
+    <p v-if="schoolPageImport" class="inline-note">
+      学校网页导入 · 已保存到独立本机学期，可离线查看。不是学校授权 API
+      同步；本机修改不会回写学校。
+    </p>
     <div v-if="mode === 'official'" class="schedule-actions">
       <button class="secondary" @click="emit('local')">查看本机课表</button
       ><button class="secondary" @click="emit('navigate', 'official')">
@@ -269,7 +275,9 @@ function touchEnd(e: TouchEvent) {
             ? "演示课表"
             : "个人课表 · 已保存在本机"
       }}
-      · 左右滑动切周 · {{ mode === "official" ? "授权课程只读" : "点击空白格添加" }} · 重叠课程点开逐门查看
+      · 左右滑动切周 ·
+      {{ mode === "official" ? "授权课程只读" : "点击空白格添加" }} ·
+      重叠课程点开逐门查看
     </p>
     <button
       class="text-button academic-services-link"
@@ -436,6 +444,8 @@ function touchEnd(e: TouchEvent) {
   </section>
   <section v-else class="panel official-panel">
     <AcademicConnection
+      :diagnostics-enabled="diagnosticsEnabled"
+      @diagnostics="emit('navigate', 'diagnostics')"
       @synced="emit('officialSync')"
       @disconnected="emit('officialDisconnect')"
     /><a

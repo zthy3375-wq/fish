@@ -1,0 +1,9 @@
+{
+  "_fixture": "Synthetic format fixture only. Not obtained from Handan University or a student account.",
+  "kbList": [
+    {"kcmc":"格式测试课程甲", "xm":"测试教师", "cdmc":"测试教室101", "xqj":"1", "jcs":"1-2", "zcd":"1-16周(单)"},
+    {"kcmc":"格式测试课程甲", "xm":"测试教师", "cdmc":"测试教室202", "xqj":"3", "jcs":"3-5", "zcd":"2-16周(双)"},
+    {"kcmc":"格式测试课程乙", "xm":"", "cdmc":"", "xqj":7, "jcs":"6", "zcd":"1,3,5,8周"}
+  ],
+  "sjkList": []
+}

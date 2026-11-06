@@ -11,7 +11,8 @@ import {
   getAuthorizedAcademicConnector,
   getAcademicConnectionController,
 } from "../services/authorized-connector-registry";
-const emit = defineEmits<{ synced: []; disconnected: [] }>();
+defineProps<{ diagnosticsEnabled?: boolean }>();
+const emit = defineEmits<{ synced: []; disconnected: []; diagnostics: [] }>();
 const provider = getAuthorizedAcademicConnector(),
   controller = getAcademicConnectionController();
 const phase = ref(controller?.state.phase ?? "disconnected"),
@@ -150,6 +151,13 @@ onUnmounted(() => {
         ><small>账号、密码和验证码均由学校网页处理</small></span
       ><ExternalLink :size="19"
     /></a>
+    <button
+      v-if="diagnosticsEnabled"
+      class="secondary full"
+      @click="emit('diagnostics')"
+    >
+      测试教务连接 · 开发者诊断
+    </button>
     <p class="footnote">
       框架不读取学校
       Cookie、不代填密码、不绕过认证。授权数据仅在本次运行内存中显示，尚不支持离线缓存。
