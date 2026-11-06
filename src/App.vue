@@ -18,8 +18,6 @@ import {
   BookOpen,
   CalendarDays,
   ChartNoAxesColumnIncreasing,
-  ClipboardList,
-  LibraryBig,
   UserRound,
   Settings2,
   ShieldCheck,
@@ -38,11 +36,8 @@ import {
   Clock3,
   MapPin,
   CheckCheck,
-  Download,
   Github,
   MessageSquare,
-  Menu,
-  House,
 } from "lucide-vue-next";
 import type { AcademicData, Course } from "./domain/academic";
 import { coursesForDay, weightedAverage } from "./domain/academic";
@@ -189,14 +184,16 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
   }
 }
 setOverlayCloseGuard(() => {
-  if (editorRef.value?.hasChanges()) {
+  if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
+  if (modal.value==='course-editor'&&editorRef.value?.hasChanges()) {
     editorRef.value.requestCancel();
     return false;
   }
   return true;
 });
 function requestClose() {
-  if (modal.value === "course-editor") editorRef.value?.requestCancel();
+  if (modal.value === "course"&&deleteIntent.value) deleteIntent.value="";
+  else if (modal.value === "course-editor") editorRef.value?.requestCancel();
   else close();
 }
 async function removeSelected(whole: boolean) {
@@ -264,37 +261,8 @@ const entries = computed(() => [
     icon: GraduationCap,
   },
 ]);
-const teaching = computed(() => entries.value.slice(0, 3));
-const planning = [
-  {id: "agenda",title: "统一日程",subtitle: "课程、考试与个人待办",icon: CalendarDays},
-  {
-    id: "study",
-    title: "学业中心",
-    subtitle: "已获学分、课程类型与学籍",
-    icon: GraduationCap,
-  },
-  {
-    id: "calendar",
-    title: "学期校历",
-    subtitle: "教学周与学期安排",
-    icon: CalendarDays,
-  },
-];
-const official = [
-  {
-    id: "official",
-    title: "官方教务系统",
-    subtitle: "邯郸学院教学综合信息服务平台",
-    icon: LibraryBig,
-  },
-  {
-    id: "school",
-    title: "邯郸学院官网",
-    subtitle: "学校新闻与公开信息",
-    icon: ArrowUpRight,
-    href: "https://www.hdc.edu.cn/",
-  },
-];
+const academicServices=computed(()=>[...entries.value.filter(e=>e.id!=='schedule'),{id:'agenda',title:'统一日程',subtitle:'课程、考试与个人待办',icon:CalendarDays},{id:'calendar',title:'学期校历',subtitle:'教学周与学期安排',icon:CalendarDays}]);
+const official=[{id:'school',title:'邯郸学院官网',subtitle:'学校新闻与公开信息',icon:ArrowUpRight,href:'https://www.hdc.edu.cn/'}];
 const settings = [
   {
     id: "notifications",
@@ -373,6 +341,9 @@ function go(id: string) {
   move(id === "schedule" ? "schedule" : "academic", id);
 }
 function nav(p: Page) { move(p, p === "schedule" ? "schedule" : "overview"); }
+const content=ref<HTMLElement>();
+const scrollPositions=new Map<string,number>();
+watch(()=>`${page.value}/${section.value}`,async(key,oldKey)=>{scrollPositions.set(oldKey,content.value?.scrollTop??0);await nextTick();content.value?.scrollTo({top:scrollPositions.get(key)??0,behavior:'instant'})});
 function details(c: Course) {
   selected.value = c;
   deleteIntent.value = "";
@@ -505,7 +476,7 @@ async function recalibrate() {
 }
 watch(schedule, (s) => reconcileReminders(s));
 let pullY=0;
-function pullStart(e:TouchEvent){pullY=window.scrollY<=0?e.changedTouches[0].clientY:-1}
+function pullStart(e:TouchEvent){pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
 function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100)void syncAcademic()}
 function viewportChange() {
   const v = window.visualViewport;
@@ -560,17 +531,17 @@ onUnmounted(() => {
     :class="{ compact: prefs.compact, 'home-active': page === 'home' }"
   >
     <AppHeader
+      :inert="!!modal"
       :title="title"
       :subtitle="subtitle"
       :back="page === 'academic' && section !== 'overview'"
-      :academic="false"
+      :add="page==='schedule'"
       :unread="!read && prefs.notifications"
       @back="back"
-      @menu="open('drawer')"
       @notifications="open('notifications')"
-      @import="manage(undefined, 'import')"
+      @add="createCourse()"
     />
-    <main @touchstart.passive="pullStart" @touchend.passive="pullEnd" :inert="!!modal" tabindex="-1" aria-label="页面内容">
+    <main ref="content" @touchstart.passive="pullStart" @touchend.passive="pullEnd" :inert="!!modal" tabindex="-1" aria-label="页面内容">
       <LoadingState v-if="loading" />
       <div v-else-if="error" class="error-state" role="alert">
         <Info />
@@ -578,8 +549,7 @@ onUnmounted(() => {
         <p>读取失败时不会覆盖已有课表。请检查浏览器存储权限后重试。</p>
         <button class="primary" @click="load">重试</button>
       </div>
-      <Transition v-else name="page" mode="out-in"
-        ><div :key="page" class="page-content">
+      <div v-else class="page-content">
           <template v-if="page === 'home'">
             <SchoolConnection compact @connected="move('home')" />
             <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSnapshot.tasks.filter(t=>!t.completed).length} 项待办`:'待办尚未读取'}} · 汇总课程和考试</small></span><ChevronRight :size="18"/></button>
@@ -654,17 +624,11 @@ onUnmounted(() => {
                 "
               />
             </div>
-            <SectionHeader title="快捷入口" meta="教务常用" />
+            <SectionHeader title="教务速览" meta="成绩与考试" />
             <div class="quick-grid home-quick">
               <QuickAction
                 v-for="e in [
-                  ...entries.slice(0, 3),
-                  {
-                    id: 'calendar',
-                    title: '校历',
-                    subtitle: '学期安排',
-                    icon: LibraryBig,
-                  },
+                  ...entries.slice(1, 3),
                 ]"
                 :key="e.id"
                 :title="e.title"
@@ -716,26 +680,10 @@ onUnmounted(() => {
             <SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
             <template v-else-if="section === 'overview'">
               <SchoolConnection compact />
-              <button class="secondary full" @click="manage()">
-                管理个人课表 ·
-                {{ schedule.mode === "demo" ? "未设置个人课程" : "本机已保存" }}
-              </button>
-              <SectionHeader title="教学管理" meta="3 项" /><ServiceGroup
-                :items="teaching"
-                @select="go"
-              />
-              <SectionHeader title="学业与日程" meta="3 项" /><ServiceGroup
-                :items="planning"
-                @select="go"
-              />
-              <SectionHeader
-                title="校园教务入口"
-                meta="官方外链"
-              /><ServiceGroup :items="official" @select="go" />
-
+              <SectionHeader title="教务服务" meta="本人数据"/><ServiceGroup :items="academicServices" @select="go"/>
+              <SectionHeader title="学校服务" meta="官方外链"/><ServiceGroup :items="official" @select="go"/>
             </template>
-            <Transition v-else name="content" mode="out-in"
-              ><AcademicDetail
+            <AcademicDetail v-else
                 :key="
                   section === 'calendar' || section === 'schedule'
                     ? 'schedule-family'
@@ -748,14 +696,11 @@ onUnmounted(() => {
                 :section="section"
                 :data="data"
                 :now="now"
-                :major="prefs.major"
                 @navigate="go"
                 @course="details"
-                @manage="(tab) => manage(undefined, tab)"
                 @create="createCourse"
                 @conflict="showConflicts"
-                :official-has-time-table="!!schoolTerm?.data?.table"
-            /></Transition>
+            />
           </template>
           <template v-else>
             <button class="profile-strip" @click="open('edit')">
@@ -809,10 +754,9 @@ onUnmounted(() => {
             邯郸校园 <span>·</span> 独立开源学生项目
             <span>·</span> 非学校官方应用
           </footer>
-        </div></Transition
-      >
+        </div>
     </main>
-    <div class="navigation-dock" :class="{ 'nav-suspended': !!modal }">
+    <div class="navigation-dock" :inert="!!modal" :class="{ 'nav-suspended': !!modal }">
       <FloatingNavigation :page="page" @navigate="nav" />
     </div>
     <Transition name="toast"
@@ -825,7 +769,6 @@ onUnmounted(() => {
         v-if="modal"
         class="overlay-scrim"
         :class="{
-          drawerOpen: modal === 'drawer',
           editorOpen: modal === 'course-editor',
         }"
         @click.self="requestClose"
@@ -835,7 +778,6 @@ onUnmounted(() => {
           data-overlay
           class="overlay-surface"
           :class="{
-            drawer: modal === 'drawer',
             'editor-fullscreen': modal === 'course-editor',
           }"
           role="dialog"
@@ -843,9 +785,7 @@ onUnmounted(() => {
           :aria-label="
             modal === 'course'
               ? '课程详情'
-              : modal === 'drawer'
-                ? '侧边导航'
-                : '校园助手设置'
+              : '校园助手设置'
           "
         >
           <div class="sheet-grip" aria-hidden="true" />
@@ -856,35 +796,8 @@ onUnmounted(() => {
           >
             <X :size="22" />
           </button>
-          <template v-if="modal === 'drawer'"
-            ><div class="drawer-brand">
-              <span class="brand-mark"><GraduationCap :size="25" /></span
-              ><strong>邯郸校园</strong><span>v{{appVersion}}</span>
-            </div>
-            <button class="drawer-profile" @click="move('profile')">
-              <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
-              ><span
-                ><strong>{{ academicCache.profile.data?.name || prefs.name }}</strong
-                ><small>{{ academicCache.profile.data?.major || prefs.major }}</small></span
-              ><ChevronRight :size="17" /></button
-            ><SectionHeader title="我的校园" /><ServiceGroup
-              :items="[
-                { id: 'home', title: '今日', icon: House },
-                { id: 'academic', title: '教务中心', icon: BookOpen },
-                { id: 'profile', title: '个人设置', icon: UserRound },
-              ]"
-              @select="(id) => nav(id as Page)"
-            /><SectionHeader title="项目" /><ServiceGroup
-              :items="about.slice(1, 3)"
-            /><button class="drawer-privacy" @click="open('privacy')">
-              <ShieldCheck :size="17" />本机存储 · 隐私说明
-            </button>
-            <p class="footnote">
-              为同学，由同学。<br />只保留校园里真正需要的信息。
-            </p></template
-          >
           <CourseEditor
-            v-else-if="modal === 'course-editor'"
+            v-if="modal === 'course-editor'"
             ref="editorRef"
             :course="editorCourse"
             :preset="editorPreset"
