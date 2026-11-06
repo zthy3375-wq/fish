@@ -159,7 +159,7 @@ const localData = computed<AcademicData>(() => ({
   courses:
     schedule.value.mode === "demo"
       ? mockData.value.courses
-      : flatten(schedule.value.courses, schedule.value.activeSemesterId),
+      : flatten(schedule.value.courses, schedule.value.activeSemesterId, tableForSemester(schedule.value)),
   source:
     schedule.value.mode === "demo"
       ? "mock"
