@@ -19,7 +19,6 @@
 | 考试 | 真实查询、独立更新时间、无安排空状态 | 手机查询已完成；尚无非空考试样本验收 |
 | 个人事项 | 独立管理、CSV/XLSX/ICS 导入、备份恢复 | 原有功能保留；不覆盖学校课程 |
 | 首页与设置 | 下一节课、今日课程、近期考试、四导航、主题与紧凑布局 | Web/Android 已实现 |
-| iOS | 保留 Capacitor 工程 | Swift 学校会话尚未实现，不宣称支持学校直连 |
 
 学校第一教学周日期仍来自本机配置，不能视为已验证的官方校历。当前结论只覆盖本人设备和本人账号，尚不代表全校兼容性验收。
 
@@ -32,21 +31,9 @@
 APK 使用测试签名。覆盖安装优先；签名冲突时先保留原应用和备份，不默认卸载。旧诊断包 `org.handancampus.app.diagnostic` 与当前包 `org.handancampus.app` 的数据彼此隔离。
 
 
-## iPhone 免费安装（PWA，无需 App Store）
+## 开发范围
 
-网页版本支持安装到 iPhone 主屏幕，不需要苹果开发者会员、不需要 IPA 或 TestFlight。用户需要联网访问部署在 **HTTPS** 域名上的网站，不能直接从 GitHub 源码仓库页面安装。
-
-**免费部署到 GitHub Pages（仓库维护者操作）：**
-
-1. 打开仓库 `Settings → Pages`，将 `Build and deployment → Source` 设置为 **GitHub Actions**。
-2. 在 `Actions → Deploy iOS PWA to GitHub Pages` 中手动执行，或等待 main 分支更新后自动部署。
-3. 只有部署流程显示 **success** 后，再访问 [GitHub Pages 测试地址](https://zthy3375-wq.github.io/fish/)。此地址仅是预期地址，未成功部署前不可视为已上线。
-4. 用 iPhone **Safari** 打开该地址，点「分享」→「添加到主屏幕」→ 勾选/开启「作为网页 App 打开」（如有）→「添加」。
-5. 桌面出现「邯郸校园」图标后，从图标启动应用。应用内「我的」→「添加到手机桌面」可再次查看教程。
-
-项目使用 `public/manifest.webmanifest`、192/512 PNG 图标、iOS Home Screen meta 标签以及基于部署子路径的 Service Worker；构建产物是 `dist/`。如选择 Cloudflare Pages / Netlify 等根路径托管，使用 `npm run build`，发布目录同为 `dist`。GitHub Pages 专用构建使用 `GITHUB_PAGES=true npm run build`，确保静态资源与离线缓存路径为 `/fish/`。
-
-**特别提醒：当前 PWA 不支持教务系统原生登录和自动同步。** 现有真实教务会话由 Android Kotlin 插件执行，浏览器/iPhone 没有等效实现；网页版目前能使用个人课表、导入、备份和已实现的界面功能。为避免错误预期，网页端不展示无效的学校连接操作。不得要求用户把学校账号密码输入第三方页面，后续要实现自动同步应先完成授权、合规、会话和跨域方案。个人课程主要保存在本机，清理 Safari 数据或卸载桌面网页 App 可能造成数据丢失，请提前导出备份。GitHub Pages 面向中国大陆学生的访问质量需实测，正式推广前还应处理适用的部署、备案及隐私合规要求。
+当前只维护 Android 客户端，Web 用于开发预览和本机课表功能。空闲教室功能已取消，不再提供入口或后台查询。
 
 ## 本地开发
 
@@ -65,7 +52,7 @@ npm run android:check
 npm run android:apk
 ```
 
-以上 npm 命令会自动选择 Windows/Linux 的 Gradle Wrapper。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。iOS 编译需要 macOS/Xcode，并有独立的手动 CI；编译成功也不等于已实现学校会话。
+以上 npm 命令会自动选择 Windows/Linux 的 Gradle Wrapper。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。
 
 ## 架构与数据
 

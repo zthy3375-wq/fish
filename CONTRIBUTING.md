@@ -1,6 +1,6 @@
 # 参与贡献
 
-请先阅读 [README](README.md) 与 [当前状态](docs/STATUS.md)。当前范围是首页、课表、教务和个人设置。
+请先阅读 [README](README.md) 与 [当前状态](docs/STATUS.md)。当前仅维护 Android；范围是首页、课表、教务和个人设置。空闲教室已取消，不新增其他原生平台。
 
 ## 开始开发
 

@@ -816,7 +816,7 @@ button:disabled {
     transform: none;
   }
 }
-/* Avoid focus zoom on iOS while keeping pinch zoom available. */
+/* Keep form controls readable while allowing pinch zoom. */
 .course-editor-page input,
 .course-editor-page select,
 .course-editor-page textarea,

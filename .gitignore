@@ -6,12 +6,9 @@ dist/
 !.env.example
 android/.gradle/
 android/local.properties
-ios/App/Pods/
 public/__qa.html
 *.jks
 *.keystore
-*.p12
-*.mobileprovision
 public/__before/
 __qa/
 android/app/build/
@@ -31,4 +28,3 @@ playwright-report/
 test-results/
 .idea/
 .DS_Store
-ios/App/App/DerivedData/

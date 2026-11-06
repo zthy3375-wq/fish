@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {version as appVersion} from '../package.json';
 import {
   ref,
   computed,
@@ -105,9 +106,6 @@ const {
   canBack,
   setOverlayCloseGuard,
 } = useNavigation();
-const isWeb = !Capacitor.isNativePlatform();
-const isIos = /iPad|iPhone|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & {standalone?: boolean}).standalone === true;
 const prefs = ref(loadPreferences()),
   draft = ref({ name: "", major: "" }),
   selected = ref<Course>(),
@@ -333,7 +331,7 @@ const about = [
     icon: MessageSquare,
     href: "https://github.com/zthy3375-wq/fish/issues",
   },
-  { id: "about", title: "版本信息", subtitle: "邯郸校园 · v0.5.0", icon: Info },
+  { id: "about", title: "版本信息", subtitle: `邯郸校园 · v${appVersion}`, icon: Info },
 ];
 const sectionNames: Record<string, string> = {
   overview: "教务中心",
@@ -785,9 +783,6 @@ onUnmounted(() => {
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
             <SchoolConnection />
-            <template v-if="isWeb"><SectionHeader title="安装应用" />
-              <section class="settings-group"><button class="service-row" @click="open('install')"><Download class="row-icon" :size="21" /><span class="row-copy"><strong>添加到手机桌面</strong><small>{{isStandalone ? "已作为桌面应用运行" : "免费安装，无需 App Store"}}</small></span><ChevronRight class="row-chevron" :size="16" /></button></section>
-            </template>
             <SectionHeader title="外观设置" />
             <section class="settings-group">
               <div class="theme-row">
@@ -880,7 +875,7 @@ onUnmounted(() => {
           <template v-if="modal === 'drawer'"
             ><div class="drawer-brand">
               <span class="brand-mark"><GraduationCap :size="25" /></span
-              ><strong>邯郸校园</strong><span>v0.5.0</span>
+              ><strong>邯郸校园</strong><span>v{{appVersion}}</span>
             </div>
             <button class="drawer-profile" @click="move('profile')">
               <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
@@ -1043,7 +1038,7 @@ onUnmounted(() => {
               ><article class="notice">
                 <Info :size="20" />
                 <div>
-                  <h3>欢迎使用邯郸校园 v0.5</h3>
+                  <h3>欢迎使用邯郸校园</h3>
                   <p>
                     连接学校后自动同步，离线时可查看上次数据。公开通知请前往学校官网查看。
                   </p>
@@ -1111,22 +1106,6 @@ onUnmounted(() => {
               ><button class="primary" @click="reset">确认重置</button>
             </div></template
           >
-          <template v-else-if="modal === 'install'"
-            ><Download :size="27" />
-            <h2>安装邯郸校园</h2>
-            <p v-if="isStandalone">当前已从主屏幕以独立应用方式打开，无需重复安装。</p>
-            <template v-else-if="isIos">
-              <p>1. 请使用 iPhone 的 Safari 浏览器打开当前网站。</p>
-              <p>2. 点击「分享」，选择「添加到主屏幕」。</p>
-              <p>3. 如果出现「作为网页 App 打开」，请开启，然后点击「添加」。</p>
-            </template>
-            <template v-else>
-              <p>iPhone：使用 Safari 打开网页，点击「分享」→「添加到主屏幕」，并启用「作为网页 App 打开」。</p>
-              <p>Android：使用 Chrome 打开网页，在浏览器菜单中选择「安装应用」或「添加到主屏幕」。</p>
-            </template>
-            <p>安装免费且不经过 App Store。当前网页版支持个人课程和导入，但官方教务登录与自动同步仍仅支持 Android 原生版。数据主要保存在本机，请定期备份。</p>
-            <button class="primary full" @click="close">我知道了</button></template
-          >
           <template v-else-if="modal === 'privacy'"
             ><ShieldCheck :size="27" />
             <h2>隐私政策</h2>
@@ -1146,7 +1125,7 @@ onUnmounted(() => {
           >
           <template v-else
             ><span class="brand-mark"><GraduationCap :size="27" /></span>
-            <h2>邯郸校园 <small>v0.5.0</small></h2>
+            <h2>邯郸校园 <small>v{{appVersion}}</small></h2>
             <p>
               为同学，由同学。独立开源的学生校园助手，未获邯郸学院官方认证或合作授权。
             </p>

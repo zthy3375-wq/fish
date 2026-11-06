@@ -38,6 +38,12 @@ try{
   await page.getByText('人工 UI 链路成绩',{exact:true}).waitFor();
   assert(await page.getByText('优秀',{exact:true}).count()===1,`${width}: native grade text displayed without fake score`);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: no horizontal overflow`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
+  await page.getByRole('heading',{name:'今日',exact:true}).waitFor();
+  assert(await page.getByRole('button',{name:/空闲教室/}).count()===0,`${width}: retired classroom feature absent`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+  await page.getByText('外观设置',{exact:true}).waitFor();
+  assert(await page.getByText(/iPhone|iOS|App Store|添加到手机桌面/).count()===0,`${width}: no retired platform installation flow`);
   assert(!errors.length,`${width}: no runtime errors`);
   await page.screenshot({path:path.join(output,`records-${width}.png`),fullPage:true});await context.close();
  }

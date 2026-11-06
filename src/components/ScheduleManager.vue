@@ -496,7 +496,7 @@ async function clearData() {
         ><h3>课表数据管理</h3>
         <p class="inline-note">{{ offlineStatus }}</p>
         <p class="muted">
-          版本化 JSON 包含所有学期、作息方案与个人课程，可在 Android、iOS 和 Web
+          版本化 JSON 包含所有学期、作息方案与个人课程，可在 Android 和 Web
           之间恢复。不包含个人资料和主题。清除站点数据或卸载 App
           会丢失本机课表，请定期备份。
         </p>
@@ -592,7 +592,7 @@ async function clearData() {
         ><h3>课程提醒</h3>
         <p class="muted">{{ reminderStatus }}</p>
         <p v-if="!Capacitor.isNativePlatform()" class="inline-note">
-          Web 不提供可靠后台提醒。课表仍可离线查看；请在打包后的 Android / iOS
+          Web 不提供可靠后台提醒。课表仍可离线查看；请在打包后的 Android
           App 开启提醒。
         </p>
         <template v-else
