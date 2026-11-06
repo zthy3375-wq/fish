@@ -6,7 +6,7 @@ import {chromium} from 'playwright';
 const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,{recursive:true});
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
 await new Promise(resolve=>server.listen(4175,'127.0.0.1',resolve));
-const browser=await chromium.launch({args:['--no-sandbox']});const checks=[];
+const browser=await chromium.launch({args:['--no-sandbox']});const checks=[];let activePage;
 const syntheticGrades=JSON.parse(await readFile('tests/fixtures/grades/synthetic.json','utf8'));
 function assert(value,label){if(!value)throw Error(label);checks.push(label)}
 try{
@@ -28,9 +28,10 @@ try{
     }return {};
    }};
   },syntheticGrades);
-  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await context.newPage(),errors=[];activePage=page;page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:4175');
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'教务',exact:true}).click();
+  await page.getByRole('button',{name:/管理个人课表/}).waitFor();
   await page.getByRole('button',{name:/成绩分析/}).click();
   await page.getByText('还没有本人已同步成绩',{exact:true}).waitFor();
   assert(await page.locator('.ga-stats').count()===0,`${width}: no invented statistics before school login`);
@@ -42,12 +43,17 @@ try{
   await page.reload();await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   assert(await page.evaluate(()=>!!localStorage.getItem('handan.academic.cache.v050')),`${width}: school cache survives reload`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'教务',exact:true}).click();
+  await page.getByRole('button',{name:/管理个人课表/}).waitFor();
   await page.getByRole('button',{name:/成绩分析/}).first().click();
   await page.locator('.ga-stats').waitFor();
-  assert(await page.locator('.ga-stats strong').nth(0).innerText()==='6',`${width}: distinct course count`);
-  assert(await page.locator('.ga-stats strong').nth(1).innerText()==='70',`${width}: numeric mean excludes levels and repeated attempts`);
-  assert(await page.locator('.ga-stats strong').nth(3).innerText()==='8',`${width}: earned credits count retake once`);
+  assert(await page.locator('.ga-stats strong').nth(0).innerText()==='7',`${width}: distinct course count`);
+  assert(await page.locator('.ga-stats strong').nth(1).innerText()==='75',`${width}: numeric mean excludes levels and repeated attempts`);
+  assert(await page.locator('.ga-stats strong').nth(3).innerText()==='10',`${width}: earned credits count retake once`);
   assert(await page.getByText('1 门曾未通过，已有通过记录。',{exact:true}).count()===1,`${width}: retry success stays separate from failures`);
+  assert((await page.locator('.ga-trend-line').first().getAttribute('points')).split(' ').length===2,`${width}: trend connects available semesters without filling pending values`);
+  await page.getByRole('combobox',{name:'趋势指标',exact:true}).selectOption('gpa');
+  assert(await page.getByRole('img',{name:'学校返回绩点加权趋势',exact:true}).count()===1,`${width}: official course GPA trend selectable`);
+  await page.getByRole('combobox',{name:'趋势指标',exact:true}).selectOption('mean');
   await page.screenshot({path:path.join(output,`grade-overview-${width}.png`),fullPage:true,animations:'disabled'});
   await page.getByRole('button',{name:'筛选成绩 90–100',exact:true}).click();
   assert(await page.locator('.ga-record').count()===1,`${width}: distribution filters actual course records`);
@@ -63,6 +69,8 @@ try{
   await page.getByRole('combobox',{name:'课程性质',exact:true}).selectOption('选修');
   assert(await page.locator('.ga-record').count()===1,`${width}: course category filter`);
   await page.getByRole('button',{name:'重置全部筛选',exact:true}).click();
+  await page.getByRole('combobox',{name:'成绩排序',exact:true}).selectOption('score-asc');
+  assert((await page.locator('.ga-score').first().innerText()).startsWith('40'),`${width}: ascending numeric score sort`);
   await page.getByLabel('搜索成绩课程',{exact:true}).fill('人工数值');
   await page.locator('.ga-record summary').click();
   assert(await page.getByText('ART2',{exact:true}).isVisible(),`${width}: details show school course identity`);
@@ -71,6 +79,7 @@ try{
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'教务',exact:true}).click();
+  await page.getByRole('button',{name:/管理个人课表/}).waitFor();
   await page.getByRole('button',{name:/成绩分析/}).click();
   await page.getByLabel('搜索成绩课程',{exact:true}).waitFor();
   assert(await page.getByLabel('搜索成绩课程',{exact:true}).inputValue()==='人工数值',`${width}: filters survive navigation`);
@@ -100,4 +109,4 @@ try{
   await page.screenshot({path:path.join(output,`records-${width}.png`),fullPage:true,animations:'disabled'});await context.close();
  }
  await writeFile(path.join(output,'checks.json'),JSON.stringify({source:'synthetic-native-ui-test',schoolAccountVerified:false,checks},null,2));console.log(checks.join('\n'));
-}finally{await browser.close();server.close()}
+}catch(error){if(activePage&&!activePage.isClosed()){await activePage.screenshot({path:path.join(output,'failure.png'),fullPage:true,animations:'disabled'});await writeFile(path.join(output,'failure.txt'),await activePage.locator('body').innerText());console.error(await activePage.locator('body').innerText())}throw error}finally{await browser.close();server.close()}

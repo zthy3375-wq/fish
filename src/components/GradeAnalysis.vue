@@ -12,6 +12,7 @@ const rows=computed(()=>filterGradeRecords(report.value.records,f));
 const distribution=computed(()=>gradeBands.map(([id,label])=>({id,label,count:report.value.records.filter(r=>(f.term==='all'||r.termLabel===f.term)&&bandOf(r)===id).length})));
 const distributionTotal=computed(()=>distribution.value.reduce((s,b)=>s+b.count,0));
 const tab=computed(()=>props.center?'study':gradeView.tab);
+const activeFilters=computed(()=>[f.query,f.kind==='all'?'':f.kind,f.band==='all'?'':f.band,f.state==='all'?'':f.state].filter(Boolean).length);
 const metric=ref<'mean'|'gpa'>('mean'),showFilters=ref(false);
 const dated=computed(()=>report.value.semesters.filter(t=>t.order!==null));
 const maxY=computed(()=>metric.value==='mean'?100:Math.max(5,...dated.value.map(t=>t.gpa??0)));
@@ -41,7 +42,7 @@ const groupFor=(r:GradeRecord)=>report.value.groups.find(g=>g.records.some(x=>x.
   <div v-if="!report.records.length" class="ga-empty"><GraduationCap :size="30"/><h3>{{academicCache.grades.updatedAt?'学校暂无可分析的成绩':'还没有本人已同步成绩'}}</h3><p>首次连接后自动读取。不会使用演示成绩或虚构学分。</p></div>
   <template v-else>
    <div v-if="!center" class="ga-tabs" role="tablist" aria-label="成绩视图"><button v-for="t in [['overview','分析概览'],['details','成绩明细']]" :key="t[0]" role="tab" :aria-selected="tab===t[0]" @click="gradeView.tab=t[0]">{{t[1]}}</button></div>
-   <div class="ga-toolbar"><select v-model="f.term" aria-label="成绩学期"><option value="all">全部已同步学期</option><option v-for="t in report.terms" :key="t" :value="t">{{t}}</option></select><button v-if="!center" class="secondary" :aria-expanded="showFilters" @click="showFilters=!showFilters;gradeView.tab='details'"><Filter :size="15"/>筛选</button></div>
+   <div class="ga-toolbar"><select v-model="f.term" aria-label="成绩学期"><option value="all">全部已同步学期</option><option v-for="t in report.terms" :key="t" :value="t">{{t}}</option></select><button v-if="!center" class="secondary" aria-label="筛选" :aria-expanded="showFilters" @click="showFilters=!showFilters;gradeView.tab='details'"><Filter :size="15"/>筛选<span v-if="activeFilters">({{activeFilters}})</span></button></div>
    <div v-if="center||tab==='details'" class="ga-search"><input v-model="f.query" aria-label="搜索成绩课程" placeholder="搜索课程名称"/><span>{{rows.length}} 条</span></div>
    <div v-if="center||(tab==='details'&&showFilters)" class="ga-filters">
     <p class="ga-filter-note">筛选仅作用于下方明细，概览统计按所选学期展示。</p>
