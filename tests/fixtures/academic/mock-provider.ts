@@ -1,4 +1,4 @@
-import type { AcademicData, Course } from '../domain/academic';
+import type { AcademicData, Course } from '../../../src/domain/academic';
 const all=Array.from({length:18},(_,i)=>i+1);
 const c=(id:string,name:string,day:number,start:string,end:string,period:string,room:string,color:string,teacher:string,weeks=all):Course=>({id,name,day,start,end,period,room,color,teacher,weeks});
 const data:AcademicData={source:'mock',courses:[

@@ -1,6 +1,6 @@
 import { describe,it,expect } from 'vitest';
 import { coursesForDay,nextCourse,weightedAverage,teachingWeek,weekDate } from '../src/domain/academic';
-import {mockAcademicProvider} from '../src/services/academic';
+import {mockAcademicProvider} from './fixtures/academic/mock-provider';
 import {loadPreferences,savePreferences,defaults} from '../src/services/preferences';
 describe('教学数据与时间边界',()=>{
  it('模拟课表按时间排序且周末为空',async()=>{const d=await mockAcademicProvider.load();const list=coursesForDay(d.courses,4,9);expect(list.map(c=>c.start)).toEqual(['08:00','10:00','14:00']);expect(coursesForDay(d.courses,7,9)).toHaveLength(0)});

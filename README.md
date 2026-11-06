@@ -4,7 +4,7 @@
 
 **当前可用测试基线：v0.5.0.5（Android versionCode 55）。** 2026-11-06，项目所有者已在本人手机上确认：官方登录后自动同步真实课表，关闭重开仍可查看，当前会话无需重新登录。
 
-> 当前成果位于 [`feature/academic-integrated-v050`](https://github.com/zthy3375-wq/fish/tree/feature/academic-integrated-v050)，由 [PR #5](https://github.com/zthy3375-wq/fish/pull/5) 汇总，尚未合并 main。历史网页版与 main 不代表此测试版功能。
+> [PR #5](https://github.com/zthy3375-wq/fish/pull/5) 已合并到 main。后续开发从 main 建立短期分支，通过 PR 检查后合并；历史网页版不代表当前 Android 功能。
 
 [功能与验证状态](docs/STATUS.md) · [文档导航](docs/README.md) · [版本记录](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md)
 
@@ -15,7 +15,7 @@
 | 学校连接 | 官方网页登录、原生加密保存会话、复用认证、退出清理 | 本人 Android 设备的登录与重开已确认；长期有效期由学校决定 |
 | 课表 | 自动查询、日/周展示、多安排与单双周、缓存、刷新、失败保留旧数据 | 真实同步与关闭重开查看已确认；完整性持续核对 |
 | 实践课 | 按学校返回的教学周单独显示 | 网页结构与解析已检查；具体显示持续核对 |
-| 成绩 | 真实查询、学期筛选、等级成绩、学校绩点、适用时的数值加权 | 手机曾显示92门记录；不是175项单测生成的数据 |
+| 成绩 | 真实查询、学期筛选、等级成绩、学校绩点、适用时的数值加权 | 手机曾显示92门记录；非演示数据 |
 | 考试 | 真实查询、独立更新时间、无安排空状态 | 手机查询已完成；尚无非空考试样本验收 |
 | 个人事项 | 独立管理、CSV/XLSX/ICS 导入、备份恢复 | 原有功能保留；不覆盖学校课程 |
 | 首页与设置 | 下一节课、今日课程、近期考试、四导航、主题与紧凑布局 | Web/Android 已实现 |
@@ -38,20 +38,17 @@ Node.js 22+；依赖以 `package-lock.json` 为准。
 ```sh
 npm ci
 npm run dev
-npm test
-npm run build
+npm run check
 ```
 
 Android 需要完整 JDK 21（含 javac）、Android SDK 35 与 build-tools 35.0.0：
 
 ```sh
-npm run build
-npx cap sync android
-cd android
-./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest assembleDebug
+npm run android:check
+npm run android:apk
 ```
 
-Windows 使用 `gradlew.bat`。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。iOS 编译需要 macOS/Xcode，并有独立的手动 CI；编译成功也不等于已实现学校会话。
+以上 npm 命令会自动选择 Windows/Linux 的 Gradle Wrapper。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。iOS 编译需要 macOS/Xcode，并有独立的手动 CI；编译成功也不等于已实现学校会话。
 
 ## 架构与数据
 

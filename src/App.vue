@@ -6,7 +6,6 @@ import {
   onMounted,
   onUnmounted,
   nextTick,
-  defineAsyncComponent,
 } from "vue";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { App as NativeApp } from "@capacitor/app";
@@ -58,7 +57,7 @@ import {
 } from "./domain/presentation";
 import ScheduleManager from "./components/ScheduleManager.vue";
 import CourseEditor from "./components/CourseEditor.vue";
-import { isSchoolPageSemester } from "./services/school-page-import";
+import { isSchoolPageSemester } from "./services/legacy-school-semester";
 import { upsertCourse } from "./services/course-management";
 import {
   schedule,
@@ -70,8 +69,6 @@ import {
 } from "./composables/schedule";
 import {
   flatten,
-  defaultState,
-  standardTimeTable,
   tableForSemester,
   type CellPreset,
   type ManagedCourse,
@@ -93,16 +90,7 @@ import SectionHeader from "./components/SectionHeader.vue";
 import QuickAction from "./components/QuickAction.vue";
 import ServiceGroup from "./components/ServiceGroup.vue";
 import CourseCard from "./components/CourseCard.vue";
-import AcademicSummary from "./components/AcademicSummary.vue";
 import AcademicDetail from "./components/AcademicDetail.vue";
-import {
-  DIAGNOSTIC_BUILD,
-  diagnosticAvailability,
-} from "./services/academic-diagnostics";
-const AcademicDiagnostics = DIAGNOSTIC_BUILD
-  ? defineAsyncComponent(() => import("./components/AcademicDiagnostics.vue"))
-  : null;
-const diagnosticsEnabled = ref(false);
 import EmptyState from "./components/EmptyState.vue";
 import LoadingState from "./components/LoadingState.vue";
 import SettingsRow from "./components/SettingsRow.vue";
@@ -120,20 +108,11 @@ const {
 const prefs = ref(loadPreferences()),
   draft = ref({ name: "", major: "" }),
   selected = ref<Course>(),
-  mockData = ref<AcademicData>({
-    courses: [],
-    grades: [],
-    exams: [],
-    source: "mock",
-  }),
   loading = ref(true),
   error = ref(""),
   toast = ref(""),
   read = ref(false),
   now = ref(campusNow());
-function showLocal() {}
-function onOfficialSync() {}
-function onOfficialDisconnect() {}
 const localSemester = personalSemester;
 const localTable = computed(() => tableForSemester(schedule.value));
 const officialActive = computed(() => !!schoolTerm.value?.data);
@@ -157,7 +136,6 @@ const editorRef = ref<InstanceType<typeof CourseEditor>>(),
   detailError = ref(""),
   conflictCourses = ref<Course[]>([]);
 async function createCourse(preset?: CellPreset) {
-  showLocal();
   if (schoolTerm.value?.data) {
     const school=schoolTerm.value.data;
     const match=schedule.value.semesters.find(s=>s.academicYear.replace(/[–—]/g,'-')===school.semester.academicYear.replace(/[–—]/g,'-')&&s.season===school.semester.season&&!isSchoolPageSemester(s.id));
@@ -176,7 +154,6 @@ async function createCourse(preset?: CellPreset) {
   open("course-editor");
 }
 function openEditor(id: string) {
-  showLocal();
   const c = schedule.value.courses.find((c) => c.id === id);
   if (!c) {
     notify("课程不存在或已被删除");
@@ -188,7 +165,6 @@ function openEditor(id: string) {
   open("course-editor");
 }
 function manage(id?: string, initial = "courses") {
-  showLocal();
   if (id) {
     openEditor(id);
     return;
@@ -201,8 +177,7 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
   editorError.value = "";
   try {
     await changeSchedule((s) => upsertCourse(s, course, allow));
-    showLocal();
-    close();
+      close();
     notify("课程已保存，首页与课表已同步");
   } catch (e) {
     editorError.value = (e as Error).message;
@@ -365,7 +340,6 @@ const sectionNames: Record<string, string> = {
   study: "学业信息",
   calendar: "学期校历",
   official: "官方教务",
-  diagnostics: "教务诊断",
 };
 const title = computed(() =>
   page.value === "home"
@@ -396,7 +370,6 @@ watch(data, (d) => {
   }
 });
 function go(id: string) {
-  if (id === "diagnostics" && !diagnosticsEnabled.value) return;
   move(id === "schedule" ? "schedule" : "academic", id);
 }
 function nav(p: Page) { move(p, p === "schedule" ? "schedule" : "overview"); }
@@ -541,9 +514,6 @@ function viewportChange() {
   );
 }
 onMounted(async () => {
-  void diagnosticAvailability().then((enabled) => {
-    if (!disposed) diagnosticsEnabled.value = enabled;
-  });
   load();
   clockTimer = setInterval(() => (now.value = campusNow()), 30000);
   media.addEventListener("change", systemChange);
@@ -749,18 +719,6 @@ onUnmounted(() => {
           </template>
           <template v-else-if="page === 'academic' || page === 'schedule'">
             <SchoolAcademicRecords v-if="['grades','exams','study','official'].includes(section)" :section="section" />
-            <AcademicDiagnostics
-              v-else-if="
-                section === 'diagnostics' &&
-                diagnosticsEnabled &&
-                AcademicDiagnostics
-              "
-              @back="go('official')"
-              @saved="
-                showLocal();
-                go('schedule');
-              "
-            />
             <template v-else-if="section === 'overview'">
               <SchoolConnection compact />
               <button class="secondary full" @click="manage()">
@@ -812,11 +770,6 @@ onUnmounted(() => {
                 @create="createCourse"
                 @conflict="showConflicts"
                 :official-has-time-table="!!schoolTerm?.data?.table"
-                :diagnostics-enabled="diagnosticsEnabled"
-                :school-page-import="data.source === 'school-import'"
-                @official-sync="onOfficialSync"
-                @official-disconnect="onOfficialDisconnect"
-                @local="showLocal"
             /></Transition>
           </template>
           <template v-else>

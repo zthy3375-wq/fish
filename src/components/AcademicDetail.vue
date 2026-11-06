@@ -35,8 +35,6 @@ const props = defineProps<{
   semester: Semester;
   mode: "demo" | "personal" | "official";
   officialHasTimeTable?: boolean;
-  diagnosticsEnabled?: boolean;
-  schoolPageImport?: boolean;
   section: string;
   data: AcademicData;
   now: Date;
@@ -48,9 +46,6 @@ const emit = defineEmits<{
   manage: [tab?: string];
   create: [preset?: CellPreset];
   conflict: [courses: Course[]];
-  officialSync: [];
-  officialDisconnect: [];
-  local: [];
 }>();
 const week = ref(
     Math.max(
@@ -62,23 +57,11 @@ const week = ref(
     ),
   ),
   day = ref(dayNumber(props.now)),
-  view = ref("week"),
-  query = ref(""),
-  term = ref("all");
+  view = ref("week");
 const actualWeek = computed(() => currentWeek(props.now, props.semester));
 const prefs = computed(() => ({ major: props.major }));
 const selectedCourses = computed(() =>
   coursesForDay(props.data.courses, day.value, week.value),
-);
-const filteredGrades = computed(() =>
-  props.data.grades.filter(
-    (g) =>
-      (term.value === "all" || g.term === term.value) &&
-      g.name.includes(query.value),
-  ),
-);
-const average = computed(() =>
-  weightedAverage(filteredGrades.value).toFixed(1),
 );
 const isToday = computed(
   () => week.value === actualWeek.value && day.value === dayNumber(props.now),
@@ -136,10 +119,6 @@ function touchEnd(e: TouchEvent) {
     @touchstart.passive="touchStart"
     @touchend.passive="touchEnd"
   >
-    <p v-if="schoolPageImport" class="inline-note">
-      学校网页导入 · 已保存到独立本机学期，可离线查看。不是学校授权 API
-      同步；本机修改不会回写学校。
-    </p>
     <div class="schedule-actions"><button class="primary" @click="emit('create')">＋ 添加个人事项</button><button class="secondary" @click="emit('manage','courses')">个人课表与备份</button><button class="secondary" @click="emit('navigate','official')">学校账号</button></div>
     <div class="schedule-toolbar">
       <div class="segmented" aria-label="课表视图">
