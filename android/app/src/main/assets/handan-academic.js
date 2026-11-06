@@ -3,7 +3,7 @@ async function(operation, requestedTerm) {
   // Compiled, same-origin read-only adapter. Candidate URLs are not asserted to be Handan contracts.
   const origin='https://jwgl.hdc.edu.cn';
   const result={session:'valid',modules:{},verification:'device-validation-required'};
-  const controlled=new Set(['NETWORK','HTTP','SCHEMA','EMPTY','TERM','EXPIRED','LIMIT']);
+  const controlled=new Set(['NETWORK','HTTP','SCHEMA','EMPTY','TERM','EXPIRED','LIMIT','TIMETABLE_JSON','COURSE_FIELDS']);
   const text=(v,max=150)=>typeof v==='string'?v.trim().slice(0,max):'';
   function error(code){throw new Error(code)}
   async function request(path,form){
@@ -53,14 +53,14 @@ async function(operation, requestedTerm) {
   function rows(raw){
     if(!Array.isArray(raw)||raw.length>500)error('SCHEMA');
     return raw.map(r=>{
-      if(!r||!r.kcmc||!/^\d{1,2}(?:-\d{1,2})?$/.test(String(r.jcs))||!/^[1-7]$/.test(String(r.xqj))||!r.zcd)error('SCHEMA');
-      return {kcmc:text(r.kcmc),xm:text(r.xm,100),cdmc:text(r.cdmc),xqj:String(r.xqj),jcs:String(r.jcs),zcd:text(r.zcd,250)};
+      if(!r||!r.kcmc||!/^\d{1,2}(?:-\d{1,2})?(?:节)?$/.test(String(r.jcs).trim())||!/^[1-7]$/.test(String(r.xqj))||!r.zcd)error('COURSE_FIELDS');
+      return {kcmc:text(r.kcmc),xm:text(r.xm,100),cdmc:text(r.cdmc),xqj:String(r.xqj),jcs:String(r.jcs).trim().replace(/节$/,''),zcd:text(r.zcd,250)};
     });
   }
   async function timetable(){
     const t=await context();
     // This is the standard V9 query form; success requires the actual kbList schema.
-    const path=new URL(timetablePage,origin);path.searchParams.set('gnmkdm',path.searchParams.get('gnmkdm')||'N253508');
+    const path=new URL(timetablePage,origin);path.searchParams.delete('layout');path.searchParams.delete('su');path.pathname=path.pathname.replace(/xskbcx_cxXsgrkbIndex\.html$/, 'xskbcx_cxXsgrkb.html');path.searchParams.set('gnmkdm',path.searchParams.get('gnmkdm')||'N253508');
     let raw;
     try{raw=await json(path.pathname+path.search,{...t,kzlx:'ck',xsdm:'',kclbdm:''})}
     catch(e){
@@ -73,10 +73,13 @@ async function(operation, requestedTerm) {
         if(!m)error('SCHEMA');
         list.push({kcmc:text(c.querySelector('.title')?.textContent).replace(/[●★○]/g,''),xm:text(p[2]?.querySelector('font')?.textContent),cdmc:text(p[1]?.querySelector('font')?.textContent),xqj:cell.id.split('-')[0],jcs:m[1],zcd:m[2]});
       }
-      if(!list.length)throw e;raw={kbList:list};
+      if(!list.length){if(e.message==='SCHEMA')error('TIMETABLE_JSON');throw e;}raw={kbList:list};
     }
-    if(!raw||!Array.isArray(raw.kbList))error('SCHEMA');
+    if(typeof raw==='string'){try{raw=JSON.parse(raw)}catch{error('TIMETABLE_JSON')}}
+    if(!raw||!Array.isArray(raw.kbList))error('TIMETABLE_JSON');
     if(raw.xsxx?.XNM&&String(raw.xsxx.XNM)!==t.xnm||raw.xsxx?.XQM&&String(raw.xsxx.XQM)!==t.xqm)error('TERM');
+    const xs=raw.xsxx||{};
+    result.modules.profile={status:'ok',data:{name:text(xs.XM||xs.xm,60),major:text(xs.ZYMC||xs.zymc),className:text(xs.BJMC||xs.bjmc),year:text(xs.NJDM_ID||xs.njdm_id,10)},updatedAt:new Date().toISOString()};
     const kbList=rows(raw.kbList),practice=[];
     if(raw.sjkList!=null&&!Array.isArray(raw.sjkList))error('SCHEMA');
     for(const p of raw.sjkList||[]){
@@ -85,8 +88,6 @@ async function(operation, requestedTerm) {
       else error('SCHEMA');
     }
     if(!kbList.length&&!practice.length)error('EMPTY');
-    const xs=raw.xsxx||{};
-    result.modules.profile={status:'ok',data:{name:text(xs.XM||xs.xm,60),major:text(xs.ZYMC||xs.zymc),className:text(xs.BJMC||xs.bjmc),year:text(xs.NJDM_ID||xs.njdm_id,10)},updatedAt:new Date().toISOString()};
     let periods;
     try{
       const rjc=await json('/kbcx/xskbcx_cxRjc.html?gnmkdm='+encodeURIComponent(path.searchParams.get('gnmkdm')),{...t,xqh_id:doc.querySelector('#xqh_id')?.value||''});

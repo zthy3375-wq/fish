@@ -13,7 +13,7 @@ export const emptyModule=<T>():CachedModule<T>=>({data:null,updatedAt:null,error
 export const emptyAcademicCache=():AcademicCache=>({version:1,connected:false,session:'disconnected',selectedTerm:null,lastError:null,terms:{},semesters:emptyModule(),profile:emptyModule(),grades:emptyModule(),exams:emptyModule()});
 export const termKey=(t:SchoolTerm)=>`${t.xnm}-${t.xqm}`;
 export function validTerm(t:SchoolTerm){if(!t||!/^20\d{2}$/.test(t.xnm)||!['3','12'].includes(t.xqm))throw Error('TERM');return t}
-const messages:Record<string,string>={EMPTY:'学校本次未返回课程，保留上次课表',TERM:'未能确认学校当前学期',SCHEMA:'学校数据格式需要适配',NETWORK:'学校网络暂不可用',HTTP:'学校请求未成功，尚未取得课表',EXPIRED:'登录已过期，请重新连接',LIMIT:'学校返回的数据超过处理范围'};
+const messages:Record<string,string>={EMPTY:'学校本次未返回课程，保留上次课表',TERM:'未能确认学校当前学期',SCHEMA:'学校数据格式需要适配',NETWORK:'学校网络暂不可用',TIMETABLE_JSON:'课表查询未返回课程 JSON（成绩连接正常时仍可能是课表请求参数问题）',COURSE_FIELDS:'课表已返回，但课程的星期、节次或周次字段尚不兼容',WEEKS:'课表教学周表达式尚不兼容',PERIODS:'课表节次超出可用作息范围',LOCAL_SCHEMA:'课表返回成功，本机课程转换尚不兼容',HTTP:'学校请求未成功，尚未取得课表',EXPIRED:'登录已过期，请重新连接',LIMIT:'学校返回的数据超过处理范围'};
 export const schoolError=(code?:string)=>messages[code||'']||'同步未完成，保留上次数据';
 function normalizeTimetable(value:unknown,calendar:Semester[],previous?:SchoolTermCache|null):SchoolTermCache {
  const t=value as SchoolTimetable;validTerm(t.term);if(!Array.isArray(t.kbList)||!Array.isArray(t.practice)||t.practice.length>500)throw Error('SCHEMA');
@@ -22,9 +22,11 @@ function normalizeTimetable(value:unknown,calendar:Semester[],previous?:SchoolTe
  // Reuse the existing local calendar. This date is configuration, never claimed as school API data.
  const existing=calendar.find(s=>s.academicYear.replace(/[–—]/g,'-')===`${year}-${year+1}`&&s.season===season)??calendar[0];
  if(!existing)throw Error('TERM');
- const semester:Semester={...existing,id:`handan-${key}`,academicYear:existing.academicYear.replace(/[–—]/g,'-')===`${year}-${year+1}`?existing.academicYear:`${year}–${year+1}`,season,timeTableId:table.id};
+ let maxWeek=existing.weekCount;
+ for(const item of t.kbList){const value=(item as {zcd?:unknown})?.zcd;if(typeof value==='string')for(const n of value.match(/\d+/g)||[]){const week=Number(n);if(week>=1&&week<=40)maxWeek=Math.max(maxWeek,week)}}
+ const semester:Semester={...existing,weekCount:maxWeek,id:`handan-${key}`,academicYear:existing.academicYear.replace(/[–—]/g,'-')===`${year}-${year+1}`?existing.academicYear:`${year}–${year+1}`,season,timeTableId:table.id};
  const preview=previewZhengfangTimetable({kbList:t.kbList},{semester,timeTable:table,existing:[],sourceTerm:t.term}).preview;
- if(preview.errors.length)throw Error('SCHEMA');if(!preview.courses.length&&!t.practice.length)throw Error('EMPTY');
+ if(preview.errors.length){const errors=preview.errors.join(' ');throw Error(/教学周|周次|单双周/.test(errors)?'WEEKS':/节次/.test(errors)?'PERIODS':'LOCAL_SCHEMA')}if(!preview.courses.length&&!t.practice.length)throw Error('EMPTY');
  // School conflicts are real arrangements; preserve and let the existing grid render overlap.
  const courses=preview.courses.map(c=>{
   const old=previous?.courses.find(p=>p.name===c.name&&p.teacher===c.teacher);

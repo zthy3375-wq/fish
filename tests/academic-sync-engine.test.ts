@@ -44,3 +44,9 @@ it('preserves nonnumeric grades, school GPA and strips unrecognized secret metad
  const r=result();r.modules!.grades={status:'ok',data:[{name:'课程',scoreText:'优秀',credit:2,gpa:4,term:'2026 秋季',kind:'必修',token:'PRIVATE'}]};
  const c=applyAcademicResult(emptyAcademicCache(),r,calendar());expect(c.grades.data![0].scoreText).toBe('优秀');expect(JSON.stringify(c)).not.toContain('PRIVATE');
 });
+it('keeps school weeks beyond the default local 18-week calendar',()=>{
+ const r=result();(r.modules!.timetable.data as any).kbList[0].zcd='1-20周';
+ const c=applyAcademicResult(emptyAcademicCache(),r,calendar());
+ expect(c.terms[c.selectedTerm!].data!.semester.weekCount).toBe(20);
+ expect(c.terms[c.selectedTerm!].data!.courses[0].arrangements[0].customWeeks).toContain(20);
+});
