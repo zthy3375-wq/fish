@@ -24,7 +24,7 @@ Run checks appropriate to the change. For native/session changes also validate A
 - Keep school caches independent from personal schedules. Preserve storage keys, legacy `school-page-` recognition and backup compatibility.
 - Empty/error/partial responses must not wipe previously successful data. Logout/account changes must not reuse another account's snapshot.
 - Preserve the compact mobile layout and existing light theme. Do not add developer diagnostics or manual school import to the normal user flow.
-- iOS project presence is not iOS school-session support. Android test signatures are not production release signatures.
+- Maintain Android only; do not reintroduce retired classroom queries or other native platforms. Android test signatures are not production release signatures.
 
 ## Repository hygiene
 

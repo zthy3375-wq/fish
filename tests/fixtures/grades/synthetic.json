@@ -1,0 +1,75 @@
+[
+  {
+    "name": "人工 UI 链路成绩",
+    "scoreText": "优秀",
+    "credit": 2,
+    "gpa": 4,
+    "term": "2025–2026 秋季",
+    "kind": "必修",
+    "courseCode": "ART1"
+  },
+  {
+    "name": "人工数值课程",
+    "scoreText": "90",
+    "credit": 3,
+    "gpa": 4,
+    "term": "2025–2026 秋季",
+    "kind": "必修",
+    "courseCode": "ART2"
+  },
+  {
+    "name": "人工未通过课",
+    "scoreText": "50",
+    "credit": 2,
+    "gpa": 0,
+    "term": "2025–2026 秋季",
+    "kind": "必修",
+    "courseCode": "ART3"
+  },
+  {
+    "name": "人工补考课",
+    "scoreText": "40",
+    "credit": 2,
+    "gpa": 0,
+    "term": "2025–2026 秋季",
+    "kind": "必修",
+    "courseCode": "ART4"
+  },
+  {
+    "name": "人工补考课",
+    "scoreText": "60",
+    "credit": 2,
+    "gpa": 1,
+    "term": "2025–2026 春季",
+    "kind": "必修",
+    "courseCode": "ART4",
+    "examType": "补考"
+  },
+  {
+    "name": "人工通过制",
+    "scoreText": "通过",
+    "credit": 1,
+    "gpa": null,
+    "term": "2025–2026 春季",
+    "kind": "选修",
+    "courseCode": "ART5"
+  },
+  {
+    "name": "人工待公布课",
+    "scoreText": "",
+    "credit": 2,
+    "gpa": null,
+    "term": "2026–2027 秋季",
+    "kind": "必修",
+    "courseCode": "ART6"
+  },
+  {
+    "name": "人工春季课程",
+    "scoreText": "85",
+    "credit": 2,
+    "gpa": 3.5,
+    "term": "2025–2026 春季",
+    "kind": "必修",
+    "courseCode": "ART7"
+  }
+]
