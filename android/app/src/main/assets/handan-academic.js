@@ -115,16 +115,17 @@ async function(operation, requestedTerm) {
     return {term:t,kbList,practice,periods,endpoint:path.pathname,method:path.pathname==='/kbcx/xskbcx_cxXskbcxIndex.html'?'HTML':'POST'};
   }
   async function paged(path,form){
-    const all=[];let count=1;
+    const all=[];let count=1,expected=null;
     for(let page=1;page<=count;page++){
       const data=await json(path,{...form,'queryModel.showCount':'100','queryModel.currentPage':String(page),'queryModel.sortName':'','queryModel.sortOrder':'asc'});
       if(!data||!Array.isArray(data.items))error('SCHEMA');
       const total=Number(data.totalCount??data.totalResult??data.items.length);
       const pages=Number(data.totalPage??Math.ceil(total/100));
-      if(!Number.isFinite(pages)||pages>20||pages<0||total>2000)error('LIMIT');count=Math.max(1,pages);
+      if(!Number.isInteger(pages)||pages>20||pages<0||!Number.isInteger(total)||total<0||total>2000)error('LIMIT');count=Math.max(1,pages);
+      if(data.totalCount!=null||data.totalResult!=null){if(expected!==null&&expected!==total)error('SCHEMA');expected=total;}
       if(page<count&&data.items.length===0)error('SCHEMA');
       all.push(...data.items);if(all.length>2000)error('LIMIT');
-    }return all;
+    }if(expected!==null&&all.length!==expected)error('SCHEMA');return all;
   }
   try{
     if(location.origin!==origin||document.querySelector('input[type=password]'))error('EXPIRED');
@@ -135,10 +136,12 @@ async function(operation, requestedTerm) {
       const u=new URL(menu('/cjcx/','/cjcx/cjcx_cxDgXscj.html?gnmkdm=N305005'),origin);u.searchParams.set('doType','query');if(!u.searchParams.has('gnmkdm'))u.searchParams.set('gnmkdm','N305005');const path=u.pathname+u.search;
       const list=await paged(path,{xnm:requestedTerm?.xnm||'',xqm:requestedTerm?.xqm||'',_search:'false',nd:String(Date.now())});
       return list.map(g=>{
-        if(!g.kcmc||g.cj==null)error('SCHEMA');
-        return {name:text(g.kcmc),scoreText:String(g.cj).slice(0,40),credit:Number.isFinite(Number(g.xf))?Number(g.xf):null,gpa:g.jd!=null&&Number.isFinite(Number(g.jd))?Number(g.jd):null,term:text(g.xnmmc||g.xnm,20)+' '+text(g.xqmmc||g.xqm,20),kind:text(g.kcxzmc||g.kclbmc)};
+        if(!g.kcmc)error('SCHEMA');
+        const number=v=>v!==null&&v!==undefined&&String(v).trim()!==''&&Number.isFinite(Number(v))&&Number(v)>=0?Number(v):null;
+        return {name:text(g.kcmc),scoreText:g.cj==null?'':String(g.cj).slice(0,40),credit:number(g.xf),gpa:number(g.jd),term:text(g.xnmmc||g.xnm,20)+' '+text(g.xqmmc||g.xqm,20),kind:text(g.kcxzmc||g.kclbmc),courseCode:text(g.kch),recordId:text(g.cjbh),year:text(g.xnm,10),termCode:text(g.xqm,10),examType:text(g.ksxzmc)};
       });
     });
+    if(result.modules.grades?.status==='ok')result.modules.grades.scope=requestedTerm?.xnm?'term':'all';
     if(operation==='syncAll'||operation==='exams')await module('exams',async()=>{
       const t=await context();
       const u=new URL(menu('/kwgl/','/kwgl/kscx_cxXsksxxIndex.html?gnmkdm=N358105'),origin);u.searchParams.set('doType','query');if(!u.searchParams.has('gnmkdm'))u.searchParams.set('gnmkdm','N358105');const path=u.pathname+u.search;

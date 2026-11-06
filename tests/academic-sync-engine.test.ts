@@ -50,3 +50,14 @@ it('keeps school weeks beyond the default local 18-week calendar',()=>{
  expect(c.terms[c.selectedTerm!].data!.semester.weekCount).toBe(20);
  expect(c.terms[c.selectedTerm!].data!.courses[0].arrangements[0].customWeeks).toContain(20);
 });
+it('keeps grade history independent of the selected timetable term',async()=>{
+ let c=emptyAcademicCache();const getGrades=vi.fn(async()=>({session:'valid',modules:{grades:{status:'ok',scope:'all',data:[]}}}));
+ const client={getTimetable:async()=>result(),getGrades} as unknown as HandanAcademicClient;
+ await new AcademicSyncEngine(client,()=>c,async n=>{c=n},calendar).sync({xnm:'2026',xqm:'3'});
+ expect(getGrades).toHaveBeenCalledWith(undefined);expect(c.grades.scope).toBe('all');
+});
+it('preserves successful grade history on empty, malformed and expired results',()=>{
+ const r=result();r.modules!.grades={status:'ok',scope:'all',data:[{name:'课程',scoreText:'80',credit:2,gpa:3,term:'2026 秋季',kind:'必修',courseCode:'C1',examType:'补考'}]};
+ const c=applyAcademicResult(emptyAcademicCache(),r,calendar());expect(c.grades.data![0].courseCode).toBe('C1');
+ for(const m of [{status:'ok',data:[]},{status:'ok',data:[{}]},{status:'error',code:'EXPIRED'}]){const n=applyAcademicResult(c,{session:'expired',modules:{grades:m as any}},calendar());expect(n.grades.data).toEqual(c.grades.data);expect(n.grades.updatedAt).toBe(c.grades.updatedAt);expect(n.grades.error).toBeTruthy()}
+});

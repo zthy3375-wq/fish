@@ -8,6 +8,8 @@
 
 [功能与验证状态](docs/STATUS.md) · [文档导航](docs/README.md) · [版本记录](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md)
 
+成绩分析开发分支：百分制统计、学校绩点聚合、学期趋势、分布筛选、重修去重参考及学业中心，详见 [统计口径与验证范围](docs/V060-GRADE-ANALYSIS.md)。新版本仍待真机核对。
+
 ## 当前功能
 
 | 模块 | 当前能力 | 验证范围 |

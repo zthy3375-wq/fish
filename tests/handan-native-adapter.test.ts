@@ -60,3 +60,10 @@ it('uses the verified school JSON endpoint after opening its distinct Index page
  const query=fetch.mock.calls.find(([url,init])=>url.includes('cxXsgrkb')&&init.body)!;expect(query).toBeTruthy();
  expect(new URL(query[0]).pathname).toBe('/kbcx/xskbcx_cxXsgrkb.html');expect(new URLSearchParams(query[1].body).has('kclxdm')).toBe(true);
 });
+it('preserves grade identities and school retry labels without leaking arbitrary fields or converting missing credit to zero',async()=>{
+ const {result}=await run((url,init)=>!init.body?termHtml:{items:[{kcmc:'人工成绩',cj:null,xf:'',jd:'',kch:'K1',cjbh:'R1',xnm:'2025',xqm:'12',ksxzmc:'补考',password:'PRIVATE'}],totalCount:1,totalPage:1},'grades');
+ expect(result.modules.grades).toMatchObject({scope:'all',data:[{scoreText:'',credit:null,gpa:null,courseCode:'K1',recordId:'R1',year:'2025',termCode:'12',examType:'补考'}]});expect(JSON.stringify(result)).not.toContain('PRIVATE');
+});
+it('rejects a truncated declared grade count instead of claiming complete history',async()=>{
+ const {result}=await run((url,init)=>!init.body?termHtml:{items:[{kcmc:'人工成绩',cj:'80'}],totalCount:2,totalPage:1},'grades');expect(result.modules.grades.code).toBe('SCHEMA');
+});

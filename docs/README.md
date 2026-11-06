@@ -4,6 +4,8 @@
 
 ## 当前维护入口
 
+- [成绩分析算法口径、培养方案调查与验证范围](V060-GRADE-ANALYSIS.md)
+
 - [当前功能、验证证据与未完成事项](STATUS.md)
 - [变更记录](../CHANGELOG.md)
 - [开发与提交规范](../CONTRIBUTING.md)

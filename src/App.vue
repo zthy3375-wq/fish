@@ -236,11 +236,6 @@ const exams = computed(() => upcomingExams(data.value.exams, now.value));
 const weekCount = computed(
   () => data.value.courses.filter((c) => c.weeks.includes(week.value)).length,
 );
-const credits = computed(() =>
-  data.value.grades
-    .filter((g) => g.score >= 60)
-    .reduce((s, g) => s + g.credit, 0),
-);
 const entries = computed(() => [
   {
     id: "schedule",
@@ -250,7 +245,7 @@ const entries = computed(() => [
   },
   {
     id: "grades",
-    title: "成绩查询",
+    title: "成绩分析",
     subtitle: academicCache.value.grades.updatedAt ? `${academicCache.value.grades.data?.length??0} 门成绩` : "尚未同步",
     icon: ChartNoAxesColumnIncreasing,
   },
@@ -262,8 +257,8 @@ const entries = computed(() => [
   },
   {
     id: "study",
-    title: "学业信息",
-    subtitle: "本人专业、班级与年级",
+    title: "学业中心",
+    subtitle: "已获学分、课程类型与学籍",
     icon: GraduationCap,
   },
 ]);
@@ -271,8 +266,8 @@ const teaching = computed(() => entries.value.slice(0, 3));
 const planning = [
   {
     id: "study",
-    title: "学业信息",
-    subtitle: "本人专业、班级与年级",
+    title: "学业中心",
+    subtitle: "已获学分、课程类型与学籍",
     icon: GraduationCap,
   },
   {
@@ -336,9 +331,9 @@ const about = [
 const sectionNames: Record<string, string> = {
   overview: "教务中心",
   schedule: "课程表",
-  grades: "成绩查询",
+  grades: "成绩分析",
   exams: "考试安排",
-  study: "学业信息",
+  study: "学业中心",
   calendar: "学期校历",
   official: "官方教务",
 };
@@ -701,15 +696,6 @@ onUnmounted(() => {
                     >{{ e.date.slice(5) }} · {{ e.time }} · {{ e.room }}</small
                   ></span
                 ><ChevronRight class="row-chevron" :size="18" /></button
-              ><button
-                v-if="false"
-                class="service-row"
-                @click="go('study')"
-              >
-                <GraduationCap class="row-icon" /><span class="row-copy"
-                  ><strong>查看本学期学业进度</strong
-                  ><small>模拟培养方案与学分记录</small></span
-                ><ChevronRight class="row-chevron" :size="18" /></button
               ><button class="service-row" @click="go('official')">
                 <Bell class="row-icon" /><span class="row-copy"
                   ><strong>公开教务通知</strong
@@ -726,16 +712,6 @@ onUnmounted(() => {
                 管理个人课表 ·
                 {{ schedule.mode === "demo" ? "未设置个人课程" : "本机已保存" }}
               </button>
-              <div class="quick-grid academic-quick">
-                <QuickAction
-                  v-for="e in entries"
-                  :key="e.id"
-                  :title="e.title"
-                  :subtitle="e.subtitle"
-                  :icon="e.icon"
-                  @select="go(e.id)"
-                />
-              </div>
               <SectionHeader title="教学管理" meta="3 项" /><ServiceGroup
                 :items="teaching"
                 @select="go"
