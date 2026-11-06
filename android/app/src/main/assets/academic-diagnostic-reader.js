@@ -2,6 +2,11 @@
   'use strict';
   const result={container:'unrecognized',fields:{courseName:false,teacher:false,room:false,weekday:false,periods:false,weeks:false},recordCount:0,invalidCount:0,specialArrangements:false,exportControl:false,frameLimit:false};
   const rows=[], documents=[];
+  function term(doc){
+    const year=doc.querySelector('select#xnm,select[name="xnm"]')?.value;
+    const code=doc.querySelector('select#xqm,select[name="xqm"]')?.value;
+    if(/^20\d{2}$/.test(year||'')&&['3','12'].includes(code)){result.termYear=year;result.termCode=code;}
+  }
   function addDocument(doc,depth){
     if(!doc||depth>2||documents.length>=12){result.frameLimit=true;return;}
     try {
@@ -23,7 +28,7 @@
       const win=doc.defaultView;
       // Only this documented course collection is inspected; no window enumeration, storage or requests.
       if(Array.isArray(win.kbList)){
-        result.container='kbList';
+        result.container='kbList';term(doc);
         for(const row of win.kbList.slice(0,501)){try{append(row)}catch{result.invalidCount++}}
         result.specialArrangements=Array.isArray(win.sjkList)&&win.sjkList.length>0;
         break;
@@ -31,7 +36,7 @@
       const grid=doc.querySelector('#kbgrid_table_0'), list=doc.querySelector('#kblist_table');
       if(!grid&&!list)continue;
       const useList=doc.querySelector('#shcPDF')?.dataset.type==='list'||!grid;
-      result.container=useList?'zf-list':'zf-grid';
+      result.container=useList?'zf-list':'zf-grid';term(doc);
       if(useList){
         const bodies=Array.from(list.querySelectorAll('tbody'));
         bodies.forEach((body,day)=>{

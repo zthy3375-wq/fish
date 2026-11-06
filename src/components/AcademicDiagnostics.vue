@@ -34,7 +34,8 @@ import {
   previewZhengfangTimetable,
   type ZhengfangPreview,
 } from "../services/academic-adapters/zhengfang-timetable";
-import { saveSchoolPagePreview } from "../services/school-page-import";
+import {handanTimeTable} from "../domain/handan-time-table";
+import { saveSchoolPagePreview,refreshSchoolPage } from "../services/school-page-import";
 const coursePreview = ref<ZhengfangPreview | null>(null),
   confirmedTimes = ref(false);
 const emit = defineEmits<{ back: []; saved: [] }>();
@@ -104,7 +105,7 @@ async function action(kind: "browser" | "check") {
     if (token === generation) busy.value = false;
   }
 }
-async function schoolLogin() {
+async function schoolLogin(automatic=false) {
   if (!available.value || !consent.value || busy.value) return;
   const token = ++generation;
   busy.value = true;
@@ -112,7 +113,7 @@ async function schoolLogin() {
   coursePreview.value = null;
   confirmedTimes.value = false;
   try {
-    const value = await openSchoolWindow();
+    const value = await openSchoolWindow(automatic);
     if (token !== generation) return;
     if (value.cancelled) {
       message.value = "已取消学校窗口，未导入课程。";
@@ -123,11 +124,22 @@ async function schoolLogin() {
       coursePreview.value = previewZhengfangTimetable(
         { kbList: value.kbList },
         {
-          semester: currentSemester.value,
-          timeTable: tableForSemester(schedule.value),
+          semester: {...currentSemester.value,timeTableId:handanTimeTable().id},
+          timeTable: handanTimeTable(),
           existing: [],
         },
       );
+      if(automatic && value.automatic && !coursePreview.value.preview.errors.length && !coursePreview.value.preview.issues.length){
+        const observation=value.observation as {termYear?:string;termCode?:string};
+        const year=currentSemester.value.academicYear.replace('–','-').split('-')[0];
+        const expectedCode=currentSemester.value.season==='秋季'?'3':'12';
+        if(observation.termYear===year&&observation.termCode===expectedCode){
+          const data=coursePreview.value;
+          await changeSchedule(state=>refreshSchoolPage(state,data));
+          coursePreview.value=null;emit('saved');return;
+        }
+        message.value='已自动读取，但学校学期无法与本机配置匹配，请仅确认一次学期后保存。';return;
+      }
       message.value =
         "课程只在本机内存预览。请逐门核对学校网页，并确认学期、教学周和作息后保存。";
     }
@@ -240,10 +252,12 @@ async function exportReport() {
             读取数据；仅处理本人经明确选择、学校允许第三方处理的课程结构。</span
           ></label
         >
+        <p class="muted">当前学期：{{currentSemester.academicYear}} {{currentSemester.season}}，第一周 {{currentSemester.weekStartDate}}。自动连接使用邯郸学院13节固定作息；仅学校页面学期匹配时自动保存。刷新只更新当前学校分区。</p>
+        <button class="secondary full" :disabled="!consent||busy" @click="schoolLogin(true)">登录后自动连接 / 刷新学校课表</button>
         <button
           class="secondary full"
           :disabled="!consent || busy"
-          @click="schoolLogin"
+          @click="schoolLogin(false)"
         >
           登录邯郸学院教务系统 · 实验窗口
         </button>

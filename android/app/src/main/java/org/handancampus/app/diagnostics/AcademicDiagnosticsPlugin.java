@@ -67,6 +67,7 @@ public class AcademicDiagnosticsPlugin extends Plugin {
     public void openSchoolWindow(PluginCall call) {
         if (!permitted(call)) return;
         Intent intent = new Intent(getContext(), SchoolWebActivity.class);
+        intent.putExtra("automatic",call.getBoolean("automatic",false));
         startActivityForResult(call, intent, "schoolWindowResult");
     }
     @ActivityCallback
@@ -81,6 +82,7 @@ public class AcademicDiagnosticsPlugin extends Plugin {
             String observation = data.getStringExtra("observation");
             if (observation == null || observation.length()>12000) throw new Exception();
             result.put("observation", new org.json.JSONObject(observation));
+            result.put("automatic",data.getBooleanExtra("automatic",false));
             String courses = data.getStringExtra("courses");
             if (courses != null) {
                 if (courses.length()>300000) throw new Exception();

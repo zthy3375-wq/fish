@@ -27,8 +27,11 @@ public class SchoolWebActivity extends Activity {
     private int generation=0;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private String reader;
+    private boolean automatic;
+    private int autoAttempts=0;
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        automatic=getIntent().getBooleanExtra("automatic",false);
         if(Build.VERSION.SDK_INT<28 || !DiagnosticPolicy.enabled(BuildConfig.DEBUG,BuildConfig.ACADEMIC_DIAGNOSTICS)) {finish();return;}
         // Separate from the Capacitor WebView's data directory and local student storage.
         if(!dataDirectorySet){WebView.setDataDirectorySuffix("school-diagnostic-session");dataDirectorySet=true;}
@@ -77,12 +80,13 @@ public class SchoolWebActivity extends Activity {
                 return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
             }
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){
-                generation++;lastReport=null;preview.setEnabled(false);detect.setEnabled(false);busy=false;
+                generation++;autoAttempts=0;lastReport=null;preview.setEnabled(false);detect.setEnabled(false);busy=false;
                 final int token=generation;
                 handler.postDelayed(()->{if(!closing&&token==generation){status.setText("页面加载较久。可等待、重试或关闭；未判断登录成功或失败。");detect.setEnabled(true);}},30000);
             }
             @Override public void onPageFinished(WebView view,String url){
                 detect.setEnabled(DiagnosticPolicy.readableCourseCandidate(url));
+                if(automatic)handler.postDelayed(()->autoRead(),700);
                 status.setText(DiagnosticPolicy.readableCourseCandidate(url)?"网页已加载。请手动查询本人课表，再点击检测。":"学校登录页面：请自行输入信息并完成验证。此处不执行页面读取。");
             }
             @Override public void onReceivedSslError(WebView v,SslErrorHandler h,SslError e){h.cancel();status.setText("HTTPS 证书验证失败，已停止加载；不会忽略证书错误。");detect.setEnabled(false);}
@@ -91,6 +95,15 @@ public class SchoolWebActivity extends Activity {
         });
         CookieManager cookies=CookieManager.getInstance();cookies.setAcceptCookie(true);cookies.setAcceptThirdPartyCookies(web,false);
         cookies.removeAllCookies(done->{if(!closing){WebStorage.getInstance().deleteAllData();web.clearCache(true);web.loadUrl(DiagnosticPolicy.OFFICIAL_LOGIN);}});
+    }
+    private void autoRead(){
+        if(closing||!automatic||web==null||autoAttempts++>=90)return;
+        if(!busy&&DiagnosticPolicy.readableCourseCandidate(web.getUrl())){
+            read(true);
+            // Follow only a unique, existing same-origin course-menu link; never invent an endpoint or execute onclick.
+            if(autoAttempts==3)web.evaluateJavascript("(function(){const urls=new Set();for(const a of document.querySelectorAll('a[href]')){const label=a.textContent.trim();if(!['学生课表查询','个人课表','我的课表'].includes(label))continue;try{const u=new URL(a.getAttribute('href'),location.href);if(u.origin===location.origin&&u.pathname.startsWith('/kbcx/'))urls.add(u.href)}catch{}}if(urls.size===1)location.assign(Array.from(urls)[0]);})()",null);
+        }
+        handler.postDelayed(()->autoRead(),2000);
     }
     private void read(boolean collect){
         if(closing||busy||web==null||!DiagnosticPolicy.readableCourseCandidate(web.getUrl()))return;
@@ -109,12 +122,13 @@ public class SchoolWebActivity extends Activity {
                 lastReport=observation.toString();
                 if(collect){
                     if("unrecognized".equals(container)||observation.optInt("invalidCount")>0||observation.optBoolean("specialArrangements")||observation.optBoolean("frameLimit")){
-                        status.setText("存在未识别、特殊或异常安排，已停止读取。可返回脱敏结构报告，不能静默丢课。");return;
+                        if(!"unrecognized".equals(container))status.setText("存在未识别、特殊或异常安排，已停止读取。可返回脱敏结构报告，不能静默丢课。");return;
                     }
-                    Intent result=new Intent();result.putExtra("observation",lastReport);result.putExtra("courses",payload.getJSONArray("kbList").toString());complete(result);return;
+                    if(payload.getJSONArray("kbList").length()==0)return;
+                    Intent result=new Intent();result.putExtra("observation",lastReport);result.putExtra("automatic",automatic);result.putExtra("courses",payload.getJSONArray("kbList").toString());complete(result);return;
                 }
                 int count=observation.optInt("recordCount");
-                preview.setEnabled(!"unrecognized".equals(container)&&count>0&&observation.optInt("invalidCount")==0&&!observation.optBoolean("specialArrangements")||observation.optBoolean("frameLimit"));
+                preview.setEnabled(!"unrecognized".equals(container)&&count>0&&observation.optInt("invalidCount")==0&&!observation.optBoolean("specialArrangements")&&!observation.optBoolean("frameLimit"));
                 new AlertDialog.Builder(this).setTitle("课表结构检查")
                     .setMessage("结构："+container+"\n可识别安排数："+count+"\n异常数："+observation.optInt("invalidCount")+"\n报告不含真实课程内容。真实系统兼容性仍需本人核对。")
                     .setNegativeButton("继续查看网页",null).setPositiveButton("返回脱敏报告",(d,w)->{Intent result=new Intent();result.putExtra("observation",lastReport);complete(result);}).show();

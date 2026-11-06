@@ -3,7 +3,8 @@ export const DIAGNOSTIC_BUILD =
   import.meta.env.VITE_ANDROID_DIAGNOSTICS === "true";
 export const OFFICIAL_LOGIN = "https://jwgl.hdc.edu.cn/xtgl/login_slogin.html";
 interface DiagnosticNative {
-  openSchoolWindow(): Promise<{
+  openSchoolWindow(options?:{automatic:boolean}): Promise<{
+    automatic?:boolean;
     cancelled?: true;
     observation?: unknown;
     kbList?: unknown[];
@@ -221,6 +222,7 @@ export async function exportDiagnosticReport(report: DiagnosticReport) {
 }
 
 export interface SchoolPageObservation {
+  termYear?:string; termCode?:string;
   container: "unrecognized" | "kbList" | "zf-grid" | "zf-list";
   fields: {
     courseName: boolean;
@@ -270,6 +272,7 @@ export function validateObservation(raw: unknown): SchoolPageObservation {
   ] as const)
     if (typeof v[key] !== "boolean") throw Error("结构状态无效");
   return {
+    ...(typeof v.termYear==="string" && /^20\d{2}$/.test(v.termYear) && ["3","12"].includes(String(v.termCode))?{termYear:v.termYear,termCode:String(v.termCode)}:{}),
     container: v.container as SchoolPageObservation["container"],
     fields,
     recordCount: v.recordCount as number,
@@ -295,14 +298,15 @@ export function createSchoolPageReport(raw: unknown) {
     observation,
   } as const;
 }
-export async function openSchoolWindow(): Promise<{
+export async function openSchoolWindow(automatic=false): Promise<{
+    automatic?:boolean;
   cancelled?: true;
   observation?: SchoolPageObservation;
   kbList?: unknown[];
 }> {
   await requireDiagnostic();
   // User may spend minutes solving school's own authentication; no artificial eight-second login timeout.
-  const result = await native.openSchoolWindow();
+  const result = await native.openSchoolWindow({automatic});
   if (result.cancelled) return { cancelled: true };
   const observation = validateObservation(result.observation);
   if (
@@ -311,6 +315,7 @@ export async function openSchoolWindow(): Promise<{
   )
     throw Error("课程数量异常");
   return {
+    automatic:automatic && result.automatic===true,
     observation,
     ...(result.kbList !== undefined ? { kbList: result.kbList } : {}),
   };
