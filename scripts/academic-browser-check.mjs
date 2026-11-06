@@ -55,6 +55,8 @@ try{
   assert(await page.getByRole('img',{name:'学校返回绩点加权趋势',exact:true}).count()===1,`${width}: official course GPA trend selectable`);
   await page.getByRole('combobox',{name:'趋势指标',exact:true}).selectOption('mean');
   await page.screenshot({path:path.join(output,`grade-overview-${width}.png`),fullPage:true,animations:'disabled'});
+  await page.locator('.ga-chart-scroll').scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(output,`grade-trend-${width}.png`),animations:'disabled'});
   await page.getByRole('button',{name:'筛选成绩 90–100',exact:true}).click();
   assert(await page.locator('.ga-record').count()===1,`${width}: distribution filters actual course records`);
   await page.getByRole('button',{name:'筛选',exact:true}).click();
