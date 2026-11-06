@@ -9,3 +9,5 @@ import {prepareOffline} from './services/offline';
 if(import.meta.env.PROD)window.addEventListener('load',prepareOffline);
 
 import './grade-analysis.css';
+
+import './agenda.css';

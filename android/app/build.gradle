@@ -5,12 +5,12 @@ android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('gradePreview') == 'true' ? 'org.handancampus.app.grades.v060' : 'org.handancampus.app')
-        manifestPlaceholders = [campusLabel: project.findProperty('gradePreview') == 'true' ? '邯郸校园·成绩测试' : '@string/app_name', campusActivityLabel: project.findProperty('gradePreview') == 'true' ? '邯郸校园·成绩测试' : '@string/title_activity_main']
+        applicationId (project.findProperty('agendaPreview') == 'true' ? 'org.handancampus.app.agenda.v061' : 'org.handancampus.app')
+        manifestPlaceholders = [campusLabel: project.findProperty('agendaPreview') == 'true' ? '邯郸校园·日程测试' : '@string/app_name', campusActivityLabel: project.findProperty('agendaPreview') == 'true' ? '邯郸校园·日程测试' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 63
-        versionName "0.6.0-grades-test"
+        versionCode 64
+        versionName "0.6.1-agenda-test"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CampusAgenda from './components/CampusAgenda.vue';
+import {initTasks,reloadTasks,taskSnapshot,tasksReady} from './composables/tasks';
 import {version as appVersion} from '../package.json';
 import {
   ref,
@@ -264,6 +266,7 @@ const entries = computed(() => [
 ]);
 const teaching = computed(() => entries.value.slice(0, 3));
 const planning = [
+  {id: "agenda",title: "统一日程",subtitle: "课程、考试与个人待办",icon: CalendarDays},
   {
     id: "study",
     title: "学业中心",
@@ -330,6 +333,7 @@ const about = [
 ];
 const sectionNames: Record<string, string> = {
   overview: "教务中心",
+  agenda: "统一日程",
   schedule: "课程表",
   grades: "成绩分析",
   exams: "考试安排",
@@ -491,6 +495,7 @@ function escape(e: KeyboardEvent) {
   if (e.key === "Escape" && modal.value) requestClose();
 }
 async function recalibrate() {
+  void reloadTasks();
   now.value = campusNow();
   if (document.visibilityState === "visible") {
     await refreshSchedule();
@@ -511,6 +516,7 @@ function viewportChange() {
 }
 onMounted(async () => {
   load();
+  void initTasks().catch(()=>{});
   clockTimer = setInterval(() => (now.value = campusNow()), 30000);
   media.addEventListener("change", systemChange);
   window.addEventListener("keydown", escape);
@@ -576,6 +582,7 @@ onUnmounted(() => {
         ><div :key="page" class="page-content">
           <template v-if="page === 'home'">
             <SchoolConnection compact @connected="move('home')" />
+            <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSnapshot.tasks.filter(t=>!t.completed).length} 项待办`:'待办尚未读取'}} · 汇总课程和考试</small></span><ChevronRight :size="18"/></button>
             <div class="home-greeting">
               <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
               ><span class="quiet-label">北京时间 {{ timeOf(now) }}</span>
@@ -705,7 +712,8 @@ onUnmounted(() => {
             </div>
           </template>
           <template v-else-if="page === 'academic' || page === 'schedule'">
-            <SchoolAcademicRecords v-if="['grades','exams','study','official'].includes(section)" :section="section" />
+            <CampusAgenda v-if="section==='agenda'" @course="details" @navigate="go" />
+            <SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
             <template v-else-if="section === 'overview'">
               <SchoolConnection compact />
               <button class="secondary full" @click="manage()">
@@ -716,7 +724,7 @@ onUnmounted(() => {
                 :items="teaching"
                 @select="go"
               />
-              <SectionHeader title="学业与规划" meta="2 项" /><ServiceGroup
+              <SectionHeader title="学业与日程" meta="3 项" /><ServiceGroup
                 :items="planning"
                 @select="go"
               />
