@@ -4,8 +4,8 @@ import {it,expect,vi} from 'vitest';
 const script=readFileSync('android/app/src/main/assets/handan-academic.js','utf8');
 const termHtml='<select id="xnm"><option selected value="2026">2026</option></select><select id="xqm"><option selected value="3">秋季</option></select>';
 const row={kcmc:'人工格式课程',xm:'教师',cdmc:'教室',xqj:'1',jcs:'1-2',zcd:'1-16周(单)',token:'PRIVATE_TOKEN'};
-async function run(routes:(url:string,init:any)=>unknown,operation='syncAll'){
- const dom=new JSDOM('<div id="menu"><a id="N2151" href="/kbcx/xskbcx_cxXsgrkbIndex.html?layout=default">课表</a></div>',{url:'https://jwgl.hdc.edu.cn/xtgl/index_initMenu.html',runScripts:'outside-only'});
+async function run(routes:(url:string,init:any)=>unknown,operation='syncAll',menuHtml=''){ 
+ const dom=new JSDOM(menuHtml||'<div id="menu"><a id="N2151" href="/kbcx/xskbcx_cxXsgrkbIndex.html?layout=default">课表</a></div>',{url:'https://jwgl.hdc.edu.cn/xtgl/index_initMenu.html',runScripts:'outside-only'});
  const fetch=vi.fn(async(url:string,init:any)=>({ok:true,url,text:async()=>{const r=routes(url,init);return typeof r==='string'?r:JSON.stringify(r)}}));
  Object.defineProperty(dom.window,'fetch',{value:fetch});dom.window.AbortController=AbortController;
  Object.defineProperty(dom.window.document,'cookie',{get(){throw Error('cookie must stay native')}});
@@ -52,4 +52,11 @@ it('reads the verified Handan HTML layout, ignores icon fonts and retains practi
  expect(result.modules.timetable.status).toBe('ok');expect(result.modules.timetable.data.kbList[0]).toMatchObject({xm:'人工教师',cdmc:'人工教室',jcs:'3-4'});
  expect(result.modules.timetable.data.practice).toEqual([{name:'人工实训',teacher:'测试教师',weeks:'7-8周'}]);
  expect(fetch.mock.calls.filter(([u,i])=>u.includes('cxXsgrkb')&&i.body)).toHaveLength(0);
+});
+
+it('uses the verified school JSON endpoint after opening its distinct Index page',async()=>{
+ const {result,fetch}=await run((url,init)=>!init.body?termHtml:url.includes('/kbcx/')?{kbList:[row],sjkList:[]}:[], 'timetable','<a onclick="clickMenu(\'N2151\',\'/kbcx/xskbcx_cxXskbcxIndex.html\')">个人课表查询</a>');
+ expect(result.modules.timetable.status).toBe('ok');
+ const query=fetch.mock.calls.find(([url,init])=>url.includes('cxXsgrkb')&&init.body)!;expect(query).toBeTruthy();
+ expect(new URL(query[0]).pathname).toBe('/kbcx/xskbcx_cxXsgrkb.html');expect(new URLSearchParams(query[1].body).has('kclxdm')).toBe(true);
 });

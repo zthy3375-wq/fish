@@ -90,7 +90,11 @@ class HandanAcademicPlugin : Plugin() {
                         if (!login || renderedResult != null) { authenticated = false; vault.clear(); finish(JSONObject().put("session", "expired")) }
                         return
                     }
-                    if (renderedResult != null) { readRendered(0, generation); return }
+                    if (renderedResult != null) {
+                        // Normal school query control; never call a CAPTCHA success function or fabricate verification.
+                        v.evaluateJavascript("(function(){const b=document.querySelector('#search_go');if(b&&!document.querySelector('#kbgrid_table_0 .timetable_con')&&document.querySelector('#sfxyyzm')?.value!=='1'&&document.querySelector('#sfxyyzm')?.value!=='3')b.click();})()",null)
+                        handler.postDelayed({readRendered(0,generation)},700); return
+                    }
                     if (started) return
                     checkAuthenticated(v, generation, 0)
                 }
@@ -164,8 +168,8 @@ class HandanAcademicPlugin : Plugin() {
     private fun readRendered(attempt: Int, token: Int) {
         val result=renderedResult ?: return
         if(token != generation || call == null) return
-        val reader=try { context.assets.open("academic-diagnostic-reader.js").bufferedReader().use { it.readText() } } catch (_:Exception) { finish(result); return }
-        web?.evaluateJavascript("($reader)(true)") { raw ->
+        val reader=try { context.assets.open("handan-rendered-reader.js").bufferedReader().use { it.readText() } } catch (_:Exception) { finish(result); return }
+        web?.evaluateJavascript("($reader)()") { raw ->
             if(token != generation || call == null) return@evaluateJavascript
             try {
                 val decoded=JSONTokener(raw ?: "null").nextValue() as? String ?: throw IllegalArgumentException()
@@ -178,7 +182,7 @@ class HandanAcademicPlugin : Plugin() {
                     if(source != null && (source.optString("xnm")!=year || source.optString("xqm")!=code)) {
                         result.getJSONObject("modules").put("timetable",JSONObject().put("status","error").put("code","TERM"))
                     } else {
-                        val data=JSONObject().put("term",JSONObject().put("xnm",year).put("xqm",code)).put("kbList",rows).put("practice",org.json.JSONArray())
+                        val data=JSONObject().put("term",JSONObject().put("xnm",year).put("xqm",code)).put("kbList",rows).put("practice",payload.optJSONArray("practice") ?: org.json.JSONArray())
                         result.getJSONObject("modules").put("timetable",JSONObject().put("status","ok").put("data",data))
                     }
                     result.remove("renderedPage");finish(result)

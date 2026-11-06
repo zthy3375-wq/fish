@@ -76,19 +76,15 @@ async function(operation, requestedTerm) {
         if(!m)error('COURSE_FIELDS');sjkList.push({kcmc:text(m[1]),xm:text(m[2]),zcd:text(m[3],250)});
       }
     }
-    return {kbList,sjkList};
+    return kbList.length||sjkList.length?{kbList,sjkList}:null;
   }
   async function timetable(){
     const t=await context();
     // This is the standard V9 query form; success requires the actual kbList schema.
-    const path=new URL(timetablePage,origin);path.searchParams.delete('layout');path.searchParams.delete('su');path.pathname=path.pathname.replace(/xskbcx_cxXsgrkbIndex\.html$/, 'xskbcx_cxXsgrkb.html');path.searchParams.set('gnmkdm',path.searchParams.get('gnmkdm')||'N253508');
+    const path=new URL(timetablePage,origin);path.searchParams.delete('layout');path.searchParams.delete('su');path.pathname=path.pathname.replace(/xskbcx_cx(?:XsgrkbIndex|XskbcxIndex)\.html$/, 'xskbcx_cxXsgrkb.html');path.searchParams.set('gnmkdm',path.searchParams.get('gnmkdm')||'N253508');
     let raw=htmlTimetable(doc);
-    if(path.pathname==='/kbcx/xskbcx_cxXskbcxIndex.html'&&(t.xnm!==doc.querySelector('#xnm')?.value||t.xqm!==doc.querySelector('#xqm')?.value)){
-      doc=new DOMParser().parseFromString(await request(timetablePage,t),'text/html');
-      if(doc.querySelector('#xnm')?.value!==t.xnm||doc.querySelector('#xqm')?.value!==t.xqm)error('TERM');
-      raw=htmlTimetable(doc);
-    }
-    if(!raw)try{raw=await json(path.pathname+path.search,{...t,kzlx:'ck',xsdm:'',kclbdm:''})}
+    if(t.xnm!==doc.querySelector('#xnm')?.value||t.xqm!==doc.querySelector('#xqm')?.value)raw=null;
+    if(!raw)try{raw=await json(path.pathname+path.search,{...t,kzlx:'ck',xsdm:doc.querySelector('#xsdm')?.value||'',kclbdm:doc.querySelector('#kclbdm')?.value||'',kclxdm:doc.querySelector('#kclxdm')?.value||''})}
     catch(e){
       // Verified old device path: rendered grid fallback, no user detection/import step.
       if(t.xnm!==doc.querySelector('#xnm')?.value||t.xqm!==doc.querySelector('#xqm')?.value)throw e;
