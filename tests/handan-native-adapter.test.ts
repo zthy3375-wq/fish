@@ -45,3 +45,11 @@ it('hands an HTML-only timetable response to the native rendered-page reader wit
  expect(result.renderedPage.url).toContain('/kbcx/');expect(result.renderedPage.term).toEqual({xnm:'2026',xqm:'3'});
  expect(result.modules.timetable.data).toBeUndefined();
 });
+
+it('reads the verified Handan HTML layout, ignores icon fonts and retains practice courses without JSON',async()=>{
+ const html=termHtml+`<table id="kbgrid_table_0"><tr><td class="td_wrap" id="1-3"><div class="timetable_con"><span class="title"><font>人工课程★</font></span><p><span><font><span class="icon"></span></font></span><font> (3-4节)1-8周</font></p><p><span><font></font></span><font>人工教室</font></p><p><span><font></font></span><font>人工教师</font></p></div></td></tr><tr><td><div class="timetable_title">实践课程：人工实训■测试教师(共2周)/7-8周;</div></td></tr></table>`;
+ const {result,fetch}=await run((url,init)=>!init.body?html:[],'timetable');
+ expect(result.modules.timetable.status).toBe('ok');expect(result.modules.timetable.data.kbList[0]).toMatchObject({xm:'人工教师',cdmc:'人工教室',jcs:'3-4'});
+ expect(result.modules.timetable.data.practice).toEqual([{name:'人工实训',teacher:'测试教师',weeks:'7-8周'}]);
+ expect(fetch.mock.calls.filter(([u,i])=>u.includes('cxXsgrkb')&&i.body)).toHaveLength(0);
+});

@@ -798,6 +798,7 @@ onUnmounted(() => {
                     ? 'schedule-family'
                     : section
                 "
+                :practice="schoolTerm?.data?.practice ?? []"
                 :table="table"
                 :semester="semester"
                 :mode="data.source === 'official' ? 'official' : 'personal'"

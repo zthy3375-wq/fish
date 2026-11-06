@@ -30,6 +30,7 @@ import ScheduleGrid from "./ScheduleGrid.vue";
 import CourseCard from "./CourseCard.vue";
 import EmptyState from "./EmptyState.vue";
 const props = defineProps<{
+  practice?: {name:string;teacher:string;weeks:string}[];
   table: TimeTable;
   semester: Semester;
   mode: "demo" | "personal" | "official";
@@ -251,6 +252,7 @@ function touchEnd(e: TouchEvent) {
           @conflict="emit('conflict', $event)"
         /></div
     ></Transition>
+    <section v-if="practice?.length" class="panel"><h2>实践课程</h2><p class="muted">学校按教学周安排，未提供具体星期与节次。</p><article v-for="(p,i) in practice" :key="i" class="service-row"><span class="row-copy"><strong>{{p.name}}</strong><small>{{p.weeks}} · {{p.teacher}}</small></span></article></section>
     <p class="footnote">
       {{
         mode === "official"

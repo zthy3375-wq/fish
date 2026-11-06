@@ -24,6 +24,7 @@ async function(operation, requestedTerm) {
   function menu(prefix,candidate){
     for(const el of document.querySelectorAll('a[href],a[data-url],a[onclick]')){
       for(const value of [el.getAttribute('href'),el.getAttribute('data-url'),el.getAttribute('onclick')]){
+        if(prefix==='/kbcx/'&&!(value||'').includes('/kbcx/xskbcx_'))continue;
         const match=(value||'').match(new RegExp('('+prefix+'[a-zA-Z0-9_]+\\.html(?:\\?[^\\s\'"<>)]*)?)'));
         if(match){const u=new URL(match[1],origin);if(u.origin===origin){
           const code=[el.id,el.getAttribute('data-gnmkdm'),el.getAttribute('onclick'),el.closest('[id^=N]')?.id].map(v=>(v||'').match(/\bN\d{4,12}\b/)?.[0]).find(Boolean);
@@ -37,7 +38,7 @@ async function(operation, requestedTerm) {
     try{const data=await task();result.modules[name]={status:'ok',data,updatedAt:new Date().toISOString()}}
     catch(e){const code=controlled.has(e.message)?e.message:'SCHEMA';result.modules[name]={status:'error',code,httpStatus:Number.isInteger(e.httpStatus)?e.httpStatus:undefined,stage:e.stage};if(code==='EXPIRED')result.session='expired'}
   }
-  const timetablePage=menu('/kbcx/','/kbcx/xskbcx_cxXsgrkb.html?gnmkdm=N253508&layout=default');
+  const timetablePage=menu('/kbcx/','/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151&layout=default');
   let doc,term;
   async function context(){
     if(term)return term;
@@ -57,23 +58,42 @@ async function(operation, requestedTerm) {
       return {kcmc:text(r.kcmc),xm:text(r.xm,100),cdmc:text(r.cdmc),xqj:String(r.xqj),jcs:String(r.jcs).trim().replace(/节$/,''),zcd:text(r.zcd,250)};
     });
   }
+  // Confirmed against Handan's authenticated HTML on 2026-11-06. No student data is embedded.
+  function htmlTimetable(page){
+    if(!page.querySelector('#kbgrid_table_0'))return null;
+    const kbList=[],sjkList=[];
+    for(const cell of page.querySelectorAll('#kbgrid_table_0 td.td_wrap'))for(const c of cell.querySelectorAll('.timetable_con')){
+      const p=c.querySelectorAll('p');
+      const value=n=>(p[n]?.querySelector(':scope > font')?.textContent||p[n]?.textContent||'').trim();
+      const m=value(0).match(/[（(](\d{1,2}(?:-\d{1,2})?)节[）)]\s*(.+)$/);
+      if(!m)error('COURSE_FIELDS');
+      kbList.push({kcmc:text(c.querySelector('.title')?.textContent).replace(/[●★○■☆◆]/g,''),xm:text(value(2)),cdmc:text(value(1)),xqj:cell.id.split('-')[0],jcs:m[1],zcd:m[2]});
+    }
+    for(const footer of page.querySelectorAll('#kbgrid_table_0 .timetable_title')){
+      const content=footer.textContent.trim();if(!content.startsWith('实践课程：'))continue;
+      for(const part of content.replace(/^实践课程：/,'').split(/[;；]/).filter(x=>x.trim())){
+        const m=part.trim().match(/^(.+?)■(.+?)[（(]共\d+周[）)]\/(.+周)$/);
+        if(!m)error('COURSE_FIELDS');sjkList.push({kcmc:text(m[1]),xm:text(m[2]),zcd:text(m[3],250)});
+      }
+    }
+    return {kbList,sjkList};
+  }
   async function timetable(){
     const t=await context();
     // This is the standard V9 query form; success requires the actual kbList schema.
     const path=new URL(timetablePage,origin);path.searchParams.delete('layout');path.searchParams.delete('su');path.pathname=path.pathname.replace(/xskbcx_cxXsgrkbIndex\.html$/, 'xskbcx_cxXsgrkb.html');path.searchParams.set('gnmkdm',path.searchParams.get('gnmkdm')||'N253508');
-    let raw;
-    try{raw=await json(path.pathname+path.search,{...t,kzlx:'ck',xsdm:'',kclbdm:''})}
+    let raw=htmlTimetable(doc);
+    if(path.pathname==='/kbcx/xskbcx_cxXskbcxIndex.html'&&(t.xnm!==doc.querySelector('#xnm')?.value||t.xqm!==doc.querySelector('#xqm')?.value)){
+      doc=new DOMParser().parseFromString(await request(timetablePage,t),'text/html');
+      if(doc.querySelector('#xnm')?.value!==t.xnm||doc.querySelector('#xqm')?.value!==t.xqm)error('TERM');
+      raw=htmlTimetable(doc);
+    }
+    if(!raw)try{raw=await json(path.pathname+path.search,{...t,kzlx:'ck',xsdm:'',kclbdm:''})}
     catch(e){
       // Verified old device path: rendered grid fallback, no user detection/import step.
       if(t.xnm!==doc.querySelector('#xnm')?.value||t.xqm!==doc.querySelector('#xqm')?.value)throw e;
-      const list=[];
-      for(const cell of doc.querySelectorAll('#kbgrid_table_0 td.td_wrap'))for(const c of cell.querySelectorAll('.timetable_con')){
-        const p=c.querySelectorAll('p'),fonts=p[0]?.querySelectorAll('font');
-        const m=(fonts?.[1]?.textContent||p[0]?.textContent||'').match(/[（(](\d{1,2}(?:-\d{1,2})?)节[）)]\s*(.+)$/);
-        if(!m)error('SCHEMA');
-        list.push({kcmc:text(c.querySelector('.title')?.textContent).replace(/[●★○]/g,''),xm:text(p[2]?.querySelector('font')?.textContent),cdmc:text(p[1]?.querySelector('font')?.textContent),xqj:cell.id.split('-')[0],jcs:m[1],zcd:m[2]});
-      }
-      if(!list.length){if(e.message==='SCHEMA')error('TIMETABLE_JSON');throw e;}raw={kbList:list};
+      raw=htmlTimetable(doc);
+      if(!raw){if(e.message==='SCHEMA')error('TIMETABLE_JSON');throw e;}
     }
     if(typeof raw==='string'){try{raw=JSON.parse(raw)}catch{error('TIMETABLE_JSON')}}
     if(!raw||!Array.isArray(raw.kbList))error('TIMETABLE_JSON');
@@ -96,7 +116,7 @@ async function(operation, requestedTerm) {
         if(slots.every((s,i)=>s.number===i+1&&/^([01]\d|2[0-3]):[0-5]\d$/.test(s.start)&&/^([01]\d|2[0-3]):[0-5]\d$/.test(s.end)&&s.end>s.start))periods=slots;
       }
     }catch{} // Optional school times never block the timetable; previously supplied 13 periods remain the fallback.
-    return {term:t,kbList,practice,periods,endpoint:path.pathname,method:'POST'};
+    return {term:t,kbList,practice,periods,endpoint:path.pathname,method:path.pathname==='/kbcx/xskbcx_cxXskbcxIndex.html'?'HTML':'POST'};
   }
   async function paged(path,form){
     const all=[];let count=1;

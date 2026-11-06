@@ -146,7 +146,7 @@ class HandanAcademicPlugin : Plugin() {
                         val fallback=result.optJSONObject("renderedPage")
                         val url=fallback?.optString("url") ?: ""
                         val uri=try { java.net.URI(AcademicPolicy.ORIGIN).resolve(url) } catch (_:Exception) { null }
-                        if(fallback != null && uri != null && AcademicPolicy.allowed(uri.toString()) && Regex("/kbcx/xskbcx_cxXsgrkb(?:Index)?\\.html").matches(uri.path)) {
+                        if(fallback != null && uri != null && AcademicPolicy.allowed(uri.toString()) && Regex("/kbcx/xskbcx_cx(?:Xsgrkb(?:Index)?|XskbcxIndex)\\.html").matches(uri.path)) {
                             renderedResult=result
                             // Attach a tiny transparent WebView so the school page's AJAX/render lifecycle actually runs.
                             val view=web!!
