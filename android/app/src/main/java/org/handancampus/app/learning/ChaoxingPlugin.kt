@@ -61,6 +61,7 @@ class ChaoxingPlugin:Plugin() {
     private fun saveState(){synchronized(sessionLock){checkActive();state.put("origins",JSONArray(visited.keys.toList()));val raw=state.toString();if(raw.length>1900000)throw LearningFailure("LIMIT");vault.save(raw);cookies.flush()}}
     private fun failureResult(reason:String):JSONObject {val result=JSONObject().put("session",if(reason in listOf("AUTH","ACCOUNT_CHANGED"))"expired" else "unknown").put("code",reason);try{result.put("accountKey",account())}catch(_:Exception){};return result}
     private fun bindAccount(key:String){loadState();if(state.optString("account")!=key){state=JSONObject().put("account",key);knownCourses=emptyList();plan=emptyList()}}
+    private fun rememberChallenge(show:String,read:String){if(!ChaoxingPolicy.allowed(show)||!ChaoxingPolicy.safeRead(read))return;loadState();state.put("verificationUrl",show).put("verificationRead",read);saveState()}
     private fun request(start:String,form:Map<String,String>?=null):LearningPage {
         if(!ChaoxingPolicy.safeRead(start))throw LearningFailure("URL")
         var url=start;var post=form
@@ -79,14 +80,14 @@ class ChaoxingPlugin:Plugin() {
                 val code=connection.responseCode
                 diagnostics.put("host",URI(url).host).put("path",URI(url).path).put("httpStatus",code)
                 synchronized(sessionLock){checkActive();connection.headerFields.filter { it.key?.equals("Set-Cookie",true)==true }.values.flatten().forEach { cookies.setCookie(url,it) }}
-                if(code in 300..399){val target=ChaoxingPolicy.absolute(connection.getHeaderField("Location").orEmpty(),url) ?: throw LearningFailure("URL");if(ChaoxingPolicy.loginPage(target))throw LearningFailure("AUTH");if(ChaoxingPolicy.challenge(target,""))throw LearningFailure("VERIFY");url=target;post=null;continue}
+                if(code in 300..399){val target=ChaoxingPolicy.absolute(connection.getHeaderField("Location").orEmpty(),url) ?: throw LearningFailure("URL");if(ChaoxingPolicy.loginPage(target))throw LearningFailure("AUTH");if(ChaoxingPolicy.challenge(target,"")){rememberChallenge(target,start);throw LearningFailure("VERIFY")};url=target;post=null;continue}
                 if(code==401)throw LearningFailure("AUTH")
                 if(code==429)throw LearningFailure("RATE_LIMIT")
                 if(code==403)throw LearningFailure("HTTP_$code")
                 if(code !in 200..299)throw LearningFailure("HTTP_$code")
                 val bytes=connection.inputStream.use { input -> val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(out.size()<=1500000){val n=input.read(buffer);if(n<0)break;out.write(buffer,0,n)};out.toByteArray() };if(bytes.size>1500000)throw LearningFailure("LIMIT")
                 val body=String(bytes,Charsets.UTF_8)
-                if(ChaoxingPolicy.challenge(url,body))throw LearningFailure("VERIFY")
+                if(ChaoxingPolicy.challenge(url,body)){rememberChallenge(url,start);throw LearningFailure("VERIFY")}
                 if(Jsoup.parse(body).select("input[type=password]").isNotEmpty())throw LearningFailure("AUTH")
                 return LearningPage(url,body)
             } finally { connection.disconnect() }
@@ -189,7 +190,7 @@ class ChaoxingPlugin:Plugin() {
     @PluginMethod fun getSessionState(next:PluginCall)=begin(next){val key=account();fetchCourses();JSONObject().put("session","valid").put("accountKey",key)}
     @PluginMethod fun login(next:PluginCall){activity.runOnUiThread {
         if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread};call=next;val token=++generation;probing=false
-        showPage(ChaoxingPolicy.LOGIN,true)
+        loadState();val prior=state.optString("verificationUrl");val same=try{account()==state.optString("account")}catch(_:Exception){false};showPage(if(same&&ChaoxingPolicy.allowed(prior))prior else ChaoxingPolicy.LOGIN,true)
         handler.postDelayed({if(token==generation)fail("官方登录尚未完成，请重试","TIMEOUT")},300000)
     }}
     @PluginMethod fun openItem(next:PluginCall){activity.runOnUiThread {
@@ -197,6 +198,18 @@ class ChaoxingPlugin:Plugin() {
         try {loadState();if(account()!=state.optString("account"))throw LearningFailure("AUTH");val id=next.getString("id") ?: throw LearningFailure("ITEM");val url=state.optJSONObject("urls")?.optString(id).orEmpty();if(!ChaoxingPolicy.allowed(url))throw LearningFailure("LINK_EXPIRED");call=next;++generation;showPage(url,false)}catch(e:LearningFailure){next.reject("请先刷新学习通或重新登录",e.reason)}
     }}
     @PluginMethod fun openPortal(next:PluginCall){activity.runOnUiThread {if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread};call=next;++generation;showPage(ChaoxingPolicy.HOME,false)}}
+    private fun probeLogin(token:Int) {
+        if(token!=generation||call==null||probing)return
+        val key=try{account()}catch(_:Exception){android.widget.Toast.makeText(context,"请先在官方页面完成登录",android.widget.Toast.LENGTH_SHORT).show();return}
+        probing=true
+        executor.execute {workerToken=token;try {
+            bindAccount(key)
+            val proof=state.optString("verificationRead")
+            if(ChaoxingPolicy.safeRead(proof))try{request(proof)}catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT","CANCELLED"))throw e}catch(_:Exception){}
+            val courses=fetchCourses();if(account()!=key)throw LearningFailure("ACCOUNT_CHANGED");knownCourses=courses;state.remove("verificationUrl");state.remove("verificationRead");saveState()
+            handler.post{if(token==generation)finish(JSONObject().put("session","valid").put("accountKey",key).put("courses",publicCourses(courses)))}
+        }catch(e:LearningFailure){handler.post{if(token==generation){if(e.reason=="VERIFY"){probing=false;val target=state.optString("verificationUrl");if(ChaoxingPolicy.allowed(target)&&web?.url!=target)web?.loadUrl(target);android.widget.Toast.makeText(context,"请完成官方验证，再点顶部继续",android.widget.Toast.LENGTH_LONG).show()}else finish(failureResult(e.reason))}}}catch(_:Exception){handler.post{if(token==generation)finish(failureResult("NETWORK"))}}}
+    }
     private fun showPage(url:String,auth:Boolean){
         WebView.setWebContentsDebuggingEnabled(false)
         if(agent.isBlank())agent=WebSettings.getDefaultUserAgent(context)
@@ -209,15 +222,16 @@ class ChaoxingPlugin:Plugin() {
                 override fun shouldOverrideUrlLoading(v:WebView,r:WebResourceRequest)=!ChaoxingPolicy.allowed(r.url.toString())
                 override fun shouldInterceptRequest(v:WebView,r:WebResourceRequest):WebResourceResponse? {val target=r.url.toString();if(ChaoxingPolicy.allowed(target)){observe(target);return null};return WebResourceResponse("text/plain","UTF-8",ByteArrayInputStream(ByteArray(0)))}
                 override fun onReceivedSslError(v:WebView,h:SslErrorHandler,e:android.net.http.SslError){h.cancel();fail("学习通证书验证失败","TLS")}
-                override fun onPageFinished(v:WebView,page:String){cookies.flush();if(!auth||probing||ChaoxingPolicy.loginPage(page)||!ChaoxingPolicy.allowed(page))return
-                    try {account()}catch(_:Exception){return};probing=true;val token=generation
-                    executor.execute {workerToken=token;try {val courses=fetchCourses();val key=account();bindAccount(key);knownCourses=courses;saveState();handler.post{if(token==generation)finish(JSONObject().put("session","valid").put("accountKey",key).put("courses",publicCourses(courses)))}}catch(e:LearningFailure){handler.post{if(token==generation)finish(failureResult(e.reason))}}catch(_:Exception){handler.post{if(token==generation)finish(failureResult("NETWORK"))}}}
+                override fun onPageFinished(v:WebView,page:String){cookies.flush();if(!auth||probing||ChaoxingPolicy.loginPage(page)||!ChaoxingPolicy.allowed(page)||ChaoxingPolicy.challenge(page,""))return
+                    val token=generation
+                    v.evaluateJavascript("(function(){const t=document.body?.innerText||'';return /9010|访问过于频繁/.test(t)||/请输入验证码/.test(t)&&[...document.querySelectorAll('input[name=code],input[name=validate],input#verifyCode')].some(e=>e.offsetParent!==null)})()") { value->if(token==generation&&value=="false")probeLogin(token) }
                 }
+
             }
         }
         dialog=Dialog(activity,android.R.style.Theme_Material_Light_NoActionBar).apply {
             val root=LinearLayout(activity).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(Color.WHITE);fitsSystemWindows=true}
-            val bar=LinearLayout(activity);bar.addView(Button(activity).apply{text=if(auth)"取消" else "返回并刷新";setOnClickListener{if(auth)finish(failureResult("CANCELLED"))else finish(JSONObject().put("closed",true))}});bar.addView(TextView(activity).apply{text="学习通官方页面\nchaoxing.com";textSize=14f});root.addView(bar);root.addView(web,LinearLayout.LayoutParams(-1,0,1f));setContentView(root);setOnCancelListener{if(auth)finish(failureResult("CANCELLED"))else finish(JSONObject().put("closed",true))};window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE);show();window?.setLayout(-1,-1)
+            val bar=LinearLayout(activity);bar.addView(Button(activity).apply{text=if(auth)"取消" else "返回并刷新";setOnClickListener{if(auth)finish(failureResult("CANCELLED"))else finish(JSONObject().put("closed",true))}});bar.addView(TextView(activity).apply{text="学习通官方页面\nchaoxing.com";textSize=14f});if(auth)bar.addView(Button(activity).apply{text="登录/验证后继续";setOnClickListener{probeLogin(generation)}});root.addView(bar);root.addView(web,LinearLayout.LayoutParams(-1,0,1f));setContentView(root);setOnCancelListener{if(auth)finish(failureResult("CANCELLED"))else finish(JSONObject().put("closed",true))};window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE);show();window?.setLayout(-1,-1)
         };web!!.loadUrl(url)
     }
     @PluginMethod fun logout(next:PluginCall){activity.runOnUiThread {if(call!=null)fail("学习通连接已退出","CANCELLED");synchronized(sessionLock){generation++;loadState();val origins=(ChaoxingPolicy.origins+visited.keys).distinct();vault.clear();state=JSONObject();knownCourses=emptyList();plan=emptyList();planAccount=""

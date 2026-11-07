@@ -12,7 +12,7 @@ class ChaoxingParserTest {
     }
     @Test fun fullDatesAreValidatedAndMissingYearsAreUnknown(){
         assertEquals("2026-11-07T18:30",ChaoxingParser.deadline("截止时间：2026-11-7 18:30"))
-        assertNull(ChaoxingParser.deadline("截止时间：11-07 18:30"));assertNull(ChaoxingParser.deadline("截止时间：2026-02-30 12:00"))
+        assertNull(ChaoxingParser.deadline("截止时间：11-07 18:30"));assertNull(ChaoxingParser.deadline("提交时间：2026-11-07 18:30"));assertNull(ChaoxingParser.deadline("截止时间：2026-02-30 12:00"))
         assertEquals("2027-01-02T09:00",ChaoxingParser.deadline("作答时间：2026-12-31 08:00 至 2027-01-02 09:00"))
     }
     @Test fun submissionNeverComesFromLocalCompletionOrClosedDeadline(){

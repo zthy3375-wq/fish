@@ -19,7 +19,7 @@ object ChaoxingParser {
         try { val p=m.groupValues; val calendar=GregorianCalendar(TimeZone.getTimeZone("Asia/Shanghai"),Locale.ROOT).apply { clear();isLenient=false;set(p[1].toInt(),p[2].toInt()-1,p[3].toInt(),p[4].toInt(),p[5].toInt()) };SimpleDateFormat("yyyy-MM-dd'T'HH:mm",Locale.ROOT).apply { timeZone=calendar.timeZone }.format(calendar.time) } catch (_:Exception) { null }
     }.toList()
     fun deadline(text:String):String? {
-        val label=Regex("(?:截止(?:时间)?|结束(?:时间)?|提交时间)[：:\\s]*([^\\n]{0,80})").find(text)?.groupValues?.get(1)
+        val label=Regex("(?:截止(?:时间)?|结束(?:时间)?)[：:\\s]*([^\\n]{0,80})").find(text)?.groupValues?.get(1)
         if(label!=null)return dates(label).firstOrNull()
         val range=Regex("(?:作答时间|起止时间)[：:\\s]*([^\\n]{0,120})").find(text)?.groupValues?.get(1) ?: return null
         return dates(range).takeIf { it.size>=2 }?.last()
