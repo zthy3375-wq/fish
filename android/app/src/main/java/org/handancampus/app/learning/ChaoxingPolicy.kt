@@ -17,7 +17,7 @@ object ChaoxingPolicy {
         val u = URI(url ?: "")
         u.scheme == "https" && u.userInfo == null && u.port in listOf(-1,443) && (u.host == "chaoxing.com" || u.host?.endsWith(".chaoxing.com") == true)
     } catch (_: Exception) { false }
-    fun loginPage(url: String) = URI(url).host?.startsWith("passport") == true || URI(url).path.contains("/login", true)
+    fun loginPage(url: String) = !allowed(url) || URI(url).host?.startsWith("passport") == true || URI(url).path.orEmpty().contains("/login", true)
     fun challenge(url: String, body: String) = url.contains("antispider", true) || body.contains("访问过于频繁") || body.contains("9010") && body.contains("验证码")
     fun query(url: String): Map<String,String> = try { (URI(url).rawQuery ?: "").split('&').filter { it.contains('=') }.associate { val p=it.split('=',limit=2); URLDecoder.decode(p[0],"UTF-8").lowercase() to URLDecoder.decode(p[1],"UTF-8") } } catch (_:Exception) { emptyMap() }
     fun absolute(raw: String, base: String): String? = try { val value=URI(base).resolve(raw.trim()).toString(); if(allowed(value)) value else null } catch (_:Exception) { null }

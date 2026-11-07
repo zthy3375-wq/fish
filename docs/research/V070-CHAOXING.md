@@ -15,7 +15,7 @@
 | 功能 | 研究所得契约 | 本轮验证状态 |
 | --- | --- | --- |
 | 官方认证 | passport2.chaoxing.com/login，WebView正常认证 | 无凭据公开GET返回200且包含官方密码表单；未完成本人登录 |
-| 课程 | GET mooc1-api.chaoxing.com/mycourse/backclazzdata | 源码契约、解析与测试；匿名请求返回HTTP错误，不能据此认定本人接口可用或已失效 |
+| 课程 | GET mooc1-api.chaoxing.com/mycourse/backclazzdata；必要时以会话fid查询HTML或POST mooc1-1.chaoxing.com/visit/courselistdata | 源码契约、解析与测试；匿名请求返回HTTP错误，不能据此认定本人接口可用或已失效 |
 | 全部作业 | GET mooc1-api.chaoxing.com/mooc-ans/mooc2/work/all-task | 优先尝试，需完整计数与分页证据；未用本人账号验证 |
 | 逐课程 | visit/stucoursemiddle → 实际菜单/隐藏workEnc → mooc2/work/list | 动态参数来自会话页面，不设固定fid/enc/cpi；待本人账号验证 |
 | 作业详情 | 列表真实data链接中的work/task | 只读GET，完整日期才转为截止；待本人账号验证 |
@@ -28,7 +28,7 @@
 
 - 独立ChaoxingClient，官方远程页不具有Capacitor桥或JavascriptInterface。Vue仅接收白名单数据和账号不可逆摘要，接触不到Cookie、cpi、enc或签名原始链接。
 - 使用WebView CookieManager的持久化会话，关闭页面/重启不主动清除；HTTP逐请求使用CookieManager并保存Set-Cookie。登录成功需在已认证HTTP响应中识别课程结构，不能只凭一个Cookie认定成功。
-- 签名原始链接存在独立Android Keystore AES-GCM加密文件中，点击时按ID从原生查找；不写入Vue缓存、通知或任务备份。
+- 原生退出会阻止旧请求回写Cookie，并清理实际访问过的学习通域。签名原始链接存在独立Android Keystore AES-GCM加密文件中，点击时按ID从原生查找；不写入Vue缓存、通知或任务备份。
 - 教务与学习通退出各自清理域Cookie/存储；修复教务removeAllCookies会误伤其他连接的问题。未改动学校查询脚本、成绩算法或学校数据缓存键。
 - HTTPS及重定向域/只读路径白名单；不忽略证书错误。明确验证挑战时停止查询，回到官方页面由本人完成，不自动解题或绕过。
 

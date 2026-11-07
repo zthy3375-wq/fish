@@ -8,7 +8,7 @@ class ChaoxingParserTest {
     @Test fun destinationsAndReadPathsAreRestricted(){
         assertTrue(ChaoxingPolicy.allowed(ChaoxingPolicy.LOGIN));assertTrue(ChaoxingPolicy.safeRead(ChaoxingPolicy.ALL_WORK))
         for(url in listOf("http://i.chaoxing.com/base","https://i.chaoxing.com.evil.test/base","https://i.chaoxing.com@evil.test/base","https://evilchaoxing.com/","file:///data/data/","https://i.chaoxing.com:444/base"))assertFalse(ChaoxingPolicy.allowed(url))
-        assertFalse(ChaoxingPolicy.safeRead("https://mooc1.chaoxing.com/work/addStudentWork"));assertFalse(ChaoxingPolicy.safeRead("https://mooc1.chaoxing.com/work/submit"))
+        assertFalse(ChaoxingPolicy.safeRead("https://mooc1.chaoxing.com/work/addStudentWork"));assertFalse(ChaoxingPolicy.safeRead("https://mooc1.chaoxing.com/work/submit"));assertTrue(ChaoxingPolicy.loginPage("about:blank"))
     }
     @Test fun fullDatesAreValidatedAndMissingYearsAreUnknown(){
         assertEquals("2026-11-07T18:30",ChaoxingParser.deadline("截止时间：2026-11-7 18:30"))
@@ -39,6 +39,18 @@ class ChaoxingParserTest {
     @Test fun signedOriginalLinksNeverCrossThePublicBridge(){
         val item=LearningRecord("12/34/homework/78","12","34","78","homework","人工任务","人工课程","pending","待做",null,null,"时间未知","","https://mooc1.chaoxing.com/mooc-ans/mooc2/work/task?enc=TEST_SECRET_ONLY")
         val json=ChaoxingBridge.record(item);assertFalse(json.toString().contains("TEST_SECRET_ONLY"));assertFalse(json.has("url"));assertFalse(json.has("cpi"));assertTrue(json.isNull("deadline"));assertTrue(json.getBoolean("hasLink"))
+    }
+
+    @Test fun alreadyAbsoluteSignedUrlsKeepTheirEncodedQueryBytes(){
+        val url="https://mooc1.chaoxing.com/mooc-ans/mooc2/work/task?courseId=12&amp;classId=34&amp;workId=78&amp;enc=TEST%2BONLY"
+        val html="<li onclick='goTask(this);' data='$url' aria-label='人工作业;待做'><p class='overHidden2 fl'>人工作业</p></li>"
+        assertTrue(ChaoxingParser.work(html,course.url,course).records[0].url.contains("TEST%2BONLY"))
+    }
+
+    @Test fun machineProvidedFullTimeWinsWithoutGuessingTheYearOfDisplayedText(){
+        val item=LearningRecord("12/34/homework/78","12","34","78","homework","人工任务","人工课程","pending","待做",null,null,"11-08 18:00","",course.url)
+        val result=ChaoxingParser.enrich(item,"<input id='endTime' value='2026-11-08 18:00'><div class='answerTime'>作答时间：11-01 18:00 至 11-08 18:00</div>")
+        assertEquals("2026-11-08T18:00",result.deadline)
     }
 
 }

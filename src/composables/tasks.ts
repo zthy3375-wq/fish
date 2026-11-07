@@ -93,7 +93,7 @@ export async function handleTaskNotification(event: ActionPerformed) {
     try {
         if (!tasksReady.value)
             await initTasks();
-        if(String(extra.taskId).startsWith('cx:')){await initLearning();const task=learningTasks.value.find(t=>t.id===extra.taskId);if(!task||task.completed||extra.updatedAt!==task.updatedAt)return;if(event.actionId==='open')await openLearningItem(task);else if(event.actionId==='snooze'){const d=new Date(Date.now()+600000);await saveLearningPlan({...task,snoozedUntil:beijingDay(d)+'T'+new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d)});await reconcileTaskReminders()}return;}
+        if(extra.source==='chaoxing'){await initLearning();const task=learningTasks.value.find(t=>t.id===extra.taskId);if(!task||task.completed||extra.updatedAt!==task.updatedAt)return;if(event.actionId==='open')await openLearningItem(task);else if(event.actionId==='snooze'){const d=new Date(Date.now()+600000);await saveLearningPlan({...task,snoozedUntil:beijingDay(d)+'T'+new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d)});await reconcileTaskReminders()}return;}
         if(event.actionId==='open')return;
         await changeTasks(() => taskStore.change(s => { const task = s.tasks.find(t => t.id === extra.taskId); if (!task || task.completed)
             return; if (extra.updatedAt !== task.updatedAt)

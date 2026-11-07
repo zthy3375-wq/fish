@@ -60,7 +60,7 @@ object ChaoxingParser {
         val rows=doc.select("li[data*=work],li[onclick*=goTask],li:has(a.inspectTask),a[data-workid]")
         for(row in rows) {
             val raw=row.attr("data").ifBlank { row.selectFirst("a[href*=work],a[data*=work]")?.let { it.attr("href").ifBlank { it.attr("data") } } ?: "" }
-            val decoded=try { URLDecoder.decode(raw,"UTF-8") } catch (_:Exception) { raw }
+            val decoded=try { if(raw.startsWith("https://")||raw.startsWith("http://")||raw.startsWith("/"))raw else URLDecoder.decode(raw.replace("+","%2B"),"UTF-8") } catch (_:Exception) { raw }
             val url=ChaoxingPolicy.absolute(decoded,base);val q=ChaoxingPolicy.query(url ?: "")
             val cid=q["courseid"] ?: course?.courseId ?: "";val clazz=q["classid"] ?: q["clazzid"] ?: course?.classId ?: ""
             val wid=q["workid"] ?: row.attr("data-workid");val label=row.attr("aria-label").split(';')
@@ -77,12 +77,19 @@ object ChaoxingParser {
         val next=doc.select("a[rel=next],a.next:not(.disabled),.pagingNext:not(.disabled),.nextPage:not(.disabled)").any { it.attr("aria-disabled")!="true" && it.attr("href")!="#" }
         return ParsedWork(out.values.toList(),recognized,recognized&&!next&&rejected==0,rejected)
     }
+    private fun machineDate(value:String):String? {
+        dates(value).firstOrNull()?.let { return it }
+        val raw=value.trim();if(!raw.matches(Regex("[0-9]{10}|[0-9]{13}")))return null
+        val millis=try { raw.toLong()*(if(raw.length==10)1000 else 1) }catch(_:Exception){return null}
+        if(millis !in 946684800000L..4102444799999L)return null
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm",Locale.ROOT).apply { timeZone=TimeZone.getTimeZone("Asia/Shanghai") }.format(java.util.Date(millis))
+    }
     fun enrich(item:LearningRecord,html:String):LearningRecord {
-        val doc=Jsoup.parse(html);doc.select("script,style,form input,input,textarea").remove()
+        val doc=Jsoup.parse(html);val machineEnd=doc.selectFirst("input#endTime,input#workEndTime")?.attr("value")?.let(::machineDate);val machineStart=doc.selectFirst("input#startTime,input#workStartTime")?.attr("value")?.let(::machineDate);doc.select("script,style,form input,input,textarea").remove()
         val text=doc.body().text();val display=doc.select(".workTitle,.work-title,.mark_info,.workInfo,.answerTime,.time").joinToString("\n") { it.text() }.ifBlank { text.take(2000) }
         // Missing years are intentionally left unknown; never infer the current year.
-        val end=deadline(display) ?: deadline(text)
-        val start=Regex("(?:开始时间|作答时间)[：:\\s]*(.{0,50})").find(display)?.groupValues?.get(1)?.let { dates(it).firstOrNull() }
+        val end=machineEnd ?: deadline(display) ?: deadline(text)
+        val start=machineStart ?: Regex("(?:开始时间|作答时间)[：:\\s]*(.{0,50})").find(display)?.groupValues?.get(1)?.let { dates(it).firstOrNull() }
         return item.copy(deadline=end ?: item.deadline,startAt=start,timeText=display.take(1000),description=doc.selectFirst(".workDescription,.work-description,.workTitle")?.text()?.take(4000) ?: "")
     }
     fun exams(html:String,base:String):ParsedWork {

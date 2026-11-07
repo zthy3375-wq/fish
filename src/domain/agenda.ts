@@ -17,7 +17,7 @@ export interface RepeatRule {
     weekdays: number[];
 }
 export interface CampusTask {
-    source?: 'chaoxing'; externalId?: string; platformStatus?: string; platformStatusText?: string; platformStale?: boolean; platformKind?: string; platformStartAt?:string|null; timeText?: string;
+    source?: 'chaoxing'; externalId?: string; platformStatus?: string; platformStatusText?: string; platformStale?: boolean; platformDescription?:string; platformKind?: string; platformStartAt?:string|null; timeText?: string;
     plannedAt?: string | null;
     durationMinutes?: number;
     priority?: number;
@@ -176,7 +176,7 @@ export function taskReminderPlan(snapshot: TaskSnapshot, now = new Date()) {
     }
     const seen = new Set<string>();
     return candidates.sort((a, b) => +a.at - +b.at).filter(p => { const key = p.task.id + '/' + (+p.at); if (seen.has(key))
-        return false; seen.add(key); return true; }).slice(0, 30).map((p, i) => ({ id: 410000 + i, title: `待办提醒：${p.task.title}`, body: `${p.anchor === 'deadline' ? '截止' : p.anchor === 'start' ? '计划开始' : '提醒'} · ${p.task.course || '个人任务'}`, schedule: { at: p.at, allowWhileIdle: true }, actionTypeId: p.task.source === 'chaoxing' ? 'HANDAN_LEARNING' : 'HANDAN_TASK', extra: { owner: 'handan-task', taskId: p.task.id, updatedAt: p.task.updatedAt } }));
+        return false; seen.add(key); return true; }).slice(0, 30).map((p, i) => ({ id: 410000 + i, title: `待办提醒：${p.task.title}`, body: `${p.anchor === 'deadline' ? '截止' : p.anchor === 'start' ? '计划开始' : '提醒'} · ${p.task.course || '个人任务'}`, schedule: { at: p.at, allowWhileIdle: true }, actionTypeId: p.task.source === 'chaoxing' ? 'HANDAN_LEARNING' : 'HANDAN_TASK', extra: { owner: 'handan-task', taskId: p.task.id, updatedAt: p.task.updatedAt, source:p.task.source||'personal' } }));
 }
 export function buildAgenda(series: CourseSeries[], exams: Exam[], tasks: CampusTask[], from: string, days = 7, now = new Date()) {
     if (!validDay(from) || !Number.isInteger(days) || days < 1 || days > 31)
