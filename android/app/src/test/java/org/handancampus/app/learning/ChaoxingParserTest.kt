@@ -77,4 +77,31 @@ class ChaoxingParserTest {
         assertNull(ChaoxingParser.nextPage("<a rel='next' href='https://evil.test'>下一页</a>",base))
         assertTrue(ChaoxingParser.work("<input id='totalCount' value='20'>"+rows,base,course).complete)
     }
+
+    @Test fun verificationReplayKeepsOriginalRefererAndReplacesStaleForm(){
+        val state=org.json.JSONObject()
+        val page="https://mooc1.chaoxing.com/mooc2/work/list?enc=TEST_ONLY"
+        val challenge="https://mooc1.chaoxing.com/antispider/verify"
+        assertTrue(ChaoxingVerification.remember(state,challenge,page,mapOf("type" to "0"),course.url))
+        val restored=org.json.JSONObject(state.toString())
+        assertEquals(course.url,restored.getString("verificationReferer"))
+        assertEquals(page,restored.getString("verificationRead"))
+        assertTrue(ChaoxingVerification.remember(restored,challenge,page,null,course.url))
+        assertFalse(restored.has("verificationForm"))
+        assertFalse(ChaoxingVerification.remember(restored,"https://evil.test",page,null,course.url))
+        assertEquals(challenge,restored.getString("verificationUrl"))
+    }
+    @Test fun workListFramesAreFollowedWithoutTreatingShellAsEmptyWork(){
+        val shell="<iframe src='/mooc2/work/list?courseId=12&amp;classId=34&amp;enc=TEST_ONLY'></iframe>"
+        assertNotNull(ChaoxingParser.workFrame(shell,course.url))
+        assertFalse(ChaoxingParser.work(shell,course.url,course).recognized)
+        assertNull(ChaoxingParser.workFrame("<iframe src='https://evil.test/mooc2/work/list'></iframe>",course.url))
+        assertNull(ChaoxingParser.workFrame("<iframe src='/work/submit'></iframe>",course.url))
+    }
+    @Test fun nonLiTaskHandlersRetainServerStatusAndIdentity(){
+        val html="<div onclick='goTask(this)' data='https://mooc1.chaoxing.com/mooc2/work/task?courseId=12&amp;classId=34&amp;workId=78'><div class='right-content'><p>人工任务</p><p class='status'>已完成</p></div></div>"
+        val result=ChaoxingParser.work(html,course.url,course)
+        assertEquals("submitted",result.records.single().status)
+        assertEquals("人工任务",result.records.single().title)
+    }
 }

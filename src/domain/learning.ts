@@ -1,3 +1,4 @@
+import {resolveLearningItems} from './learning-groups';
 import { beijingTimestamp, validateTask, type CampusTask } from './agenda';
 import type { LearningCourse, LearningItem, LearningNotice, LearningResponse } from '../services/chaoxing-client';
 export interface LearningPlan {
@@ -43,7 +44,7 @@ export function validateLearningCourses(raw: unknown): LearningCourse[] { if (!A
     throw Error('课程列表格式需要适配'); return raw.map(r => { if (!r || !/^\d{1,24}$/.test(r.courseId) || !/^\d{1,24}$/.test(r.classId))
     throw Error('课程编号无效'); return { courseId: r.courseId, classId: r.classId, name: text(r.name, 200), teacher: text(r.teacher, 150) }; }); }
 export function projectLearning(cache: LearningCache): CampusTask[] { if (!cache.connected || !cache.accountKey)
-    return []; return cache.items.map(item => { const plan = cache.plans[item.id]; return { id: learningTaskId(cache.accountKey, item.id), title: item.title, course: item.course || '课程名称待更新', deadline: item.deadline, plannedAt: plan?.plannedAt ?? null, durationMinutes: plan?.durationMinutes ?? 30, priority: plan?.priority ?? 0, pinned: plan?.pinned ?? false, notes: plan?.notes ?? '', steps: plan?.steps ?? [], reminders: plan?.reminders ?? [], snoozedUntil: plan?.snoozedUntil ?? null, repeat: null, completed: item.status === 'submitted', completedAt: null, remindMinutes: null, createdAt: item.firstSeenAt ?? item.updatedAt ?? cache.updatedAt ?? '1970-01-01T00:00:00Z', updatedAt: item.updatedAt ?? cache.updatedAt ?? '2026-01-01T00:00:00Z', source: 'chaoxing', externalId: item.id, platformStatus: item.status, platformStatusText: item.statusText, platformStale: item.stale || cache.session !== 'valid', platformDescription: item.description, platformKind: item.kind, platformStartAt: item.startAt, timeText: item.timeText }; }); }
+    return []; return resolveLearningItems(cache.items,cache.courses).map(item => { const plan = cache.plans[item.id]; return { id: learningTaskId(cache.accountKey, item.id), title: item.title, course: item.course || '课程名称待更新', deadline: item.deadline, plannedAt: plan?.plannedAt ?? null, durationMinutes: plan?.durationMinutes ?? 30, priority: plan?.priority ?? 0, pinned: plan?.pinned ?? false, notes: plan?.notes ?? '', steps: plan?.steps ?? [], reminders: plan?.reminders ?? [], snoozedUntil: plan?.snoozedUntil ?? null, repeat: null, completed: item.status === 'submitted', completedAt: null, remindMinutes: null, createdAt: item.firstSeenAt ?? item.updatedAt ?? cache.updatedAt ?? '1970-01-01T00:00:00Z', updatedAt: item.updatedAt ?? cache.updatedAt ?? '2026-01-01T00:00:00Z', source: 'chaoxing', externalId: item.id, platformStatus: item.status, platformStatusText: item.statusText, platformStale: item.stale || cache.session !== 'valid', platformDescription: item.description, platformKind: item.kind, platformStartAt: item.startAt, timeText: item.timeText }; }); }
 export function learningPlan(task: CampusTask): LearningPlan { const clean = validateTask({ ...task, id: 'planning', course: '', title: '任务规划', deadline: null, remindMinutes: null, repeat: null }); return { plannedAt: clean.plannedAt ?? null, durationMinutes: clean.durationMinutes ?? 30, priority: clean.priority ?? 0, pinned: clean.pinned ?? false, notes: clean.notes, steps: clean.steps ?? [], reminders: clean.reminders ?? [], snoozedUntil: clean.snoozedUntil ?? null }; }
 export function applyLearningResponse(current: LearningCache, response: LearningResponse, now = new Date()): LearningCache {
     if (!['valid', 'expired', 'unknown', 'disconnected'].includes(response.session))
@@ -52,7 +53,7 @@ export function applyLearningResponse(current: LearningCache, response: Learning
     next.lastAttempt = now.toISOString();
     if (response.diagnostics) {
         const safe: Record<string, string | number | string[]> = {};
-        for (const key of ['host', 'path', 'httpStatus', 'courseKeys', 'courseChannels', 'workRows', 'workLinks', 'workRejected','workEncInputs']) {
+        for (const key of ['host', 'path', 'httpStatus', 'courseKeys', 'courseChannels', 'workRows', 'workLinks', 'workRejected','workEncInputs','stage','workHost','workPath','workContainers','workFrames','workTaskHandlers']) {
             const value = response.diagnostics[key];
             if (typeof value === 'number' && Number.isFinite(value))
                 safe[key] = value;

@@ -40,6 +40,10 @@ object ChaoxingParser {
         }
         return null
     }
+    /** A supplied list iframe is a read target, never a guessed endpoint. */
+    fun workFrame(html:String,base:String):String? = Jsoup.parse(html,base).select("iframe[src]").asSequence()
+        .mapNotNull { ChaoxingPolicy.absolute(it.attr("src"),base) }
+        .firstOrNull { it!=base&&ChaoxingPolicy.safeRead(it)&&java.net.URI(it).path.lowercase() in listOf("/mooc2/work/list","/mooc-ans/mooc2/work/list","/work/getallwork","/mooc-ans/work/getallwork") }
     fun courses(html:String,base:String):List<LearningCourse> {
         val doc=Jsoup.parse(html,base);val out=linkedMapOf<String,LearningCourse>()
         for(el in doc.select("[courseid],a[href*=stucoursemiddle]")) {
@@ -57,7 +61,7 @@ object ChaoxingParser {
     }
     fun work(html:String,base:String,course:LearningCourse?=null,kind:String="homework"):ParsedWork {
         val doc=Jsoup.parse(html,base);val out=linkedMapOf<String,LearningRecord>();var rejected=0
-        val rows=doc.select("li[data*=work],li[onclick*=goTask],li:has(a.inspectTask),a[data-workid]")
+        val rows=doc.select("li[data*=work],[onclick*=goTask],li:has(a.inspectTask),a[data-workid]")
         for(row in rows) {
             val raw=row.attr("data").ifBlank { row.selectFirst("a[href*=work],a[data*=work]")?.let { it.attr("href").ifBlank { it.attr("data") } } ?: "" }
             val decoded=try { if(raw.startsWith("https://")||raw.startsWith("http://")||raw.startsWith("/"))raw else URLDecoder.decode(raw.replace("+","%2B"),"UTF-8") } catch (_:Exception) { raw }
@@ -65,7 +69,7 @@ object ChaoxingParser {
             val cid=q["courseid"] ?: course?.courseId ?: "";val clazz=q["classid"] ?: q["clazzid"] ?: course?.classId ?: ""
             val inspect=row.selectFirst("a.inspectTask,a[data-workid]")
             val wid=q["workid"] ?: row.attr("data-workid").ifBlank { inspect?.attr("data-workid").orEmpty().ifBlank { inspect?.attr("data").orEmpty() } };val label=row.attr("aria-label").split(';')
-            val title=(row.selectFirst(".overHidden2.fl,.task-title,.title,a.inspectTask")?.text() ?: label.firstOrNull().orEmpty()).trim()
+            val title=(row.selectFirst(".overHidden2.fl,.task-title,.title,a.inspectTask,.right-content p:not(.status)")?.text() ?: label.firstOrNull().orEmpty()).trim()
             val explicit=row.select(".status,.work-status,.workStatus,.task-status,.pt5,.time,em,span").map { it.text().trim() }.filter { status(it)!="unknown" && it.length<=100 && !it.contains("截止时间") && !it.contains("开始时间") }
             val aria=label.drop(1).joinToString(";").trim()
             val statusText=(row.selectFirst(".status,.work-status,.workStatus,.task-status")?.text()?.takeIf { status(it)!="unknown" } ?: aria.takeIf { status(it)!="unknown" } ?: explicit.firstOrNull() ?: "提交状态未知").take(100)
