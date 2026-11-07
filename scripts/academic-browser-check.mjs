@@ -184,7 +184,7 @@ try{
   await page.getByText('计划已调整，最终截止时间保持原样',{exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks[0].deadline)==='2026-11-05T18:00',`${width}: rescheduling never silently postpones submission`);
   await page.locator('.task-copy').click();
-  await page.getByLabel('待办备注',{exact:true}).fill('未保存的修改');
+  await page.getByLabel('新步骤标题',{exact:true}).fill('未保存的步骤');
   await page.goBack();
   await page.getByText('保留未保存的修改？',{exact:true}).waitFor();
   assert(await page.getByRole('dialog',{name:'任务详情',exact:true}).count()===1,`${width}: browser back guards dirty task detail`);
