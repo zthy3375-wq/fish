@@ -2,7 +2,7 @@ import { it, expect, vi, beforeEach } from 'vitest';
 import { task } from './fixtures/agenda';
 const storage = vi.hoisted(() => new Map<string, string>());
 const notifications = vi.hoisted(() => ({ checkPermissions: vi.fn(), requestPermissions: vi.fn(), getPending: vi.fn(), cancel: vi.fn(), schedule: vi.fn(), registerActionTypes: vi.fn(), addListener: vi.fn() }));
-vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true } }));
+vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true,getPlatform:()=> 'android' },registerPlugin:()=>({}) }));
 vi.mock('@capacitor/local-notifications', () => ({ LocalNotifications: notifications }));
 vi.mock('@capacitor/preferences', () => ({ Preferences: { get: async ({ key }: {
             key: string;

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import LearningConnection from './components/LearningConnection.vue';
+import {initLearning,syncLearning,learningTasks} from './composables/learning';
 import {taskSummary} from './domain/tasks';
 import CampusAgenda from './components/CampusAgenda.vue';
-import {initTasks,reloadTasks,taskSnapshot,tasksReady,agendaView} from './composables/tasks';
+import {initTasks,reloadTasks,taskSnapshot,tasksReady,agendaView,allTasks,reconcileTaskReminders} from './composables/tasks';
 import {version as appVersion} from '../package.json';
 import {
   ref,
@@ -341,6 +343,7 @@ watch(data, (d) => {
     else close();
   }
 });
+watch(learningTasks,()=>{if(tasksReady.value)void reconcileTaskReminders()});
 function go(id: string) {
   move(id === "schedule" ? "schedule" : "academic", id);
 }
@@ -470,6 +473,7 @@ function escape(e: KeyboardEvent) {
   if(e.key === "Escape"){if(modal.value)requestClose();else if(agendaView.editor)agendaRef.value?.requestBack();}
 }
 async function recalibrate() {
+  void syncLearning().catch(()=>{});
   void reloadTasks();
   now.value = campusNow();
   if (document.visibilityState === "visible") {
@@ -481,7 +485,7 @@ async function recalibrate() {
 watch(schedule, (s) => reconcileReminders(s));
 let pullY=0;
 function pullStart(e:TouchEvent){pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
-function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100)void syncAcademic()}
+function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='academic'&&section.value==='agenda')void syncLearning({force:true});else void syncAcademic()}}
 function viewportChange() {
   const v = window.visualViewport;
   document.documentElement.classList.toggle(
@@ -492,6 +496,7 @@ function viewportChange() {
 onMounted(async () => {
   load();
   void initTasks().catch(()=>{});
+  void initLearning().then(()=>syncLearning()).catch(()=>{});
   clockTimer = setInterval(() => (now.value = campusNow()), 30000);
   media.addEventListener("change", systemChange);
   window.addEventListener("keydown", escape);
@@ -556,7 +561,7 @@ onUnmounted(() => {
       <div v-else class="page-content">
           <template v-if="page === 'home'">
             <SchoolConnection compact @connected="move('home')" />
-            <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSummary(taskSnapshot.tasks,now).today.length} 项今日任务 · ${taskSummary(taskSnapshot.tasks,now).overdue.length} 项逾期 · ${taskSummary(taskSnapshot.tasks,now).due.length} 项近期截止`:'待办尚未读取'}}</small><span v-if="tasksReady" class="task-home-summary"><span v-for="t in taskSummary(taskSnapshot.tasks,now).important" :key="t.id">{{t.title}}</span></span></span><ChevronRight :size="18"/></button>
+            <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSummary(allTasks,now).today.length} 项今日任务 · ${taskSummary(allTasks,now).overdue.length} 项逾期 · ${taskSummary(allTasks,now).due.length} 项近期截止`:'待办尚未读取'}}</small><span v-if="tasksReady" class="task-home-summary"><span v-for="t in taskSummary(allTasks,now).important" :key="t.id">{{t.title}}</span></span></span><ChevronRight :size="18"/></button>
             <div class="home-greeting">
               <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
               ><span class="quiet-label">北京时间 {{ timeOf(now) }}</span>
@@ -715,7 +720,7 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
-            <SchoolConnection />
+            <SchoolConnection /><LearningConnection />
             <SectionHeader title="外观设置" />
             <section class="settings-group">
               <div class="theme-row">

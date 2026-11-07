@@ -1,6 +1,7 @@
 import { beijingDay, beijingTimestamp, shiftDay, validateTask, type CampusTask, type TaskSnapshot } from './agenda';
 export type SmartList = 'today' | 'inbox' | 'planned' | 'due' | 'completed';
 export interface TaskFilter {
+    source?: 'all' | 'personal' | 'chaoxing';
     view: SmartList;
     search: string;
     course: string;
@@ -23,7 +24,7 @@ export function selectTasks(tasks: CampusTask[], filter: TaskFilter, now = new D
     return tasks.filter(t => {
         const plan = t.plannedAt?.slice(0, 10), due = t.deadline?.slice(0, 10);
         const match = filter.view === 'completed' ? t.completed : !t.completed && (filter.view === 'inbox' ? !plan && !due : filter.view === 'today' ? !!plan && plan <= today || !!due && due <= today : filter.view === 'planned' ? !!plan || !!due : !!due && due <= soon);
-        return match && (!filter.course || t.course === filter.course) && (filter.priority < 0 || (t.priority ?? 0) === filter.priority) && (!filter.search || `${t.title} ${t.course} ${t.notes}`.toLocaleLowerCase().includes(filter.search.trim().toLocaleLowerCase()));
+        return match && (!filter.source || filter.source==='all' || (t.source==='chaoxing'?'chaoxing':'personal')===filter.source) && (!filter.course || t.course === filter.course) && (filter.priority < 0 || (t.priority ?? 0) === filter.priority) && (!filter.search || `${t.title} ${t.course} ${t.notes}`.toLocaleLowerCase().includes(filter.search.trim().toLocaleLowerCase()));
     }).sort((a, b) => {
         if (filter.group && a.course !== b.course)
             return a.course.localeCompare(b.course, 'zh-CN');

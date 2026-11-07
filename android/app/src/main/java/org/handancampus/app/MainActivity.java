@@ -4,6 +4,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle savedInstanceState) {
         registerPlugin(org.handancampus.app.academic.HandanAcademicPlugin.class);
+        registerPlugin(org.handancampus.app.learning.ChaoxingPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
