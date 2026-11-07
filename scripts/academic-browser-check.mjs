@@ -155,7 +155,7 @@ try{
   await page.getByText('待办已保存到本机',{exact:true}).waitFor();
   await page.getByRole('button',{name:/^今天/}).first().click();
   assert(await page.locator('.task-row').count()===1,`${width}: task planned today is visible before its later deadline`);
-  assert(await page.locator('.task-progress').innerText()==='0/1 步骤 · 重复任务',`${width}: subtask progress retained`);
+  assert((await page.locator('.task-progress').innerText()).replace(/\s+/g,' ').trim()==='0/1 步骤 · 重复任务',`${width}: subtask progress retained`);
   await page.getByRole('tab',{name:'日程时间轴',exact:true}).click();
   assert(await page.locator('.agenda-event.task').count()===2,`${width}: planned work and submission are independent timeline events`);
   assert(await page.locator('.agenda-event.exam').count()===1,`${width}: cached exams appear on unified timeline`);
