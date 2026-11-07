@@ -7,4 +7,5 @@ it('deadline never claims submission and unknown remains distinct from overdue p
  expect(learningState({status:'submitted',statusText:'待批阅',deadline:'2026-11-06T18:00'},now)).toEqual({key:'submitted',label:'已提交 · 待批阅'});
  expect(learningState({status:'submitted',statusText:'已完成',deadline:null},now).label).toBe('已完成');
  expect(learningState({status:'pending',statusText:'未交',deadline:null},now).label).toBe('未提交');
+ expect(learningState({status:'pending',statusText:'未交，已截止',deadline:null},now)).toEqual({key:'closed',label:'未提交 · 已逾期'});
 });

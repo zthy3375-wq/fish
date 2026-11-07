@@ -231,6 +231,8 @@ try{
   await page.getByRole('button',{name:/已提交 \/ 完成/}).click();
   assert(await page.locator('.learning-work').count()===0,`${width}: submitted filter never treats pending as done`);
   await page.getByRole('button',{name:/^全部/}).click();
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: dedicated learning page has no horizontal overflow`);
+  await page.screenshot({path:path.join(output,`learning-center-${width}.png`),animations:'disabled'});
   await page.getByRole('button',{name:'返回上一页',exact:true}).click();
   assert(await page.getByText('外观设置',{exact:true}).count()===1,`${width}: independent learning page returns to original profile entry`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
