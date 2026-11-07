@@ -6,6 +6,7 @@ export { parseRoute, type Page } from '../domain/navigation';
 export function useNavigation() {
   const stack = new NavigationStack(parseRoute(location.hash));
   const page = ref(stack.route.page), section = ref(stack.route.section), overlay = ref('');
+  let beforeBack: (() => boolean) | undefined;
   let overlayGuard: (() => boolean) | undefined;
   const entry = () => ({campusNavigation:true});
   function publish() {
@@ -13,6 +14,7 @@ export function useNavigation() {
     history.replaceState(entry(), '', routeHash(stack.route));
   }
   function back() {
+    if(beforeBack?.()) return;
     if (stack.overlay && overlayGuard && !overlayGuard()) return;
     stack.back(); publish();
   }
@@ -46,6 +48,7 @@ export function useNavigation() {
     close() { stack.overlay = ''; publish(); },
     back,
     setOverlayCloseGuard(guard: () => boolean) { overlayGuard = guard; },
+    setBeforeBack(guard: () => boolean) { beforeBack = guard; },
     canBack: () => stack.canBack(),
   };
 }

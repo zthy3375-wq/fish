@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import {taskSummary} from './domain/tasks';
 import CampusAgenda from './components/CampusAgenda.vue';
-import {initTasks,reloadTasks,taskSnapshot,tasksReady} from './composables/tasks';
+import {initTasks,reloadTasks,taskSnapshot,tasksReady,agendaView} from './composables/tasks';
 import {version as appVersion} from '../package.json';
 import {
   ref,
@@ -102,6 +103,7 @@ const {
   back,
   canBack,
   setOverlayCloseGuard,
+  setBeforeBack,
 } = useNavigation();
 const prefs = ref(loadPreferences()),
   draft = ref({ name: "", major: "" }),
@@ -183,6 +185,8 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
     editorBusy.value = false;
   }
 }
+const agendaRef=ref<InstanceType<typeof CampusAgenda>>();
+setBeforeBack(()=>page.value==='academic'&&section.value==='agenda'&&!modal.value?agendaRef.value?.requestBack()??false:false);
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
   if (modal.value==='course-editor'&&editorRef.value?.hasChanges()) {
@@ -463,7 +467,7 @@ function trapFocus(e: KeyboardEvent) {
   }
 }
 function escape(e: KeyboardEvent) {
-  if (e.key === "Escape" && modal.value) requestClose();
+  if(e.key === "Escape"){if(modal.value)requestClose();else if(agendaView.editor)agendaRef.value?.requestBack();}
 }
 async function recalibrate() {
   void reloadTasks();
@@ -531,7 +535,7 @@ onUnmounted(() => {
     :class="{ compact: prefs.compact, 'home-active': page === 'home' }"
   >
     <AppHeader
-      :inert="!!modal"
+      :inert="!!modal || agendaView.editor"
       :title="title"
       :subtitle="subtitle"
       :back="page === 'academic' && section !== 'overview'"
@@ -541,7 +545,7 @@ onUnmounted(() => {
       @notifications="open('notifications')"
       @add="createCourse()"
     />
-    <main ref="content" @touchstart.passive="pullStart" @touchend.passive="pullEnd" :inert="!!modal" tabindex="-1" aria-label="页面内容">
+    <main ref="content" @touchstart.passive="pullStart" @touchend.passive="pullEnd" :inert="!!modal || agendaView.editor" tabindex="-1" aria-label="页面内容">
       <LoadingState v-if="loading" />
       <div v-else-if="error" class="error-state" role="alert">
         <Info />
@@ -552,7 +556,7 @@ onUnmounted(() => {
       <div v-else class="page-content">
           <template v-if="page === 'home'">
             <SchoolConnection compact @connected="move('home')" />
-            <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSnapshot.tasks.filter(t=>!t.completed).length} 项待办`:'待办尚未读取'}} · 汇总课程和考试</small></span><ChevronRight :size="18"/></button>
+            <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSummary(taskSnapshot.tasks,now).today.length} 项今日任务 · ${taskSummary(taskSnapshot.tasks,now).overdue.length} 项逾期`:'待办尚未读取'}}</small><span v-if="tasksReady" class="task-home-summary"><span v-for="t in taskSummary(taskSnapshot.tasks,now).today.slice(0,2)" :key="t.id">{{t.title}}</span></span></span><ChevronRight :size="18"/></button>
             <div class="home-greeting">
               <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
               ><span class="quiet-label">北京时间 {{ timeOf(now) }}</span>
@@ -676,7 +680,7 @@ onUnmounted(() => {
             </div>
           </template>
           <template v-else-if="page === 'academic' || page === 'schedule'">
-            <CampusAgenda v-if="section==='agenda'" @course="details" @navigate="go" />
+            <CampusAgenda ref="agendaRef" v-if="section==='agenda'" @course="details" @navigate="go" />
             <SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
             <template v-else-if="section === 'overview'">
               <SchoolConnection compact />
@@ -756,7 +760,7 @@ onUnmounted(() => {
           </footer>
         </div>
     </main>
-    <div class="navigation-dock" :inert="!!modal" :class="{ 'nav-suspended': !!modal }">
+    <div class="navigation-dock" :inert="!!modal || agendaView.editor" :class="{ 'nav-suspended': !!modal }">
       <FloatingNavigation :page="page" @navigate="nav" />
     </div>
     <Transition name="toast"
