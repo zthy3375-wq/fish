@@ -152,6 +152,7 @@ try{
   await page.getByLabel('待办备注',{exact:true}).fill('人工备忘，不是学校同步任务');
   await page.screenshot({path:path.join(output,`task-details-${width}.png`),animations:'disabled'});
   await page.getByRole('button',{name:'保存待办',exact:true}).click();
+  await page.getByRole('dialog',{name:'任务详情',exact:true}).waitFor({state:'hidden'});
   await page.getByText('待办已保存到本机',{exact:true}).waitFor();
   await page.getByRole('button',{name:/^今天/}).first().click();
   assert(await page.locator('.task-row').count()===1,`${width}: task planned today is visible before its later deadline`);
@@ -168,12 +169,16 @@ try{
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===2,`${width}: completing repeat creates exactly one future occurrence`);
   await page.getByRole('button',{name:/^已完成/}).click();
   await page.getByRole('button',{name:'恢复待办 人工 UI 截止任务',exact:true}).click();
+  await page.getByRole('button',{name:'恢复待办 人工 UI 截止任务',exact:true}).waitFor({state:'hidden'});
   await page.getByRole('button',{name:/^今天/}).first().click();
+  await page.getByRole('button',{name:'完成待办 人工 UI 截止任务',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: undo restores current occurrence and removes untouched next`);
   await page.locator('.task-copy').click();
   await page.getByLabel('任务重复规则',{exact:true}).selectOption('none');
   await page.getByLabel('待办截止时间',{exact:true}).fill('2026-11-05T18:00');
   await page.getByRole('button',{name:'保存待办',exact:true}).click();
+  await page.getByRole('dialog',{name:'任务详情',exact:true}).waitFor({state:'hidden'});
+  await page.locator('.task-row.overdue').waitFor();
   assert(await page.locator('.task-row.overdue').count()===1,`${width}: overdue deadline is visible for replanning`);
   await page.getByRole('button',{name:'明天做',exact:true}).click();
   await page.getByText('计划已调整，最终截止时间保持原样',{exact:true}).waitFor();

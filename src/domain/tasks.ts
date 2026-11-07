@@ -50,7 +50,7 @@ export function selectTasks(tasks: CampusTask[], filter: TaskFilter, now = new D
 }
 function occurrenceId(root: string, day: string) {
     let a = 2166136261, b = 5381;
-    for (const c of root) { a = Math.imul(a ^ c.charCodeAt(0), 16777619); b = Math.imul(b, 33) ^ c.charCodeAt(0); }
+    for (let i = 0; i < root.length; i++) { const code = root.charCodeAt(i); a = Math.imul(a ^ code, 16777619); b = Math.imul(b, 33) ^ code; }
     return `r-${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}-${day}`;
 }
 /** A completion creates one future occurrence, preserving the plan/deadline gap. No backlog explosion. */
