@@ -17,3 +17,5 @@
 .learning-course-group .learning-work+.learning-work{border-top:1px solid var(--color-divider)}
 .learning-status-note{color:var(--color-muted);line-height:1.5}
 @media(prefers-reduced-motion:reduce){.learning-group-chevron{transition:none}}
+
+.learning-manage-details>summary{cursor:pointer;font-size:11px;color:var(--color-primary-strong);padding:10px 0 0;min-height:30px}.learning-manage-details[open]>summary{padding-bottom:6px}
