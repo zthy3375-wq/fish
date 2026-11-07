@@ -60,8 +60,8 @@ class ChaoxingPlugin:Plugin() {
     private fun saveState(){synchronized(sessionLock){checkActive();state.put("scanPlan",JSONArray().apply{plan.forEach { c->put(JSONObject().put("courseId",c.courseId).put("classId",c.classId).put("cpi",c.cpi).put("name",c.name).put("teacher",c.teacher).put("url",c.url)) }}).put("planAccount",planAccount);state.put("origins",JSONArray(visited.keys.toList()));val raw=state.toString();if(raw.length>1900000)throw LearningFailure("LIMIT");vault.save(raw);cookies.flush()}}
     private fun failureResult(reason:String):JSONObject {val result=JSONObject().put("session",if(reason in listOf("AUTH","ACCOUNT_CHANGED"))"expired" else "unknown").put("code",reason);try{result.put("accountKey",account())}catch(_:Exception){};return result}
     private fun bindAccount(key:String){loadState();if(state.optString("account")!=key){state=JSONObject().put("account",key);knownCourses=emptyList();plan=emptyList()}}
-    private fun rememberChallenge(show:String,read:String,form:Map<String,String>?=null){if(!ChaoxingPolicy.allowed(show)||!ChaoxingPolicy.safeRead(read))return;loadState();state.put("verificationUrl",show).put("verificationRead",read);if(form!=null)state.put("verificationForm",JSONObject(form)) else state.remove("verificationForm");saveState()}
-    private fun request(start:String,form:Map<String,String>?=null):LearningPage {
+    private fun rememberChallenge(show:String,read:String,form:Map<String,String>?=null,referer:String=ChaoxingPolicy.HOME){if(!ChaoxingPolicy.allowed(show)||!ChaoxingPolicy.safeRead(read))return;loadState();state.put("verificationUrl",show).put("verificationRead",read).put("verificationReferer",referer);if(form!=null)state.put("verificationForm",JSONObject(form)) else state.remove("verificationForm");state.remove("verificationReferer");saveState()}
+    private fun request(start:String,form:Map<String,String>?=null,referer:String=ChaoxingPolicy.HOME):LearningPage {
         if(!ChaoxingPolicy.safeRead(start))throw LearningFailure("URL")
         var url=start;var post=form
         for(step in 0..6){
@@ -72,21 +72,21 @@ class ChaoxingPlugin:Plugin() {
             try {
                 connection.instanceFollowRedirects=false;connection.connectTimeout=15000;connection.readTimeout=20000
                 connection.setRequestProperty("User-Agent",agent);connection.setRequestProperty("Accept","text/html,application/json;q=0.9,*/*;q=0.8")
-                connection.setRequestProperty("Referer",ChaoxingPolicy.HOME)
+                connection.setRequestProperty("Referer",if(ChaoxingPolicy.allowed(referer))referer else ChaoxingPolicy.HOME)
                 cookies.getCookie(url)?.let { connection.setRequestProperty("Cookie",it) }
                 val requestForm=post
                 if(requestForm!=null){if(url!=ChaoxingPolicy.NOTICES&&url!="https://mooc1-1.chaoxing.com/visit/courselistdata")throw LearningFailure("METHOD");connection.requestMethod="POST";connection.doOutput=true;connection.setRequestProperty("Content-Type","application/x-www-form-urlencoded");connection.outputStream.use { it.write(ChaoxingPolicy.params("",requestForm).substring(1).toByteArray()) }}
                 val code=connection.responseCode
                 diagnostics.put("host",URI(url).host).put("path",URI(url).path).put("httpStatus",code)
                 synchronized(sessionLock){checkActive();connection.headerFields.filter { it.key?.equals("Set-Cookie",true)==true }.values.flatten().forEach { cookies.setCookie(url,it) }}
-                if(code in 300..399){val target=ChaoxingPolicy.absolute(connection.getHeaderField("Location").orEmpty(),url) ?: throw LearningFailure("URL");if(ChaoxingPolicy.loginPage(target))throw LearningFailure("AUTH");if(ChaoxingPolicy.challenge(target,"")){rememberChallenge(target,start,form);throw LearningFailure("VERIFY")};url=target;post=null;continue}
+                if(code in 300..399){val target=ChaoxingPolicy.absolute(connection.getHeaderField("Location").orEmpty(),url) ?: throw LearningFailure("URL");if(ChaoxingPolicy.loginPage(target))throw LearningFailure("AUTH");if(ChaoxingPolicy.challenge(target,"")){rememberChallenge(target,start,form,referer);throw LearningFailure("VERIFY")};url=target;post=null;continue}
                 if(code==401)throw LearningFailure("AUTH")
                 if(code==429)throw LearningFailure("RATE_LIMIT")
                 if(code==403)throw LearningFailure("HTTP_$code")
                 if(code !in 200..299)throw LearningFailure("HTTP_$code")
                 val bytes=connection.inputStream.use { input -> val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(out.size()<=1500000){val n=input.read(buffer);if(n<0)break;out.write(buffer,0,n)};out.toByteArray() };if(bytes.size>1500000)throw LearningFailure("LIMIT")
                 val body=String(bytes,Charsets.UTF_8)
-                if(code==202||ChaoxingPolicy.challenge(url,body)){rememberChallenge(url,start,form);throw LearningFailure("VERIFY")}
+                if(code==202||ChaoxingPolicy.challenge(url,body)){rememberChallenge(url,start,form,referer);throw LearningFailure("VERIFY")}
                 if(Jsoup.parse(body).select("input[type=password]").isNotEmpty())throw LearningFailure("AUTH")
                 return LearningPage(url,body)
             } finally { connection.disconnect() }
@@ -139,7 +139,7 @@ class ChaoxingPlugin:Plugin() {
         var targetPage=target;val records=linkedMapOf<String,LearningRecord>();val visitedPages=mutableSetOf<String>();var recognized=false;var complete=false;var rejected=0
         for(pageIndex in 0 until 15){
             if(!visitedPages.add(targetPage))break
-            val works=try{request(targetPage)}catch(e:LearningFailure){throw LearningFailure(e.reason,records.values.toList())};val parsed=ChaoxingParser.work(works.body,works.url,course)
+            val works=try{request(targetPage,referer=page.url)}catch(e:LearningFailure){throw LearningFailure(e.reason,records.values.toList())};val parsed=ChaoxingParser.work(works.body,works.url,course)
             recognized=recognized||parsed.recognized;rejected+=parsed.rejected
             if(!parsed.recognized){val dom=Jsoup.parse(works.body);diagnostics.put("workRows",dom.select("li").size).put("workLinks",dom.select("a.inspectTask,li[data]").size).put("workRejected",parsed.rejected);throw LearningFailure("WORK_SCHEMA")}
             val added=parsed.records.count { it.id !in records };parsed.records.forEach { records[it.id]=it }
@@ -220,8 +220,8 @@ class ChaoxingPlugin:Plugin() {
         executor.execute {workerToken=token;try {
             bindAccount(key)
             val proof=state.optString("verificationRead")
-            if(ChaoxingPolicy.safeRead(proof)){val savedForm=state.optJSONObject("verificationForm");val values=savedForm?.keys()?.asSequence()?.associateWith { savedForm.optString(it) };request(proof,values)}
-            val courses=fetchCourses();if(account()!=key)throw LearningFailure("ACCOUNT_CHANGED");knownCourses=courses;state.remove("verificationUrl");state.remove("verificationRead");state.remove("verificationForm");saveState()
+            if(ChaoxingPolicy.safeRead(proof)){val savedForm=state.optJSONObject("verificationForm");val values=savedForm?.keys()?.asSequence()?.associateWith { savedForm.optString(it) };request(proof,values,state.optString("verificationReferer",ChaoxingPolicy.HOME))}
+            val courses=fetchCourses();if(account()!=key)throw LearningFailure("ACCOUNT_CHANGED");knownCourses=courses;state.remove("verificationUrl");state.remove("verificationRead");state.remove("verificationForm");state.remove("verificationReferer");saveState()
             handler.post{if(token==generation)finish(JSONObject().put("session","valid").put("accountKey",key).put("courses",publicCourses(courses)).put("resumeCursor",if(planAccount==key)state.optInt("resumeCursor",0) else 0))}
         }catch(e:LearningFailure){handler.post{if(token==generation){if(e.reason=="VERIFY"){probing=false;val target=state.optString("verificationUrl");if(ChaoxingPolicy.allowed(target)&&web?.url!=target)web?.loadUrl(target);android.widget.Toast.makeText(context,"请完成官方验证，再点顶部继续",android.widget.Toast.LENGTH_LONG).show()}else finish(failureResult(e.reason))}}}catch(_:Exception){handler.post{if(token==generation)finish(failureResult("NETWORK"))}}}
     }

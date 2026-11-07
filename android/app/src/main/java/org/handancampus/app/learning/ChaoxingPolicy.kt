@@ -20,7 +20,7 @@ object ChaoxingPolicy {
     fun loginPage(url: String) = !allowed(url) || URI(url).host?.startsWith("passport") == true || URI(url).path.orEmpty().contains("/login", true)
     fun challenge(url: String, body: String) = url.contains("antispider", true) || body.contains("访问过于频繁") || body.contains("9010") && body.contains("验证码")
     fun query(url: String): Map<String,String> = try { (URI(url).rawQuery ?: "").split('&').filter { it.contains('=') }.associate { val p=it.split('=',limit=2); URLDecoder.decode(p[0],"UTF-8").lowercase() to URLDecoder.decode(p[1],"UTF-8") } } catch (_:Exception) { emptyMap() }
-    fun absolute(raw: String, base: String): String? = try { val value=URI(base).resolve(raw.trim()).toString(); if(allowed(value)) value else null } catch (_:Exception) { null }
+    fun absolute(raw: String, base: String): String? = try { val trimmed=raw.trim();val value=if(trimmed.startsWith("?"))base.substringBefore('?').substringBefore('#')+trimmed else URI(base).resolve(trimmed).toString(); if(allowed(value)) value else null } catch (_:Exception) { null }
     fun params(base: String, values: Map<String,String>) = base + (if(base.contains('?')) "&" else "?") + values.entries.joinToString("&") { URLEncoder.encode(it.key,"UTF-8")+"="+URLEncoder.encode(it.value,"UTF-8") }
     fun numeric(value: String) = value.matches(Regex("[0-9]{1,24}"))
     fun safeRead(url:String):Boolean {
