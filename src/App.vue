@@ -556,7 +556,7 @@ onUnmounted(() => {
       <div v-else class="page-content">
           <template v-if="page === 'home'">
             <SchoolConnection compact @connected="move('home')" />
-            <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSummary(taskSnapshot.tasks,now).today.length} 项今日任务 · ${taskSummary(taskSnapshot.tasks,now).overdue.length} 项逾期`:'待办尚未读取'}}</small><span v-if="tasksReady" class="task-home-summary"><span v-for="t in taskSummary(taskSnapshot.tasks,now).today.slice(0,2)" :key="t.id">{{t.title}}</span></span></span><ChevronRight :size="18"/></button>
+            <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSummary(taskSnapshot.tasks,now).today.length} 项今日任务 · ${taskSummary(taskSnapshot.tasks,now).overdue.length} 项逾期 · ${taskSummary(taskSnapshot.tasks,now).due.length} 项近期截止`:'待办尚未读取'}}</small><span v-if="tasksReady" class="task-home-summary"><span v-for="t in taskSummary(taskSnapshot.tasks,now).important" :key="t.id">{{t.title}}</span></span></span><ChevronRight :size="18"/></button>
             <div class="home-greeting">
               <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
               ><span class="quiet-label">北京时间 {{ timeOf(now) }}</span>

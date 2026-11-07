@@ -88,7 +88,7 @@ export function validateTask(value: unknown): CampusTask {
     if (r.remindMinutes !== null && ![0, 5, 10, 30, 60, 1440].includes(r.remindMinutes))
         throw Error('提醒时间无效');
     for (const key of ['createdAt', 'updatedAt'] as const)
-        if (typeof r[key] !== 'string' || Number.isNaN(Date.parse(r[key])))
+        if (typeof r[key] !== 'string' || r[key].length > 64 || Number.isNaN(Date.parse(r[key])))
             throw Error('待办时间戳无效');
     const plannedAt = r.plannedAt ?? null;
     if (plannedAt !== null) {
@@ -139,7 +139,7 @@ export function validateTask(value: unknown): CampusTask {
 }
 export function validateTaskSnapshot(value: unknown): TaskSnapshot {
     const r = value as TaskSnapshot;
-    if (!r || (r.version !== 1 && r.version !== 2) || typeof r.notificationsEnabled !== 'boolean' || !Array.isArray(r.tasks) || r.tasks.length > 500 || typeof r.updatedAt !== 'string' || Number.isNaN(Date.parse(r.updatedAt)))
+    if (!r || (r.version !== 1 && r.version !== 2) || typeof r.notificationsEnabled !== 'boolean' || !Array.isArray(r.tasks) || r.tasks.length > 500 || typeof r.updatedAt !== 'string' || r.updatedAt.length > 64 || Number.isNaN(Date.parse(r.updatedAt)))
         throw Error('待办备份格式无法识别');
     const tasks = r.tasks.map(validateTask);
     if (new Set(tasks.map(t => t.id)).size !== tasks.length)

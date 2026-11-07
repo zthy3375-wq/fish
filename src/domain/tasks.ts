@@ -48,6 +48,11 @@ export function selectTasks(tasks: CampusTask[], filter: TaskFilter, now = new D
         return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
     });
 }
+function occurrenceId(root: string, day: string) {
+    let a = 2166136261, b = 5381;
+    for (const c of root) { a = Math.imul(a ^ c.charCodeAt(0), 16777619); b = Math.imul(b, 33) ^ c.charCodeAt(0); }
+    return `r-${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}-${day}`;
+}
 /** A completion creates one future occurrence, preserving the plan/deadline gap. No backlog explosion. */
 export function nextOccurrence(task: CampusTask, now = new Date()): CampusTask | null {
     if (!task.repeat)
@@ -65,7 +70,7 @@ export function nextOccurrence(task: CampusTask, now = new Date()): CampusTask |
             continue;
         const move = (v: string | null | undefined) => v ? shiftDay(v.slice(0, 10), offset) + v.slice(10) : null;
         const stamp = now.toISOString();
-        return validateTask({ ...task, id: `r-${task.seriesId || task.id}-${next}`, seriesId: task.seriesId || task.id, generatedFrom: task.id, plannedAt: move(task.plannedAt), deadline: move(task.deadline), snoozedUntil: null, completed: false, completedAt: null, createdAt: stamp, updatedAt: stamp, steps: task.steps?.map(s => ({ ...s, completed: false })), reminders: task.reminders?.map(m => m.anchor === 'absolute' ? { ...m, at: move(m.at)! } : m) });
+        return validateTask({ ...task, id: occurrenceId(task.seriesId || task.id, next), seriesId: task.seriesId || task.id, generatedFrom: task.id, plannedAt: move(task.plannedAt), deadline: move(task.deadline), snoozedUntil: null, completed: false, completedAt: null, createdAt: stamp, updatedAt: stamp, steps: task.steps?.map(s => ({ ...s, completed: false })), reminders: task.reminders?.map(m => m.anchor === 'absolute' ? { ...m, at: move(m.at)! } : m) });
     }
     throw Error('未找到有效的下次重复日期，请检查规则');
 }
@@ -96,4 +101,9 @@ export function setTaskCompleted(s: TaskSnapshot, id: string, completed: boolean
     task.updatedAt = now.toISOString();
 }
 export function replanTask(task: CampusTask, day: string, now = new Date()) { task.plannedAt = day + 'T' + (task.plannedAt?.slice(11) || '09:00'); task.snoozedUntil = null; task.updatedAt = now.toISOString(); return task; }
-export function taskSummary(tasks: CampusTask[], now = new Date()) { const f: TaskFilter = { view: 'today', search: '', course: '', sort: 'smart', priority: -1, group: false }; return { today: selectTasks(tasks, f, now), overdue: tasks.filter(t => taskOverdue(t, now)), due: selectTasks(tasks, { ...f, view: 'due' }, now) }; }
+export function taskSummary(tasks: CampusTask[], now = new Date()) {
+    const f: TaskFilter = { view: 'today', search: '', course: '', sort: 'smart', priority: -1, group: false };
+    const today = selectTasks(tasks, f, now), due = selectTasks(tasks, { ...f, view: 'due' }, now);
+    const ids = new Set(today.map(t => t.id));
+    return { today, due, overdue: tasks.filter(t => taskOverdue(t, now)), important: [...today, ...due.filter(t => !ids.has(t.id))].slice(0, 2) };
+}
