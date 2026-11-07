@@ -7,17 +7,26 @@ const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
 await new Promise(resolve=>server.listen(4175,'127.0.0.1',resolve));
 const browser=await chromium.launch({args:['--no-sandbox']});const checks=[];let activePage;
+const syntheticLearning=JSON.parse(await readFile('tests/fixtures/learning/synthetic.json','utf8'));
 const syntheticGrades=JSON.parse(await readFile('tests/fixtures/grades/synthetic.json','utf8'));
 function assert(value,label){if(!value)throw Error(label);checks.push(label)}
 try{
  for(const width of [360,390,430]){
   const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
+  await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
-   window.androidBridge={};window.__academicCalls=[];
+   const methods={ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   window.androidBridge={};window.__academicCalls=[];window.__learningCalls=[];
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
     if(plugin==='Preferences'){if(method==='get')return {value:localStorage.getItem(args.key)};if(method==='set'){localStorage.setItem(args.key,args.value);return {}}}
     if(plugin==='LocalNotifications'&&method==='getPending')return {notifications:[]};
+    if(plugin==='ChaoxingClient'){
+     window.__learningCalls.push(method);
+     if(method==='logout')return {session:'disconnected'};
+     if(method==='openItem'){window.__learningOpened=args.id;window.__learningSubmitted=true;return {closed:true}};
+     if(window.__learningFailure)throw Error('network');if(window.__learningExpired)return {session:'expired',code:'AUTH'};
+     const data=JSON.parse(JSON.stringify(window.__learningFixture));if(window.__learningSubmitted){data.items[0].status='submitted';data.items[0].statusText='待批阅'}return data;
+    }
     if(plugin==='HandanAcademicClient'){
      window.__academicCalls.push(method);
      if(method==='logout')return {session:'disconnected'};
@@ -211,9 +220,70 @@ try{
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByText('外观设置',{exact:true}).waitFor();
   assert(await page.getByText(/iPhone|iOS|App Store|添加到手机桌面/).count()===0,`${width}: no retired platform installation flow`);
+  await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
+  await page.getByRole('button',{name:'连接学习通',exact:true}).click();
+  await page.getByText('学习通已连接',{exact:true}).waitFor();
+  assert(await page.getByRole('tablist',{name:'学习通内容'}).count()===1,`${width}: learning has a dedicated content page`);
+  assert(await page.locator('.learning-state.pending').count()===1,`${width}: submission status is explicit in independent homework list`);
+  await page.getByRole('tab',{name:'课程',exact:true}).click();
+  await page.locator('.learning-course-button').first().click();
+  assert(await page.getByRole('tab',{name:'作业',exact:true}).getAttribute('aria-selected')==='true',`${width}: course selection opens its homework`);
+  await page.getByRole('button',{name:/已提交 \/ 完成/}).click();
+  assert(await page.locator('.learning-work').count()===0,`${width}: submitted filter never treats pending as done`);
+  await page.getByRole('button',{name:/^全部/}).click();
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: dedicated learning page has no horizontal overflow`);
+  await page.screenshot({path:path.join(output,`learning-center-${width}.png`),animations:'disabled'});
+  await page.getByRole('button',{name:'返回上一页',exact:true}).click();
+  assert(await page.getByText('外观设置',{exact:true}).count()===1,`${width}: independent learning page returns to original profile entry`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
+  await page.getByRole('button',{name:/日程与待办/}).click();
+  await page.getByRole('button',{name:'学习通',exact:true}).click();
+  await page.getByRole('button',{name:/^即将截止/}).click();
+  await page.getByRole('button',{name:'平台状态 人工学习通实验报告',exact:true}).waitFor();
+  assert(await page.getByRole('button',{name:'平台状态 人工学习通实验报告',exact:true}).isDisabled(),`${width}: platform completion is read-only`);
+  assert(await page.locator('.task-copy').count()===1,`${width}: source filter isolates real-shaped external work`);
+  await page.getByRole('button',{name:'任务操作 人工学习通实验报告',exact:true}).click();
+  assert(await page.getByLabel('待办截止时间',{exact:true}).isDisabled(),`${width}: original platform deadline cannot be overwritten locally`);
+  await page.getByLabel('任务计划开始',{exact:true}).fill('2026-11-06T16:00');
+  await page.getByLabel('任务优先级',{exact:true}).selectOption('3');
+  await page.getByLabel('待办备注',{exact:true}).fill('个人复习规划');
+  await page.getByRole('button',{name:'添加提醒',exact:true}).click();
+  await page.getByRole('button',{name:'保存待办',exact:true}).click();
+  await page.getByRole('dialog',{name:'任务详情',exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('button',{name:/^今天/}).first().click();
+  await page.getByRole('button',{name:'平台状态 人工学习通实验报告',exact:true}).waitFor();
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===2,`${width}: learning work never contaminates personal task backups`);
+  await page.getByRole('tab',{name:'日程时间轴',exact:true}).click();
+  assert(await page.locator('.timeline-event.task').count()===2,`${width}: learning plan and deadline enter the existing timeline`);
+  await page.getByRole('tab',{name:'任务清单',exact:true}).click();
+  await page.locator('.task-copy').click();
+  await page.getByRole('button',{name:/^已完成/}).click();
+  await page.getByRole('button',{name:'平台状态 人工学习通实验报告',exact:true}).waitFor();
+  assert(await page.evaluate(()=>window.__learningOpened)==='12/34/homework/78',`${width}: opening task dispatches native original-link lookup`);
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).items[0].status)==='submitted',`${width}: platform refresh updates real submission status`);
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).plans['12/34/homework/78'].notes)==='个人复习规划',`${width}: platform refresh preserves personal planning`);
+  await page.reload();
+  await page.getByRole('button',{name:'平台状态 人工学习通实验报告',exact:true}).waitFor();
+  assert(await page.getByRole('button',{name:'学习通',exact:true}).getAttribute('aria-pressed')==='true',`${width}: learning cache and source filter survive restart`);
+  await page.evaluate(()=>window.__learningFailure=true);
+  await page.getByRole('button',{name:'刷新学习通',exact:true}).click();
+  await page.getByText(/学习通暂未更新/).waitFor();
+  assert(await page.locator('.task-row').count()===1,`${width}: failed learning sync retains last successful work`);
+  await page.evaluate(()=>{window.__learningFailure=false;window.__learningExpired=true});
+  await page.getByRole('button',{name:'刷新学习通',exact:true}).click();
+  await page.getByRole('button',{name:'重新连接学习通',exact:true}).waitFor();
+  assert(await page.locator('.task-row').count()===1,`${width}: expired learning login retains offline tasks`);
+  await page.screenshot({path:path.join(output,`learning-tasks-${width}.png`),animations:'disabled'});
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('button',{name:'退出学校账号',exact:true}).click();
   await page.getByRole('button',{name:'连接邯郸学院',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===2,`${width}: school logout preserves personal tasks`);
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).connected)===true,`${width}: school logout keeps learning connection independent`);
+  await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
+  await page.getByRole('button',{name:'退出学习通连接',exact:true}).click();
+  await page.getByRole('button',{name:'连接学习通',exact:true}).waitFor();
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===2,`${width}: learning logout preserves personal tasks`);
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).items.length)===0,`${width}: learning logout clears platform cache and plans`);
   assert(!errors.length,`${width}: no runtime errors`);
   await page.screenshot({path:path.join(output,`records-${width}.png`),fullPage:true,animations:'disabled'});await context.close();
  }

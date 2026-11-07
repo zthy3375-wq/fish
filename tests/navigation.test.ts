@@ -41,3 +41,9 @@ describe('浏览器与 Android 共用导航适配',()=>{
   nav.move('schedule');nav.open('course-editor');const guard=vi.fn(()=>false);nav.setOverlayCloseGuard(guard);nav.back();expect(guard).toHaveBeenCalledOnce();expect(nav.overlay.value).toBe('course-editor');nav.close();nav.back();expect(nav.page.value).toBe('home');
  });
 });
+
+it('学习通独立页接受深链接并返回我的或教务的实际入口',()=>{
+ expect(parseRoute('#/academic/learning')).toEqual({page:'academic',section:'learning'});
+ const n=new NavigationStack(parseRoute('#/profile'));n.move('academic','learning');n.back();expect(n.route.page).toBe('profile');
+ n.move('academic');n.move('academic','learning');n.move('academic','agenda');n.back();expect(n.route.section).toBe('learning');
+});

@@ -17,6 +17,7 @@ export interface RepeatRule {
     weekdays: number[];
 }
 export interface CampusTask {
+    source?: 'chaoxing'; externalId?: string; platformStatus?: string; platformStatusText?: string; platformStale?: boolean; platformDescription?:string; platformKind?: string; platformStartAt?:string|null; timeText?: string;
     plannedAt?: string | null;
     durationMinutes?: number;
     priority?: number;
@@ -175,7 +176,7 @@ export function taskReminderPlan(snapshot: TaskSnapshot, now = new Date()) {
     }
     const seen = new Set<string>();
     return candidates.sort((a, b) => +a.at - +b.at).filter(p => { const key = p.task.id + '/' + (+p.at); if (seen.has(key))
-        return false; seen.add(key); return true; }).slice(0, 30).map((p, i) => ({ id: 410000 + i, title: `待办提醒：${p.task.title}`, body: `${p.anchor === 'deadline' ? '截止' : p.anchor === 'start' ? '计划开始' : '提醒'} · ${p.task.course || '个人任务'}`, schedule: { at: p.at, allowWhileIdle: true }, actionTypeId: 'HANDAN_TASK', extra: { owner: 'handan-task', taskId: p.task.id, updatedAt: p.task.updatedAt } }));
+        return false; seen.add(key); return true; }).slice(0, 30).map((p, i) => ({ id: 410000 + i, title: `待办提醒：${p.task.title}`, body: `${p.anchor === 'deadline' ? '截止' : p.anchor === 'start' ? '计划开始' : '提醒'} · ${p.task.course || '个人任务'}`, schedule: { at: p.at, allowWhileIdle: true }, actionTypeId: p.task.source === 'chaoxing' ? 'HANDAN_LEARNING' : 'HANDAN_TASK', extra: { owner: 'handan-task', taskId: p.task.id, updatedAt: p.task.updatedAt, source:p.task.source||'personal' } }));
 }
 export function buildAgenda(series: CourseSeries[], exams: Exam[], tasks: CampusTask[], from: string, days = 7, now = new Date()) {
     if (!validDay(from) || !Number.isInteger(days) || days < 1 || days > 31)
@@ -232,14 +233,15 @@ export function buildAgenda(series: CourseSeries[], exams: Exam[], tasks: Campus
         add({ id: `exam/${e.name}/${date}/${e.time}/${e.room}`, kind: 'exam', title: e.name, date, time: e.time || '时间待学校发布', startAt, endAt, location: e.room, source: '学校考试缓存', completed: false });
     }
     for (const t of tasks) {
+        if(t.source==='chaoxing'&&t.platformKind==='exam'&&t.platformStartAt){const start=beijingTimestamp(t.platformStartAt),end=t.deadline?beijingTimestamp(t.deadline):null;add({id:'learning-exam/'+t.id,kind:'exam',title:t.title,date:t.platformStartAt.slice(0,10),time:t.platformStartAt.slice(11)+'–'+(t.deadline?.slice(11)||'结束未知'),startAt:start,endAt:end,location:t.course,source:'学习通考试',completed:t.completed,taskId:t.id})}
         if (t.plannedAt) {
             const start = beijingTimestamp(t.plannedAt);
             add({ id: 'plan/' + t.id, kind: 'task', title: t.title, date: t.plannedAt.slice(0, 10), time: t.plannedAt.slice(11) + ' · ' + (t.durationMinutes ?? 30) + '分钟', startAt: start, endAt: start + (t.durationMinutes ?? 30) * 60000, location: t.course, source: '个人计划', completed: t.completed, taskId: t.id });
         }
-        if (!t.deadline)
+        if (!t.deadline || t.source==='chaoxing'&&t.platformKind==='exam'&&t.platformStartAt)
             continue;
         const at = beijingTimestamp(t.deadline);
-        add({ id: 'deadline/' + t.id, kind: 'task', title: t.title, date: t.deadline.slice(0, 10), time: t.deadline.slice(11) + ' 截止', startAt: at, endAt: at, location: t.course, source: '任务截止', completed: t.completed, taskId: t.id });
+        add({ id: 'deadline/' + t.id, kind: 'task', title: t.title, date: t.deadline.slice(0, 10), time: t.deadline.slice(11) + ' 截止', startAt: at, endAt: at, location: t.course, source: t.source==='chaoxing'?'学习通截止':'任务截止', completed: t.completed, taskId: t.id });
     }
     events.sort((a, b) => a.date.localeCompare(b.date) || (a.startAt ?? Infinity) - (b.startAt ?? Infinity) || a.id.localeCompare(b.id));
     return { events, unknownExams, overdue: tasks.filter(t => !t.completed && t.deadline && t.deadline.slice(0, 10) < from && beijingTimestamp(t.deadline) < +now), undated: tasks.filter(t => !t.deadline) };

@@ -1,13 +1,15 @@
-import { reactive, ref, toRaw, watch } from 'vue';
+import { reactive, ref, toRaw, watch, computed } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { LocalNotifications, type ActionPerformed } from '@capacitor/local-notifications';
 import { emptyTasks, taskReminderPlan, beijingDay, type TaskSnapshot } from '../domain/agenda';
 import { type TaskFilter, setTaskCompleted } from '../domain/tasks';
 import { taskStore } from '../services/task-store';
+import {learningTasks,initLearning,saveLearningPlan,openLearningItem} from './learning';
+export const allTasks=computed(()=>[...taskSnapshot.value.tasks,...learningTasks.value]);
 export const taskSnapshot = ref(emptyTasks()), tasksReady = ref(false), tasksBusy = ref(false), taskError = ref(''), taskReminderStatus = ref('待办提醒未开启');
 export const agendaView = reactive({ date: beijingDay(), range: 7, filter: 'all', showCompleted: false, editor: false, editing: '', draft: { title: '', course: '', deadline: '', notes: '', remindMinutes: 30 } });
-export const taskView = reactive({ mode: 'list', view: 'today', search: '', course: '', sort: 'smart', priority: -1, group: false, quick: '' } as TaskFilter & {
+export const taskView = reactive({ source:'all', mode: 'list', view: 'today', search: '', course: '', sort: 'smart', priority: -1, group: false, quick: '' } as TaskFilter & {
     mode: string;
     quick: string;
 });
@@ -31,6 +33,7 @@ async function loadView() { try {
                 taskView[k] = v[k];
         if (Number.isInteger(v?.priority) && v.priority >= -1 && v.priority <= 3)
             taskView.priority = v.priority;
+        if(['all','personal','chaoxing'].includes(v?.source))taskView.source=v.source;
         if (typeof v?.group === 'boolean')
             taskView.group = v.group;
         if (typeof v?.date === 'string' && /^20\d{2}-\d{2}-\d{2}$/.test(v.date))
@@ -85,11 +88,13 @@ catch {
 } }
 export async function handleTaskNotification(event: ActionPerformed) {
     const extra = event.notification.extra;
-    if (extra?.owner !== 'handan-task' || !['complete', 'snooze'].includes(event.actionId))
+    if (extra?.owner !== 'handan-task' || !['complete', 'snooze','open'].includes(event.actionId))
         return;
     try {
         if (!tasksReady.value)
             await initTasks();
+        if(extra.source==='chaoxing'){await initLearning();const task=learningTasks.value.find(t=>t.id===extra.taskId);if(!task||task.completed||extra.updatedAt!==task.updatedAt)return;if(event.actionId==='open')await openLearningItem(task);else if(event.actionId==='snooze'){const d=new Date(Date.now()+600000);await saveLearningPlan({...task,snoozedUntil:beijingDay(d)+'T'+new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d)});await reconcileTaskReminders()}return;}
+        if(event.actionId==='open')return;
         await changeTasks(() => taskStore.change(s => { const task = s.tasks.find(t => t.id === extra.taskId); if (!task || task.completed)
             return; if (extra.updatedAt !== task.updatedAt)
             throw Error('任务已更新，请打开待办查看'); if (event.actionId === 'complete')
@@ -106,7 +111,7 @@ export async function handleTaskNotification(event: ActionPerformed) {
 }
 async function initTaskActions() { if (!Capacitor.isNativePlatform() || actionsReady)
     return; try {
-    await LocalNotifications.registerActionTypes({ types: [{ id: 'HANDAN_TASK', actions: [{ id: 'complete', title: '完成', foreground: true }, { id: 'snooze', title: '10分钟后提醒', foreground: true }] }] });
+    await LocalNotifications.registerActionTypes({ types: [{ id: 'HANDAN_TASK', actions: [{ id: 'complete', title: '完成', foreground: true }, { id: 'snooze', title: '10分钟后提醒', foreground: true }] },{id:'HANDAN_LEARNING',actions:[{id:'open',title:'打开原作业',foreground:true},{id:'snooze',title:'10分钟后提醒',foreground:true}]}] });
     await LocalNotifications.addListener('localNotificationActionPerformed', event => { void handleTaskNotification(event); });
     actionsReady = true;
 }
@@ -114,7 +119,7 @@ catch {
     taskReminderStatus.value = '通知快捷操作暂不可用，任务仍可正常保存';
 } }
 export function reconcileTaskReminders(request = false) {
-    const snapshot = JSON.parse(JSON.stringify(toRaw(taskSnapshot.value))) as TaskSnapshot;
+    const snapshot = JSON.parse(JSON.stringify({...toRaw(taskSnapshot.value),tasks:allTasks.value})) as TaskSnapshot;
     const job = notificationQueue.catch(() => { }).then(async () => {
         if (!Capacitor.isNativePlatform()) {
             taskReminderStatus.value = '浏览器可保存任务，后台提醒请使用 Android 客户端';

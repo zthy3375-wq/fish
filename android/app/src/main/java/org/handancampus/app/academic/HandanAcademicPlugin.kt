@@ -212,7 +212,14 @@ class HandanAcademicPlugin : Plugin() {
             if (call != null) fail("连接已退出", "CANCELLED")
             vault.clear(); authenticated = false
             WebStorage.getInstance().deleteOrigin(AcademicPolicy.ORIGIN)
-            cookies.removeAllCookies { cookies.flush(); next.resolve(JSObject().put("session", "disconnected")) }
+            cookies.getCookie(AcademicPolicy.ORIGIN)?.split(";")?.forEach { entry ->
+                val name=entry.substringBefore("=").trim()
+                if(name.matches(Regex("[A-Za-z0-9_.-]+")))for(path in listOf("/","/xtgl","/kbcx")){
+                    cookies.setCookie(AcademicPolicy.ORIGIN,"$name=; Path=$path; Max-Age=0; Secure; HttpOnly")
+                    for(domain in listOf("jwgl.hdc.edu.cn",".hdc.edu.cn"))cookies.setCookie(AcademicPolicy.ORIGIN,"$name=; Domain=$domain; Path=$path; Max-Age=0; Secure; HttpOnly")
+                }
+            }
+            cookies.flush(); next.resolve(JSObject().put("session", "disconnected"))
         }
     }
     override fun handleOnDestroy() { if(call != null) fail("应用已关闭", "CANCELLED"); super.handleOnDestroy() }

@@ -11,9 +11,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Native-only session material. Never returned through Capacitor, logged or backed up. */
-internal class SchoolSessionVault(context: Context) {
-    private val prefs = context.getSharedPreferences("academic_session_v050", Context.MODE_PRIVATE)
-    private val alias = "handan.academic.session.v050"
+internal class SchoolSessionVault(context: Context, prefsName: String = "academic_session_v050", private val alias: String = "handan.academic.session.v050", private val maxLength: Int = 32768) {
+    private val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey(alias, null) as? SecretKey)?.let { return it }
@@ -23,7 +22,7 @@ internal class SchoolSessionVault(context: Context) {
         }.generateKey()
     }
     fun save(cookies: String) {
-        if (cookies.isBlank() || cookies.length > 32768) return
+        if (cookies.isBlank() || cookies.length > maxLength) return
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val encrypted = cipher.doFinal(cookies.toByteArray(Charsets.UTF_8))
         check(prefs.edit().putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
