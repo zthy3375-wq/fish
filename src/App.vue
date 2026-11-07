@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import LearningConnection from './components/LearningConnection.vue';
+import LearningCenter from './components/LearningCenter.vue';
+import type {CampusTask} from './domain/agenda';
 import {initLearning,syncLearning,learningTasks} from './composables/learning';
 import {taskSummary} from './domain/tasks';
 import CampusAgenda from './components/CampusAgenda.vue';
@@ -188,6 +189,7 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
   }
 }
 const agendaRef=ref<InstanceType<typeof CampusAgenda>>();
+async function planLearning(task:CampusTask){go('agenda');await nextTick();agendaRef.value?.edit(task)}
 setBeforeBack(()=>page.value==='academic'&&section.value==='agenda'&&!modal.value?agendaRef.value?.requestBack()??false:false);
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
@@ -267,7 +269,7 @@ const entries = computed(() => [
     icon: GraduationCap,
   },
 ]);
-const academicServices=computed(()=>[...entries.value.filter(e=>e.id!=='schedule'),{id:'agenda',title:'统一日程',subtitle:'课程、考试与个人待办',icon:CalendarDays},{id:'calendar',title:'学期校历',subtitle:'教学周与学期安排',icon:CalendarDays}]);
+const academicServices=computed(()=>[...entries.value.filter(e=>e.id!=='schedule'),{id:'learning',title:'学习通',subtitle:'作业、课程、考试与通知',icon:BookOpen},{id:'agenda',title:'统一日程',subtitle:'课程、考试与个人待办',icon:CalendarDays},{id:'calendar',title:'学期校历',subtitle:'教学周与学期安排',icon:CalendarDays}]);
 const official=[{id:'school',title:'邯郸学院官网',subtitle:'学校新闻与公开信息',icon:ArrowUpRight,href:'https://www.hdc.edu.cn/'}];
 const settings = [
   {
@@ -308,6 +310,7 @@ const about = [
 const sectionNames: Record<string, string> = {
   overview: "教务中心",
   agenda: "统一日程",
+  learning: "学习通",
   schedule: "课程表",
   grades: "成绩分析",
   exams: "考试安排",
@@ -325,7 +328,7 @@ const title = computed(() =>
 const subtitle = computed(() =>
   page.value === "home"
     ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
-    : page.value === "academic" || page.value === "schedule"
+    : page.value === "academic" && section.value==='learning' ? "本人学习任务 · 自动同步" : page.value === "academic" || page.value === "schedule"
       ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
       : "学校账号 · 本机设置",
 );
@@ -485,7 +488,7 @@ async function recalibrate() {
 watch(schedule, (s) => reconcileReminders(s));
 let pullY=0;
 function pullStart(e:TouchEvent){pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
-function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='academic'&&section.value==='agenda')void syncLearning({force:true});else void syncAcademic()}}
+function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='academic'&&['agenda','learning'].includes(section.value))void syncLearning({force:true});else void syncAcademic()}}
 function viewportChange() {
   const v = window.visualViewport;
   document.documentElement.classList.toggle(
@@ -686,7 +689,7 @@ onUnmounted(() => {
           </template>
           <template v-else-if="page === 'academic' || page === 'schedule'">
             <CampusAgenda ref="agendaRef" v-if="section==='agenda'" @course="details" @navigate="go" />
-            <SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
+            <LearningCenter v-else-if="section==='learning'" @plan="planLearning"/><SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
             <template v-else-if="section === 'overview'">
               <SchoolConnection compact />
               <SectionHeader title="教务服务" meta="本人数据"/><ServiceGroup :items="academicServices" @select="go"/>
@@ -720,7 +723,7 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
-            <SchoolConnection /><LearningConnection />
+            <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
             <SectionHeader title="外观设置" />
             <section class="settings-group">
               <div class="theme-row">

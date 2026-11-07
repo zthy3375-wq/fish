@@ -61,4 +61,4 @@ export async function openLearningPortal() { if (learningBusy.value)
 catch {
     learningError.value = '官方页面未打开，请稍后重试';
 } }
-export function learningIssue() { const issues = learningCache.value.issues; return learningError.value || (learningCache.value.session === 'expired' ? '学习通登录已过期，请重新连接' : issues.connection === 'RATE_LIMIT' ? '学习通请求较频繁，稍后再刷新' : issues.connection === 'VERIFY' ? '学习通要求官方验证，请重新连接完成验证' : issues.connection ? `学习通尚未更新（${issues.connection}），保留已有任务` : Object.keys(issues).length ? '部分课程或模块尚未更新，保留已有数据' : ''); }
+export function learningIssue() { const issues = learningCache.value.issues; return learningError.value || (learningCache.value.session === 'expired' ? '学习通登录已过期，请重新连接' : issues.connection === 'RATE_LIMIT' ? '学习通请求较频繁，稍后再刷新' : issues.connection === 'VERIFY' ? '扫描已暂停，请完成官方验证码后继续；已读取作业保留'  : issues.connection ? `学习通尚未更新（${issues.connection}），保留已有任务` : Object.keys(issues).length ? '部分课程或模块尚未更新，保留已有数据' : ''); }

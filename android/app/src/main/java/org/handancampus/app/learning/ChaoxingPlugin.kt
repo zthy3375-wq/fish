@@ -21,7 +21,7 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.io.ByteArrayInputStream
 
-private class LearningFailure(val reason:String):Exception(reason)
+private class LearningFailure(val reason:String,val records:List<LearningRecord> = emptyList()):Exception(reason)
 private data class LearningPage(val url:String,val body:String)
 
 /** A separate native connector. Remote pages have no Capacitor/JavascriptInterface bridge. */
@@ -42,7 +42,6 @@ class ChaoxingPlugin:Plugin() {
     @Volatile private var generation=0
     private var workerToken=0
     private var agent=""
-    private var detailBudget=8
     private var diagnostics=JSONObject()
     private var coursesRejected=0
     private fun checkActive(){if(workerToken!=generation||Thread.currentThread().isInterrupted)throw LearningFailure("CANCELLED")}
@@ -57,11 +56,11 @@ class ChaoxingPlugin:Plugin() {
         if(!ChaoxingPolicy.numeric(uid))throw LearningFailure("AUTH")
         return hash(uid)
     }
-    private fun loadState(){if(loaded)return;state=try { JSONObject(vault.restore() ?: "{}") }catch(_:Exception){JSONObject()};state.optJSONArray("origins")?.let { a -> for(i in 0 until a.length())observe(a.optString(i)) };loaded=true}
-    private fun saveState(){synchronized(sessionLock){checkActive();state.put("origins",JSONArray(visited.keys.toList()));val raw=state.toString();if(raw.length>1900000)throw LearningFailure("LIMIT");vault.save(raw);cookies.flush()}}
+    private fun loadState(){if(loaded)return;state=try { JSONObject(vault.restore() ?: "{}") }catch(_:Exception){JSONObject()};state.optJSONArray("origins")?.let { a -> for(i in 0 until a.length())observe(a.optString(i)) };val saved=state.optJSONArray("scanPlan");if(saved!=null){plan=(0 until minOf(saved.length(),200)).mapNotNull { i->val c=saved.optJSONObject(i) ?: return@mapNotNull null;val cid=c.optString("courseId");val clazz=c.optString("classId");val cpi=c.optString("cpi");val url=c.optString("url");if(listOf(cid,clazz,cpi).all(ChaoxingPolicy::numeric)&&ChaoxingPolicy.safeRead(url))LearningCourse(cid,clazz,cpi,c.optString("name"),c.optString("teacher"),url) else null };planAccount=state.optString("planAccount")};loaded=true}
+    private fun saveState(){synchronized(sessionLock){checkActive();state.put("scanPlan",JSONArray().apply{plan.forEach { c->put(JSONObject().put("courseId",c.courseId).put("classId",c.classId).put("cpi",c.cpi).put("name",c.name).put("teacher",c.teacher).put("url",c.url)) }}).put("planAccount",planAccount);state.put("origins",JSONArray(visited.keys.toList()));val raw=state.toString();if(raw.length>1900000)throw LearningFailure("LIMIT");vault.save(raw);cookies.flush()}}
     private fun failureResult(reason:String):JSONObject {val result=JSONObject().put("session",if(reason in listOf("AUTH","ACCOUNT_CHANGED"))"expired" else "unknown").put("code",reason);try{result.put("accountKey",account())}catch(_:Exception){};return result}
     private fun bindAccount(key:String){loadState();if(state.optString("account")!=key){state=JSONObject().put("account",key);knownCourses=emptyList();plan=emptyList()}}
-    private fun rememberChallenge(show:String,read:String){if(!ChaoxingPolicy.allowed(show)||!ChaoxingPolicy.safeRead(read))return;loadState();state.put("verificationUrl",show).put("verificationRead",read);saveState()}
+    private fun rememberChallenge(show:String,read:String,form:Map<String,String>?=null){if(!ChaoxingPolicy.allowed(show)||!ChaoxingPolicy.safeRead(read))return;loadState();state.put("verificationUrl",show).put("verificationRead",read);if(form!=null)state.put("verificationForm",JSONObject(form)) else state.remove("verificationForm");saveState()}
     private fun request(start:String,form:Map<String,String>?=null):LearningPage {
         if(!ChaoxingPolicy.safeRead(start))throw LearningFailure("URL")
         var url=start;var post=form
@@ -80,14 +79,14 @@ class ChaoxingPlugin:Plugin() {
                 val code=connection.responseCode
                 diagnostics.put("host",URI(url).host).put("path",URI(url).path).put("httpStatus",code)
                 synchronized(sessionLock){checkActive();connection.headerFields.filter { it.key?.equals("Set-Cookie",true)==true }.values.flatten().forEach { cookies.setCookie(url,it) }}
-                if(code in 300..399){val target=ChaoxingPolicy.absolute(connection.getHeaderField("Location").orEmpty(),url) ?: throw LearningFailure("URL");if(ChaoxingPolicy.loginPage(target))throw LearningFailure("AUTH");if(ChaoxingPolicy.challenge(target,"")){rememberChallenge(target,start);throw LearningFailure("VERIFY")};url=target;post=null;continue}
+                if(code in 300..399){val target=ChaoxingPolicy.absolute(connection.getHeaderField("Location").orEmpty(),url) ?: throw LearningFailure("URL");if(ChaoxingPolicy.loginPage(target))throw LearningFailure("AUTH");if(ChaoxingPolicy.challenge(target,"")){rememberChallenge(target,start,form);throw LearningFailure("VERIFY")};url=target;post=null;continue}
                 if(code==401)throw LearningFailure("AUTH")
                 if(code==429)throw LearningFailure("RATE_LIMIT")
                 if(code==403)throw LearningFailure("HTTP_$code")
                 if(code !in 200..299)throw LearningFailure("HTTP_$code")
                 val bytes=connection.inputStream.use { input -> val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(out.size()<=1500000){val n=input.read(buffer);if(n<0)break;out.write(buffer,0,n)};out.toByteArray() };if(bytes.size>1500000)throw LearningFailure("LIMIT")
                 val body=String(bytes,Charsets.UTF_8)
-                if(ChaoxingPolicy.challenge(url,body)){rememberChallenge(url,start);throw LearningFailure("VERIFY")}
+                if(code==202||ChaoxingPolicy.challenge(url,body)){rememberChallenge(url,start,form);throw LearningFailure("VERIFY")}
                 if(Jsoup.parse(body).select("input[type=password]").isNotEmpty())throw LearningFailure("AUTH")
                 return LearningPage(url,body)
             } finally { connection.disconnect() }
@@ -126,7 +125,7 @@ class ChaoxingPlugin:Plugin() {
     }
     private fun publicCourses(courses:List<LearningCourse>)=JSONArray().apply { courses.forEach { put(JSONObject().put("courseId",it.courseId).put("classId",it.classId).put("name",it.name).put("teacher",it.teacher)) } }
     private fun record(item:LearningRecord):JSONObject {
-        val urls=state.optJSONObject("urls") ?: JSONObject().also { state.put("urls",it) };urls.put(item.id,item.url)
+        val urls=state.optJSONObject("urls") ?: JSONObject().also { state.put("urls",it) };if(ChaoxingPolicy.allowed(item.url))urls.put(item.id,item.url)
         return ChaoxingBridge.record(item)
     }
     private fun courseWork(course:LearningCourse):ParsedWork {
@@ -137,49 +136,65 @@ class ChaoxingPlugin:Plugin() {
             val openc=ChaoxingParser.hidden(page.body,"openc");val enc=ChaoxingParser.hidden(page.body,"enc")
             ChaoxingPolicy.params("https://mooc1.chaoxing.com/mooc2/work/list",mapOf("courseId" to course.courseId,"classId" to course.classId,"cpi" to course.cpi,"ut" to "s","openc" to openc,"enc" to workEnc,"stuenc" to enc,"isdisplaytable" to "2"))
         }
-        val works=request(target);val parsed=ChaoxingParser.work(works.body,works.url,course)
-        if(!parsed.recognized){val dom=Jsoup.parse(works.body);diagnostics.put("workRows",dom.select("li").size).put("workLinks",dom.select("a.inspectTask,li[data]").size).put("workRejected",parsed.rejected);throw LearningFailure("WORK_SCHEMA")}
-        return parsed.copy(records=parsed.records.map(::readDetail))
+        var targetPage=target;val records=linkedMapOf<String,LearningRecord>();val visitedPages=mutableSetOf<String>();var recognized=false;var complete=false;var rejected=0
+        for(pageIndex in 0 until 15){
+            if(!visitedPages.add(targetPage))break
+            val works=try{request(targetPage)}catch(e:LearningFailure){throw LearningFailure(e.reason,records.values.toList())};val parsed=ChaoxingParser.work(works.body,works.url,course)
+            recognized=recognized||parsed.recognized;rejected+=parsed.rejected
+            if(!parsed.recognized){val dom=Jsoup.parse(works.body);diagnostics.put("workRows",dom.select("li").size).put("workLinks",dom.select("a.inspectTask,li[data]").size).put("workRejected",parsed.rejected);throw LearningFailure("WORK_SCHEMA")}
+            val added=parsed.records.count { it.id !in records };parsed.records.forEach { records[it.id]=it }
+            val next=ChaoxingParser.nextPage(works.body,works.url)
+            val total=ChaoxingParser.total(works.body)
+            complete=rejected==0&&next==null&&(parsed.complete||total!=null&&records.size==total)
+            if(next==null||added==0&&pageIndex>0)break
+            targetPage=next;Thread.sleep(900)
+        }
+        return ParsedWork(records.values.toList(),recognized,complete,rejected)
     }
-    private fun readDetail(item:LearningRecord):LearningRecord {
-        if(item.deadline!=null||item.status=="submitted"||detailBudget<=0||!URI(item.url).path.endsWith("/work/task"))return item
-        return try {detailBudget--;val detail=request(item.url);ChaoxingParser.enrich(item,detail.body)}catch(e:LearningFailure){if(e.reason in listOf("VERIFY","AUTH","CANCELLED","RATE_LIMIT"))throw e else item}catch(_:Exception){item}
-    }
-
     private fun sync(cursor:Int,force:Boolean):JSONObject {
-        checkActive();if(cursor<0||cursor>200||cursor%6!=0)throw LearningFailure("CURSOR");detailBudget=8;loadState();val key=account();bindAccount(key)
+        checkActive();if(cursor<0||cursor>200)throw LearningFailure("CURSOR");loadState();val key=account();bindAccount(key)
         val result=JSONObject().put("session","valid").put("accountKey",key);val items=JSONArray();val outcomes=JSONArray()
-        if(cursor==0){
+        val resuming=planAccount==key&&state.optInt("resumeCursor",-1)==cursor
+        var checkpoint=cursor
+        try {
+        if(cursor==0&&!resuming){
             knownCourses=fetchCourses();if(account()!=key)throw LearningFailure("ACCOUNT_CHANGED")
             result.put("courses",publicCourses(knownCourses)).put("coursesComplete",coursesRejected==0)
-            var allComplete=false
-            val oldIds=state.optJSONObject("urls")?.keys()?.asSequence()?.toSet() ?: emptySet<String>()
-            var allIds=emptySet<String>()
-            try { val all=request(ChaoxingPolicy.ALL_WORK);val parsed=ChaoxingParser.work(all.body,all.url);allIds=parsed.records.map { it.id }.toSet()
-                parsed.records.map(::readDetail).forEach { raw -> val c=knownCourses.find { it.courseId==raw.courseId&&it.classId==raw.classId };items.put(record(if(c!=null)raw.copy(course=c.name) else raw)) }
-                val total=Jsoup.parse(all.body).selectFirst("#totalCount,input[name=totalCount]")?.attr("value")?.toIntOrNull()
-                allComplete=parsed.recognized&&parsed.complete&&total!=null&&total==parsed.records.size
-                result.put("allWork",if(allComplete)"complete" else if(parsed.recognized)"partial" else "unrecognized")
-            }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT"))throw e;result.put("allWork",e.reason)}catch(_:Exception){result.put("allWork","NETWORK")}
             val stamps=state.optJSONObject("stamps") ?: JSONObject().also { state.put("stamps",it) }
-            val missingClasses=oldIds.filter { it.contains("/homework/")&&it !in allIds }.map { it.split('/').take(2).joinToString("/") }.toSet()
-            plan=knownCourses.filter { (!allComplete||it.key in missingClasses)&&(force||System.currentTimeMillis()-stamps.optLong(it.key,0)>600000) }
-            planAccount=key
+            // The all-task feed can contain only unfinished work or its first page. Always check courses for submitted/history records.
+            plan=knownCourses.filter { force||System.currentTimeMillis()-stamps.optLong(it.key,0)>600000 };planAccount=key
+            try {val all=request(ChaoxingPolicy.ALL_WORK);val parsed=ChaoxingParser.work(all.body,all.url)
+                parsed.records.forEach { raw->val c=knownCourses.find { it.courseId==raw.courseId&&it.classId==raw.classId };items.put(record(if(c!=null)raw.copy(course=c.name) else raw)) }
+                result.put("allWork","partial")
+            }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT","CANCELLED"))throw e;result.put("allWork",e.reason)}
+        }else if(planAccount!=key)throw LearningFailure("PLAN_EXPIRED")
+        state.remove("resumeCursor")
+        // Two courses per batch, paced reads. Publish each successful batch before continuing.
+        for((offset,course) in plan.drop(cursor).take(2).withIndex()){
+            checkpoint=cursor+offset
+            try {val parsed=courseWork(course);parsed.records.forEach { items.put(record(it)) };val ok=parsed.complete
+                outcomes.put(JSONObject().put("key",course.key).put("status",if(ok)"ok" else "partial").put("count",parsed.records.size).put("complete",ok));if(ok)state.getJSONObject("stamps").put(course.key,System.currentTimeMillis())
+            }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT","CANCELLED"))throw e;outcomes.put(JSONObject().put("key",course.key).put("status","error").put("code",e.reason))}catch(_:Exception){outcomes.put(JSONObject().put("key",course.key).put("status","error").put("code","NETWORK"))}
+            checkpoint++;Thread.sleep(900)
+        }
+        val next=checkpoint
+        if(next>=plan.size){
             try { val page=request(ChaoxingPolicy.EXAMS);val parsed=ChaoxingParser.exams(page.body,page.url);if(!parsed.recognized)throw LearningFailure("EXAMS_SCHEMA");result.put("exams",JSONObject().put("status",if(parsed.complete)"ok" else "partial").put("items",JSONArray().apply{parsed.records.forEach { put(record(it)) }})) }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT"))throw e;result.put("exams",JSONObject().put("status","error").put("code",e.reason))}catch(_:Exception){result.put("exams",JSONObject().put("status","error").put("code","NETWORK"))}
             try { val page=request(ChaoxingPolicy.NOTICES,mapOf("type" to "0","notice_type" to "0","lastValue" to "","sort" to "0","folderUUID" to "","kw" to ""));val j=JSONObject(page.body);if(!j.optBoolean("status"))throw LearningFailure("NOTICES_SCHEMA");val list=j.optJSONObject("notices")?.optJSONArray("list") ?: throw LearningFailure("NOTICES_SCHEMA");val data=JSONArray()
                 for(i in 0 until minOf(list.length(),100)){val n=list.optJSONObject(i) ?: continue;val id=n.optString("id").ifBlank { n.optString("noticeId") };val title=n.optString("title");if(id.isBlank()||title.isBlank())continue;data.put(JSONObject().put("id",id.take(100)).put("title",title.take(200)).put("content",Jsoup.parse(n.optString("content")).text().take(6000)).put("sender",n.optString("sendName").take(100)).put("publishedText",n.optString("sendTime").ifBlank { n.optString("insertTime") }.take(100)))}
                 result.put("notices",JSONObject().put("status","ok").put("data",data))
             }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT"))throw e;result.put("notices",JSONObject().put("status","error").put("code",e.reason))}catch(_:Exception){result.put("notices",JSONObject().put("status","error").put("code","NETWORK"))}
-        }else if(planAccount!=key)throw LearningFailure("PLAN_EXPIRED")
-        for(course in plan.drop(cursor).take(6)){
-            try {val parsed=courseWork(course);parsed.records.forEach { items.put(record(it)) };val ok=parsed.complete
-                outcomes.put(JSONObject().put("key",course.key).put("status",if(ok)"ok" else "partial").put("count",parsed.records.size).put("complete",ok));if(ok)state.getJSONObject("stamps").put(course.key,System.currentTimeMillis())
-            }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT"))throw e;outcomes.put(JSONObject().put("key",course.key).put("status","error").put("code",e.reason))}catch(_:Exception){outcomes.put(JSONObject().put("key",course.key).put("status","error").put("code","NETWORK"))}
-            Thread.sleep(250)
         }
         if(account()!=key)throw LearningFailure("ACCOUNT_CHANGED")
-        saveState();val next=cursor+6
+        saveState()
         return result.put("items",items).put("courseResults",outcomes).put("nextCursor",if(next<plan.size)next else JSONObject.NULL).put("remainingCount",maxOf(0,plan.size-next))
+        }catch(e:LearningFailure){
+            if(e.reason !in listOf("VERIFY","RATE_LIMIT"))throw e
+            e.records.forEach { items.put(record(it)) }
+            state.put("resumeCursor",checkpoint);saveState()
+            // Return collected rows before suspending. A verification challenge is never a successful empty scan.
+            return result.put("items",items).put("courseResults",outcomes).put("code",e.reason).put("resumeCursor",checkpoint).put("remainingCount",maxOf(0,plan.size-checkpoint)).put("nextCursor",JSONObject.NULL)
+        }
     }
     private fun begin(next:PluginCall,job:()->JSONObject){activity.runOnUiThread {
         if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread};call=next;val token=++generation
@@ -205,9 +220,9 @@ class ChaoxingPlugin:Plugin() {
         executor.execute {workerToken=token;try {
             bindAccount(key)
             val proof=state.optString("verificationRead")
-            if(ChaoxingPolicy.safeRead(proof))try{request(proof)}catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT","CANCELLED"))throw e}catch(_:Exception){}
-            val courses=fetchCourses();if(account()!=key)throw LearningFailure("ACCOUNT_CHANGED");knownCourses=courses;state.remove("verificationUrl");state.remove("verificationRead");saveState()
-            handler.post{if(token==generation)finish(JSONObject().put("session","valid").put("accountKey",key).put("courses",publicCourses(courses)))}
+            if(ChaoxingPolicy.safeRead(proof)){val savedForm=state.optJSONObject("verificationForm");val values=savedForm?.keys()?.asSequence()?.associateWith { savedForm.optString(it) };request(proof,values)}
+            val courses=fetchCourses();if(account()!=key)throw LearningFailure("ACCOUNT_CHANGED");knownCourses=courses;state.remove("verificationUrl");state.remove("verificationRead");state.remove("verificationForm");saveState()
+            handler.post{if(token==generation)finish(JSONObject().put("session","valid").put("accountKey",key).put("courses",publicCourses(courses)).put("resumeCursor",if(planAccount==key)state.optInt("resumeCursor",0) else 0))}
         }catch(e:LearningFailure){handler.post{if(token==generation){if(e.reason=="VERIFY"){probing=false;val target=state.optString("verificationUrl");if(ChaoxingPolicy.allowed(target)&&web?.url!=target)web?.loadUrl(target);android.widget.Toast.makeText(context,"请完成官方验证，再点顶部继续",android.widget.Toast.LENGTH_LONG).show()}else finish(failureResult(e.reason))}}}catch(_:Exception){handler.post{if(token==generation)finish(failureResult("NETWORK"))}}}
     }
     private fun showPage(url:String,auth:Boolean){

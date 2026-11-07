@@ -1,7 +1,7 @@
 /** App-owned return paths. Tab visits are replacements, never a return stack. */
 export type Page = 'home' | 'schedule' | 'academic' | 'profile';
 export interface Route { page: Page; section: string }
-const sections = ['overview', 'agenda', 'schedule', 'grades', 'exams', 'study', 'calendar'];
+const sections = ['overview', 'learning', 'agenda', 'schedule', 'grades', 'exams', 'study', 'calendar'];
 export function parseRoute(hash: string): Route {
   const [raw, sub] = hash.replace(/^#\/?/, '').split('/');
   if (raw === 'academic' && sub === 'official') return {page:'profile',section:'overview'};

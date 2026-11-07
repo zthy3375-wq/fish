@@ -220,8 +220,19 @@ try{
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByText('外观设置',{exact:true}).waitFor();
   assert(await page.getByText(/iPhone|iOS|App Store|添加到手机桌面/).count()===0,`${width}: no retired platform installation flow`);
+  await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
   await page.getByRole('button',{name:'连接学习通',exact:true}).click();
   await page.getByText('学习通已连接',{exact:true}).waitFor();
+  assert(await page.getByRole('tablist',{name:'学习通内容'}).count()===1,`${width}: learning has a dedicated content page`);
+  assert(await page.locator('.learning-state.pending').count()===1,`${width}: submission status is explicit in independent homework list`);
+  await page.getByRole('tab',{name:'课程',exact:true}).click();
+  await page.locator('.learning-course-button').first().click();
+  assert(await page.getByRole('tab',{name:'作业',exact:true}).getAttribute('aria-selected')==='true',`${width}: course selection opens its homework`);
+  await page.getByRole('button',{name:/已提交 \/ 完成/}).click();
+  assert(await page.locator('.learning-work').count()===0,`${width}: submitted filter never treats pending as done`);
+  await page.getByRole('button',{name:/^全部/}).click();
+  await page.getByRole('button',{name:'返回上一页',exact:true}).click();
+  assert(await page.getByText('外观设置',{exact:true}).count()===1,`${width}: independent learning page returns to original profile entry`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
   await page.getByRole('button',{name:/日程与待办/}).click();
   await page.getByRole('button',{name:'学习通',exact:true}).click();
@@ -266,6 +277,7 @@ try{
   await page.getByRole('button',{name:'连接邯郸学院',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===2,`${width}: school logout preserves personal tasks`);
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).connected)===true,`${width}: school logout keeps learning connection independent`);
+  await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
   await page.getByRole('button',{name:'退出学习通连接',exact:true}).click();
   await page.getByRole('button',{name:'连接学习通',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===2,`${width}: learning logout preserves personal tasks`);

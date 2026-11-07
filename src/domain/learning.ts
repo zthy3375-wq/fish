@@ -22,6 +22,7 @@ export interface LearningCache {
     lastAttempt: string | null;
     updatedAt: string | null;
     remaining: number;
+    resumeCursor?: number;
     issues: Record<string, string>;
     examUpdatedAt: string | null;
     noticeUpdatedAt: string | null;
@@ -78,6 +79,9 @@ export function applyLearningResponse(current: LearningCache, response: Learning
     cache.session = 'valid';
     cache.lastAttempt = now.toISOString();
     delete cache.issues.connection;
+    if(response.code)cache.issues.connection=response.code;
+    if(Number.isInteger(response.resumeCursor)&&response.resumeCursor!>=0&&response.resumeCursor!<=200)cache.resumeCursor=response.resumeCursor;
+    else if(!response.code)delete cache.resumeCursor;
     if (response.courses !== undefined) {
         const courses = validateLearningCourses(response.courses);
         if (response.coursesComplete === false) {

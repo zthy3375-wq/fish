@@ -32,3 +32,13 @@ it('a verified empty all-work page marks retained records stale instead of erasi
 it('connection feedback only keeps bounded structural fields without credentials or account identifiers', () => { const next = applyLearningResponse(emptyLearning(), { session: 'unknown', code: 'COURSES_SCHEMA', diagnostics: { Cookie: 'SECRET', enc: 'SECRET', accountKey: 'SECRET', httpStatus: 403, courseKeys: ['result', 'channelList', '123456789'], path: '/mycourse/backclazzdata' } }, now); expect(JSON.stringify(next.diagnostics)).not.toContain('SECRET'); expect(next.diagnostics.courseKeys).toBeUndefined(); expect(next.diagnostics.httpStatus).toBe(403); });
 
 it('an observed different account clears old data even when the new course response needs adaptation',()=>{const next=applyLearningResponse(populated(),{session:'unknown',accountKey:'bbbbbbbbbbbbbbbbbbbbbbbb',code:'COURSES_SCHEMA'},now);expect(next.items).toEqual([]);expect(next.plans).toEqual({});expect(next.connected).toBe(false)});
+
+it('verification suspends after publishing partial rows and resumes from the blocked course',async()=>{
+ let raw:string|null=null;const store=new LearningStore(async()=>raw,async value=>{raw=value});let cache=emptyLearning();
+ const blocked={...response(),code:'VERIFY',resumeCursor:2,nextCursor:null,remainingCount:5};
+ const client={login:vi.fn().mockResolvedValue({...response(),items:[],resumeCursor:2}),syncAll:vi.fn().mockResolvedValueOnce(blocked).mockResolvedValueOnce({...response(),items:[],nextCursor:null}),logout:vi.fn()} as any;
+ const engine=new LearningSyncEngine(client,store,c=>cache=c,()=>now,async()=>{});
+ await engine.sync({force:true});expect(cache.items).toHaveLength(1);expect(cache.issues.connection).toBe('VERIFY');expect(cache.remaining).toBe(5);
+ await engine.sync({force:true});expect(client.syncAll).toHaveBeenCalledTimes(1);
+ await engine.sync({login:true,force:true});expect(client.syncAll.mock.calls[1][0].cursor).toBe(2);expect(cache.items).toHaveLength(1);expect(cache.issues.connection).toBeUndefined();
+});

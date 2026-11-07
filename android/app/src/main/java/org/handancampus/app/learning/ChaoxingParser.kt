@@ -25,8 +25,8 @@ object ChaoxingParser {
         return dates(range).takeIf { it.size>=2 }?.last()
     }
     fun status(raw:String):String = when {
-        Regex("未提交|未交|待做|待提交|未完成|未开始|待考试|待重做|打回|退回").containsMatchIn(raw) -> "pending"
-        Regex("已提交|待批阅|已批阅|已完成|已交|已交卷|已结束.*已交").containsMatchIn(raw) -> "submitted"
+        Regex("未提交|未交|待做|待提交|未完成|未开始|待考试|待重做|未作答|打回|退回").containsMatchIn(raw) -> "pending"
+        Regex("已提交|待批阅|待批改|未批阅|已批阅|已批改|已完成|已交|已交卷|已结束.*已交").containsMatchIn(raw) -> "submitted"
         Regex("已截止|已过期|已关闭|已结束").containsMatchIn(raw) -> "closed"
         else -> "unknown"
     }
@@ -61,21 +61,38 @@ object ChaoxingParser {
         for(row in rows) {
             val raw=row.attr("data").ifBlank { row.selectFirst("a[href*=work],a[data*=work]")?.let { it.attr("href").ifBlank { it.attr("data") } } ?: "" }
             val decoded=try { if(raw.startsWith("https://")||raw.startsWith("http://")||raw.startsWith("/"))raw else URLDecoder.decode(raw.replace("+","%2B"),"UTF-8") } catch (_:Exception) { raw }
-            val url=ChaoxingPolicy.absolute(decoded,base);val q=ChaoxingPolicy.query(url ?: "")
+            val url=decoded.takeIf { it.isNotBlank() }?.let { ChaoxingPolicy.absolute(it,base) };val q=ChaoxingPolicy.query(url ?: "")
             val cid=q["courseid"] ?: course?.courseId ?: "";val clazz=q["classid"] ?: q["clazzid"] ?: course?.classId ?: ""
-            val wid=q["workid"] ?: row.attr("data-workid");val label=row.attr("aria-label").split(';')
-            val title=(row.selectFirst(".overHidden2.fl,.task-title,.title")?.text() ?: label.firstOrNull().orEmpty()).trim()
-            val statusText=(row.selectFirst(".status")?.text() ?: label.getOrNull(1).orEmpty()).trim().ifBlank { "未知" }
-            if(url==null||!ChaoxingPolicy.safeRead(url)||!listOf(cid,clazz,wid).all(ChaoxingPolicy::numeric)||title.isBlank()){rejected++;continue}
+            val inspect=row.selectFirst("a.inspectTask,a[data-workid]")
+            val wid=q["workid"] ?: row.attr("data-workid").ifBlank { inspect?.attr("data-workid").orEmpty().ifBlank { inspect?.attr("data").orEmpty() } };val label=row.attr("aria-label").split(';')
+            val title=(row.selectFirst(".overHidden2.fl,.task-title,.title,a.inspectTask")?.text() ?: label.firstOrNull().orEmpty()).trim()
+            val explicit=row.select(".status,.work-status,.workStatus,.task-status,.pt5,.time,em,span").map { it.text().trim() }.filter { status(it)!="unknown" && it.length<=100 && !it.contains("截止时间") && !it.contains("开始时间") }
+            val aria=label.drop(1).joinToString(";").trim()
+            val statusText=(row.selectFirst(".status,.work-status,.workStatus,.task-status")?.text()?.takeIf { status(it)!="unknown" } ?: aria.takeIf { status(it)!="unknown" } ?: explicit.firstOrNull() ?: "提交状态未知").take(100)
+            if((url!=null&&!ChaoxingPolicy.safeRead(url))||!listOf(cid,clazz,wid).all(ChaoxingPolicy::numeric)||title.isBlank()){rejected++;continue}
             val rawTime=row.select(".time,.pt5,.remaining,.fl span").joinToString("\n") { it.text() }.ifBlank { row.text() }.take(1000)
             val name=course?.name ?: row.selectFirst(".courseName,.course-name")?.text().orEmpty()
-            val item=LearningRecord("$cid/$clazz/$kind/$wid",cid,clazz,wid,kind,title.take(200),name.take(200),status(statusText),statusText.take(100),deadline(rawTime),null,rawTime,"",url)
+            val item=LearningRecord("$cid/$clazz/$kind/$wid",cid,clazz,wid,kind,title.take(200),name.take(200),status(statusText),statusText.take(100),deadline(rawTime),null,rawTime,"",url.orEmpty())
             out[item.id]=item
         }
         val empty=Regex("暂无作业|没有作业|暂无任务|没有相关作业").containsMatchIn(doc.text())
         val recognized=out.isNotEmpty()||empty
-        val next=doc.select("a[rel=next],a.next:not(.disabled),.pagingNext:not(.disabled),.nextPage:not(.disabled)").any { it.attr("aria-disabled")!="true" && it.attr("href")!="#" }
-        return ParsedWork(out.values.toList(),recognized,recognized&&!next&&rejected==0,rejected)
+        val next=doc.select("a[rel=next],a.next:not(.disabled),.pagingNext:not(.disabled),.nextPage:not(.disabled)").any { it.attr("aria-disabled")!="true" && !it.hasClass("disabled") }
+        val total=total(html)
+        val incomplete=(total!=null&&total>out.size)||(out.size>=20&&total==null)
+        return ParsedWork(out.values.toList(),recognized,recognized&&!next&&!incomplete&&rejected==0,rejected)
+    }
+    /** Follow only real server-provided read links; never guess pagination signatures or parameters. */
+    fun nextPage(html:String,base:String):String? {
+        val doc=Jsoup.parse(html,base)
+        return doc.select("a[rel=next],a.next,.pagingNext,.nextPage,a:matchesOwn(^下一页$)").asSequence()
+            .filter { !it.hasClass("disabled")&&it.attr("aria-disabled")!="true"&&it.parents().none { p->p.hasClass("disabled") } }
+            .mapNotNull { ChaoxingPolicy.absolute(it.attr("href"),base) }
+            .firstOrNull { it!=base&&ChaoxingPolicy.safeRead(it)&&java.net.URI(it).path==java.net.URI(base).path }
+    }
+    fun total(html:String):Int? {
+        val el=Jsoup.parse(html).selectFirst("#totalCount,input[name=totalCount],input[name=total],#total") ?: return null
+        return el.attr("value").ifBlank { el.text() }.toIntOrNull()?.takeIf { it>=0 }
     }
     private fun machineDate(value:String):String? {
         dates(value).firstOrNull()?.let { return it }

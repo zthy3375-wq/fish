@@ -53,4 +53,28 @@ class ChaoxingParserTest {
         assertEquals("2026-11-08T18:00",result.deadline)
     }
 
+
+    @Test fun statusUsesNonBlankAriaAndAlternateStatusElements(){
+        val link="https://mooc1.chaoxing.com/mooc-ans/mooc2/work/task?courseId=12&amp;classId=34&amp;workId=78"
+        for((markup,expected) in listOf("<span class='pt5'>待批阅</span>" to "submitted","<em>未交</em>" to "pending","<span class='work-status'>已过期</span>" to "closed")){
+            val html="<li onclick='goTask(this)' data='$link' aria-label='人工测试;'><p class='title'>人工测试</p><p class='status'></p>$markup</li>"
+            assertEquals(expected,ChaoxingParser.work(html,course.url,course).records.single().status)
+        }
+        val aria="<li onclick='goTask(this)' data='$link' aria-label='人工测试;作业;已完成'><p class='title'>人工测试</p></li>"
+        assertEquals("submitted",ChaoxingParser.work(aria,course.url,course).records.single().status)
+    }
+    @Test fun legacyWorkKeepsTrueStatusEvenWhenNoSignedDetailLinkIsAvailable(){
+        val html="<li><a class='inspectTask' data='78' data2='90'>人工旧版作业</a><span class='pt5'>已完成</span></li>"
+        val item=ChaoxingParser.work(html,course.url,course).records.single()
+        assertEquals("12/34/homework/78",item.id);assertEquals("submitted",item.status);assertFalse(ChaoxingBridge.record(item).getBoolean("hasLink"))
+    }
+    @Test fun twentyRowsWithoutPaginationProofArePartialAndRealNextLinksAreFollowable(){
+        val rows=(1..20).joinToString(""){i->"<li onclick='goTask(this)' data='https://mooc1.chaoxing.com/mooc2/work/task?courseId=12&amp;classId=34&amp;workId=$i' aria-label='人工测试$i;待做'></li>"}
+        assertFalse(ChaoxingParser.work(rows,course.url,course).complete)
+        val base="https://mooc1.chaoxing.com/mooc2/work/list?enc=TEST_ONLY"
+        val next="<a rel='next' href='?enc=TEST_ONLY&amp;page=2'>下一页</a>"
+        assertEquals("2",ChaoxingPolicy.query(ChaoxingParser.nextPage(next,base)!!)["page"])
+        assertNull(ChaoxingParser.nextPage("<a rel='next' href='https://evil.test'>下一页</a>",base))
+        assertTrue(ChaoxingParser.work("<input id='totalCount' value='20'>"+rows,base,course).complete)
+    }
 }

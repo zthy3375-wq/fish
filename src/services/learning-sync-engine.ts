@@ -19,6 +19,7 @@ export class LearningSyncEngine {
             if (!options.login && !options.force && !cache.connected)
                 return;
             const age = cache.lastAttempt ? +this.clock() - Date.parse(cache.lastAttempt) : Infinity;
+            if(!options.login&&cache.issues.connection==='VERIFY')return;
             if(cache.issues.connection==='RATE_LIMIT'&&age<300000&&!options.login)return;
             if (!options.login && (cache.session === 'expired' && !options.force || !options.force && age < 300000))
                 return;
@@ -28,15 +29,16 @@ export class LearningSyncEngine {
                 this.publish(next);
             } };
             try {
+                let cursor = 0;
                 if (options.login) {
                     const result = await this.client.login();
                     await accept(result);
                     if (result.session !== 'valid')
                         return;
+                    if(Number.isInteger(result.resumeCursor)&&result.resumeCursor!>=0&&result.resumeCursor!<=200)cursor=result.resumeCursor!;
                 }
-                let cursor = 0;
                 const seen = new Set<number>();
-                for (let batch = 0; batch < 40; batch++) {
+                for (let batch = 0; batch < 101; batch++) {
                     if (generation !== this.epoch)
                         return;
                     if (seen.has(cursor))
@@ -46,14 +48,14 @@ export class LearningSyncEngine {
                     if (generation !== this.epoch)
                         return;
                     await accept(response);
-                    if (response.session !== 'valid')
+                    if (response.session !== 'valid' || response.code)
                         return;
                     if (response.nextCursor === null || response.nextCursor === undefined)
                         return;
                     if (!Number.isInteger(response.nextCursor) || response.nextCursor <= cursor || response.nextCursor > 200)
                         throw Error('学习通同步范围无法识别');
                     cursor = response.nextCursor;
-                    await this.pause(500);
+                    await this.pause(1500);
                 }
                 throw Error('学习通课程数量超过本轮同步范围');
             }

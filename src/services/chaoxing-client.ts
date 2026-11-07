@@ -47,6 +47,7 @@ export interface LearningResponse {
         count?: number;
         code?: string;
     }[];
+    resumeCursor?: number;
     nextCursor?: number | null;
     remainingCount?: number;
     allWork?: string;
