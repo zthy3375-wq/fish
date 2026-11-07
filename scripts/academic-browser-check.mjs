@@ -225,6 +225,12 @@ try{
   await page.getByText('学习通已连接',{exact:true}).waitFor();
   assert(await page.getByRole('tablist',{name:'学习通内容'}).count()===1,`${width}: learning has a dedicated content page`);
   assert(await page.locator('.learning-state.pending').count()===1,`${width}: submission status is explicit in independent homework list`);
+  assert(await page.locator('.learning-course-group').count()===1,`${width}: homework is grouped into its course folder`);
+  await page.locator('.learning-course-group>summary').click();
+  assert(!await page.locator('.learning-work').first().isVisible(),`${width}: course folder collapses`);
+  await page.locator('.learning-course-group>summary').click();
+  assert(await page.locator('.learning-work').first().isVisible(),`${width}: course folder reopens`);
+
   await page.getByRole('tab',{name:'课程',exact:true}).click();
   await page.locator('.learning-course-button').first().click();
   assert(await page.getByRole('tab',{name:'作业',exact:true}).getAttribute('aria-selected')==='true',`${width}: course selection opens its homework`);
@@ -280,6 +286,7 @@ try{
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===2,`${width}: school logout preserves personal tasks`);
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).connected)===true,`${width}: school logout keeps learning connection independent`);
   await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
+  await page.locator('.learning-manage-details>summary').click();
   await page.getByRole('button',{name:'退出学习通连接',exact:true}).click();
   await page.getByRole('button',{name:'连接学习通',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===2,`${width}: learning logout preserves personal tasks`);
