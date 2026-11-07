@@ -36,6 +36,7 @@ describe('浏览器与 Android 共用导航适配',()=>{
   history.back();await new Promise(r=>setTimeout(r,25));await nextTick();expect(nav.overlay.value).toBe('');expect(nav.section.value).toBe('grades');
   history.back();await new Promise(r=>setTimeout(r,25));expect(nav.page.value).toBe('home');
  });
+ it('任务详情和放弃确认优先消费返回，不影响课程弹窗守卫',()=>{nav.move('academic','agenda');const guard=vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(true).mockReturnValue(false);nav.setBeforeBack(guard);nav.back();nav.back();expect(nav.section.value).toBe('agenda');nav.back();expect(nav.section.value).toBe('overview')});
  it('未保存编辑阻止系统返回，确认取消后正常关闭',()=>{
   nav.move('schedule');nav.open('course-editor');const guard=vi.fn(()=>false);nav.setOverlayCloseGuard(guard);nav.back();expect(guard).toHaveBeenCalledOnce();expect(nav.overlay.value).toBe('course-editor');nav.close();nav.back();expect(nav.page.value).toBe('home');
  });

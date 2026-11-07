@@ -5,12 +5,12 @@ android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('navigationPreview') == 'true' ? 'org.handancampus.app.navigation.v062' : 'org.handancampus.app')
-        manifestPlaceholders = [campusLabel: project.findProperty('navigationPreview') == 'true' ? '邯郸校园·导航测试' : '@string/app_name', campusActivityLabel: project.findProperty('navigationPreview') == 'true' ? '邯郸校园·导航测试' : '@string/title_activity_main']
+        applicationId (project.findProperty('tasksPreview') == 'true' ? 'org.handancampus.app.tasks.v063' : 'org.handancampus.app')
+        manifestPlaceholders = [campusLabel: project.findProperty('tasksPreview') == 'true' ? '邯郸校园·待办测试' : '@string/app_name', campusActivityLabel: project.findProperty('tasksPreview') == 'true' ? '邯郸校园·待办测试' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 65
-        versionName "0.6.2-navigation-test"
+        versionCode 66
+        versionName "0.6.3-tasks-test"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
