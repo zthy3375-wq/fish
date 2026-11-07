@@ -24,7 +24,17 @@ const courses=computed(()=>[...new Set([...series.value.flatMap(s=>s.courses.map
 const courseOptions=computed(()=>[...new Set([...courses.value,...allTasks.value.map(t=>t.course).filter(Boolean)])]);
 const tasks=computed(()=>selectTasks(allTasks.value,taskView,now.value));
 const summary=computed(()=>taskSummary(allTasks.value,now.value));
-const groups=computed(()=>{if(!taskView.group)return [{name:'',tasks:tasks.value}];return [...new Set(tasks.value.map(t=>t.course))].map(name=>({name:name||'未关联课程',tasks:tasks.value.filter(t=>t.course===name)}))});
+const groups=computed(()=>{
+ const result=new Map<string,{key:string;name:string;tasks:CampusTask[]}>();
+ for(const task of tasks.value){
+  const learning=task.source==='chaoxing';
+  const identity=learning?task.externalId?.split('/').slice(0,2).join('/'):'';
+  const key=learning?'cx:'+identity:taskView.group?'personal:'+task.course:'personal';
+  const name=learning?task.course:taskView.group?(task.course||'其他个人任务'):'';
+  const group=result.get(key)||{key,name,tasks:[]};group.tasks.push(task);result.set(key,group);
+ }
+ return [...result.values()];
+});
 const agenda=computed(()=>buildAgenda(series.value,academicCache.value.exams.data||[],allTasks.value,selectedDay.value,agendaView.range,now.value));
 const timelineEvents=computed(()=>agenda.value.events.filter(e=>!e.completed&&(agendaView.filter==='all'||e.kind===agendaView.filter)&&(!taskView.source||taskView.source==='all'||(taskView.source==='chaoxing'?e.taskId?.startsWith('cx:'):e.kind==='task'&&!e.taskId?.startsWith('cx:')))));
 const days=computed(()=>Array.from({length:agendaView.range},(_,i)=>{const date=shiftDay(selectedDay.value,i);return {date,events:timelineEvents.value.filter(e=>e.date===date)}}));
@@ -72,12 +82,12 @@ onMounted(()=>{void initTasks().catch(()=>{});void initLearning().then(()=>syncL
  <template v-if="taskView.mode==='list'">
   <div class="smart-lists" aria-label="智能清单"><button v-for="[id,label] in smartLists" :key="id" :aria-pressed="taskView.view===id" @click="taskView.view=id">{{label}}<small>{{count(id)}}</small></button></div>
   <div class="task-search"><Search :size="16"/><input v-model="taskView.search" type="search" aria-label="搜索任务" placeholder="搜索任务、课程或备注"/><button class="text-button" :aria-expanded="filters" @click="filters=!filters">筛选</button></div>
-  <div v-if="filters" class="task-filters"><select v-model="taskView.course" aria-label="按课程筛选"><option value="">所有课程</option><option v-for="course in courseOptions" :key="course">{{course}}</option></select><select v-model="taskView.sort" aria-label="任务排序"><option value="smart">智能排序</option><option value="deadline">截止时间</option><option value="priority">重要程度</option><option value="title">标题</option></select><select v-model.number="taskView.priority" aria-label="优先级筛选"><option :value="-1">全部优先级</option><option v-for="(p,i) in priorities" :key="i" :value="i">{{p}}</option></select><label><input v-model="taskView.group" type="checkbox"/>按课程分组</label></div>
+  <div v-if="filters" class="task-filters"><select v-model="taskView.course" aria-label="按课程筛选"><option value="">所有课程</option><option v-for="course in courseOptions" :key="course">{{course}}</option></select><select v-model="taskView.sort" aria-label="任务排序"><option value="smart">智能排序</option><option value="deadline">截止时间</option><option value="priority">重要程度</option><option value="title">标题</option></select><select v-model.number="taskView.priority" aria-label="优先级筛选"><option :value="-1">全部优先级</option><option v-for="(p,i) in priorities" :key="i" :value="i">{{p}}</option></select><label><input v-model="taskView.group" type="checkbox"/>个人任务也按课程分组</label></div>
   <details class="task-templates"><summary>学生任务模板</summary><div><button v-for="(t,i) in TASK_TEMPLATES" :key="t.name" @click="template(i)">{{t.name}}</button></div></details>
   <div class="task-list-heading"><h3>{{smartLists.find(([id])=>id===taskView.view)?.[1]}}</h3><span>{{tasks.length}} 项<template v-if="taskView.course"> · {{courseStats.pending}} 待办 / {{courseStats.completed}} 完成 / {{courseStats.due}} 即将截止</template></span></div>
   <p v-if="taskView.view==='today'" class="task-hint">今日计划与已到期任务。可提前安排执行时间，提交截止保持独立。</p>
   <p v-if="taskView.view==='due'" class="task-hint">未来7天内的截止任务，包含逾期项。</p>
-  <section v-for="group in groups" :key="group.name" class="task-group"><h4 v-if="group.name">{{group.name}} <small>{{group.tasks.length}} 项</small></h4>
+  <section v-for="group in groups" :key="group.key" class="task-group"><h4 v-if="group.name">{{group.name}} <small>{{group.tasks.length}} 项</small></h4>
    <article v-for="task in group.tasks" :key="task.id" class="task-row" :class="{done:task.completed,overdue:taskOverdue(task,now)}">
     <button class="task-check" :aria-label="(task.source==='chaoxing'?'平台状态 ':task.completed?'恢复待办 ':'完成待办 ')+task.title" :disabled="tasksBusy||task.source==='chaoxing'" @click="complete(task)"><Check v-if="task.completed" :size="15"/></button>
     <button class="task-copy" @click="task.source==='chaoxing'?openOriginal(task):edit(task)" @contextmenu.prevent="edit(task)"><strong><Pin v-if="task.pinned" :size="12"/><Flag v-if="task.priority" :size="12" :class="'priority-'+task.priority"/>{{task.title}}</strong><span v-if="task.source==='chaoxing'" class="learning-task-badge">学习通{{task.platformKind==='exam'?'考试':'作业'}} · {{learningTaskState(task,now).label}} · {{remaining(task)}}{{task.platformStale?' · 上次记录':''}}</span><span v-if="task.course">{{task.course}}</span><span v-if="task.plannedAt"><Clock3 :size="11"/>计划 {{task.plannedAt.replace('T',' ')}} · {{task.durationMinutes}}分钟</span><span v-if="task.source==='chaoxing'&&!task.deadline">截止时间未知 · {{task.timeText||'平台尚未提供完整时间'}}</span><span v-if="task.deadline" :class="{danger:taskOverdue(task,now)}">{{taskOverdue(task,now)?'已逾期 · ':'截止 '}}{{task.deadline.replace('T',' ')}}</span><span v-if="task.steps?.length" class="task-progress"><i :style="{width:90*task.steps.filter(s=>s.completed).length/task.steps.length+'px'}"/>{{task.steps.filter(s=>s.completed).length}}/{{task.steps.length}} 步骤<small v-if="task.repeat"> · 重复任务</small></span><span v-else-if="task.repeat">重复任务</span></button>
