@@ -5,6 +5,25 @@ import 'leaflet/dist/leaflet.css';
 import type {GeoJsonObject} from 'geojson';
 import {Search,Star,MapPin,Navigation,Plus,Layers,LocateFixed,Download,Upload} from 'lucide-vue-next';
 import geometry from '../data/campus-geometry.json';
+import CampusRoomDirectory from './CampusRoomDirectory.vue';
+import CampusPlan from './CampusPlan.vue';
+import {locateCampus,stopCampusLocation} from '../services/campus-location';
+const view=ref<'rooms'|'plan'|'geo'>('rooms');
+const locating=ref(false);
+let locationLayer:L.LayerGroup|undefined,locationExpiry:ReturnType<typeof setTimeout>|undefined,locationGeneration=0;
+function clearLocation(){locationGeneration++;clearTimeout(locationExpiry);locationLayer?.remove();locationLayer=undefined;locating.value=false;void stopCampusLocation().catch(()=>{});}
+async function locate(){
+ if(locating.value)return;clearLocation();const generation=locationGeneration;locating.value=true;message.value='正在获取手机当前位置…';
+ try{const fix=await locateCampus();if(generation!==locationGeneration)return;
+  if(fix.latitude<36.55||fix.latitude>36.60||fix.longitude<114.47||fix.longitude>114.53){message.value='当前位置不在校园地图范围内';return}
+  if(!map)return;locationLayer=L.layerGroup().addTo(map);
+  L.circle([fix.latitude,fix.longitude],{radius:fix.accuracy,color:'#3478db',weight:1,fillOpacity:.12}).addTo(locationLayer);
+  L.circleMarker([fix.latitude,fix.longitude],{radius:7,color:'#fff',weight:2,fillColor:'#3478db',fillOpacity:1}).addTo(locationLayer);
+  map.setView([fix.latitude,fix.longitude],17,{animate:false});message.value=`手机报告的定位精度约 ${Math.ceil(fix.accuracy)} 米；蓝圈显示误差范围，不代表室内教室位置。`;
+  locationExpiry=setTimeout(()=>{clearLocation();message.value='位置已超过 1 分钟，请重新定位'},60000);
+ }catch(error){if(generation===locationGeneration)message.value=error instanceof Error?error.message:'定位未完成，请重试'}finally{if(generation===locationGeneration)locating.value=false}
+}
+watch(view,(v)=>{if(v!=='geo')clearLocation()});
 import {saveFile} from '../services/files';
 import {campusCenters,sourcePlaces,placeCategories,readMapData,saveMapData,filterPlaces,validPlace,navigationUrl,type Campus,type CampusPlace,type PlaceCategory} from '../services/campus-map';
 const initial=readMapData(),personal=ref(initial.places),favorites=ref(initial.favorites),campus=ref<Campus>('east'),query=ref(''),category=ref('all'),selected=ref<CampusPlace>(),message=ref(''),online=ref(false);
@@ -29,21 +48,26 @@ onMounted(async()=>{await nextTick();if(!element.value)return;map=L.map(element.
  L.geoJSON(ordered as GeoJsonObject,{style:feature=>({color:feature?.properties?.kind==='road'?'#fff':feature?.properties?.kind==='campus'?'#a3c5ad':'#c2cad5',weight:feature?.properties?.kind==='road'?6:1.5,fillColor:feature?.properties?.kind==='campus'?'#e0ecdf':'#e0e5ec',fillOpacity:0.75})}).addTo(map);
  markers=L.layerGroup().addTo(map);L.control.zoom({position:'bottomright'}).addTo(map);map.on('click',e=>{if(adding.value)pickLocation(e.latlng)});map.on('contextmenu',e=>{adding.value=true;pickLocation(e.latlng)});recenter();renderMarkers();resize=new ResizeObserver(()=>map?.invalidateSize());resize.observe(element.value);
 });
-onUnmounted(()=>{resize?.disconnect();map?.remove();map=undefined});
+onUnmounted(()=>{clearLocation();resize?.disconnect();map?.remove();map=undefined});
 </script>
 <template>
  <div class="campus-map"><span class="micro-label">探索校园</span><h2>校园地图</h2>
+  <div class="map-campus" aria-label="地图视图"><button :class="{active:view==='rooms'}" @click="view='rooms'">找教室</button><button :class="{active:view==='plan'}" @click="view='plan'">校园平面图</button><button :class="{active:view==='geo'}" @click="view='geo'">道路与地点</button></div>
+  <CampusRoomDirectory v-if="view==='rooms'"/><CampusPlan v-if="view==='plan'"/>
+  <div v-show="view==='geo'">
   <div class="map-campus"><button v-for="(c,id) in campusCenters" :key="id" :class="{active:campus===id}" @click="campus=id">{{c.name}}</button></div>
   <label class="map-search"><Search :size="17"/><input v-model="query" aria-label="搜索校园地点" placeholder="搜索楼名或自己保存的地点"/></label>
   <div class="map-categories" aria-label="地点分类"><button :class="{active:category==='all'}" @click="category='all'">全部</button><button :class="{active:category==='favorite'}" @click="category='favorite'">收藏</button><button v-for="(label,id) in placeCategories" :key="id" :class="{active:category===id}" @click="category=id">{{label}}</button></div>
   <div ref="element" class="map-canvas" aria-label="可缩放的校园地图"/>
   <div class="map-tools"><button @click="recenter"><LocateFixed :size="16"/>回到校区</button><button :aria-pressed="online" @click="toggleTiles"><Layers :size="16"/>{{online?'离线底图':'在线底图'}}</button><button :aria-pressed="adding" @click="adding=!adding;draft=undefined"><Plus :size="16"/>{{adding?'取消选点':'添加地点'}}</button></div>
+  <div class="map-tools"><button :disabled="locating" @click="locate"><LocateFixed :size="16"/>{{locating?'正在定位…':'我的位置'}}</button></div>
   <p class="map-note">{{adding?'点击或长按地图，标记你常用的地点。':campusCenters[campus].note}}</p>
   <p v-if="message" class="map-message" role="status">{{message}}</p>
   <form v-if="draft" class="map-detail" @submit.prevent="add"><h3>添加个人地点</h3><label>名称<input v-model="name" required maxlength="60" placeholder="例如：宿舍饮水机"/></label><label>类别<select v-model="newCategory"><option v-for="(label,id) in placeCategories" :key="id" :value="id">{{label}}</option></select></label><label>备注<input v-model="note" maxlength="200" placeholder="例如：一楼大厅右侧"/></label><div class="map-actions"><button type="button" class="secondary" @click="draft=undefined">取消</button><button class="primary">保存地点</button></div></form>
   <article v-if="selected" class="map-detail"><div class="map-detail-heading"><h3>{{selected.name}}</h3><button class="icon-button" :aria-label="favorites.includes(selected.id)?'取消收藏':'收藏地点'" @click="favorite(selected)"><Star :size="20" :fill="favorites.includes(selected.id)?'currentColor':'none'"/></button></div><p>{{selected.note||'个人保存地点'}}</p><div class="map-actions"><button v-if="selected.source==='personal'" class="text-button danger" @click="remove(selected)">删除地点</button><a class="secondary" :href="navigationUrl(selected)" target="_blank" rel="noopener"><Navigation :size="16"/>步行路线</a></div></article>
   <div class="map-list"><button v-for="p in filtered" :key="p.id" @click="choose(p)"><MapPin :size="17"/><span><strong>{{p.name}}</strong><small>{{p.source==='personal'?'我的地点':'图源旧称 · 待核对'}}</small></span><Star v-if="favorites.includes(p.id)" :size="14"/></button><p v-if="!filtered.length" class="map-empty">{{query?'没有找到匹配地点':category==='favorite'?'还没有收藏地点':'此分类暂未收录地点'}}。可以长按地图添加。</p></div>
   <details class="map-about"><summary>地图说明与地点备份</summary><p>底图采用公开道路和建筑轮廓，可离线查看。图源名称可能滞后，校区中心不是校门；不提供虚构的楼宇坐标或校内最短路线。在线底图需要网络，步行路线交由地图服务查询，请以现场通行情况为准。</p><div class="map-tools"><button @click="exportPlaces"><Download :size="16"/>导出地点</button><button @click="file?.click()"><Upload :size="16"/>导入地点</button></div><input ref="file" type="file" accept="application/json,.json" hidden @change="importPlaces"/></details>
+  </div>
  </div>
 </template>
 <style scoped>
