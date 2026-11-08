@@ -11,8 +11,14 @@ const privateValues=[key,c.Token,c.TmpSecretKey,c.TmpSecretId,salt];
 const redact=s=>privateValues.reduce((out,k)=>out.replaceAll(k,'[redacted]'),s);
 const childEnv={...process.env,CLOUDBASE_API_KEY:'',TENCENTCLOUD_SECRETID:c.TmpSecretId,TENCENTCLOUD_SECRETKEY:c.TmpSecretKey,TENCENTCLOUD_SESSIONTOKEN:c.Token};
 function cli(args){const p=spawnSync('tcb',[...args,'-e',envId,'-r',region],{env:childEnv,encoding:'utf8',timeout:300000,maxBuffer:4*1024*1024});console.log(redact((p.stdout||'')+(p.stderr||'')));if(p.status!==0)throw Error('CloudBase command failed: '+args.slice(0,2).join(' '));return p.stdout}
+const identityResponse=await fetch(`https://${envId}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({sql:'SELECT current_user AS role',parameters:[]})});
+const identity=await identityResponse.json(),dbRole=identity[0]?.role;
+if(!/^[a-zA-Z0-9_-]{1,120}$/.test(dbRole||'')||['anon','authenticated','public'].includes(dbRole))throw Error('Invalid backend database role');
+console.log('Verified backend database role:',dbRole);
 // Schema is kept in source control. Existing user rows are never reset.
 for(const statement of readFileSync('cloudbase/schema.sql','utf8').split('-- statement').map(s=>s.trim()).filter(Boolean))cli(['db','execute','--sql',statement,'--json']);
+cli(['db','execute','--sql',`GRANT SELECT,INSERT,UPDATE,DELETE ON public.hyt_devices,public.hyt_daily,public.hyt_rate TO "${dbRole}"`,'--json']);
+cli(['db','execute','--sql',`GRANT EXECUTE ON FUNCTION public.hyt_metric(text,uuid,text,jsonb,text) TO "${dbRole}"`,'--json']);
 console.log('Analytics schema installed');
 const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-analytics',type:'HTTP',runtime:'Nodejs20.19',timeout:20,memorySize:128,installDependency:false,public:true,gatewayPath:'/hyt-analytics',envVariables:{CLOUDBASE_ENV_ID:envId,CLOUDBASE_APIKEY:key,ANALYTICS_ADMIN_TOKEN_HASH:adminHash,ANALYTICS_SALT:salt}}]};
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/analytics/scf_bootstrap',0o755);

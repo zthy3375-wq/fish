@@ -47,6 +47,6 @@ END $fn$
 -- statement
 REVOKE ALL ON FUNCTION public.hyt_metric(text,uuid,text,jsonb,text) FROM PUBLIC,anon,authenticated
 -- statement
-GRANT SELECT,INSERT,UPDATE,DELETE ON public.hyt_devices,public.hyt_daily,public.hyt_rate TO service_role,cloudbase_postgres
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.hyt_devices,public.hyt_daily,public.hyt_rate TO service_role
 -- statement
-GRANT EXECUTE ON FUNCTION public.hyt_metric(text,uuid,text,jsonb,text) TO service_role,cloudbase_postgres
+GRANT EXECUTE ON FUNCTION public.hyt_metric(text,uuid,text,jsonb,text) TO service_role
