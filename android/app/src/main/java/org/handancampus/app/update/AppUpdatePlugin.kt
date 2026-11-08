@@ -71,6 +71,7 @@ class AppUpdatePlugin : Plugin() {
             require(UpdatePolicy.trustedUrl(url))
             val c = URL(url).openConnection() as HttpURLConnection
             c.connectTimeout = 15000; c.readTimeout = 20000; c.instanceFollowRedirects = false
+            c.setRequestProperty("User-Agent", "Hanyuantong/${BuildConfig.VERSION_NAME} Android")
             c.useCaches = false; c.setRequestProperty("Accept-Encoding", "identity")
             c.setRequestProperty("Cache-Control", "no-cache")
             try {

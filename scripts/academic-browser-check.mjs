@@ -17,9 +17,15 @@ try{
   const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
+    if(plugin==='AppUpdate'){
+     window.__updateState??={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:false,mandatory:false,checkedAt:Date.now()};
+     if(method==='download'){window.__updateState.stage='ready';window.__updateDownloaded=true}
+     if(method==='install')return {status:'permission'};
+     return JSON.parse(JSON.stringify(window.__updateState));
+    }
     if(plugin==='PangguaiCampus'){
      (window.__pgCalls??=[]).push({method,args});
      window.__pgState??={connected:false,expired:false,phone:''};
@@ -344,6 +350,25 @@ try{
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: quzhi logout preserves personal tasks`);
   assert(await page.evaluate(()=>Object.keys(localStorage).every(k=>!k.toLowerCase().includes('quzhi'))),`${width}: quzhi cache is never written to web storage`);
   await walletDialog.getByRole('button',{name:'关闭',exact:true}).click();
+  await nav('我的').click();
+  await page.evaluate(()=>{window.__updateState={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:true,mandatory:false,checkedAt:Date.now(),release:{versionCode:102,versionName:'1.0.2',sizeBytes:12000000,notes:['人工更新测试：修复日程显示','人工更新测试：完善下载流程']}}});
+  await page.getByRole('button',{name:/检查更新 当前版本/}).click();
+  const updateDialog=page.getByRole('dialog',{name:'发现新版本',exact:true});await updateDialog.waitFor();
+  assert(await page.locator('.app-shell').evaluate(el=>el.inert),`${width}: update dialog makes underlying app inert`);
+  await updateDialog.getByRole('button',{name:'下载更新',exact:true}).click();
+  await updateDialog.getByRole('button',{name:'安装更新',exact:true}).click();
+  await updateDialog.getByText(/允许来自此来源/).waitFor();
+  assert(await page.evaluate(()=>window.__updateDownloaded),`${width}: update uses native download before installer`);
+  await updateDialog.getByRole('button',{name:'稍后再说',exact:true}).click();
+  await page.evaluate(()=>window.__updateState.mandatory=true);
+  await page.getByRole('button',{name:/检查更新 当前版本/}).click();
+  const forced=page.getByRole('dialog',{name:'需要更新后继续使用',exact:true});await forced.waitFor();
+  await page.keyboard.press('Escape');assert(await forced.isVisible(),`${width}: mandatory update survives back dismissal`);
+  assert(await forced.getByRole('button',{name:'稍后再说'}).count()===0,`${width}: mandatory update has no postpone action`);
+  await page.screenshot({path:path.join(output,`app-update-${width}.png`),animations:'disabled'});
+  await page.evaluate(()=>{window.__updateState.mandatory=false;window.__updateState.available=false});
+  await forced.getByRole('button',{name:'重新检查',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   assert(!errors.length,`${width}: no runtime errors`);
   await page.screenshot({path:path.join(output,`records-${width}.png`),fullPage:true,animations:'disabled'});await context.close();
  }
