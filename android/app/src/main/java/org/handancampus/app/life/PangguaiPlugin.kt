@@ -131,7 +131,7 @@ class PangguaiPlugin : Plugin() {
         activity.runOnUiThread {
             try{
                 restore();if(state.optString("token").isBlank()||state.optBoolean("expired"))throw PangguaiFailure("AUTH")
-                val options=ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("扫描胖乖设备码 · 扫码不会扣款").setBeepEnabled(false).setOrientationLocked(false)
+                val options=ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("扫描胖乖设备码 · 扫码不会扣款").setBeepEnabled(false).setCaptureActivity(CampusScanActivity::class.java).setOrientationLocked(true)
                 startActivityForResult(call,options.createScanIntent(context),"scanned")
             }catch(e:Exception){busy.set(false);reject(call,e)}
         }

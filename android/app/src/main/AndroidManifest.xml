@@ -34,6 +34,13 @@
         </activity>
 
         <activity
+            android:name=".life.CampusScanActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:windowSoftInputMode="stateAlwaysHidden" />
+
+        <activity
             android:name=".life.PangguaiOfficialActivity"
             android:process=":pangguai_official"
             android:exported="false"
