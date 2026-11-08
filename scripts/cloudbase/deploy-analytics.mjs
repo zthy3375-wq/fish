@@ -6,14 +6,17 @@ if(!key)throw Error('Missing CloudBase secret');
 const r=await fetch(`https://${envId}.${region}.tcb-api.tencentcloudapi.com/capi/credential`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({env:envId})});
 const b=await r.json();if(b.code!==0)throw Error('Credential exchange failed');const c=b.data;
 const derive=label=>createHmac('sha256',key).update(label).digest('hex');
-const admin=derive('hyt-analytics-admin-v1'),salt=derive('hyt-analytics-ip-salt-v1');
-const privateValues=[key,c.Token,c.TmpSecretKey,c.TmpSecretId,admin,salt];
+const adminHash=JSON.parse(readFileSync('cloudbase/admin-access.json','utf8')).tokenHash,salt=derive('hyt-analytics-ip-salt-v1');
+const privateValues=[key,c.Token,c.TmpSecretKey,c.TmpSecretId,salt];
 const redact=s=>privateValues.reduce((out,k)=>out.replaceAll(k,'[redacted]'),s);
 const childEnv={...process.env,CLOUDBASE_API_KEY:'',TENCENTCLOUD_SECRETID:c.TmpSecretId,TENCENTCLOUD_SECRETKEY:c.TmpSecretKey,TENCENTCLOUD_SESSIONTOKEN:c.Token};
 function cli(args){const p=spawnSync('tcb',[...args,'-e',envId,'-r',region],{env:childEnv,encoding:'utf8',timeout:300000,maxBuffer:4*1024*1024});console.log(redact((p.stdout||'')+(p.stderr||'')));if(p.status!==0)throw Error('CloudBase command failed: '+args.slice(0,2).join(' '));return p.stdout}
 // Schema is kept in source control. Existing user rows are never reset.
 for(const statement of readFileSync('cloudbase/schema.sql','utf8').split('-- statement').map(s=>s.trim()).filter(Boolean))cli(['db','execute','--sql',statement,'--json']);
 console.log('Analytics schema installed');
-const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-analytics',type:'HTTP',runtime:'Nodejs20.19',timeout:20,memorySize:128,installDependency:false,public:true,gatewayPath:'/hyt-analytics',envVariables:{CLOUDBASE_ENV_ID:envId,CLOUDBASE_APIKEY:key,ANALYTICS_ADMIN_TOKEN:admin,ANALYTICS_SALT:salt}}]};
+const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-analytics',type:'HTTP',runtime:'Nodejs20.19',timeout:20,memorySize:128,installDependency:false,public:true,gatewayPath:'/hyt-analytics',envVariables:{CLOUDBASE_ENV_ID:envId,CLOUDBASE_APIKEY:key,ANALYTICS_ADMIN_TOKEN_HASH:adminHash,ANALYTICS_SALT:salt}}]};
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/analytics/scf_bootstrap',0o755);
-try{cli(['fn','deploy','hyt-analytics','--httpFn','--force','--json']);cli(['fn','detail','hyt-analytics','--json']);cli(['service','list']);}finally{unlinkSync('cloudbaserc.json')}
+try{cli(['fn','deploy','hyt-analytics','--httpFn','--dir','cloudbase/functions/analytics','--force','--json']);cli(['fn','detail','hyt-analytics','--json']);cli(['service','list']);}finally{unlinkSync('cloudbaserc.json')}
+
+const probe=await fetch(`https://${envId}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({sql:'SELECT 1 AS value',parameters:[]})});
+console.log('SQL HTTP probe',probe.status,redact(await probe.text()));

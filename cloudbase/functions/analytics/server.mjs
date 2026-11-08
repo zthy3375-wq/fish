@@ -1,4 +1,6 @@
 import http from 'node:http';
+import {readFileSync} from 'node:fs';
+const dashboard=readFileSync(new URL('./dashboard.html',import.meta.url),'utf8');
 import {hash,day,validate,authorized,readBody} from './core.mjs';
 const env=process.env.CLOUDBASE_ENV_ID;
 const apiKey=process.env.CLOUDBASE_APIKEY;
@@ -13,8 +15,9 @@ http.createServer(async(req,res)=>{
  try{
   const path=new URL(req.url,'https://localhost').pathname;
   if(path.endsWith('/health'))return reply(res,200,{ok:true,service:'hyt-analytics',revision:'1'});
+  if(path.endsWith('/dashboard')&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});return res.end(dashboard)}
   if(path.endsWith('/stats')){
-   if(!authorized(req.headers.authorization,`Bearer ${process.env.ANALYTICS_ADMIN_TOKEN||''}`)||!process.env.ANALYTICS_ADMIN_TOKEN)return reply(res,403,{error:'forbidden'});
+   if(!process.env.ANALYTICS_ADMIN_TOKEN_HASH||!authorized(hash(req.headers.authorization?.replace(/^Bearer /,'')||''),process.env.ANALYTICS_ADMIN_TOKEN_HASH))return reply(res,403,{error:'forbidden'});
    if(req.method!=='GET')return reply(res,405,{error:'method'});
    const rows=await sql(`SELECT jsonb_build_object('total',count(*),'today',count(*) FILTER(WHERE last_day=$1::date),'newToday',count(*) FILTER(WHERE first_day=$1::date),'weekly',count(*) FILTER(WHERE last_day>=$1::date-6)) AS totals FROM public.hyt_devices WHERE first_day IS NOT NULL`,[day()]);
    const trend=await sql('SELECT day,count(*) AS active FROM public.hyt_daily WHERE day >= $1::date-29 GROUP BY day ORDER BY day',[day()]);

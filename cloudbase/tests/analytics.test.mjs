@@ -1,0 +1,10 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {validate,authorized,readBody,day} from '../functions/analytics/core.mjs';
+const token='a'.repeat(64),id=randomUUID(),body={id,day:day(),version:'1.0.3',versionCode:103,features:{water:2}};
+test('accepts enrolled installation and bounded feature counters',()=>{assert.equal(validate('enroll',{id},token),200);assert.equal(validate('record',body,token),200)});
+test('rejects personal fields, unknown features and unbounded counts',()=>{for(const b of [{...body,account:'123'},{...body,features:{unknown:1}},{...body,features:{water:1001}},{...body,features:{water:-1}}])assert.equal(validate('record',b,token),400)});
+test('rejects invalid installation credentials and stale/future reports',()=>{assert.equal(validate('enroll',{id},''),401);assert.equal(validate('record',{...body,day:'2000-01-01'},token),400);assert.equal(validate('record',{...body,day:day(Date.now()+86400000)},token),400)});
+test('admin comparison fails closed',()=>{assert.equal(authorized(undefined,'abc'),false);assert.equal(authorized('abc',''),false);assert.equal(authorized('a','b'),false);assert.equal(authorized('abc','abc'),true)});
+test('body reader stops oversized payloads',async()=>{async function* input(){yield Buffer.alloc(2049)}await assert.rejects(()=>readBody(input()))});
