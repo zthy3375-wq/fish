@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import QuzhiEntry from './components/QuzhiEntry.vue';
 import QuzhiWallet from './components/QuzhiWallet.vue';
+import LifeServices from './components/LifeServices.vue';
+import PangguaiWallet from './components/PangguaiWallet.vue';
+import {defineAsyncComponent} from 'vue';
+const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
 import ParcelShortcuts from './components/ParcelShortcuts.vue';
-import PangguaiOfficialEntry from './components/PangguaiOfficialEntry.vue';
 import LearningCenter from './components/LearningCenter.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import TaskSettings from './components/TaskSettings.vue';
@@ -647,7 +649,7 @@ onUnmounted(() => {
               />
             </div>
             <SectionHeader title="校园生活" meta="钱包与取件" />
-            <div class="service-group"><QuzhiEntry @open="open('quzhi-wallet')"/><PangguaiOfficialEntry/><ParcelShortcuts/></div>
+            <LifeServices @open="open"/>
             <SectionHeader title="教务速览" meta="成绩与考试" />
             <div class="quick-grid home-quick">
               <QuickAction
@@ -736,7 +738,7 @@ onUnmounted(() => {
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
-            <SectionHeader title="校园生活"/><div class="service-group"><QuzhiEntry @open="open('quzhi-wallet')"/><PangguaiOfficialEntry/><ParcelShortcuts/></div>
+            <SectionHeader title="校园生活"/><LifeServices @open="open"/>
             <TaskSettings/>
             <SectionHeader title="外观设置" />
             <section class="settings-group">
@@ -812,6 +814,9 @@ onUnmounted(() => {
             modal === 'course'
               ? '课程详情'
               : modal === 'quzhi-wallet' ? '趣智校园钱包'
+              : modal === 'pangguai-wallet' ? '胖乖生活钱包'
+              : modal === 'campus-map' ? '校园地图'
+              : modal === 'parcel' ? '快递出库码'
               : '校园助手设置'
           "
         >
@@ -824,6 +829,9 @@ onUnmounted(() => {
             <X :size="22" />
           </button>
           <QuzhiWallet v-if="modal === 'quzhi-wallet'"/>
+          <PangguaiWallet v-else-if="modal === 'pangguai-wallet'"/>
+          <CampusMap v-else-if="modal === 'campus-map'"/>
+          <ParcelShortcuts v-else-if="modal === 'parcel'"/>
           <CourseEditor
             v-else-if="modal === 'course-editor'"
             ref="editorRef"

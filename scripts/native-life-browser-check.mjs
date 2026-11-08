@@ -1,0 +1,47 @@
+import path from 'node:path';
+/** Synthetic bridge/UI checks. Never calls provider accounts, SMS or transactions. */
+export async function checkNativeLife(page,assert,{width,output}){
+ await page.locator('.life-laundry').click();
+ const dialog=page.getByRole('dialog',{name:'胖乖生活钱包'});
+ await dialog.getByRole('button',{name:'连接胖乖生活',exact:true}).click();
+ await dialog.getByText('人工测试商户',{exact:true}).waitFor();
+ assert(await dialog.locator('.pg-balance').innerText().then(s=>s.includes('18.50')),`${width}: native Pangguai balance renders`);
+ assert(await dialog.locator('.pg-merchant').innerText().then(s=>s.includes('120.00')&&s.includes('点')),`${width}: merchant points retain independent units`);
+ assert(await page.evaluate(()=>(window.__pangguaiCalls??[]).length)===0,`${width}: wallet reads do not open official H5`);
+ await dialog.getByRole('button',{name:'充值',exact:true}).click();
+ await dialog.getByRole('button',{name:'取消',exact:true}).click();
+ assert(await page.evaluate(()=>window.__pgCalls.filter(c=>c.method==='openRecharge').length)===0,`${width}: recharge cancel never opens payment`);
+ await dialog.getByRole('button',{name:'扫码识别设备',exact:true}).click();
+ await dialog.getByRole('heading',{name:'人工测试设备'}).waitFor();
+ assert(await page.evaluate(()=>window.__pgCalls.filter(c=>c.method==='scan').length)===1,`${width}: scanning is explicit and native`);
+ assert(await dialog.locator('.pg-device').innerText().then(s=>s.includes('3.50')&&s.includes('不下单')),`${width}: scan displays device without claiming activation`);
+ await dialog.getByRole('tab',{name:'最近消费'}).click();
+ await dialog.getByText('人工测试洗衣机',{exact:true}).waitFor();
+ await page.evaluate(()=>window.__pgFailure=true);
+ await dialog.getByRole('button',{name:'刷新胖乖余额与记录'}).click();
+ await dialog.getByText(/余额未更新/).waitFor();
+ assert(await dialog.locator('.pg-balance').innerText().then(s=>s.includes('18.50')),`${width}: failed native refresh preserves previous wallet`);
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: native wallet fits viewport`);
+ await page.screenshot({path:path.join(output,`native-wallet-${width}.png`),animations:'disabled'});
+ await dialog.getByRole('button',{name:'关闭',exact:true}).click();
+ await page.getByRole('button',{name:/校园地图/}).click();
+ const map=page.getByRole('dialog',{name:'校园地图'});
+ await map.locator('.leaflet-container').waitFor();
+ await map.getByRole('button',{name:'西校区',exact:true}).click();
+ await map.getByRole('textbox',{name:'搜索校园地点'}).fill('二教');
+ assert(await map.locator('.map-list button').count()===1,`${width}: map filters real sourced places`);
+ await map.locator('.map-list button').click();
+ await map.getByRole('button',{name:'收藏地点',exact:true}).click();
+ await map.getByRole('textbox',{name:'搜索校园地点'}).fill('');
+ await map.getByRole('button',{name:'收藏',exact:true}).click();
+ assert(await map.locator('.map-list button').count()===1,`${width}: map favorites filter persists`);
+ await map.getByRole('button',{name:'添加地点',exact:true}).click();
+ await map.locator('.map-canvas').click({position:{x:140,y:160}});
+ await map.getByRole('textbox',{name:'名称',exact:true}).fill('人工地图测试地点');
+ await map.getByRole('button',{name:'保存地点',exact:true}).click();
+ assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan-campus-map-v083')).places.length)===1,`${width}: map saves a personal place without replacing provider data`);
+ assert(await map.locator('iframe').count()===0,`${width}: map is app-owned rather than embedded provider page`);
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: campus map fits viewport`);
+ await page.screenshot({path:path.join(output,`campus-map-${width}.png`),animations:'disabled'});
+ await map.getByRole('button',{name:'关闭',exact:true}).click();
+}

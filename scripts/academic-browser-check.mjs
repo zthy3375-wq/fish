@@ -4,7 +4,7 @@ import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
 import {checkParcelShortcuts} from './parcel-browser-check.mjs';
-import {checkPangguaiOfficial} from './pangguai-browser-check.mjs';
+import {checkNativeLife} from './native-life-browser-check.mjs';
 const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,{recursive:true});
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
 await new Promise(resolve=>server.listen(4175,'127.0.0.1',resolve));
@@ -17,9 +17,19 @@ try{
   const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
+    if(plugin==='PangguaiCampus'){
+     (window.__pgCalls??=[]).push({method,args});
+     window.__pgState??={connected:false,expired:false,phone:''};
+     if(method==='login')window.__pgState={connected:true,expired:false,phone:'138****0000',balance:'18.50',walletUpdatedAt:Date.now()};
+     if(method==='logout')window.__pgState={connected:false,expired:false,phone:''};
+     if(method==='refresh'){if(window.__pgFailure)window.__pgState.issues={wallet:'NETWORK',tickets:'NETWORK',orders:'NETWORK'};else Object.assign(window.__pgState,{tickets:[{id:'synthetic-merchant',name:'人工测试商户',balance:'120',principal:'100',gift:'20'}],ticketsUpdatedAt:Date.now(),orders:[{id:'synthetic-order',name:'人工测试洗衣机',amount:'3.50',status:'测试状态',time:'2026-11-08 10:00'}],ordersUpdatedAt:Date.now(),issues:{}})}
+     if(method==='openRecharge')return {opened:true};
+     if(method==='scan')return {id:'synthetic-device',name:'人工测试设备',operator:'人工测试商户',category:'00',payment:'before',issue:'',skus:[{id:'synthetic-sku',name:'标准洗',price:'3.50',feature:'约40分钟',available:true}]};
+     return JSON.parse(JSON.stringify(window.__pgState));
+    }
     if(plugin==='PangguaiOfficial'){
      (window.__pangguaiCalls??=[]).push({method,args});
      return {page:args.page,status:window.__pangguaiStatus||'opened'};
@@ -67,7 +77,7 @@ try{
   await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
   await page.goto('http://127.0.0.1:4175');
   await checkParcelShortcuts(page,assert,{width,output});
-  await checkPangguaiOfficial(page,assert,{width,output});
+  await checkNativeLife(page,assert,{width,output});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'学习',exact:true}).click();
   await page.getByRole('heading',{name:'学习',exact:true}).waitFor();
   await page.getByRole('button',{name:/成绩分析/}).click();
@@ -285,7 +295,7 @@ try{
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).items.length)===0,`${width}: learning logout clears platform cache and plans`);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: mobile layout has no horizontal overflow`);
   await nav('今天').click();
-  await page.locator('.quzhi-entry').click();
+  await page.locator('.life-shower').click();
   const walletDialog=page.getByRole('dialog',{name:'趣智校园钱包'});
   await walletDialog.getByRole('button',{name:'连接趣智校园',exact:true}).click();
   await walletDialog.getByText('人工测试浴室',{exact:true}).waitFor();

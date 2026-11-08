@@ -4,6 +4,7 @@ import path from 'node:path';
 export async function checkParcelShortcuts(page, assert, {width, output}) {
   const nav = label => page.getByRole('navigation', {name: '主导航'}).getByRole('button', {name: label, exact: true});
   const shortcuts = page.getByRole('region', {name: '菜鸟驿站出库码'});
+  await page.getByRole('button', {name: /取快递/}).click();
   await shortcuts.waitFor();
   const historyLength = await page.evaluate(() => history.length);
   const storageBefore = await page.evaluate(() => ({school: localStorage.getItem('handan.academic.cache.v050'), personal: localStorage.getItem('handan.personal.tasks.v2')}));
@@ -28,7 +29,9 @@ export async function checkParcelShortcuts(page, assert, {width, output}) {
   await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).waitFor({state: 'visible'});
   assert(await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).isDisabled(), `${width}: parcel pending dispatch disables both provider buttons`);
   assert(await page.evaluate(() => window.__parcelCalls.length) === calls + 1, `${width}: repeated parcel taps dispatch only once`);
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   await nav('我的').click();
+  await page.getByRole('button',{name:/取快递/}).click();
   await shortcuts.waitFor();
   await page.evaluate(() => { window.__parcelFinish(); window.__parcelDelayed = false; window.__parcelStatus = 'opened' });
   await page.waitForTimeout(30);
@@ -40,5 +43,6 @@ export async function checkParcelShortcuts(page, assert, {width, output}) {
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: parcel card has no horizontal overflow`);
   await shortcuts.scrollIntoViewIfNeeded();
   await page.screenshot({path: path.join(output, `parcel-shortcuts-${width}.png`), animations: 'disabled'});
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   await nav('今天').click();
 }

@@ -5,12 +5,12 @@ android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.life.v082' : 'org.handancampus.app')
+        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.life.v083' : 'org.handancampus.app')
         manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·生活测试版' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·生活测试版' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 82
-        versionName "0.8.2-life-test"
+        versionCode 83
+        versionName "0.8.3-native-life-test"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -19,6 +19,7 @@ android {
         }
     }
     kotlinOptions { jvmTarget = "21" }
+    compileOptions { coreLibraryDesugaringEnabled true }
     buildFeatures { buildConfig true }
     buildTypes {
         release {
@@ -35,6 +36,9 @@ repositories {
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    implementation 'com.google.zxing:core:3.5.3'
     implementation 'org.jsoup:jsoup:1.18.3'
     implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     testImplementation 'org.json:json:20240303'
