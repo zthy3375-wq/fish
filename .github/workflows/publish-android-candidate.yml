@@ -1,0 +1,37 @@
+name: Publish verified Android candidate
+on:
+  pull_request:
+    paths: ['releases/android-candidate.json']
+permissions:
+  contents: read
+concurrency:
+  group: tencent-update-service
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/tencent-app-updates'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Upload signed candidate and verify Pgyer download
+        env:
+          PGYER_API_KEY: ${{ secrets.PGYER_API_KEY }}
+        run: node scripts/cloudbase/publish-candidate.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pgyer-release-evidence
+          path: release-evidence/
+          retention-days: 30
+      - run: npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
+      - name: Publish verified Tencent version information
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          PGYER_API_KEY: ${{ secrets.PGYER_API_KEY }}
+          TCB_SITE: domestic
+          CI: 'true'
+        run: node scripts/cloudbase/deploy-updates.mjs

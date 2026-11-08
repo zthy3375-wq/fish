@@ -1,10 +1,18 @@
 import {spawnSync} from 'node:child_process';
-import {writeFileSync,chmodSync,unlinkSync,readFileSync} from 'node:fs';
+import {writeFileSync,chmodSync,unlinkSync,readFileSync,existsSync} from 'node:fs';
 import {catalog,BASE} from '../../cloudbase/functions/updates/core.mjs';
 const envId='hanyuantong-d8gjzt1jh12370215',region='ap-shanghai';
 const key=process.env.CLOUDBASE_API_KEY?.trim(),pgyer=process.env.PGYER_API_KEY?.trim();
 if(!key)throw Error('Missing CLOUDBASE_API_KEY');
 const releases=catalog(JSON.parse(readFileSync('cloudbase/functions/updates/releases.json','utf8')));
+// A concurrent source-only deployment must not clear a candidate being published.
+if(existsSync('releases/android-candidate.json')){
+ const candidate=JSON.parse(readFileSync('releases/android-candidate.json','utf8'));
+ if(!releases.releases.some(r=>r.versionCode===candidate.versionCode)){
+  console.log('Candidate publication owns deployment until its verified catalog is committed');
+  process.exit(0);
+ }
+}
 if(releases.current&&!pgyer)throw Error('Cannot publish a release without PGYER_API_KEY');
 const response=await fetch(`https://${envId}.${region}.tcb-api.tencentcloudapi.com/capi/credential`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({env:envId}),signal:AbortSignal.timeout(25000)});
 const envelope=await response.json();if(envelope.code!==0)throw Error('CloudBase credential exchange failed');
