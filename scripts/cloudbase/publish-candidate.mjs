@@ -4,7 +4,6 @@ import {release,resolveDownload,publicDownloadUrl} from '../../cloudbase/functio
 const key=process.env.PGYER_API_KEY?.trim();
 if(!key)throw Error('Missing PGYER_API_KEY');
 const candidate=JSON.parse(readFileSync('releases/android-candidate.json','utf8'));
-if(candidate.ready===false){console.log('Candidate awaits rebuilt APK');process.exit(0)}
 release({...candidate,buildKey:'validation'});
 const existing=JSON.parse(readFileSync('cloudbase/functions/updates/releases.json','utf8')).releases.find(r=>r.versionCode===candidate.versionCode);
 if(existing){
@@ -62,6 +61,7 @@ for(let i=0;i<6;i++){
 if(download?.status!==200)throw Error('APK redirect limit');
 const downloaded=Buffer.from(await download.arrayBuffer());
 if(downloaded.length!==candidate.sizeBytes||sha(downloaded)!==candidate.sha256)throw Error('Pgyer APK checksum mismatch');
+if(candidate.ready===false){console.log('Provider download verified; awaiting rebuilt candidate before publication');process.exit(0)}
 const catalog=JSON.parse(readFileSync('cloudbase/functions/updates/releases.json','utf8'));
 catalog.latest=verified.versionCode;
 catalog.releases=[...catalog.releases.filter(r=>r.versionCode!==verified.versionCode),verified];
