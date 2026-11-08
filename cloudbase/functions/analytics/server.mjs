@@ -7,7 +7,7 @@ const apiKey=process.env.CLOUDBASE_APIKEY;
 export async function sql(query,parameters=[]){
  const r=await fetch(`https://${env}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({sql:query,parameters}),signal:AbortSignal.timeout(12000)});
  const b=await r.json();if(!r.ok||b.code)throw Error('database_unavailable');
- const rows=b.rows||b.data?.rows||b.data||b.result?.rows;
+ const rows=Array.isArray(b)?b:(b.rows||b.data?.rows||b.data||b.result?.rows);
  if(!Array.isArray(rows))throw Error('database_response');return rows;
 }
 function reply(res,code,b){res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(b))}
