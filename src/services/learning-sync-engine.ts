@@ -4,13 +4,17 @@ import { LearningStore } from './learning-store';
 export class LearningSyncEngine {
     private flight: Promise<void> | null = null;
     private epoch = 0;
+    private paused = false;
+    pauseSync(){this.paused=true;}
     constructor(private client: ChaoxingClient, private store: LearningStore, private publish: (cache: LearningCache) => void, private clock: () => Date = () => new Date(), private pause: (ms: number) => Promise<void> = ms => new Promise(r => setTimeout(r, ms))) { }
     sync(options: {
         login?: boolean;
         force?: boolean;
+        courseKeys?: string[];
     } = {}) {
         if (this.flight)
             return this.flight;
+        this.paused=false;
         const generation = this.epoch;
         const job = (async () => {
             let cache = await this.store.load();
@@ -29,7 +33,7 @@ export class LearningSyncEngine {
                 this.publish(next);
             } };
             try {
-                let cursor = 0;
+                let cursor = options.courseKeys?0:cache.resumeCursor??0;
                 if (options.login) {
                     const result = await this.client.login();
                     await accept(result);
@@ -39,12 +43,12 @@ export class LearningSyncEngine {
                 }
                 const seen = new Set<number>();
                 for (let batch = 0; batch < 101; batch++) {
-                    if (generation !== this.epoch)
+                    if (generation !== this.epoch||this.paused)
                         return;
                     if (seen.has(cursor))
                         throw Error('学习通同步游标重复');
                     seen.add(cursor);
-                    const response = await this.client.syncAll({ cursor, force: options.login || !!options.force });
+                    const response = await this.client.syncAll({ courseKeys:options.courseKeys??cache.selectedCourses, cursor, force: options.login || !!options.force });
                     if (generation !== this.epoch)
                         return;
                     await accept(response);
@@ -55,7 +59,7 @@ export class LearningSyncEngine {
                     if (!Number.isInteger(response.nextCursor) || response.nextCursor <= cursor || response.nextCursor > 200)
                         throw Error('学习通同步范围无法识别');
                     cursor = response.nextCursor;
-                    await this.pause(1500);
+                    await this.pause(4000);
                 }
                 throw Error('学习通课程数量超过本轮同步范围');
             }

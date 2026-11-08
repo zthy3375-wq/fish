@@ -10,7 +10,7 @@ const pending=computed(()=>learningTasks.value.filter(t=>t.platformStatus==='pen
 const status=computed(()=>learningBusy.value?'学习通正在分批同步':!learningCache.value.connected?'连接学习通':learningCache.value.session==='expired'?'学习通登录已过期':'学习通已连接');
 const issue=computed(()=>learningIssue());
 const updated=computed(()=>learningCache.value.updatedAt?new Date(learningCache.value.updatedAt).toLocaleString('zh-CN',{hour12:false,timeZone:'Asia/Shanghai'}):'作业尚未同步');
-async function exportFeedback(){try{const c=learningCache.value;await saveFile('handan-learning-feedback.json',JSON.stringify({version:appVersion,at:new Date().toISOString(),session:c.session,courseCount:c.courses.length,taskCount:c.items.length,errorCodes:[...new Set(Object.values(c.issues))],diagnostics:c.diagnostics},null,2))}catch{ /* Data remains local if sharing is canceled. */ }}
+async function exportFeedback(){try{const c=learningCache.value;await saveFile('handan-learning-feedback.json',JSON.stringify({version:appVersion,at:new Date().toISOString(),session:c.session,courseCount:c.courses.length,taskCount:c.items.length,errorCodes:[...new Set(Object.values(c.issues))],syncProgress:{planned:c.plannedCount,processed:c.completedCount,remaining:c.remaining},diagnostics:c.diagnostics},null,2))}catch{ /* Data remains local if sharing is canceled. */ }}
 const courseIssueCount=computed(()=>Object.keys(learningCache.value.issues).filter(k=>k.includes('/')).length);
 </script>
 <template>

@@ -22,6 +22,10 @@ export interface LearningCache {
     plans: Record<string, LearningPlan>;
     lastAttempt: string | null;
     updatedAt: string | null;
+    selectedCourses: string[];
+    courseSync: Record<string,{status:string;count:number;at:string;code?:string}>;
+    plannedCount: number;
+    completedCount: number;
     remaining: number;
     resumeCursor?: number;
     issues: Record<string, string>;
@@ -29,7 +33,7 @@ export interface LearningCache {
     noticeUpdatedAt: string | null;
     diagnostics: Record<string, string | number | string[]>;
 }
-export const emptyLearning = (): LearningCache => ({ version: 1, connected: false, accountKey: '', session: 'disconnected', courses: [], items: [], notices: [], plans: {}, lastAttempt: null, updatedAt: null, remaining: 0, issues: {}, examUpdatedAt: null, noticeUpdatedAt: null, diagnostics: {} });
+export const emptyLearning = (): LearningCache => ({ version: 1, connected: false, accountKey: '', session: 'disconnected', courses: [], items: [], notices: [], plans: {}, lastAttempt: null, updatedAt: null, selectedCourses: [], courseSync: {}, plannedCount: 0, completedCount: 0, remaining: 0, issues: {}, examUpdatedAt: null, noticeUpdatedAt: null, diagnostics: {} });
 export function learningTaskId(account: string, id: string) { return `cx:${account}:${id}`; }
 const text = (v: unknown, max: number) => { if (typeof v !== 'string' || v.length > max)
     throw Error('学习数据字段无法识别'); return v; };
@@ -82,7 +86,10 @@ export function applyLearningResponse(current: LearningCache, response: Learning
     delete cache.issues.connection;
     if(response.code)cache.issues.connection=response.code;
     if(Number.isInteger(response.resumeCursor)&&response.resumeCursor!>=0&&response.resumeCursor!<=200)cache.resumeCursor=response.resumeCursor;
-    else if(!response.code)delete cache.resumeCursor;
+    else if(Number.isInteger(response.nextCursor)&&response.nextCursor!>=0)cache.resumeCursor=response.nextCursor!;
+    else if(response.nextCursor===null&&!response.code)delete cache.resumeCursor;
+    if(Number.isInteger(response.plannedCount))cache.plannedCount=response.plannedCount!;
+    if(Number.isInteger(response.completedCount))cache.completedCount=response.completedCount!;
     if (response.courses !== undefined) {
         const courses = validateLearningCourses(response.courses);
         if (response.coursesComplete === false) {
@@ -109,6 +116,7 @@ export function applyLearningResponse(current: LearningCache, response: Learning
     for (const result of response.courseResults ?? []) {
         if (!/^\d{1,24}\/\d{1,24}$/.test(result.key))
             throw Error('课程同步关联无效');
+        cache.courseSync[result.key]={status:result.status,count:result.count??0,at:stamp,code:result.code};
         if (result.status === 'ok' && result.complete === true) {
             delete cache.issues[result.key];
             const found = new Set(all.map(i => i.id));
@@ -121,10 +129,11 @@ export function applyLearningResponse(current: LearningCache, response: Learning
     }
     for (const item of all) {
         const old = map.get(item.id);
-        const data = { ...item, course: item.course || old?.course || '' };
+        const uncertain=!!old&&(item.status==='unknown'&&old.status!=='unknown'||!item.deadline&&!!old.deadline);
+        const data = { ...item, course: item.course || old?.course || '', deadline:item.deadline??old?.deadline??null, status:item.status==='unknown'&&old?old.status:item.status, statusText:item.status==='unknown'&&old?old.statusText:item.statusText };
         const fields = ['course', 'title', 'status', 'statusText', 'deadline', 'startAt', 'timeText', 'description', 'hasLink'] as const;
         const changed = !old || fields.some(key => data[key] !== old[key]);
-        map.set(item.id, { ...data, updatedAt: changed ? stamp : old?.updatedAt ?? stamp, firstSeenAt: old?.firstSeenAt ?? old?.updatedAt ?? stamp, seenAt: stamp, stale: false });
+        map.set(item.id, { ...data, updatedAt: changed ? stamp : old?.updatedAt ?? stamp, firstSeenAt: old?.firstSeenAt ?? old?.updatedAt ?? stamp, seenAt: stamp, stale: uncertain });
     }
     // No empty response wipes an old course or quietly marks a disappeared task submitted.
     cache.items = [...map.values()];
@@ -166,4 +175,4 @@ export function validateLearningCache(raw: unknown): LearningCache { const r = r
         continue;
     const base = { id: 'planning', title: '任务规划', course: '', deadline: null, completed: false, remindMinutes: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', ...plan };
     clean[id] = learningPlan(base);
-} cache.plans = clean; return cache; }
+} cache.plans = clean; cache.selectedCourses=Array.isArray(cache.selectedCourses)?[...new Set(cache.selectedCourses.filter(k=>typeof k==='string'&&/^\d{1,24}\/\d{1,24}$/.test(k)))].slice(0,200):[];if(!cache.courseSync||typeof cache.courseSync!=='object')cache.courseSync={}; return cache; }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,reactive,ref} from 'vue';
 import {BookOpen,ChevronRight,ChevronDown,Search,ExternalLink,CalendarClock} from 'lucide-vue-next';
+import LearningSyncPanel from './LearningSyncPanel.vue';
 import LearningConnection from './LearningConnection.vue';
 import {learningCache,learningTasks,initLearning,syncLearning,openLearningItem} from '../composables/learning';
 import {learningState,type LearningFilter} from '../domain/learning-status';
@@ -29,6 +30,7 @@ const learningView=reactive<{tab:'homework'|'courses'|'exams'|'notices';status:L
 <template>
 <section class="learning-center" aria-label="学习通中心">
  <LearningConnection/>
+ <LearningSyncPanel/>
  <div class="task-mode" role="tablist" aria-label="学习通内容"><button v-for="[id,label] in [['homework','作业'],['courses','课程'],['exams','考试'],['notices','通知']]" :key="id" role="tab" :aria-selected="view.tab===id" @click="view.tab=id as typeof view.tab">{{label}}</button></div>
  <p v-if="error" role="alert" class="task-message danger">{{error}}</p>
  <template v-if="view.tab==='homework'">

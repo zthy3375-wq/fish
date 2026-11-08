@@ -48,6 +48,8 @@ export interface LearningResponse {
         code?: string;
     }[];
     resumeCursor?: number;
+    plannedCount?: number;
+    completedCount?: number;
     nextCursor?: number | null;
     remainingCount?: number;
     allWork?: string;
@@ -65,6 +67,7 @@ export interface LearningResponse {
 export interface ChaoxingClient {
     login(): Promise<LearningResponse>;
     syncAll(options?: {
+        courseKeys?: string[];
         cursor: number;
         force: boolean;
     }): Promise<LearningResponse>;

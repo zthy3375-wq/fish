@@ -104,4 +104,12 @@ class ChaoxingParserTest {
         assertEquals("submitted",result.records.single().status)
         assertEquals("人工任务",result.records.single().title)
     }
+
+    @Test fun scanPlanOnlyReadsSelectedCoursesAndSkipsFreshSnapshots(){
+        val other=course.copy(courseId="90")
+        assertTrue(ChaoxingScanPlan.select(listOf(course,other),emptySet(),emptyMap(),true,1000000).isEmpty())
+        assertEquals(listOf(course),ChaoxingScanPlan.select(listOf(course,other),setOf(course.key),emptyMap(),true,1000000))
+        assertTrue(ChaoxingScanPlan.select(listOf(course),setOf(course.key),mapOf(course.key to 999999L),false,1000000).isEmpty())
+        assertEquals(listOf(course),ChaoxingScanPlan.select(listOf(course),setOf(course.key),mapOf(course.key to 999999L),true,1000000))
+    }
 }

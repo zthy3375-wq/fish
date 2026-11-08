@@ -12,7 +12,7 @@ const response = () => JSON.parse(JSON.stringify(fixture)) as LearningResponse;
 const populated = () => applyLearningResponse(emptyLearning(), response(), now);
 it('stable platform identity deduplicates refreshes while preserving user-owned planning', () => { const first = populated(), task = projectLearning(first)[0]; first.plans[task.externalId!] = learningPlan({ ...task, plannedAt: '2026-11-06T15:00', priority: 3, notes: '个人复习备注', reminders: [{ id: 'r', anchor: 'deadline', minutes: 30 }] }); const r = response(); r.items![0].deadline = '2026-11-08T19:00'; const next = applyLearningResponse(first, r, now); expect(next.items).toHaveLength(1); expect(projectLearning(next)[0]).toMatchObject({ deadline: '2026-11-08T19:00', plannedAt: '2026-11-06T15:00', priority: 3, notes: '个人复习备注', completed: false }); expect(projectLearning(next)[0].reminders).toHaveLength(1); });
 it('platform submission changes completion and a local checkbox cannot manufacture a submitted record', () => { const r = response(); r.items![0].status = 'submitted'; r.items![0].statusText = '待批阅'; const next = applyLearningResponse(populated(), r, now); expect(projectLearning(next)[0].completed).toBe(true); expect(learningPlan({ ...projectLearning(next)[0], completed: false })).not.toHaveProperty('completed'); });
-it('missing absolute deadlines remain unknown, including after earlier successful dates', () => { const r = response(); r.items![0].deadline = null; r.items![0].timeText = '11-07 18:00'; const next = applyLearningResponse(populated(), r, now); expect(projectLearning(next)[0].deadline).toBeNull(); expect(next.items[0].timeText).toBe('11-07 18:00'); });
+it('incomplete refresh retains the last known deadline with stale provenance', () => { const r = response(); r.items![0].deadline = null; r.items![0].timeText = '11-07 18:00'; const next = applyLearningResponse(populated(), r, now); expect(projectLearning(next)[0].deadline).toBe(populated().items[0].deadline); expect(next.items[0].stale).toBe(true); expect(next.items[0].timeText).toBe('11-07 18:00'); });
 it('empty and partial responses never erase older work or claim disappearance means submission', () => { const r = response(); r.items = []; const next = applyLearningResponse(populated(), r, now); expect(next.items).toHaveLength(1); expect(next.items[0].stale).toBe(true); expect(projectLearning(next)[0].completed).toBe(false); r.courseResults![0].status = 'error'; r.courseResults![0].code = 'WORK_ENC'; const partial = applyLearningResponse(populated(), r, now); expect(partial.items).toHaveLength(1); expect(partial.issues['12/34']).toBe('WORK_ENC'); });
 it('expired sessions retain the last data with stale provenance', () => { const before = populated(); const next = applyLearningResponse(before, { session: 'expired', code: 'AUTH' }, now); expect(next.items).toEqual(before.items); expect(projectLearning(next)[0].platformStale).toBe(true); });
 it('switching accounts clears all old course data and user plans', () => { const first = populated(); first.plans['12/34/homework/78'] = learningPlan(projectLearning(first)[0]); const r = response(); r.accountKey = 'bbbbbbbbbbbbbbbbbbbbbbbb'; r.items = []; r.courses = []; r.notices = { status: 'ok', data: [] }; const next = applyLearningResponse(first, r, now); expect(next.items).toEqual([]); expect(next.plans).toEqual({}); expect(next.notices).toEqual([]); });
@@ -41,4 +41,23 @@ it('verification suspends after publishing partial rows and resumes from the blo
  await engine.sync({force:true});expect(cache.items).toHaveLength(1);expect(cache.issues.connection).toBe('VERIFY');expect(cache.remaining).toBe(5);
  await engine.sync({force:true});expect(client.syncAll).toHaveBeenCalledTimes(1);
  await engine.sync({login:true,force:true});expect(client.syncAll.mock.calls[1][0].cursor).toBe(2);expect(cache.items).toHaveLength(1);expect(cache.issues.connection).toBeUndefined();
+});
+
+it('scoped refresh sends only requested courses and leaves the saved selection unchanged',async()=>{
+ const h=harness();await h.engine.sync({login:true});await h.store.change(c=>({...c,selectedCourses:['12/34','56/78']}));
+ await h.engine.sync({force:true,courseKeys:['12/34']});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,courseKeys:['12/34']});
+ expect((await h.store.load()).selectedCourses).toEqual(['12/34','56/78']);
+});
+it('pausing saves the next course cursor and continues from that cursor',async()=>{
+ const h=harness();await h.engine.sync({login:true});
+ h.client.syncAll.mockImplementationOnce(async()=>{h.engine.pauseSync();return {...response(),nextCursor:1,remainingCount:2,plannedCount:3,completedCount:1}});
+ await h.engine.sync({force:true});expect((await h.store.load()).resumeCursor).toBe(1);
+ await h.engine.sync({force:true});expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:1});
+});
+it('an unknown submission response retains earlier known status and marks it stale',()=>{
+ const old=response();old.items![0].status='submitted';old.items![0].statusText='已提交';const first=applyLearningResponse(emptyLearning(),old,now);
+ const incoming=response();incoming.items![0].status='unknown';incoming.items![0].statusText='提交状态未知';
+ const next=applyLearningResponse(first,incoming,now);expect(next.items[0]).toMatchObject({status:'submitted',statusText:'已提交',stale:true});
+ expect(next.courseSync['12/34'].status).toBe('ok');
 });
