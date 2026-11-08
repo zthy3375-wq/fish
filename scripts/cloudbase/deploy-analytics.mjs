@@ -20,3 +20,8 @@ try{cli(['fn','deploy','hyt-analytics','--httpFn','--dir','cloudbase/functions/a
 
 const probe=await fetch(`https://${envId}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({sql:'SELECT 1 AS value',parameters:[]})});
 console.log('SQL HTTP probe',probe.status,redact(await probe.text()));
+
+const service='https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-analytics';
+const health=await fetch(service+'/health');if(!(await health.json()).ok)throw Error('Health check failed');
+const denied=await fetch(service+'/stats');if(denied.status!==403)throw Error('Statistics authorization check failed');
+console.log('Health and protected statistics checks passed');

@@ -9,8 +9,8 @@ android {
         manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·预览版' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·预览版' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 102
-        versionName "1.0.2"
+        versionCode 103
+        versionName "1.0.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

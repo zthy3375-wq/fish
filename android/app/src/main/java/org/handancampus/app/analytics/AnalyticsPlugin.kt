@@ -3,7 +3,6 @@ package org.handancampus.app.analytics
 import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.handancampus.app.BuildConfig
-import org.handancampus.app.update.UpdatePolicy
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -55,7 +54,7 @@ class AnalyticsPlugin: Plugin() {
         call.resolve(state());send(true)
     }
     private fun request(action:String,id:String,token:String,body:JSONObject):Pair<Int,JSONObject>{
-        val c=URL(UpdatePolicy.ORIGIN+"/api/metrics/"+action).openConnection() as HttpURLConnection
+        val c=URL(AnalyticsContract.ENDPOINT+"/"+action).openConnection() as HttpURLConnection
         c.requestMethod="POST";c.connectTimeout=8000;c.readTimeout=8000;c.instanceFollowRedirects=false;c.doOutput=true
         c.setRequestProperty("User-Agent","Hanyuantong/${BuildConfig.VERSION_NAME} Android")
         c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Authorization","Bearer $token")
@@ -86,10 +85,10 @@ class AnalyticsPlugin: Plugin() {
                 val snapshot=synchronized(lock){AnalyticsContract.counters(prefs.getString("counters",null),day())}
                 val lastDay=prefs.getString("sent_day","")
                 if(!force&&!prefs.getBoolean("dirty",false)&&lastDay==day()&&prefs.getInt("sent_version",0)==BuildConfig.VERSION_CODE)return@execute
-                if(!prefs.getBoolean("enrolled",false)){
+                if(!prefs.getBoolean("enrolled",false)||prefs.getString("backend","")!=AnalyticsContract.ENDPOINT){
                     val result=request("enroll",id,token,JSONObject())
                     if(result.first!=200||!result.second.optBoolean("ok"))return@execute
-                    prefs.edit().putBoolean("enrolled",true).apply()
+                    prefs.edit().putBoolean("enrolled",true).putString("backend",AnalyticsContract.ENDPOINT).apply()
                 }
                 if(prefs.getString("choice","")!="on"||prefs.getBoolean("delete_pending",false))return@execute
                 val payload=JSONObject(snapshot.toString()).put("version",BuildConfig.VERSION_NAME).put("versionCode",BuildConfig.VERSION_CODE)
