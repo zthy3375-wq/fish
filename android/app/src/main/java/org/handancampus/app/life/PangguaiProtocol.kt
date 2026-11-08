@@ -14,7 +14,7 @@ internal object PangguaiProtocol {
     const val VERSION = "1.109.1"
     private const val CLIENT_SALT = "nFU9pbG8YQoAe1kFh+E7eyrdlSLglwEJeA0wwHB1j5o="
     val paths = setOf("common/sms/sendCode", "user/reg", "user/info", "user/astrict/list",
-        "tokenCoin/userTokenCoins", "order/list", "goods/scan/v2", "goods/normal/details", "goods/normal/skus")
+        "tokenCoin/userTokenCoins", "order/list", "goods/scan/v2", "goods/normal/details", "goods/normal/skus") + PangguaiLaundry.paths
     fun text(obj: JSONObject, key: String): String = obj.opt(key)?.takeUnless { it == JSONObject.NULL }?.toString().orEmpty()
     fun required(obj: JSONObject, key: String) = text(obj,key).takeIf { it.isNotBlank() && it.length <= 256 } ?: throw PangguaiFailure("FORMAT")
     fun phone(raw: String): String = raw.trim().takeIf { it.matches(Regex("1[0-9]{10}")) } ?: throw PangguaiFailure("PHONE")
@@ -47,7 +47,7 @@ internal object PangguaiProtocol {
             .put("balance",money(obj.opt("balance")) ?: JSONObject.NULL)
     }
     fun orderStatus(row:JSONObject):String = text(row,"orderStatusName").take(40).ifBlank {
-        when(text(row,"orderStatus")){"0"->"待支付";"1"->"订单超时";"2"->"已支付";"3"->"已完成";else->"状态待核对"}
+        when(text(row,"orderStatus")){"0"->"待支付";"1"->"订单已关闭";"2"->"已支付";"3"->"已完成";else->"状态待核对"}
     }
     fun tickets(data: Any?): Pair<JSONArray, Int> {
         val obj = data as? JSONObject ?: throw PangguaiFailure("FORMAT")

@@ -20,3 +20,11 @@ export async function connectPangguai(){const result=await operation(()=>panggua
 export async function disconnectPangguai(){const result=await operation(()=>pangguaiNative.logout());if(result){pangguai.value=result;lastAttempt=0}}
 export async function scanPangguai():Promise<PangguaiDevice|undefined>{return operation(()=>pangguaiNative.scan())}
 export async function rechargePangguai(merchantId:string){return operation(()=>pangguaiNative.openRecharge({merchantId}))}
+
+export async function quoteLaundry(skuId?:string){return operation(()=>pangguaiNative.quoteLaundry(skuId?{skuId}:{existing:true}))}
+async function laundryOperation(action:()=>Promise<PangguaiSnapshot>){
+ return operation(async()=>{try{const result=await action();pangguai.value=result;return result}finally{try{pangguai.value=await pangguaiNative.getSnapshot()}catch{}}});
+}
+export async function startLaundry(quoteId:string,method:string){return laundryOperation(()=>pangguaiNative.startLaundry({quoteId,method}))}
+export async function pollLaundry(){return laundryOperation(()=>pangguaiNative.pollLaundry())}
+export async function cancelLaundry(sessionId:string){return laundryOperation(()=>pangguaiNative.cancelLaundry({sessionId}))}

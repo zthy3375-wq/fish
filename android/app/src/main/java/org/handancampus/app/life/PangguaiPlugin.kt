@@ -27,6 +27,8 @@ class PangguaiPlugin : Plugin() {
     private val api=PangguaiClient()
     private val vault by lazy { SchoolSessionVault(context,"pangguai_native_v083","handan.pangguai.native.v083",524288) }
     private var state=JSONObject();private var loaded=false
+    private var scannedDevice:JSONObject?=null
+    private var laundryQuote:JSONObject?=null
     private var loginDialog:AlertDialog?=null
     private var cancelLogin:(()->Unit)?=null
     private fun <T> owned(work:()->T):T=fence.owned(owner,work)
@@ -37,6 +39,7 @@ class PangguaiPlugin : Plugin() {
         val phone=state.optString("phone")
         result.put("connected",state.optString("token").isNotBlank()).put("expired",state.optBoolean("expired"))
             .put("phone",if(phone.length==11)phone.take(3)+"****"+phone.takeLast(4) else "")
+        PangguaiLaundry.view(state.optJSONObject("laundry"))?.let{result.put("laundry",it)}
         JSObject.fromJSONObject(result)
     }
     private fun reject(call:PluginCall,e:Exception){val code=if(e is QuzhiLifecycleCancelled)"CANCELLED" else (e as? PangguaiFailure)?.kind ?: "NETWORK";call.reject(message(code),code)}
@@ -58,7 +61,7 @@ class PangguaiPlugin : Plugin() {
         val source=owned{JSONObject(state.toString())}
         save(PangguaiRefresh.execute(source,{p,v,t->api.request(p,v,t)},{System.currentTimeMillis()}));snapshot()
     }
-    @PluginMethod fun logout(call:PluginCall)=work(call){owned{vault.clear();state=JSONObject()};snapshot()}
+    @PluginMethod fun logout(call:PluginCall)=work(call){owned{vault.clear();state=JSONObject();scannedDevice=null;laundryQuote=null};snapshot()}
     @PluginMethod fun login(call:PluginCall){
         if(!busy.compareAndSet(false,true)){call.reject("正在处理，请稍候","BUSY");return}
         val host=activity
@@ -100,12 +103,14 @@ class PangguaiPlugin : Plugin() {
                             val firstSnapshot=JSONObject().put("balance",profile.opt("balance"))
                             if(!profile.isNull("balance"))firstSnapshot.put("walletUpdatedAt",System.currentTimeMillis())
                             val next=JSONObject().put("id",profile.getString("id")).put("phone",number).put("token",token).put("snapshot",firstSnapshot)
+                            restore()
+                            if(state.optString("id")==profile.getString("id"))state.optJSONObject("laundry")?.let{next.put("laundry",it)}
                             candidate=next
                         }
                         host.runOnUiThread {
                             if(finished||!fence.isCurrent(owner)){busy.set(false);return@runOnUiThread}
                             if(sms){enabled(true);status.text="验证码已发送"}
-                            else{try{fence.commit(attempt){save(candidate ?: throw PangguaiFailure("FORMAT"))};finished=true;phone.text.clear();code.text.clear();busy.set(false);dialog.dismiss();call.resolve(snapshot())}catch(e:Exception){enabled(true);status.text=message((e as? PangguaiFailure)?.kind ?: "NETWORK")}}
+                            else{try{fence.commit(attempt){save(candidate ?: throw PangguaiFailure("FORMAT"));scannedDevice=null;laundryQuote=null};finished=true;phone.text.clear();code.text.clear();busy.set(false);dialog.dismiss();call.resolve(snapshot())}catch(e:Exception){enabled(true);status.text=message((e as? PangguaiFailure)?.kind ?: "NETWORK")}}
                         }
                     }catch(e:Exception){host.runOnUiThread {if(finished||!fence.isCurrent(owner)){busy.set(false);return@runOnUiThread};enabled(true);status.text=message((e as? PangguaiFailure)?.kind ?: "NETWORK")}}
                 }}catch(_:Exception){cancel();busy.set(false);dialog.dismiss()}
@@ -141,7 +146,50 @@ class PangguaiPlugin : Plugin() {
         val id=PangguaiProtocol.required(scan,"id")
         val detail=api.request("goods/normal/details",mapOf("goodsId" to id),token) as? JSONObject ?: throw PangguaiFailure("FORMAT")
         val skus=api.request("goods/normal/skus",mapOf("goodsId" to id),token) as? JSONArray ?: throw PangguaiFailure("FORMAT")
-        JSObject.fromJSONObject(PangguaiProtocol.device(scan,detail,skus))
+        val publicDevice=PangguaiProtocol.device(scan,detail,skus)
+        scannedDevice=JSONObject(publicDevice.toString()).put("imei",PangguaiProtocol.text(detail,"imei"))
+            .put("routeShopId",PangguaiProtocol.text(scan,"shopId")).put("shopId",PangguaiProtocol.text(detail,"shopId"))
+            .put("isBluetooth",PangguaiProtocol.text(detail,"isBluetooth"))
+        laundryQuote=null
+        JSObject.fromJSONObject(publicDevice)
+    }
+    private fun laundry():PangguaiLaundry {
+        val token=state.optString("token")
+        if(token.isBlank()||state.optBoolean("expired"))throw PangguaiFailure("AUTH")
+        return PangguaiLaundry(request={path,fields->api.request(path,fields,token)},
+            persist={session->val next=JSONObject(state.toString()).put("laundry",session);save(next)},
+            alive={owned{Unit}},alipay={params->
+                val host=activity
+                if(host==null||host.isFinishing)throw PangguaiFailure("CANCELLED")
+                com.alipay.sdk.app.PayTask(host).payV2(params,true)
+                Unit
+            })
+    }
+    @PluginMethod fun quoteLaundry(call:PluginCall)=work(call){
+        laundryQuote=null
+        val engine=laundry()
+        val q=if(call.getBoolean("existing",false)==true)engine.quoteExisting(state.optJSONObject("laundry") ?: throw PangguaiFailure("FORMAT"))
+        else engine.quote(scannedDevice ?: throw PangguaiFailure("DEVICE"),call.getString("skuId") ?: throw PangguaiFailure("FORMAT"))
+        laundryQuote=q;JSObject.fromJSONObject(q)
+    }
+    @PluginMethod fun startLaundry(call:PluginCall)=work(call){
+        val q=laundryQuote ?: throw PangguaiFailure("QUOTE_EXPIRED")
+        if(q.optString("id")!=call.getString("quoteId"))throw PangguaiFailure("QUOTE_EXPIRED")
+        val method=call.getString("method") ?: throw PangguaiFailure("PAY_CHANNEL")
+        laundryQuote=null // single use, even when a response is lost
+        val engine=laundry()
+        if(q.has("sessionId"))engine.payExisting(state.optJSONObject("laundry") ?: throw PangguaiFailure("FORMAT"),q,method)
+        else engine.start(scannedDevice ?: throw PangguaiFailure("DEVICE"),q,method,state.optJSONObject("laundry"))
+        snapshot()
+    }
+    @PluginMethod fun pollLaundry(call:PluginCall)=work(call){
+        val session=state.optJSONObject("laundry") ?: return@work snapshot()
+        laundry().poll(session);snapshot()
+    }
+    @PluginMethod fun cancelLaundry(call:PluginCall)=work(call){
+        val session=state.optJSONObject("laundry") ?: throw PangguaiFailure("FORMAT")
+        if(call.getString("sessionId")!=session.optString("id"))throw PangguaiFailure("ORDER_MISMATCH")
+        laundry().cancel(session);snapshot()
     }
     @PluginMethod fun openRecharge(call:PluginCall)=work(call){
         val id=call.getString("merchantId") ?: throw PangguaiFailure("FORMAT")

@@ -5,12 +5,12 @@ android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.life.v085' : 'org.handancampus.app')
+        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.life.v086' : 'org.handancampus.app')
         manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·生活测试版' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·生活测试版' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 85
-        versionName "0.8.5-campus-map-test"
+        versionCode 86
+        versionName "0.8.6-laundry-test"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -36,6 +36,7 @@ repositories {
 }
 
 dependencies {
+    implementation 'com.alipay.sdk:alipaysdk-android:15.8.42'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation 'com.google.zxing:core:3.5.3'

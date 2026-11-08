@@ -5,6 +5,7 @@ import type {PluginListenerHandle} from '@capacitor/core';
 import {ScanLine,RefreshCw,Wallet,ArrowUpRight,ChevronRight} from 'lucide-vue-next';
 import {pangguai,pgBusy,pgReady,pgError,initPangguai,connectPangguai,refreshPangguai,disconnectPangguai,scanPangguai,rechargePangguai} from '../composables/pangguai';
 import {pgAmount,pangguaiError,pangguaiSupported,type PangguaiDevice,type PangguaiTicket} from '../services/pangguai-client';
+import PangguaiLaundry from './PangguaiLaundry.vue';
 import {openPangguaiOfficial} from '../services/pangguai-official';
 const supported=pangguaiSupported(),device=ref<PangguaiDevice>(),confirm=ref<PangguaiTicket>(),logout=ref(false),tab=ref<'wallet'|'orders'>('wallet'),notice=ref('');
 const valid=computed(()=>pangguai.value.connected&&!pangguai.value.expired),blocked=computed(()=>pgBusy.value||!pgReady.value);
@@ -29,6 +30,7 @@ onUnmounted(()=>{disposed=true;clearTimeout(retry);void listener?.remove()});
    <p v-if="pangguai.expired" class="pg-status">登录已失效，下方保留上次结果。<button class="text-button" :disabled="blocked" @click="connectPangguai">重新连接</button></p>
    <section class="pg-balance"><span>普通账户余额 · 元</span><strong><small>¥</small>{{pgAmount(pangguai.balance)}}</strong><small>查询于 {{updated(pangguai.walletUpdatedAt)}}</small><button class="primary full" :disabled="blocked||!valid" @click="scan"><ScanLine :size="19"/>扫码识别设备</button></section>
    <p v-if="pangguai.issues?.wallet" class="pg-status">余额未更新：{{pangguaiError(pangguai.issues.wallet)}}</p>
+   <PangguaiLaundry :device="device" @close="device=undefined"/>
    <div class="pg-tabs" role="tablist" aria-label="胖乖钱包内容"><button role="tab" :aria-selected="tab==='wallet'" @click="tab='wallet'">商户钱包</button><button role="tab" :aria-selected="tab==='orders'" @click="tab='orders'">最近消费</button></div>
    <section v-if="tab==='wallet'">
     <p class="pg-hint">小票按商户单独使用，单位为点，不与普通余额相加。</p>
@@ -43,7 +45,6 @@ onUnmounted(()=>{disposed=true;clearTimeout(retry);void listener?.remove()});
     <article v-for="order in pangguai.orders" :key="order.id" class="pg-order"><div><strong>{{order.name||'胖乖消费'}}</strong><small>{{order.time}} · {{order.status}}</small></div><b>¥{{pgAmount(order.amount)}}</b></article>
     <p v-if="pangguai.ordersUpdatedAt" class="pg-hint">最近 20 条 · 金额为现金实付 · {{updated(pangguai.ordersUpdatedAt)}}</p>
    </section>
-   <section v-if="device" class="pg-device" aria-label="胖乖设备信息"><div class="pg-heading"><h3>{{device.name}}</h3><button class="text-button" @click="device=undefined">收起</button></div><p>{{device.operator||'运营商名称未提供'}} · {{device.category==='00'?'洗衣设备':device.category==='04'?'饮水设备':'淋浴设备'}}</p><p v-if="device.issue" class="pg-status">{{device.issue}}</p><div v-for="sku in device.skus" :key="sku.id" class="pg-program"><span><strong>{{sku.name||'设备程序'}}</strong><small>{{sku.feature}}</small></span><span>{{sku.price==null?'价格未提供':'标价 ¥'+pgAmount(sku.price)}}<small>{{sku.available?'可选择':'可用性待核对'}}</small></span></div><p class="pg-hint">设备信息已读取。此版本扫码不下单、不扣款；启动设备请在胖乖官方端完成。</p></section>
    <div v-if="confirm" class="pg-confirm" role="group" aria-label="确认胖乖充值账户"><h3>为 {{confirm.name}} 充值</h3><p>当前账户 {{pangguai.phone}}。将打开此商户的支付宝充值页，请核对支付宝手机号和金额后付款。</p><div><button class="secondary" @click="confirm=undefined">取消</button><button class="primary" :disabled="blocked" @click="recharge">前往付款</button></div></div>
    <p v-if="notice" class="pg-status" role="status">{{notice}}</p>
    <details class="pg-management"><summary>账户与帮助</summary><button class="text-button danger" :disabled="blocked" @click="logout=true">退出胖乖账户</button><p class="pg-hint">退出清除本机胖乖会话与缓存，保留教务、趣智和个人待办。</p><button class="text-button" @click="openPangguaiOfficial('wallet')">打开官方页面<ChevronRight :size="14"/></button></details>
