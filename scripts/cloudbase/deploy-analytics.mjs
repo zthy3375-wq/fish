@@ -18,7 +18,7 @@ const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-ana
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/analytics/scf_bootstrap',0o755);
 try{cli(['fn','deploy','hyt-analytics','--httpFn','--dir','cloudbase/functions/analytics','--force','--json']);cli(['fn','detail','hyt-analytics','--json']);cli(['service','list']);}finally{unlinkSync('cloudbaserc.json')}
 
-const probe=await fetch(`https://${envId}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({sql:'SELECT $1::int AS value',parameters:[1]})});
+const probe=await fetch(`https://${envId}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({sql:'SELECT current_user AS role, $1::int AS value',parameters:[1]})});
 console.log('SQL HTTP probe',probe.status,redact(await probe.text()));
 
 const service='https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-analytics';
