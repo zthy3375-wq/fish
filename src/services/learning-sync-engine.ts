@@ -42,7 +42,7 @@ export class LearningSyncEngine {
                     if(Number.isInteger(result.resumeCursor)&&result.resumeCursor!>=0&&result.resumeCursor!<=200)cursor=result.resumeCursor!;
                 }
                 const seen = new Set<number>();
-                for (let batch = 0; batch < 101; batch++) {
+                for (let batch = 0; batch < 201; batch++) {
                     if (generation !== this.epoch||this.paused)
                         return;
                     if (seen.has(cursor))
