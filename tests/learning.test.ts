@@ -61,3 +61,9 @@ it('an unknown submission response retains earlier known status and marks it sta
  const next=applyLearningResponse(first,incoming,now);expect(next.items[0]).toMatchObject({status:'submitted',statusText:'已提交',stale:true});
  expect(next.courseSync['12/34'].status).toBe('ok');
 });
+it('verification after a single-course retry resumes the same scope instead of every saved course',async()=>{
+ const h=harness();await h.engine.sync({login:true});await h.store.change(c=>({...c,selectedCourses:['12/34','56/78']}));
+ h.client.syncAll.mockResolvedValueOnce({...response(),code:'VERIFY',resumeCursor:0,nextCursor:null,remainingCount:1});
+ await h.engine.sync({force:true,courseKeys:['12/34']});h.client.login.mockResolvedValueOnce({...response(),resumeCursor:0,nextCursor:undefined});
+ await h.engine.sync({login:true});expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({courseKeys:['12/34'],cursor:0});
+});

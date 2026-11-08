@@ -41,6 +41,8 @@ export class LearningSyncEngine {
                         return;
                     if(Number.isInteger(result.resumeCursor)&&result.resumeCursor!>=0&&result.resumeCursor!<=200)cursor=result.resumeCursor!;
                 }
+                const scope=options.courseKeys??(cache.resumeCursor!==undefined?cache.activeCourses??cache.selectedCourses:cache.selectedCourses);
+                await this.store.change(c=>generation===this.epoch&&c.accountKey===cache.accountKey?{...c,activeCourses:scope}:c);
                 const seen = new Set<number>();
                 for (let batch = 0; batch < 201; batch++) {
                     if (generation !== this.epoch||this.paused)
@@ -48,7 +50,7 @@ export class LearningSyncEngine {
                     if (seen.has(cursor))
                         throw Error('学习通同步游标重复');
                     seen.add(cursor);
-                    const response = await this.client.syncAll({ courseKeys:options.courseKeys??cache.selectedCourses, cursor, force: options.login || !!options.force });
+                    const response = await this.client.syncAll({ courseKeys:scope, cursor, force: options.login || !!options.force });
                     if (generation !== this.epoch)
                         return;
                     await accept(response);

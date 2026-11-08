@@ -25,7 +25,10 @@ try{
      if(method==='logout')return {session:'disconnected'};
      if(method==='openItem'){window.__learningOpened=args.id;window.__learningSubmitted=true;return {closed:true}};
      if(window.__learningFailure)throw Error('network');if(window.__learningExpired)return {session:'expired',code:'AUTH'};
-     const data=JSON.parse(JSON.stringify(window.__learningFixture));if(window.__learningSubmitted){data.items[0].status='submitted';data.items[0].statusText='待批阅'}return data;
+     const data=JSON.parse(JSON.stringify(window.__learningFixture));
+     if(method==='login')return {session:'valid',accountKey:data.accountKey,courses:data.courses};
+     if(method==='syncAll'&&!args?.courseKeys?.length)return {session:'valid',accountKey:data.accountKey,courses:data.courses,code:'COURSE_SELECTION',nextCursor:null};
+     if(window.__learningSubmitted){data.items[0].status='submitted';data.items[0].statusText='待批阅'}return data;
     }
     if(plugin==='HandanAcademicClient'){
      window.__academicCalls.push(method);
@@ -223,6 +226,9 @@ try{
   await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
   await page.getByRole('button',{name:'连接学习通',exact:true}).click();
   await page.getByText('学习通已连接',{exact:true}).waitFor();
+  await page.locator('.sync-course-row input[type=checkbox]').first().check();
+  await page.getByRole('button',{name:'保存并更新 1 门课程',exact:true}).click();
+  await page.locator('.learning-state.pending').waitFor();
   assert(await page.getByRole('tablist',{name:'学习通内容'}).count()===1,`${width}: learning has a dedicated content page`);
   assert(await page.locator('.learning-state.pending').count()===1,`${width}: submission status is explicit in independent homework list`);
   assert(await page.locator('.learning-course-group').count()===1,`${width}: homework is grouped into its course folder`);

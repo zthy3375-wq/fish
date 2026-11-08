@@ -23,6 +23,7 @@ export interface LearningCache {
     lastAttempt: string | null;
     updatedAt: string | null;
     selectedCourses: string[];
+    activeCourses?: string[];
     courseSync: Record<string,{status:string;count:number;at:string;code?:string}>;
     plannedCount: number;
     completedCount: number;
