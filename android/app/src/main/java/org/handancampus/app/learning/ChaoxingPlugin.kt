@@ -170,7 +170,7 @@ class ChaoxingPlugin:Plugin() {
             val stamps=state.optJSONObject("stamps") ?: JSONObject().also { state.put("stamps",it) }
             // The all-task feed can contain only unfinished work or its first page. Always check courses for submitted/history records.
             if(selected.isEmpty())return result.put("code","COURSE_SELECTION").put("nextCursor",JSONObject.NULL)
-            plan=ChaoxingScanPlan.select(knownCourses,selected,knownCourses.associate { it.key to stamps.optLong(it.key,0) },force,System.currentTimeMillis());planAccount=key;state.put("scanScope",scope);if(selected.size>1)state.put("fullScope",scope)
+            plan=ChaoxingScanPlan.select(knownCourses,selected,knownCourses.associate { it.key to stamps.optLong(it.key,0) },force,System.currentTimeMillis());planAccount=key;state.put("scanScope",scope)
 
         }else if(planAccount!=key||state.optString("scanScope")!=scope)throw LearningFailure("PLAN_EXPIRED")
         state.remove("resumeCursor")
@@ -183,7 +183,7 @@ class ChaoxingPlugin:Plugin() {
             checkpoint++
         }
         val next=checkpoint
-        if(next>=plan.size&&selected==state.optString("fullScope").split(",").toSet()){
+        if(next>=plan.size){
             try { val page=request(ChaoxingPolicy.EXAMS);val parsed=ChaoxingParser.exams(page.body,page.url);if(!parsed.recognized)throw LearningFailure("EXAMS_SCHEMA");result.put("exams",JSONObject().put("status",if(parsed.complete)"ok" else "partial").put("items",JSONArray().apply{parsed.records.forEach { put(record(it)) }})) }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT"))throw e;result.put("exams",JSONObject().put("status","error").put("code",e.reason))}catch(_:Exception){result.put("exams",JSONObject().put("status","error").put("code","NETWORK"))}
             try { val page=request(ChaoxingPolicy.NOTICES,mapOf("type" to "0","notice_type" to "0","lastValue" to "","sort" to "0","folderUUID" to "","kw" to ""));val j=JSONObject(page.body);if(!j.optBoolean("status"))throw LearningFailure("NOTICES_SCHEMA");val list=j.optJSONObject("notices")?.optJSONArray("list") ?: throw LearningFailure("NOTICES_SCHEMA");val data=JSONArray()
                 for(i in 0 until minOf(list.length(),100)){val n=list.optJSONObject(i) ?: continue;val id=n.optString("id").ifBlank { n.optString("noticeId") };val title=n.optString("title");if(id.isBlank()||title.isBlank())continue;data.put(JSONObject().put("id",id.take(100)).put("title",title.take(200)).put("content",Jsoup.parse(n.optString("content")).text().take(6000)).put("sender",n.optString("sendName").take(100)).put("publishedText",n.optString("sendTime").ifBlank { n.optString("insertTime") }.take(100)))}
