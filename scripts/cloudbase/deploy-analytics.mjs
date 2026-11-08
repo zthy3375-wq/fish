@@ -17,11 +17,10 @@ if(!/^[a-zA-Z0-9_-]{1,120}$/.test(dbRole||'')||['anon','authenticated','public']
 console.log('Verified backend database role:',dbRole);
 // Schema is kept in source control. Existing user rows are never reset.
 for(const statement of readFileSync('cloudbase/schema.sql','utf8').split('-- statement').map(s=>s.trim()).filter(Boolean))cli(['db','execute','--sql',statement,'--json']);
-cli(['db','execute','--sql',`GRANT SELECT,INSERT,UPDATE,DELETE ON public.hyt_devices,public.hyt_daily,public.hyt_rate TO "${dbRole}"`,'--json']);
-cli(['db','execute','--sql',`GRANT EXECUTE ON FUNCTION public.hyt_metric(text,uuid,text,jsonb,text) TO "${dbRole}"`,'--json']);
-// Only the verified server API identity receives a row-access policy.
-const policies=['hyt_devices','hyt_daily','hyt_rate'].map(table=>`DROP POLICY IF EXISTS hyt_backend ON public.${table}; CREATE POLICY hyt_backend ON public.${table} TO "${dbRole}" USING (true) WITH CHECK (true);`).join(' ');
-cli(['db','execute','--sql',`DO $policy$ BEGIN ${policies} END $policy$`,'--json']);
+// The REST SQL channel maps to a read-only role in this environment. Keep it read-only.
+for(const table of ['hyt_devices','hyt_daily','hyt_rate'])cli(['db','execute','--sql',`DROP POLICY IF EXISTS hyt_backend ON public.${table}`,'--json']);
+cli(['db','execute','--sql',`REVOKE ALL ON public.hyt_devices,public.hyt_daily,public.hyt_rate FROM "${dbRole}"`,'--json']);
+cli(['db','execute','--sql',`REVOKE ALL ON FUNCTION public.hyt_metric(text,uuid,text,jsonb,text) FROM "${dbRole}"`,'--json']);
 console.log('Analytics schema installed');
 const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-analytics',type:'HTTP',runtime:'Nodejs20.19',timeout:20,memorySize:128,installDependency:false,public:true,gatewayPath:'/hyt-analytics',envVariables:{CLOUDBASE_ENV_ID:envId,CLOUDBASE_APIKEY:key,ANALYTICS_ADMIN_TOKEN_HASH:adminHash,ANALYTICS_SALT:salt}}]};
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/analytics/scf_bootstrap',0o755);

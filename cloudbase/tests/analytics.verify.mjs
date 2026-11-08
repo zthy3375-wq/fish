@@ -8,3 +8,6 @@ test('rejects personal fields, unknown features and unbounded counts',()=>{for(c
 test('rejects invalid installation credentials and stale/future reports',()=>{assert.equal(validate('enroll',{id},''),401);assert.equal(validate('record',{...body,day:'2000-01-01'},token),400);assert.equal(validate('record',{...body,day:day(Date.now()+86400000)},token),400)});
 test('admin comparison fails closed',()=>{assert.equal(authorized(undefined,'abc'),false);assert.equal(authorized('abc',''),false);assert.equal(authorized('a','b'),false);assert.equal(authorized('abc','abc'),true)});
 test('body reader stops oversized payloads',async()=>{async function* input(){yield Buffer.alloc(2049)}await assert.rejects(()=>readBody(input()))});
+import {bindSQL,decodeRows} from '../functions/analytics/database.mjs';
+test('SQL values cannot escape literals or alter query structure',()=>{const value="');DROP TABLE users;--";const sql=bindSQL('SELECT $1,$2::int',[value,3]);assert.ok(!sql.includes('DROP TABLE'));assert.ok(sql.includes(Buffer.from(value).toString('base64')));assert.throws(()=>bindSQL('SELECT $1',[]))});
+test('Cloud API row decoder parses JSON and preserves scalar fields',()=>{assert.deepEqual(decodeRows({Columns:['result','count'],Rows:['["{\\"ok\\":true}","2"]']}),[{result:{ok:true},count:'2'}])});

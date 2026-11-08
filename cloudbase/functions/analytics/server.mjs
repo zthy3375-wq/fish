@@ -2,14 +2,7 @@ import http from 'node:http';
 import {readFileSync} from 'node:fs';
 const dashboard=readFileSync(new URL('./dashboard.html',import.meta.url),'utf8');
 import {hash,day,validate,authorized,readBody} from './core.mjs';
-const env=process.env.CLOUDBASE_ENV_ID;
-const apiKey=process.env.CLOUDBASE_APIKEY;
-export async function sql(query,parameters=[]){
- const r=await fetch(`https://${env}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({sql:query,parameters}),signal:AbortSignal.timeout(12000)});
- let b;try{b=await r.json()}catch{throw Error('sql_non_json_'+r.status)}if(!r.ok||b.code){console.error('SQL request rejected',r.status,/^[A-Z0-9_]{1,80}$/.test(String(b.code))?b.code:'unknown');throw Error('sql_'+r.status+'_'+String(b.code||'unknown').replace(/[^A-Z0-9_]/gi,'').slice(0,60));}
- const rows=Array.isArray(b)?b:(b.rows||b.data?.rows||b.data||b.result?.rows);
- if(!Array.isArray(rows))throw Error('database_response');return rows;
-}
+import {sql} from './database.mjs';
 function reply(res,code,b){res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(b))}
 http.createServer(async(req,res)=>{
  try{
