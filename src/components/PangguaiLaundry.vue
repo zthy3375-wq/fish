@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import {computed,onMounted,onUnmounted,ref,watch} from 'vue';
+import {computed,nextTick,onMounted,onUnmounted,ref,watch} from 'vue';
 import {App} from '@capacitor/app';
 import type {PluginListenerHandle} from '@capacitor/core';
 import {pangguai,pgBusy,quoteLaundry,startLaundry,pollLaundry,cancelLaundry} from '../composables/pangguai';
 import {pgAmount,pangguaiError,laundryPhase,laundryRemaining,type PangguaiDevice,type LaundryQuote} from '../services/pangguai-client';
 const props=defineProps<{device?:PangguaiDevice}>();
 defineEmits<{close:[]}>();
+const progressPanel=ref<HTMLElement>(),confirmPanel=ref<HTMLElement>();
 const selection=ref(''),quote=ref<LaundryQuote>(),method=ref(''),cancelConfirm=ref(false),now=ref(Date.now()),localBusy=ref(false);
 const order=computed(()=>pangguai.value.laundry);
 const terminal=computed(()=>['completed','closed','refunded'].includes(order.value?.phase??''));
@@ -16,8 +17,8 @@ let active=true,disposed=false,timer:ReturnType<typeof setInterval>|undefined,li
 watch(()=>props.device,()=>{selection.value='';quote.value=undefined;method.value=''});
 watch(()=>pangguai.value.phone,()=>{quote.value=undefined;selection.value='';cancelConfirm.value=false});
 function time(value?:number){return value?new Date(value).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Shanghai'}):''}
-async function preview(existingOrder=false){if(blocked.value)return;localBusy.value=true;quote.value=undefined;try{const result=await quoteLaundry(existingOrder?undefined:selection.value);if(!disposed&&result){quote.value=result;method.value=result.channels.find(c=>c.available)?.id??''}}finally{localBusy.value=false}}
-async function pay(){const q=quote.value;if(!q||blocked.value||quoteExpired.value||!method.value)return;localBusy.value=true;quote.value=undefined;try{await startLaundry(q.id,method.value)}finally{localBusy.value=false;lastPoll=Date.now()}}
+async function preview(existingOrder=false){if(blocked.value)return;localBusy.value=true;quote.value=undefined;try{const result=await quoteLaundry(existingOrder?undefined:selection.value);if(!disposed&&result){quote.value=result;method.value=result.channels.find(c=>c.available)?.id??'';await nextTick();confirmPanel.value?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false}}
+async function pay(){const q=quote.value;if(!q||blocked.value||quoteExpired.value||!method.value)return;localBusy.value=true;quote.value=undefined;try{await startLaundry(q.id,method.value);await nextTick();progressPanel.value?.scrollIntoView?.({block:'start',behavior:'smooth'})}finally{localBusy.value=false;lastPoll=Date.now()}}
 async function refresh(){if(blocked.value)return;lastPoll=Date.now();const result=await pollLaundry();failures=result?0:failures+1}
 async function cancel(){if(!order.value||blocked.value)return;cancelConfirm.value=false;await cancelLaundry(order.value.id)}
 function tick(){now.value=Date.now();if(active&&!disposed&&!blocked.value&&existing.value&&order.value?.orderNo&&failures<3&&Date.now()-lastPoll>=15000)void refresh()}
@@ -25,9 +26,9 @@ onMounted(async()=>{timer=setInterval(tick,1000);try{const h=await App.addListen
 onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
 </script>
 <template>
- <section v-if="order" class="wash-progress" aria-label="当前洗衣订单">
+ <section v-if="order" ref="progressPanel" class="wash-progress" aria-label="当前洗衣订单">
   <div class="heading"><span class="eyebrow">{{order.deviceName}} · {{order.program}}</span><button class="text-button" :disabled="blocked" @click="refresh">查询状态</button></div>
-  <h3 role="status">{{laundryPhase(order.phase)}}</h3>
+  <h3 aria-live="polite">{{laundryPhase(order.phase)}}</h3>
   <p v-if="order.phase==='running'">{{laundryRemaining(order.expectedEnd,now)||'设备已确认启动，结束时间尚未返回'}}</p>
   <p v-if="order.phase==='completed'">{{order.finishedAt?'完成于 '+time(order.finishedAt):'平台已确认完成'}}，记得取衣。</p>
   <p v-if="order.phase==='paid'">付款已确认，尚未收到设备启动确认，请查看机身提示。</p>
@@ -62,7 +63,7 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
    <p class="feedback">本版可识别饮水设备并查询账户。扫码开水、暂停和结算尚未接入，请继续按机身和官方端提示使用。</p>
   </template>
  </section>
- <section v-if="quote" class="wash-confirm" role="group" aria-label="确认洗衣费用">
+ <section v-if="quote" ref="confirmPanel" class="wash-confirm" role="group" aria-label="确认洗衣费用">
   <div class="heading"><h3>确认洗衣费用</h3><button class="text-button" :disabled="blocked" @click="quote=undefined">取消</button></div>
   <p>{{quote.deviceName}} · {{quote.program}}</p><strong class="amount">¥{{pgAmount(quote.amount)}}</strong>
   <p class="subtle">胖乖账户 {{pangguai.phone}} · 不使用广告优惠</p>
