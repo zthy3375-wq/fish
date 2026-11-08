@@ -9,15 +9,17 @@ import CampusRoomDirectory from './CampusRoomDirectory.vue';
 import CampusPlan from './CampusPlan.vue';
 import type {PlanTarget} from '../services/campus-plan';
 const planTarget=ref<PlanTarget>();
+const directory=ref<InstanceType<typeof CampusRoomDirectory>>();
 function showRoomPlan(target:PlanTarget){planTarget.value=target;view.value='plan'}
+async function showBuildingRooms(target:PlanTarget){view.value='rooms';await directory.value?.openBuilding(target)}
 import {locateCampus,stopCampusLocation} from '../services/campus-location';
 const view=ref<'rooms'|'plan'|'geo'>('rooms');
 const locating=ref(false);
 let locationLayer:L.LayerGroup|undefined,locationExpiry:ReturnType<typeof setTimeout>|undefined,locationGeneration=0;
-function clearLocation(){locationGeneration++;clearTimeout(locationExpiry);locationLayer?.remove();locationLayer=undefined;locating.value=false;void stopCampusLocation().catch(()=>{});}
+function clearLocation(){locationGeneration++;clearTimeout(locationExpiry);locationLayer?.remove();locationLayer=undefined;locating.value=false;return stopCampusLocation().catch(()=>{});}
 async function locate(){
- if(locating.value)return;clearLocation();const generation=locationGeneration;locating.value=true;message.value='正在获取手机当前位置…';
- try{const fix=await locateCampus();if(generation!==locationGeneration)return;
+ if(locating.value)return;const stopping=clearLocation();const generation=locationGeneration;locating.value=true;message.value='正在获取手机当前位置…';
+ try{await stopping;if(generation!==locationGeneration)return;const fix=await locateCampus();if(generation!==locationGeneration)return;
   if(fix.latitude<36.55||fix.latitude>36.60||fix.longitude<114.47||fix.longitude>114.53){message.value='当前位置不在校园地图范围内';return}
   if(!map)return;locationLayer=L.layerGroup().addTo(map);
   L.circle([fix.latitude,fix.longitude],{radius:fix.accuracy,color:'#3478db',weight:1,fillOpacity:.12}).addTo(locationLayer);
@@ -56,7 +58,7 @@ onUnmounted(()=>{clearLocation();resize?.disconnect();map?.remove();map=undefine
 <template>
  <div class="campus-map"><span class="micro-label">探索校园</span><h2>校园地图</h2>
   <div class="map-campus" aria-label="地图视图"><button :class="{active:view==='rooms'}" @click="view='rooms'">找教室</button><button :class="{active:view==='plan'}" @click="view='plan'">校园平面图</button><button :class="{active:view==='geo'}" @click="view='geo'">道路与地点</button></div>
-  <CampusRoomDirectory v-show="view==='rooms'" @show-plan="showRoomPlan"/><CampusPlan v-if="view==='plan'" :target="planTarget"/>
+  <CampusRoomDirectory ref="directory" v-show="view==='rooms'" @show-plan="showRoomPlan"/><CampusPlan v-if="view==='plan'" :target="planTarget" @show-rooms="showBuildingRooms"/>
   <div v-show="view==='geo'">
   <div class="map-campus"><button v-for="(c,id) in campusCenters" :key="id" :class="{active:campus===id}" @click="campus=id">{{c.name}}</button></div>
   <label class="map-search"><Search :size="17"/><input v-model="query" aria-label="搜索校园地点" placeholder="搜索楼名或自己保存的地点"/></label>

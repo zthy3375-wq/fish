@@ -31,6 +31,15 @@ export async function checkNativeLife(page,assert,{width,output}){
  assert((await map.locator('.address').innerText()).includes('东区文理综合楼 · 2 层'),`${width}: verified room floor appears`);
  await map.getByRole('button',{name:'在平面图查看楼栋',exact:true}).click();
  await map.getByText('文理综合楼 A 区 · 楼栋参考点',{exact:true}).waitFor();
+ const closeWidth=await map.locator('.plan .leaflet-image-layer').evaluate(img=>img.getBoundingClientRect().width);
+ await map.getByRole('button',{name:'显示全图',exact:true}).click();
+ assert(await map.locator('.plan .leaflet-image-layer').evaluate(img=>img.getBoundingClientRect().width)<closeWidth,`${width}: show whole plan actually zooms out`);
+ await map.getByRole('button',{name:'查看这栋楼的教室',exact:true}).click();
+ await map.getByText('正在查看 文理综合楼 A 区',{exact:false}).waitFor();
+ assert((await map.locator('.rows strong').allTextContents()).every(name=>/^A\d/.test(name)),`${width}: plan opens only selected block rooms`);
+ await map.getByLabel('筛选楼层',{exact:true}).selectOption('2');
+ assert((await map.locator('.rows small').allTextContents()).every(text=>text.endsWith('2 层')),`${width}: plan room directory respects floor filter`);
+ await map.getByRole('button',{name:'校园平面图',exact:true}).click();
  await map.getByRole('button',{name:'西校区平面图',exact:true}).click();
  await map.locator('.plan .leaflet-image-layer').waitFor();
  await page.waitForFunction(()=>{const img=document.querySelector('.plan .leaflet-image-layer');return img instanceof HTMLImageElement&&img.complete&&img.naturalWidth===864});

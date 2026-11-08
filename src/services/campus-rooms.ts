@@ -14,6 +14,6 @@ export function roomFloor(room:CampusRoom):string{
 }
 export function searchRooms(query:string,campus:RoomCampus|'all'='all',building='',floor=''):CampusRoom[]{
  const normalize=(s:string)=>s.normalize('NFKC').toLocaleLowerCase().replace(/[\s—–-]/g,'');
- const terms=normalize(query).split(/[,，]/).filter(Boolean);
+ const terms=query.trim().split(/[\s,，]+/).map(normalize).filter(Boolean);
  return campusRooms.filter(r=>(campus==='all'||roomCampus(r)===campus)&&(!building||r.jxlmc===building)&&(!floor||r.lch===floor)&&terms.every(q=>normalize(`${r.cdmc} ${r.cdbh} ${r.jxlmc} ${roomPlanTarget(r)?.name||''}`).includes(q)));
 }
