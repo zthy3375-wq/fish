@@ -4,13 +4,13 @@ import {Droplets,WashingMachine,Map,Package,ChevronRight} from 'lucide-vue-next'
 import {initPangguai,pangguai} from '../composables/pangguai';
 import {initQuzhi,quzhi} from '../composables/quzhi';
 import {quzhiMoney} from '../services/quzhi-client';
-import {pgAmount} from '../services/pangguai-client';
+import {drinkingWaterTicket,drinkingWaterAmount} from '../domain/drinking-water-wallet';
 defineEmits<{open:[page:string]}>();
 onMounted(()=>{void initQuzhi();void initPangguai()});
 </script>
 <template>
  <div class="life-services">
-  <div class="life-wallets"><button class="life-card life-shower" @click="$emit('open','quzhi-wallet')"><Droplets :size="21"/><strong>趣智校园</strong><span>洗澡</span><b>{{quzhi.connected&&quzhi.wallet?.total!=null?'¥'+quzhiMoney(quzhi.wallet.total):quzhi.connected?'待查询':'连接账户'}}</b><small>{{quzhi.expired?'登录已失效':quzhi.connected?'上次查询 · 余额与充值':'余额与充值'}}</small></button><button class="life-card life-laundry" @click="$emit('open','pangguai-wallet')"><WashingMachine :size="21"/><strong>胖乖生活</strong><span>洗衣 · 饮水</span><b>{{pangguai.connected&&pangguai.balance!=null?'¥'+pgAmount(pangguai.balance):pangguai.connected?'待查询':'连接账户'}}</b><small>{{pangguai.expired?'登录已失效':pangguai.connected?'普通余额 · 上次查询':'钱包 · 扫码 · 消费'}}</small></button></div>
+  <div class="life-wallets"><button class="life-card life-shower" @click="$emit('open','quzhi-wallet')"><Droplets :size="21"/><strong>趣智校园</strong><span>洗澡</span><b>{{quzhi.connected&&quzhi.wallet?.total!=null?'¥'+quzhiMoney(quzhi.wallet.total):quzhi.connected?'待查询':'连接账户'}}</b><small>{{quzhi.expired?'登录已失效':quzhi.connected?'上次查询 · 余额与充值':'余额与充值'}}</small></button><button class="life-card life-laundry" @click="$emit('open','pangguai-wallet')"><WashingMachine :size="21"/><strong>胖乖生活</strong><span>洗衣 · 饮水</span><b>{{pangguai.connected?(drinkingWaterAmount(drinkingWaterTicket(pangguai.tickets??[])?.balance)!==null?'¥'+drinkingWaterAmount(drinkingWaterTicket(pangguai.tickets??[])?.balance):'暂未获取'):'连接账户'}}</b><small>{{pangguai.expired?'登录已失效':pangguai.connected?'直饮水余额 · 上次查询':'钱包 · 扫码 · 消费'}}</small></button></div>
   <div class="life-utilities"><button @click="$emit('open','campus-map')"><Map :size="19"/><span><strong>校园地图</strong><small>找地点 · 收藏 · 导航</small></span><ChevronRight :size="16"/></button><button @click="$emit('open','parcel')"><Package :size="19"/><span><strong>取快递</strong><small>淘宝 · 拼多多出库码</small></span><ChevronRight :size="16"/></button></div>
  </div>
 </template>

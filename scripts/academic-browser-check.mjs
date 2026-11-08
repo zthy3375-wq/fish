@@ -31,7 +31,7 @@ try{
      window.__pgState??={connected:false,expired:false,phone:''};
      if(method==='login')window.__pgState={connected:true,expired:false,phone:'138****0000',balance:'18.50',walletUpdatedAt:Date.now()};
      if(method==='logout')window.__pgState={connected:false,expired:false,phone:''};
-     if(method==='refresh'){if(window.__pgFailure)window.__pgState.issues={wallet:'NETWORK',tickets:'NETWORK',orders:'NETWORK'};else Object.assign(window.__pgState,{tickets:[{id:'synthetic-merchant',name:'人工测试商户',balance:'120',principal:'100',gift:'20'}],ticketsUpdatedAt:Date.now(),orders:[{id:'synthetic-order',name:'人工测试洗衣机',amount:'3.50',status:'测试状态',time:'2026-11-08 10:00'}],ordersUpdatedAt:Date.now(),issues:{}})}
+     if(method==='refresh'){if(window.__pgFailure)window.__pgState.issues={wallet:'NETWORK',tickets:'NETWORK',orders:'NETWORK'};else Object.assign(window.__pgState,{tickets:[{id:'synthetic-water-merchant',name:'邯郸学院直饮水机',balance:'257',principal:'257',gift:'0'},{id:'synthetic-merchant',name:'人工测试商户',balance:'120',principal:'100',gift:'20'}],ticketsUpdatedAt:Date.now(),orders:[{id:'synthetic-order',name:'人工测试洗衣机',amount:'3.50',status:'测试状态',time:'2026-11-08 10:00'}],ordersUpdatedAt:Date.now(),issues:{}})}
      if(method==='openRecharge')return {opened:true};
      if(method==='scan'&&window.__pgWater)return {id:'synthetic-water',name:'人工测试饮水机',operator:'人工测试商户',category:'04',payment:'after',issue:'',skus:[{id:'synthetic-outlet',name:'常温水',feature:'按实际用量计费',price:'1',available:true}]};
      if(method==='scan')return {id:'synthetic-device',name:'人工测试设备',operator:'人工测试商户',category:'00',payment:'before',issue:'',skus:[{id:'synthetic-sku',name:'标准洗',price:'3.50',feature:'约40分钟',available:true}]};
