@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {courseTint as tint} from "../services/course-colors";
 import { computed } from "vue";
 import { Layers, Plus } from "lucide-vue-next";
 import type { Course } from "../domain/academic";
@@ -27,8 +28,6 @@ const props = defineProps<{
   now: Date;
   readOnly?: boolean;
 }>();
-const palette=['#b9e6fa','#d3ccff','#ffe3a0','#ffcbd5','#b8eee0','#ffdab6','#d8e9b2','#e8c9f0'];
-function tint(c:Course){let h=0;for(const ch of (c.courseId||c.name.trim()))h=(Math.imul(h,31)+ch.charCodeAt(0))|0;return {'background':palette[(h>>>0)%palette.length],color:'#243348'};}
 const emit = defineEmits<{
   course: [course: Course];
   conflict: [courses: Course[]];
