@@ -15,7 +15,7 @@ export function catalog(input){
 }
 export function manifest(r){const {buildKey,...data}=release(r);return {...data,apkUrl:BASE+'/android/download/'+data.versionCode}}
 export function publicDownloadUrl(raw){
- try{const u=new URL(raw);return u.protocol==='https:'&&(u.hostname==='pgyer.com'||u.hostname.endsWith('.pgyer.com'))&&(!u.port||u.port==='443')&&!u.username&&!u.password&&!u.hash&&![...u.searchParams.keys()].some(k=>/^(?:_api_key|api_key|buildpassword)$/i.test(k))}catch{return false}
+ try{const u=new URL(raw);return u.protocol==='https:'&&(u.hostname==='pgyer-apps-cfw.appmeme.com'||u.hostname==='pgyer.com'||u.hostname.endsWith('.pgyer.com'))&&(!u.port||u.port==='443')&&!u.username&&!u.password&&!u.hash&&![...u.searchParams.keys()].some(k=>/^(?:_api_key|api_key|buildpassword)$/i.test(k))}catch{return false}
 }
 export async function resolveDownload(r,key,fetcher=fetch){
  if(!key?.trim())throw Error('provider_not_configured');

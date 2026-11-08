@@ -4,6 +4,7 @@ import {release,resolveDownload,publicDownloadUrl} from '../../cloudbase/functio
 const key=process.env.PGYER_API_KEY?.trim();
 if(!key)throw Error('Missing PGYER_API_KEY');
 const candidate=JSON.parse(readFileSync('releases/android-candidate.json','utf8'));
+if(candidate.ready===false){console.log('Candidate awaits rebuilt APK');process.exit(0)}
 release({...candidate,buildKey:'validation'});
 const existing=JSON.parse(readFileSync('cloudbase/functions/updates/releases.json','utf8')).releases.find(r=>r.versionCode===candidate.versionCode);
 if(existing){

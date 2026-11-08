@@ -10,5 +10,6 @@
     "应用内更新接入腾讯云，安装包由蒲公英提供。",
     "保留直饮水余额展示及自愿参与的使用统计。"
   ],
-  "buildKey": "4096e214652a8a1fcbc43f3c0db64bef"
+  "buildKey": "4096e214652a8a1fcbc43f3c0db64bef",
+  "ready": false
 }

@@ -18,7 +18,7 @@ data class UpdatePolicy(val code: Int, val name: String, val minimum: Int, val m
         const val MAX_APK_BYTES = 80L * 1024 * 1024
         fun trustedUrl(raw: String): Boolean = try {
             val u = URI(raw); val origin = URI(ORIGIN)
-            u.scheme == "https" && (u.host == origin.host || u.host == LEGACY_HOST || u.host == "pgyer.com" || u.host?.endsWith(".pgyer.com") == true) && (u.port == -1 || u.port == 443) &&
+            u.scheme == "https" && (u.host == origin.host || u.host == LEGACY_HOST || u.host == "pgyer-apps-cfw.appmeme.com" || u.host == "pgyer.com" || u.host?.endsWith(".pgyer.com") == true) && (u.port == -1 || u.port == 443) &&
                 u.rawUserInfo == null && u.rawFragment == null &&
                 !Regex("(?:^|&)(?:_api_key|api_key|buildpassword)=",RegexOption.IGNORE_CASE).containsMatchIn(u.query ?: "")
         } catch (_: Exception) { false }

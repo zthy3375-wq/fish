@@ -18,6 +18,8 @@ class UpdatePolicyTest {
         assertTrue(UpdatePolicy.trustedChannelUrl(UpdatePolicy.CHANNEL+"?t=1"))
         assertFalse(UpdatePolicy.trustedChannelUrl("https://cdn-app2.pgyer.com/android/stable.json"))
         assertFalse(UpdatePolicy.trustedChannelUrl(UpdatePolicy.ORIGIN+"/other/stable.json"))
+        assertTrue(UpdatePolicy.trustedUrl("https://pgyer-apps-cfw.appmeme.com/download.apk?sign=opaque"))
+        assertFalse(UpdatePolicy.trustedUrl("https://evil.appmeme.com/x.apk"))
         assertTrue(UpdatePolicy.trustedUrl("https://cdn-app2.pgyer.com/apps/test.apk?sign=opaque"))
         assertTrue(UpdatePolicy.trustedUrl("https://hanyuantong-updates.dewydahlia.chatgpt.site/android/old.apk"))
         for(url in listOf("https://evilpgyer.com/x.apk","https://pgyer.com.evil.test/x.apk","https://cdn-app2.pgyer.com:444/x.apk","https://www.pgyer.com/install?_api_key=secret","https://www.pgyer.com/install?%5fapi_key=secret")) assertFalse(UpdatePolicy.trustedUrl(url))
