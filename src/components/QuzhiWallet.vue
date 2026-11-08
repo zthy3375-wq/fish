@@ -8,6 +8,7 @@ import {quzhiSupported,quzhiMonth,quzhiMoney,quzhiIssue} from '../services/quzhi
 
 const month=ref(quzhiMonth()), confirmation=ref<'recharge'|'logout'|''>(''), returned=ref(false);
 let listener:PluginListenerHandle|undefined, disposed=false, awaitingReturn=false;
+let resumeTimer:ReturnType<typeof setTimeout>|undefined;
 const supported=quzhiSupported();
 const valid=computed(()=>quzhi.value.connected&&!quzhi.value.expired);
 const billsMatch=computed(()=>month.value===quzhi.value.billsMonth);
@@ -18,7 +19,8 @@ async function recharge(){
   if(!await rechargeQuzhi())awaitingReturn=false;
 }
 async function resume(){
-  if(disposed||!awaitingReturn||quzhiBusy.value)return;
+  if(disposed||!awaitingReturn)return;
+  if(quzhiBusy.value){clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>void resume(),200);return}
   awaitingReturn=false;returned.value=true;
   await refreshQuzhi(month.value);
 }
@@ -31,7 +33,7 @@ onMounted(async()=>{
     if(!disposed)await refreshQuzhi(month.value);
   }
 });
-onUnmounted(()=>{disposed=true;void listener?.remove()});
+onUnmounted(()=>{disposed=true;clearTimeout(resumeTimer);void listener?.remove()});
 </script>
 <template>
 <div class="quzhi-wallet">
