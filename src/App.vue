@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AnalyticsSettings from './components/AnalyticsSettings.vue';
+import {initAnalytics,flushAnalytics,recordFeature,refreshAnalytics} from './composables/analytics';
 import AppUpdateDialog from './components/AppUpdateDialog.vue';
 import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred} from './composables/updates';
 import {initPangguai,pangguai,pgBusy} from './composables/pangguai';
@@ -483,6 +485,7 @@ function escape(e: KeyboardEvent) {
   if(e.key === "Escape"){if(modal.value)requestClose();else if(agendaView.editor)taskDetailRef.value?.requestBack();}
 }
 async function recalibrate() {
+  void flushAnalytics();void refreshAnalytics();
   if(document.visibilityState==='visible')void checkUpdates();
   void syncLearning().catch(()=>{});
   void reloadTasks();
@@ -508,7 +511,13 @@ watch(()=>[modal.value,agendaView.editor,pgBusy.value,pangguai.value.water?.phas
   const phase=pangguai.value.water?.phase;
   updateDeferred.value=!!modal.value||!!agendaView.editor||pgBusy.value||!!(phase&&!['settled','ended_zero','closed_unknown'].includes(phase));
 },{immediate:true});
+watch(()=>[page.value,section.value,modal.value] as const,([p,s,m])=>{
+ if(m){const feature=({'quzhi-wallet':'shower','pangguai-wallet':'wallet',parcel:'parcel','campus-map':'map'} as const)[m as 'quzhi-wallet'];if(feature)void recordFeature(feature);return;}
+ if(s==='learning')void recordFeature('learning');else if(s==='grades')void recordFeature('grades');else if(p==='schedule')void recordFeature('schedule');else if(p==='tasks')void recordFeature('tasks');
+});
+let analyticsTimer:ReturnType<typeof setInterval>;
 onMounted(async () => {
+  void initAnalytics();analyticsTimer=setInterval(()=>{if(document.visibilityState==='visible')void flushAnalytics()},60000);
   void initPangguai().then(()=>initializeUpdates());
   load();
   void initTasks().catch(()=>{});
@@ -541,6 +550,7 @@ onUnmounted(() => {
   disposed = true;
   clearTimeout(toastTimer);
   clearInterval(clockTimer);
+  clearInterval(analyticsTimer);
   nativeBack?.remove();
   nativeForeground?.remove();
   media.removeEventListener("change", systemChange);
@@ -580,6 +590,7 @@ onUnmounted(() => {
       </div>
       <div v-else class="page-content">
           <template v-if="page === 'home'">
+            <AnalyticsSettings prompt/>
             <SchoolConnection compact @connected="move('home')" />
             <div class="home-greeting">
               <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
@@ -746,7 +757,7 @@ onUnmounted(() => {
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
             <SectionHeader title="教务服务"/><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/>
-            <TaskSettings/>
+            <TaskSettings/><AnalyticsSettings/>
             <SectionHeader title="外观设置" />
             <section class="settings-group">
               <div class="theme-row">
@@ -782,7 +793,7 @@ onUnmounted(() => {
               @select="(id) => (id === 'app-update' ? checkUpdates(true) : open(id))"
             />
             <p class="footnote source-footnote">
-              <ShieldCheck :size="13" />不保存教务密码 · 没有广告与分析追踪
+              <ShieldCheck :size="13" />不保存教务密码 · 无广告 · 匿名统计可关闭
             </p>
           </template>
           <footer>
@@ -1049,6 +1060,7 @@ onUnmounted(() => {
           <template v-else-if="modal === 'privacy'"
             ><ShieldCheck :size="27" />
             <h2>隐私政策</h2>
+            <p>匿名使用统计需你主动允许。开启后上报随机安装标识、应用版本、北京时间日期和预定义功能的累计操作次数，用于统计活跃设备与改善体验；不上传学号、密码、课程内容、余额、订单或设备硬件标识。每日汇总统计近90天，过期明细随后续上报清理，匿名设备记录用于累计统计。可在“我的”关闭统计或删除已上报记录。为防滥用，服务端短期保留每日加盐后的网络地址摘要，不保存原始地址到统计数据库。</p>
             <p>
               学校密码只在官方页面输入。Android 原生模块使用系统密钥库加密保存学校会话，供本人数据查询复用。退出学校账号后清除会话与学校缓存。
             </p>
