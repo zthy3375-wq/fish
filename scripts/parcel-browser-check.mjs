@@ -30,7 +30,7 @@ export async function checkParcelShortcuts(page, assert, {width, output}) {
   assert(await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).isDisabled(), `${width}: parcel pending dispatch disables both provider buttons`);
   assert(await page.evaluate(() => window.__parcelCalls.length) === calls + 1, `${width}: repeated parcel taps dispatch only once`);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await nav('生活').click();
+  await nav('首页').click();
   await page.getByRole('button',{name:/取快递/}).click();
   await shortcuts.waitFor();
   await page.evaluate(() => { window.__parcelFinish(); window.__parcelDelayed = false; window.__parcelStatus = 'opened' });
@@ -38,11 +38,11 @@ export async function checkParcelShortcuts(page, assert, {width, output}) {
   assert(await shortcuts.getByRole('status').count() === 0, `${width}: old parcel launch reply does not appear after navigation`);
   await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).click();
   await shortcuts.getByRole('status').filter({hasText: '已请求打开拼多多'}).waitFor();
-  assert(await page.locator('.floating-nav button').count() === 5, `${width}: parcel feature preserves the five navigation tabs`);
+  assert(await page.locator('.floating-nav button').count() === 4, `${width}: parcel feature preserves the four navigation tabs`);
   assert(await page.evaluate(() => history.length) === historyLength, `${width}: parcel launch adds no browser-history entry`);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: parcel card has no horizontal overflow`);
   await shortcuts.scrollIntoViewIfNeeded();
   await page.screenshot({path: path.join(output, `parcel-shortcuts-${width}.png`), animations: 'disabled'});
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await nav('今天').click();
+  await nav('首页').click();
 }
