@@ -1,1 +1,19 @@
-{"latest":null,"releases":[]}
+{
+  "latest": 105,
+  "releases": [
+    {
+      "schema": 1,
+      "versionCode": 105,
+      "versionName": "1.0.5",
+      "minSupportedVersionCode": 102,
+      "minSdk": 23,
+      "sha256": "db1316d771590fa2456a9c7980c00e7a0d2e0ed5f545c33793944195b193aef8",
+      "sizeBytes": 12319357,
+      "notes": [
+        "应用内更新接入腾讯云，安装包由蒲公英提供。",
+        "保留直饮水余额展示及自愿参与的使用统计。"
+      ],
+      "buildKey": "cee1df37448ff15b3e3e998957ba24ce"
+    }
+  ]
+}
