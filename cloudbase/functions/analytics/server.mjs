@@ -6,7 +6,7 @@ const env=process.env.CLOUDBASE_ENV_ID;
 const apiKey=process.env.CLOUDBASE_APIKEY;
 export async function sql(query,parameters=[]){
  const r=await fetch(`https://${env}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({sql:query,parameters}),signal:AbortSignal.timeout(12000)});
- const b=await r.json();if(!r.ok||b.code)throw Error('database_unavailable');
+ const b=await r.json();if(!r.ok||b.code){console.error('SQL request rejected',r.status,/^[A-Z0-9_]{1,80}$/.test(String(b.code))?b.code:'unknown');throw Error('database_unavailable');}
  const rows=Array.isArray(b)?b:(b.rows||b.data?.rows||b.data||b.result?.rows);
  if(!Array.isArray(rows))throw Error('database_response');return rows;
 }
@@ -33,5 +33,5 @@ http.createServer(async(req,res)=>{
   const ip=String(req.headers['x-real-ip']||req.socket.remoteAddress||'unknown');
   const rows=await sql('SELECT public.hyt_metric($1,$2::uuid,$3,$4::jsonb,$5) AS result',[action,b.id,hash(token),JSON.stringify(b),hash(process.env.ANALYTICS_SALT+'|'+day()+'|'+ip)]);
   const result=rows[0]?.result;if(!result?.status)throw Error('database_response');const {status:code,...body}=result;reply(res,code,body);
- }catch{reply(res,503,{error:'temporarily_unavailable'})}
+ }catch(e){console.error('Analytics request failed', ['database_unavailable','database_response'].includes(e.message)?e.message:e.name, String(e.cause?.code||'').replace(/[^A-Z0-9_]/g,'').slice(0,60));reply(res,503,{error:'temporarily_unavailable'})}
 }).listen(9000,'0.0.0.0');

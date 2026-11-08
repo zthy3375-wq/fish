@@ -18,10 +18,14 @@ const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-ana
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/analytics/scf_bootstrap',0o755);
 try{cli(['fn','deploy','hyt-analytics','--httpFn','--dir','cloudbase/functions/analytics','--force','--json']);cli(['fn','detail','hyt-analytics','--json']);cli(['service','list']);}finally{unlinkSync('cloudbaserc.json')}
 
-const probe=await fetch(`https://${envId}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({sql:'SELECT 1 AS value',parameters:[]})});
+const probe=await fetch(`https://${envId}.api.tcloudbasegateway.com/v1/rdb/exec-pgsql`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({sql:'SELECT $1::int AS value',parameters:[1]})});
 console.log('SQL HTTP probe',probe.status,redact(await probe.text()));
 
 const service='https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-analytics';
 const health=await fetch(service+'/health');if(!(await health.json()).ok)throw Error('Health check failed');
 const denied=await fetch(service+'/stats');if(denied.status!==403)throw Error('Statistics authorization check failed');
 console.log('Health and protected statistics checks passed');
+
+const uid=randomUUID(),testToken=randomBytes(32).toString('hex');
+const call=async(action,payload)=>{const r=await fetch(service+'/api/metrics/'+action,{method:'POST',headers:{Authorization:'Bearer '+testToken,'Content-Type':'application/json'},body:JSON.stringify({id:uid,...payload})});const b=await r.json();console.log('Smoke check',action,r.status,b);return r.status;};
+try{if(await call('enroll',{})!==200){cli(['fn','log','hyt-analytics','--limit','20','--json']);throw Error('Enrollment smoke check failed')}}finally{await call('delete',{})}
