@@ -25,13 +25,12 @@ class QuzhiPlugin : Plugin() {
     private var loaded = false
     private var activeLogin: AlertDialog? = null
     private var cancelLogin: (() -> Unit)? = null
-    private fun load() {
+    private fun restoreState() {
         if (!loaded) {
             state = try { vault.restore()?.let { JSONObject(it) } ?: JSONObject() } catch (_: Exception) { JSONObject() }
             loaded = true
         }
     }
-    private fun save() = vault.save(state.toString())
     private fun currentMonth(): String = SimpleDateFormat("yyyy-MM", Locale.ROOT).apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }.format(Date())
     private fun session() = state.optJSONObject("session") ?: throw QuzhiFailure("AUTH")
     private fun publicState(): JSObject {
@@ -56,7 +55,7 @@ class QuzhiPlugin : Plugin() {
     private fun run(call: PluginCall, work: () -> Unit) {
         if (!busy.compareAndSet(false, true)) { call.reject("趣智操作正在进行，请稍候", "BUSY"); return }
         executor.execute {
-            try { load(); work(); call.resolve(publicState()) }
+            try { restoreState(); work(); call.resolve(publicState()) }
             catch (e: Exception) { call.reject(message(code(e)), code(e)) }
             finally { busy.set(false) }
         }
@@ -74,7 +73,7 @@ class QuzhiPlugin : Plugin() {
     @PluginMethod fun login(call: PluginCall) {
         if (!busy.compareAndSet(false, true)) { call.reject("趣智操作正在进行，请稍候", "BUSY"); return }
         activity.runOnUiThread {
-            load()
+            restoreState()
             val padding = (20 * context.resources.displayMetrics.density).toInt()
             val content = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(padding, 0, padding, 0) }
             fun label(text: String) = TextView(activity).apply { this.text = text; setPadding(0, padding / 2, 0, padding / 2) }
@@ -178,7 +177,7 @@ class QuzhiPlugin : Plugin() {
         if (!busy.compareAndSet(false, true)) { call.reject("趣智操作正在进行，请稍候", "BUSY"); return }
         activity.runOnUiThread {
             try {
-                load(); session()
+                restoreState(); session()
                 if (state.optBoolean("expired", false)) throw QuzhiFailure("AUTH")
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(QuzhiProtocol.RECHARGE)).setPackage("com.eg.android.AlipayGphone")
                 activity.startActivity(intent)
