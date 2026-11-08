@@ -40,6 +40,7 @@ class QuzhiProtocolTest {
         assertEquals(3, QuzhiProtocol.payload(JSONObject("""{"success":true,"errorCode":"0","data":3}""")))
         rejected("SERVICE") { QuzhiProtocol.payload(JSONObject("""{"success":true,"errorCode":9}""")) }
         rejected("AUTH") { QuzhiProtocol.payload(JSONObject("""{"success":false,"errorCode":2,"message":"登录已失效"}""")) }
+        rejected("AUTH") { QuzhiProtocol.payload(JSONObject("""{"success":false,"errorCode":8,"message":"未获取到用户信息，请重新登录"}""")) }
         rejected("SERVICE") { QuzhiProtocol.payload(JSONObject("""{"success":false,"errorCode":2,"message":"签名过期，请重新登录"}""")) }
         rejected("VERIFY") { QuzhiProtocol.payload(JSONObject("""{"success":false,"errorCode":2,"message":"请求过于频繁"}""")) }
     }

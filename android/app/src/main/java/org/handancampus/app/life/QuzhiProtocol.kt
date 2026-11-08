@@ -41,7 +41,7 @@ internal object QuzhiProtocol {
         if (envelope.optBoolean("success", false) && code == "0") return envelope.opt("data")
         val message = text(envelope, "message") + text(envelope, "errorMessage")
         if (!message.contains("签名") && (code == "401" || code == "403" ||
-            Regex("未登[录陆]|请先登[录陆]|登录.{0,12}(过期|失效)|loginCode.{0,12}失效").containsMatchIn(message))) throw QuzhiFailure("AUTH")
+            Regex("未登[录陆]|请先登[录陆]|请重新登[录陆]|登录.{0,12}(过期|失效)|loginCode.{0,12}失效").containsMatchIn(message))) throw QuzhiFailure("AUTH")
         if (Regex("频繁|稍后|次数|验证码|验证失败").containsMatchIn(message)) throw QuzhiFailure("VERIFY")
         if (Regex("密码|账号不存在|用户不存在").containsMatchIn(message)) throw QuzhiFailure("CREDENTIALS")
         throw QuzhiFailure("SERVICE")
