@@ -1,3 +1,4 @@
+import {recordFeature} from './analytics';
 import {ref} from 'vue';
 import {pangguaiNative,pangguaiSupported,pangguaiError,type PangguaiSnapshot,type PangguaiDevice} from '../services/pangguai-client';
 export const pangguai=ref<PangguaiSnapshot>({connected:false,expired:false,phone:''});
@@ -21,7 +22,7 @@ export async function disconnectPangguai(){const result=await operation(()=>pang
 export async function scanPangguai():Promise<PangguaiDevice|undefined>{return operation(()=>pangguaiNative.scan())}
 export async function rechargePangguai(merchantId:string){return operation(()=>pangguaiNative.openRecharge({merchantId}))}
 
-export async function quoteLaundry(skuId?:string){return operation(()=>pangguaiNative.quoteLaundry(skuId?{skuId}:{existing:true}))}
+export async function quoteLaundry(skuId?:string){if(!pgBusy.value)void recordFeature('laundry');return operation(()=>pangguaiNative.quoteLaundry(skuId?{skuId}:{existing:true}))}
 async function transactionOperation(action:()=>Promise<PangguaiSnapshot>){
  return operation(async()=>{try{const result=await action();pangguai.value=result;return result}finally{try{pangguai.value=await pangguaiNative.getSnapshot()}catch{}}});
 }
@@ -29,7 +30,7 @@ export async function startLaundry(quoteId:string,method:string){return transact
 export async function pollLaundry(){return transactionOperation(()=>pangguaiNative.pollLaundry())}
 export async function cancelLaundry(sessionId:string){return transactionOperation(()=>pangguaiNative.cancelLaundry({sessionId}))}
 
-export async function prepareWater(skuId:string){return operation(()=>pangguaiNative.prepareWater({skuId}))}
+export async function prepareWater(skuId:string){if(!pgBusy.value)void recordFeature('water');return operation(()=>pangguaiNative.prepareWater({skuId}))}
 export async function startWater(quoteId:string){return transactionOperation(()=>pangguaiNative.startWater({quoteId}))}
 export async function pollWater(){return transactionOperation(()=>pangguaiNative.pollWater())}
 export async function endWater(sessionId:string){return transactionOperation(()=>pangguaiNative.endWater({sessionId}))}
