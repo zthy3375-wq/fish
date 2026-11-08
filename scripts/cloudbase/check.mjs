@@ -18,7 +18,14 @@ for(const region of ['ap-shanghai','ap-guangzhou']){
  const r=spawnSync('tcb',['env','list','--json','-e',envId,'-r',region],{env:childEnv,encoding:'utf8',timeout:90000,maxBuffer:2*1024*1024});
  const out=(r.stdout||'')+'\n'+(r.stderr||'');
  if(r.status===0&&out.includes(envId)){
-  console.log(JSON.stringify({verified:true,envId,region}));process.exit(0);
+  console.log(JSON.stringify({verified:true,envId,region}));
+  for(const args of [['env','detail'],['fn','list'],['service','list']]){
+   const probe=spawnSync('tcb',[...args,'--json','-e',envId,'-r',region],{env:childEnv,encoding:'utf8',timeout:90000,maxBuffer:2*1024*1024});
+   let value;try{value=JSON.parse(probe.stdout)}catch{value={exitCode:probe.status}}
+   const safe=(v,k='')=>{if(/secret|token|key|password|credential/i.test(k))return '[redacted]';if(Array.isArray(v))return v.map(x=>safe(x));if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).map(([a,b])=>[a,safe(b,a)]));return typeof v==='string'?v.replaceAll(key.trim(),'[redacted]').replaceAll(credential.Token,'[redacted]').replaceAll(credential.TmpSecretKey,'[redacted]'):v;};
+   console.log(JSON.stringify({probe:args.join(' '),result:safe(value)}));
+  }
+  process.exit(0);
  }
  const codes=[...new Set(out.match(/(?:AuthFailure|UnauthorizedOperation|ResourceNotFound|InvalidParameter|FailedOperation|UnsupportedOperation)(?:\.[A-Za-z]+)?/g)||[])];
  const known=['Invalid API Key','API Key 验证失败','密钥验证失败','没有权限','permission denied','invalid signature','token expired','登录失败','未登录','invalid api key'];
