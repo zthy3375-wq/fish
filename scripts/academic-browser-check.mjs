@@ -75,18 +75,18 @@ try{
      if(method==='logout')return {session:'disconnected'};
      if(method==='getGrades'&&window.__gradeFailure)throw Error('network');
      if(window.__gradeExpired)return {session:'expired'};
-     const timetable={term:{xnm:'2026',xqm:'3'},kbList:[{kcmc:'人工 UI 链路课程',xm:'教师',cdmc:'教室',xqj:'1',jcs:'1-2',zcd:'1-18周'}],practice:[]};
+     const timetable={term:{xnm:'2026',xqm:'3'},kbList:[{kcmc:'人工 UI 链路课程',xm:'教师',cdmc:'教室',xqj:'1',jcs:'1-2',zcd:'1-18周'},...['高等数学','大学英语','工程制图','大学物理','机械设计'].map((kcmc,i)=>({kcmc,xm:'测试教师',cdmc:'天枢楼'+(201+i),xqj:String(i+2),jcs:i%2?'5-6':'3-4',zcd:'1-18周'}))],practice:[]};
      return {session:'valid',modules:method==='getGrades'?{grades:{status:'ok',scope:'all',data:grades}}:method==='getExams'?{exams:{status:'ok',data:[{name:'人工 UI 考试',date:'2026-11-07',time:'09:00-11:00',room:'测试考场',seat:''}]}}:{timetable:{status:'ok',data:timetable}}};
     }return {};
    }};
   },syntheticGrades);
-  const page=await context.newPage(),errors=[];activePage=page;page.on('pageerror',e=>errors.push(e.message));
+  const page=await context.newPage(),errors=[];page.setDefaultTimeout(12000);activePage=page;page.on('pageerror',e=>errors.push(e.message));
   await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
   await page.goto('http://127.0.0.1:4175');
   await checkParcelShortcuts(page,assert,{width,output});
   await checkNativeLife(page,assert,{width,output});
-  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'学习',exact:true}).click();
-  await page.getByRole('heading',{name:'学习',exact:true}).waitFor();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+  await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
   await page.getByRole('button',{name:/成绩分析/}).click();
   await page.getByText('还没有本人已同步成绩',{exact:true}).waitFor();
   assert(await page.locator('.ga-stats').count()===0,`${width}: no invented statistics before school login`);
@@ -99,10 +99,10 @@ try{
   assert(await page.getByRole('button',{name:'添加个人事项',exact:true}).count()===1,`${width}: compact timetable header add action`);
   const historyLength=await page.evaluate(()=>history.length);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'今天',exact:true}).click();
-  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'学习',exact:true}).click();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('button',{name:/成绩分析/}).click();
   await page.getByRole('button',{name:'返回上一页',exact:true}).click();
-  await page.getByRole('heading',{name:'学习',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
   assert(await page.evaluate(()=>history.length)===historyLength,`${width}: tab and detail navigation do not grow browser history`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByRole('button',{name:'日视图',exact:true}).click();
@@ -122,8 +122,8 @@ try{
 
   await page.reload();await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   assert(await page.evaluate(()=>!!localStorage.getItem('handan.academic.cache.v050')),`${width}: school cache survives reload`);
-  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'学习',exact:true}).click();
-  await page.getByRole('heading',{name:'学习',exact:true}).waitFor();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+  await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
   await page.getByRole('button',{name:/成绩分析/}).first().click();
   await page.locator('.ga-stats').waitFor();
   assert(await page.locator('.ga-stats strong').nth(0).innerText()==='7',`${width}: distinct course count`);
@@ -160,8 +160,8 @@ try{
   const calls=await page.evaluate(()=>window.__academicCalls.filter(m=>m==='getGrades').length);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
-  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'学习',exact:true}).click();
-  await page.getByRole('heading',{name:'学习',exact:true}).waitFor();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+  await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
   await page.getByRole('button',{name:/成绩分析/}).click();
   await page.getByLabel('搜索成绩课程',{exact:true}).waitFor();
   assert(await page.getByLabel('搜索成绩课程',{exact:true}).inputValue()==='人工数值',`${width}: filters survive navigation`);
@@ -175,7 +175,7 @@ try{
   await page.getByText(/学校登录已过期，下面是上次同步记录/).waitFor();
   assert(await page.locator('.ga-record').count()===1,`${width}: expiry does not erase records`);
   await page.screenshot({path:path.join(output,`grade-details-${width}.png`),fullPage:true,animations:'disabled'});
-  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'学习',exact:true}).click();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('button',{name:/学业中心/}).click();
   await page.getByText('培养方案与毕业要求 · 待接入',{exact:true}).waitFor();
   assert(await page.getByRole('heading',{name:'课程性质与学分',exact:true}).count()===1,`${width}: study center shows categories without fabricated graduation targets`);
@@ -235,7 +235,7 @@ try{
   assert(await nav('待办').getAttribute('aria-current')==='page',`${width}: Android/browser back guards task details before leaving tab`);
   await page.getByLabel('搜索任务').fill('');
   await page.screenshot({path:path.join(output,`tasks-${width}.png`),animations:'disabled'});
-  await nav('学习').click();
+  await nav('待办').click();await page.getByRole('button',{name:/学习通作业/}).click();
   await page.getByRole('button',{name:'连接学习通',exact:true}).click();
   await page.getByText('学习通已连接',{exact:true}).waitFor();
   await page.locator('.sync-course-row input[type=checkbox]').first().check();
@@ -277,7 +277,7 @@ try{
   await dialog.getByText('已提交 · 待批阅',{exact:true}).waitFor();
   assert(await page.evaluate(()=>window.__learningOpened)==='12/34/homework/78',`${width}: explicit platform action opens original task`);
   await dialog.getByRole('button',{name:'关闭任务详情'}).click();
-  await nav('学习').click();
+  await nav('待办').click();await page.getByRole('button',{name:/学习通作业/}).click();
   await page.getByRole('button',{name:/^已提交/}).click();
   await page.getByRole('button',{name:'同步管理',exact:true}).click();
   await page.evaluate(()=>window.__learningFailure=true);

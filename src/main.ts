@@ -15,3 +15,5 @@ import './agenda.css';
 import './navigation.css';
 
 import './daily-flow.css';
+
+import './interface.css';

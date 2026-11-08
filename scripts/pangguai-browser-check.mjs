@@ -20,7 +20,7 @@ export async function checkPangguaiOfficial(page, assert, {width, output}) {
     await card.getByRole('status').filter({hasText: text}).waitFor();
     assert(await card.getByRole('button', {name: '官方钱包', exact: true}).isEnabled(), `${width}: Pangguai ${status} permits a deliberate retry`);
   }
-  await nav('我的').click();
+  await nav('生活').click();
   await card.waitFor();
   assert(await card.getByRole('status').count() === 0, `${width}: Pangguai profile entry does not reuse a prior page launch result`);
   await page.evaluate(() => { window.__pangguaiStatus = 'opened' });

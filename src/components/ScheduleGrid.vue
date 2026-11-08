@@ -27,6 +27,8 @@ const props = defineProps<{
   now: Date;
   readOnly?: boolean;
 }>();
+const palette=['#b9e6fa','#d3ccff','#ffe3a0','#ffcbd5','#b8eee0','#ffdab6','#d8e9b2','#e8c9f0'];
+function tint(c:Course){let h=0;for(const ch of (c.courseId||c.name.trim()))h=(Math.imul(h,31)+ch.charCodeAt(0))|0;return {'background':palette[(h>>>0)%palette.length],color:'#243348'};}
 const emit = defineEmits<{
   course: [course: Course];
   conflict: [courses: Course[]];
@@ -120,7 +122,7 @@ const currentPosition = computed(() =>
             v-if="group.items.length === 1"
             class="positioned-course"
             :class="group.items[0].course.color"
-            :style="pos(group.top, group.bottom)"
+            :style="{...pos(group.top, group.bottom),...tint(group.items[0].course)}"
             :data-course-id="group.items[0].course.id"
             :aria-label="`${group.items[0].course.name}，${group.items[0].course.room}，${group.items[0].course.start}至${group.items[0].course.end}`"
             @click="emit('course', group.items[0].course)"

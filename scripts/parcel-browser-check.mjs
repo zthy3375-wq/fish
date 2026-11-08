@@ -30,7 +30,7 @@ export async function checkParcelShortcuts(page, assert, {width, output}) {
   assert(await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).isDisabled(), `${width}: parcel pending dispatch disables both provider buttons`);
   assert(await page.evaluate(() => window.__parcelCalls.length) === calls + 1, `${width}: repeated parcel taps dispatch only once`);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await nav('我的').click();
+  await nav('生活').click();
   await page.getByRole('button',{name:/取快递/}).click();
   await shortcuts.waitFor();
   await page.evaluate(() => { window.__parcelFinish(); window.__parcelDelayed = false; window.__parcelStatus = 'opened' });

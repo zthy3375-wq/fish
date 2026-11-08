@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { ChevronLeft, ChevronRight, Info } from 'lucide-vue-next';
 import type { AcademicData, Course } from "../domain/academic";
 import { coursesForDay } from "../domain/academic";
@@ -20,6 +20,7 @@ import { academicCache, academicBusy, selectSchoolTerm } from '../composables/ha
 import ScheduleGrid from "./ScheduleGrid.vue";
 import CourseCard from "./CourseCard.vue";
 import EmptyState from "./EmptyState.vue";
+const comfortable=ref(false);
 const props = defineProps<{
   practice?: {name:string;teacher:string;weeks:string}[];
   table: TimeTable;
@@ -99,7 +100,7 @@ function touchEnd(e: TouchEvent) {
     <label v-if="academicCache.semesters.data?.length" class="schedule-term">
       <span>学期</span><select :value="academicCache.selectedTerm" :disabled="academicBusy" aria-label="课表学期" @change="termChange"><option v-for="t in academicCache.semesters.data" :key="`${t.xnm}-${t.xqm}`" :value="`${t.xnm}-${t.xqm}`">{{t.xnm}}–{{Number(t.xnm)+1}} {{t.xqm==='3'?'秋季':'春季'}}</option></select>
     </label>
-    <div class="schedule-toolbar">
+    <div class="schedule-toolbar"><button class="text-button" :aria-pressed="comfortable" @click="comfortable=!comfortable">{{comfortable?'舒适阅读':'整周总览'}}</button>
       <div class="segmented" aria-label="课表视图">
         <button
           :class="{ selected: view === 'day' }"
@@ -197,6 +198,7 @@ function touchEnd(e: TouchEvent) {
             /></div
         ></template>
         <ScheduleGrid
+          :class="{comfortable}"
           v-else
           :read-only="false"
           :courses="data.courses"

@@ -331,14 +331,14 @@ const sectionNames: Record<string, string> = {
 const title = computed(() =>
   page.value === "home"
     ? "今天"
-    : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
+    : page.value === "life" ? "校园生活" : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
       ? sectionNames[section.value]
       : "我的",
 );
 const subtitle = computed(() =>
   page.value === "home"
     ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
-    : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
+    : page.value === "life" ? "接水、洗衣与校园服务" : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
       ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
       : "学校账号 · 本机设置",
 );
@@ -552,7 +552,7 @@ onUnmounted(() => {
   <TaskDetail ref="taskDetailRef" @saved="notify"/>
   <div
     class="app-shell"
-    :class="{ compact: prefs.compact, 'home-active': page === 'home' }"
+    :class="{ compact: prefs.compact, 'home-active': page === 'home', 'schedule-active':page==='schedule' }"
   >
     <AppHeader
       :inert="!!modal || agendaView.editor"
@@ -701,7 +701,9 @@ onUnmounted(() => {
               </button>
             </div>
           </template>
+          <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
           <template v-else-if="page === 'academic' || page === 'schedule' || page === 'tasks'">
+            <button v-if="section==='agenda'" class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通作业</strong><span>按课程查看与安排</span><ChevronRight :size="16"/></button>
             <CampusAgenda v-if="section==='agenda'" @course="details" @navigate="go" @edit="editDailyTask" />
             <LearningCenter v-else-if="section==='learning'" @plan="planLearning"/><SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
             <template v-else-if="section === 'overview'">
@@ -738,7 +740,7 @@ onUnmounted(() => {
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
-            <SectionHeader title="校园生活"/><LifeServices @open="open"/>
+            <SectionHeader title="教务服务"/><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/>
             <TaskSettings/>
             <SectionHeader title="外观设置" />
             <section class="settings-group">

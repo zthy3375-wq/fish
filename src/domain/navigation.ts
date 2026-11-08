@@ -1,5 +1,5 @@
 /** App-owned return paths. Tab visits are replacements, never a return stack. */
-export type Page = 'home' | 'schedule' | 'tasks' | 'academic' | 'profile';
+export type Page = 'home' | 'schedule' | 'tasks' | 'academic' | 'profile' | 'life';
 export interface Route { page: Page; section: string }
 const sections = ['overview', 'learning', 'agenda', 'schedule', 'grades', 'exams', 'study', 'calendar'];
 export function parseRoute(hash: string): Route {
@@ -7,7 +7,7 @@ export function parseRoute(hash: string): Route {
   if (raw === 'tasks' || (raw === 'academic' && sub === 'agenda')) return {page:'tasks',section:'agenda'};
   if (raw === 'academic' && sub === 'official') return {page:'profile',section:'overview'};
   if (raw === 'schedule' || (raw === 'academic' && sub === 'schedule')) return {page:'schedule', section:'schedule'};
-  const page: Page = raw === 'academic' || raw === 'profile' ? raw : 'home';
+  const page: Page = raw === 'academic' || raw === 'profile' || raw === 'life' ? raw : 'home';
   return {page, section:page === 'academic' && sections.includes(sub) ? sub : 'overview'};
 }
 export function routeKey(route: Route) { return `${route.page}/${route.section}`; }
