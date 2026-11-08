@@ -50,4 +50,8 @@ class PangguaiWaterTest {
 
     @Test fun twoSuccessfulEmptyReadsAfterUseHandleObservedPhysicalSettlementVariant(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.readingPhase="empty";val first=h.engine.poll(s);assertEquals("using",first.getString("phase"));assertEquals(0,h.count("order/afterPay/creating"));val second=h.engine.poll(first);assertEquals("settled",second.getString("phase"));assertEquals("session_closed",second.getString("endBasis"));assertEquals(1,h.count("order/afterPay/creating"))}
 
+    @Test fun immediateEndAndLostPaymentKeepsNewestDurableIntent(){val h=Harness();val q=h.engine.prepare(device,"outlet-test");h.handler={p,_->when(p){"goods/water/unlock"->{h.readingPhase="ended";JSONObject("{msgId:'message-test',orderNo:'water-order'}")};"order/sync"->{h.paid=true;throw PangguaiFailure("NETWORK")};else->h.response(p)}};fails("NETWORK"){h.engine.start(device,q,null)};assertTrue(h.saved!!.getBoolean("settleSent"));assertEquals("settled",h.engine.poll(h.saved!!).getString("phase"));assertEquals(1,h.count("order/sync"));assertEquals(1,h.count("order/afterPay/creating"))}
+
+    @Test fun remoteEndAndLostPaymentKeepsNewestDurableIntent(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.handler={p,_->if(p=="order/sync"){h.paid=true;throw PangguaiFailure("NETWORK")}else h.response(p)};fails("NETWORK"){h.engine.end(s)};assertTrue(h.saved!!.getBoolean("settleSent"));assertEquals("settled",h.engine.poll(h.saved!!).getString("phase"));assertEquals(1,h.count("goods/endWater"));assertEquals(1,h.count("order/sync"))}
+
 }

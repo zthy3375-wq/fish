@@ -77,8 +77,9 @@ internal class PangguaiWater(
             val result=obj(post("goods/water/unlock",mapOf("skuId" to req(s,"skuId"),"promotions" to promotions())))
             // Keep the order number as soon as present, even if the optional command acknowledgement is missing.
             s.put("orderNo",req(result,"orderNo")).put("msgId",text(result,"msgId"));save(s)
-            return poll(s)
         }catch(e:Exception){s.put("error",(e as? PangguaiFailure)?.kind ?: "NETWORK");save(s);throw e}
+        // poll persists its own newer state; never overwrite that state with the initial intent on failure.
+        return poll(s)
     }
     private fun bill(s:JSONObject):Boolean {
         val data=obj(post("order/detail",mapOf("orderNo" to req(s,"orderNo"))))
@@ -170,8 +171,8 @@ internal class PangguaiWater(
         s.put("endSent",true).put("phase","ending");save(s)
         try {
             if(post("goods/endWater",mapOf("goodsId" to req(s,"deviceId")))!=true)throw PangguaiFailure("WATER_PHYSICAL_END")
-            return poll(s)
         }catch(e:Exception){s.put("error",(e as? PangguaiFailure)?.kind ?: "NETWORK");save(s);throw e}
+        return poll(s)
     }
     /** Explicit recovery only after user reports using the physical settlement button. Never sends commands. */
     fun confirmPhysicalEnd(source:JSONObject):JSONObject {
