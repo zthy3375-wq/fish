@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AppUpdateDialog from './components/AppUpdateDialog.vue';
+import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred} from './composables/updates';
+import {initPangguai,pangguai,pgBusy} from './composables/pangguai';
 import LifeServices from './components/LifeServices.vue';
 import {defineAsyncComponent} from 'vue';
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
@@ -300,6 +303,7 @@ const settings = [
   },
 ];
 const about = [
+  { id: "app-update", title: "检查更新", subtitle: `当前版本 ${appVersion}`, icon: Info },
   { id: "privacy", title: "隐私政策", icon: ShieldCheck },
   {
     id: "feedback",
@@ -475,9 +479,11 @@ function trapFocus(e: KeyboardEvent) {
   }
 }
 function escape(e: KeyboardEvent) {
+  if(updatesOpen.value){if(e.key==='Escape')dismissUpdate();return;}
   if(e.key === "Escape"){if(modal.value)requestClose();else if(agendaView.editor)taskDetailRef.value?.requestBack();}
 }
 async function recalibrate() {
+  if(document.visibilityState==='visible')void checkUpdates();
   void syncLearning().catch(()=>{});
   void reloadTasks();
   now.value = campusNow();
@@ -498,7 +504,12 @@ function viewportChange() {
     !!v && window.innerHeight - v.height > 150,
   );
 }
+watch(()=>[modal.value,agendaView.editor,pgBusy.value,pangguai.value.water?.phase] as const,()=>{
+  const phase=pangguai.value.water?.phase;
+  updateDeferred.value=!!modal.value||!!agendaView.editor||pgBusy.value||!!(phase&&!['settled','ended_zero','closed_unknown'].includes(phase));
+},{immediate:true});
 onMounted(async () => {
+  void initPangguai().then(()=>initializeUpdates());
   load();
   void initTasks().catch(()=>{});
   void initLearning().then(()=>syncLearning()).catch(()=>{});
@@ -517,7 +528,8 @@ onMounted(async () => {
   }
   if (Capacitor.getPlatform() === "android") {
     const h = await NativeApp.addListener("backButton", () => {
-      if (modal.value === "course-editor") requestClose();
+      if (updatesOpen.value) dismissUpdate();
+      else if (modal.value === "course-editor") requestClose();
       else if (canBack()) back();
       else NativeApp.exitApp();
     });
@@ -540,9 +552,11 @@ onUnmounted(() => {
 });
 </script>
 <template>
+  <AppUpdateDialog/>
   <TaskDetail ref="taskDetailRef" @saved="notify"/>
   <div
     class="app-shell"
+    :inert="updatesOpen"
     :class="{ compact: prefs.compact, 'home-active': page === 'home', 'schedule-active':page==='schedule' }"
   >
     <AppHeader
@@ -765,7 +779,7 @@ onUnmounted(() => {
             />
             <SectionHeader title="关于与隐私" /><ServiceGroup
               :items="about"
-              @select="(id) => (id === 'manager' ? manage() : open(id))"
+              @select="(id) => (id === 'app-update' ? checkUpdates(true) : open(id))"
             />
             <p class="footnote source-footnote">
               <ShieldCheck :size="13" />不保存教务密码 · 没有广告与分析追踪
