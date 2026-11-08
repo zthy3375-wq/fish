@@ -28,7 +28,7 @@ async function locate(){
   locationExpiry=setTimeout(()=>{clearLocation();message.value='位置已超过 1 分钟，请重新定位'},60000);
  }catch(error){if(generation===locationGeneration)message.value=error instanceof Error?error.message:'定位未完成，请重试'}finally{if(generation===locationGeneration)locating.value=false}
 }
-watch(view,(v)=>{if(v!=='geo')clearLocation()});
+watch(view,(v)=>{if(v!=='geo'){clearLocation();message.value=''}});
 import {saveFile} from '../services/files';
 import {campusCenters,sourcePlaces,placeCategories,readMapData,saveMapData,filterPlaces,validPlace,navigationUrl,type Campus,type CampusPlace,type PlaceCategory} from '../services/campus-map';
 const initial=readMapData(),personal=ref(initial.places),favorites=ref(initial.favorites),campus=ref<Campus>('east'),query=ref(''),category=ref('all'),selected=ref<CampusPlace>(),message=ref(''),online=ref(false);
