@@ -21,6 +21,8 @@ function clearResumeTimer(){clearTimeout(resumeTimer);resumeTimer=undefined}
 function cancelReturn(){awaitingReturn=false;clearResumeTimer()}
 async function refreshWallet(){
   if(disposed||!supported||!valid.value||blocked.value||refreshing)return false;
+  // The native month picker can be cleared. An empty billing filter must not disable balance refresh.
+  if(!month.value)month.value=quzhiMonth();
   refreshing=true;lastRefreshActivityAt=Date.now();
   try{return await refreshQuzhi(month.value)}
   finally{refreshing=false;lastRefreshActivityAt=Date.now()}

@@ -62,6 +62,15 @@ it('refreshes the selected billing month after an ordinary return',async()=>{
   await vi.advanceTimersByTimeAsync(1);active();await settle();expect(refreshQuzhi).toHaveBeenNthCalledWith(2,'2026-10');expect(month.value).toBe('2026-10');
 });
 
+it('restores the current month when clearing the picker so wallet refresh remains usable',async()=>{
+  const month=root.querySelector<HTMLInputElement>('input[type="month"]')!;
+  month.value='';month.dispatchEvent(new Event('input',{bubbles:true}));month.dispatchEvent(new Event('change',{bubbles:true}));await settle();
+  expect(refreshQuzhi).toHaveBeenCalledExactlyOnceWith('2026-11');
+  expect(month.value).toBe('2026-11');
+  await vi.advanceTimersByTimeAsync(60_000);active();await settle();
+  expect(refreshQuzhi).toHaveBeenNthCalledWith(2,'2026-11');
+});
+
 it('deduplicates repeated active and visibility events even before the bridge reports busy',async()=>{
   let finish!:(value:boolean)=>void;
   vi.mocked(refreshQuzhi).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}));
