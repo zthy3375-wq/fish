@@ -15,9 +15,21 @@ try{
   const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
-   window.androidBridge={};window.__academicCalls=[];window.__learningCalls=[];
+   const methods={QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   window.androidBridge={};window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
+    if(plugin==='QuzhiCampus'){
+     window.__quzhiCalls.push({method,args});
+     if(method==='login')window.__quzhiState={connected:true,expired:false,phone:'138****0000',school:'人工测试学校',wallet:{total:'12.34',cash:'10',gift:'2.34'},walletUpdatedAt:Date.now()};
+     if(method==='logout')window.__quzhiState={connected:false,expired:false,phone:''};
+     if(method==='openRecharge'){window.__quzhiOpened=true;return {opened:true}}
+     if(method==='refresh'){
+      if(window.__quzhiFailure)window.__quzhiState.issues={wallet:'NETWORK',bills:'NETWORK'};
+      else if(window.__quzhiExpired){window.__quzhiState.expired=true;window.__quzhiState.issues={wallet:'AUTH',bills:'AUTH'}}
+      else Object.assign(window.__quzhiState,{bills:[{id:'synthetic-1',date:'2026-11-06 08:00',amount:'1.25',description:'人工测试浴室'}],billsMonth:args.month,billsUpdatedAt:Date.now(),issues:{}});
+     }
+     return JSON.parse(JSON.stringify(window.__quzhiState));
+    }
     if(plugin==='Preferences'){if(method==='get')return {value:localStorage.getItem(args.key)};if(method==='set'){localStorage.setItem(args.key,args.value);return {}}}
     if(plugin==='LocalNotifications'&&method==='getPending')return {notifications:[]};
     if(plugin==='ChaoxingClient'){
@@ -259,6 +271,42 @@ try{
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: learning logout preserves personal tasks`);
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).items.length)===0,`${width}: learning logout clears platform cache and plans`);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: mobile layout has no horizontal overflow`);
+  await nav('今天').click();
+  await page.locator('.quzhi-entry').click();
+  const walletDialog=page.getByRole('dialog',{name:'趣智校园钱包'});
+  await walletDialog.getByRole('button',{name:'连接趣智校园',exact:true}).click();
+  await walletDialog.getByText('人工测试浴室',{exact:true}).waitFor();
+  assert(await walletDialog.locator('.quzhi-amount').innerText()==='¥12.34',`${width}: quzhi balance comes from native wallet`);
+  assert(await walletDialog.getByText('138****0000',{exact:true}).isVisible(),`${width}: quzhi exposes masked phone only`);
+  await page.screenshot({path:path.join(output,`quzhi-wallet-${width}.png`),animations:'disabled'});
+  assert(await walletDialog.evaluate(el=>el.scrollWidth<=el.clientWidth),`${width}: quzhi wallet fits mobile sheet`);
+  await walletDialog.getByRole('button',{name:'充值 · 支付宝',exact:true}).click();
+  await walletDialog.getByRole('button',{name:'取消',exact:true}).click();
+  assert(!await page.evaluate(()=>window.__quzhiOpened),`${width}: cancel does not open recharge`);
+  await walletDialog.getByRole('button',{name:'充值 · 支付宝',exact:true}).click();
+  await walletDialog.getByRole('button',{name:'打开充值页',exact:true}).click();
+  assert(await page.evaluate(()=>window.__quzhiOpened),`${width}: explicit recharge uses native bridge`);
+  assert(await walletDialog.locator('.quzhi-amount').innerText()==='¥12.34',`${width}: opening recharge never invents credited balance`);
+  await page.evaluate(()=>window.__quzhiFailure=true);
+  await walletDialog.getByRole('button',{name:'刷新趣智余额与账单',exact:true}).click();
+  await walletDialog.getByText(/余额未更新/).waitFor();
+  assert(await walletDialog.locator('.quzhi-amount').innerText()==='¥12.34',`${width}: failed quzhi refresh retains balance`);
+  await walletDialog.locator('input[type=month]').fill('2026-10');
+  await walletDialog.locator('input[type=month]').dispatchEvent('change');
+  await walletDialog.getByText(/2026-10 尚未取得/).waitFor();
+  assert(await walletDialog.getByText('人工测试浴室',{exact:true}).isVisible(),`${width}: failed month change labels retained old bills`);
+  await page.evaluate(()=>{window.__quzhiFailure=false;window.__quzhiExpired=true});
+  await walletDialog.getByRole('button',{name:'刷新趣智余额与账单',exact:true}).click();
+  await walletDialog.getByRole('button',{name:'重新连接',exact:true}).waitFor();
+  assert(await walletDialog.getByRole('button',{name:'充值 · 支付宝',exact:true}).isDisabled(),`${width}: expired account cannot open recharge`);
+  await walletDialog.locator('.quzhi-account summary').click();
+  await walletDialog.getByRole('button',{name:'退出趣智账户',exact:true}).click();
+  await walletDialog.getByRole('button',{name:'确认退出',exact:true}).click();
+  await walletDialog.getByRole('button',{name:'连接趣智校园',exact:true}).waitFor();
+  assert(await walletDialog.locator('.quzhi-amount').count()===0,`${width}: logout clears account wallet from view`);
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: quzhi logout preserves personal tasks`);
+  assert(await page.evaluate(()=>Object.keys(localStorage).every(k=>!k.toLowerCase().includes('quzhi'))),`${width}: quzhi cache is never written to web storage`);
+  await walletDialog.getByRole('button',{name:'关闭',exact:true}).click();
   assert(!errors.length,`${width}: no runtime errors`);
   await page.screenshot({path:path.join(output,`records-${width}.png`),fullPage:true,animations:'disabled'});await context.close();
  }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import QuzhiEntry from './components/QuzhiEntry.vue';
+import QuzhiWallet from './components/QuzhiWallet.vue';
 import LearningCenter from './components/LearningCenter.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import TaskSettings from './components/TaskSettings.vue';
@@ -642,6 +644,8 @@ onUnmounted(() => {
                 "
               />
             </div>
+            <SectionHeader title="校园生活" meta="余额与充值" />
+            <div class="service-group"><QuzhiEntry @open="open('quzhi-wallet')"/></div>
             <SectionHeader title="教务速览" meta="成绩与考试" />
             <div class="quick-grid home-quick">
               <QuickAction
@@ -730,6 +734,7 @@ onUnmounted(() => {
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
+            <SectionHeader title="校园生活"/><div class="service-group"><QuzhiEntry @open="open('quzhi-wallet')"/></div>
             <TaskSettings/>
             <SectionHeader title="外观设置" />
             <section class="settings-group">
@@ -804,6 +809,7 @@ onUnmounted(() => {
           :aria-label="
             modal === 'course'
               ? '课程详情'
+              : modal === 'quzhi-wallet' ? '趣智校园钱包'
               : '校园助手设置'
           "
         >
@@ -815,8 +821,9 @@ onUnmounted(() => {
           >
             <X :size="22" />
           </button>
+          <QuzhiWallet v-if="modal === 'quzhi-wallet'"/>
           <CourseEditor
-            v-if="modal === 'course-editor'"
+            v-else-if="modal === 'course-editor'"
             ref="editorRef"
             :course="editorCourse"
             :preset="editorPreset"
@@ -1032,6 +1039,7 @@ onUnmounted(() => {
               昵称、专业、主题和偏好保存在本机。个人课表通过
               IndexedDB（Web）或原生设备存储保存，导入文件仅在本机解析，不会上传服务器。学校数据保存在本机缓存，个人课表与备份独立保留。
             </p>
+            <p>趣智校园使用本人账户连接。密码与验证码仅用于本次认证，不保存；会话、余额与账单由 Android 系统密钥库加密保存，退出趣智账户后清除。充值跳转支付宝官方小程序，付款前请核对学校和账户。</p>
             <p>
               托管平台可能产生运行必需的访问日志。外部网站受其各自隐私政策约束。
             </p>
