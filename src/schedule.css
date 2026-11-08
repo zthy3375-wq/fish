@@ -159,20 +159,6 @@
   padding-top: 42px;
 }
 /* v0.3.1: geometry comes from the period axis; text size never drives course duration. */
-.schedule-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.schedule-actions button {
-  min-height: 42px;
-  padding: 9px 12px;
-  white-space: nowrap;
-  font-size: 13px;
-}
-.schedule-actions .primary {
-  flex: 1;
-}
 .schedule-toolbar {
   margin-bottom: 0;
 }
@@ -442,7 +428,7 @@
   align-items: stretch !important;
   background: var(--color-bg);
 }
-.overlay-surface.editor-fullscreen:not(.drawer) {
+.overlay-surface.editor-fullscreen {
   border: 0;
   border-radius: 0;
   width: 100%;
@@ -816,7 +802,7 @@ button:disabled {
     transform: none;
   }
 }
-/* Avoid focus zoom on iOS while keeping pinch zoom available. */
+/* Keep form controls readable while allowing pinch zoom. */
 .course-editor-page input,
 .course-editor-page select,
 .course-editor-page textarea,
@@ -824,7 +810,6 @@ button:disabled {
 .time-table-manager select {
   font-size: 16px;
 }
-.schedule-actions button,
 .editor-header .primary {
   min-height: 44px;
 }

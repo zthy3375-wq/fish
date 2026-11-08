@@ -1,137 +1,54 @@
-import { ref, onMounted, onUnmounted } from "vue";
-export type Page = "home" | "schedule" | "academic" | "profile";
-const sections = [
-  "overview",
-  "schedule",
-  "grades",
-  "exams",
-  "study",
-  "calendar",
-  "official",
-];
-export function parseRoute(hash: string) {
-  const [raw, sub] = hash.replace(/^#\/?/, "").split("/");
-  const page: Page = raw === "academic" || raw === "profile" || raw === "schedule" ? raw : "home";
-  return {
-    page,
-    section:
-      page === "schedule" ? "schedule" : page === "academic" &&
-      sections.includes(sub)
-        ? sub
-        : "overview",
-  };
-}
+import { ref, onMounted, onUnmounted } from 'vue';
+import { NavigationStack, parseRoute, routeHash, type Page } from '../domain/navigation';
+export { parseRoute, type Page } from '../domain/navigation';
+
+/** One browser boundary; internal return paths never accumulate tab visits. */
 export function useNavigation() {
-  const initial = parseRoute(location.hash),
-    page = ref<Page>(initial.page),
-    section = ref(initial.section),
-    overlay = ref("");
-  let depth = 0,
-    activeUrl = location.href,
-    overlayGuard: (() => boolean) | undefined;
-  function setOverlayCloseGuard(guard: () => boolean) {
-    overlayGuard = guard;
-  }
-  const apply = () => {
-    if (
-      overlay.value === "course-editor" &&
-      history.state?.campusOverlay !== "course-editor" &&
-      overlayGuard &&
-      !overlayGuard()
-    ) {
-      history.pushState(
-        { campusDepth: depth, campusOverlay: overlay.value },
-        "",
-        activeUrl,
-      );
-      return;
-    }
-    activeUrl = location.href;
-    const r = parseRoute(location.hash);
-    page.value = r.page;
-    section.value = r.section;
-    overlay.value = history.state?.campusOverlay || "";
-    depth = history.state?.campusDepth || 0;
-  };
-  history.replaceState(
-    { ...history.state, campusDepth: 0, campusOverlay: "" },
-    "",
-    location.href,
-  );
-  function move(p: Page, s = "overview") {
-    if (p === page.value && s === section.value && !overlay.value) return;
-    if (overlay.value)
-      history.replaceState(
-        { campusDepth: depth, campusOverlay: "" },
-        "",
-        `#/${p}${p === "academic" && s !== "overview" ? "/" + s : ""}`,
-      );
-    else
-      history.pushState(
-        { campusDepth: ++depth, campusOverlay: "" },
-        "",
-        `#/${p}${p === "academic" && s !== "overview" ? "/" + s : ""}`,
-      );
-    activeUrl = location.href;
-    page.value = p;
-    section.value = s;
-    overlay.value = "";
-    document.querySelector("main")?.scrollTo(0, 0);
-  }
-  function open(value: string) {
-    if (overlay.value) {
-      history.replaceState(
-        { ...history.state, campusOverlay: value },
-        "",
-        location.href,
-      );
-    } else {
-      history.pushState(
-        { campusDepth: ++depth, campusOverlay: value },
-        "",
-        location.href,
-      );
-    }
-    activeUrl = location.href;
-    overlay.value = value;
+  const stack = new NavigationStack(parseRoute(location.hash));
+  const page = ref(stack.route.page), section = ref(stack.route.section), overlay = ref('');
+  let beforeBack: (() => boolean) | undefined;
+  let overlayGuard: (() => boolean) | undefined;
+  const entry = () => ({campusNavigation:true});
+  function publish() {
+    page.value = stack.route.page; section.value = stack.route.section; overlay.value = stack.overlay;
+    history.replaceState(entry(), '', routeHash(stack.route));
   }
   function back() {
-    if (overlay.value) {
-      close();
-      return;
-    }
-    if (depth > 0) {
-      history.back();
-    } else if (overlay.value) {
-      overlay.value = "";
-    } else if (page.value === "academic" && section.value !== "overview") {
-      move("academic");
-    } else if (page.value !== "home") {
-      move("home");
+    if(beforeBack?.()) return;
+    if (stack.overlay && overlayGuard && !overlayGuard()) return;
+    stack.back(); publish();
+  }
+  function browserBack(event: PopStateEvent) {
+    if (event.state?.campusBoundary) {
+      if (stack.canBack()) {
+        back();
+        history.replaceState({campusBoundary:true}, '', routeHash(stack.route));
+        history.pushState(entry(), '', routeHash(stack.route));
+      } else history.back();
+    } else {
+      // A forward visit or a new hash restores its own route, not stale tab history.
+      const route = parseRoute(location.hash);
+      stack.route = route; stack.parents = new NavigationStack(route).parents; stack.overlay = ''; publish();
     }
   }
-  function close() {
-    if (!overlay.value) return;
-    overlay.value = "";
-    if (depth > 0) history.back();
-    else
-      history.replaceState(
-        { ...history.state, campusOverlay: "" },
-        "",
-        location.href,
-      );
-  }
-  onMounted(() => window.addEventListener("popstate", apply));
-  onUnmounted(() => window.removeEventListener("popstate", apply));
+  onMounted(() => {
+    if (!history.state?.campusNavigation) {
+      history.replaceState({campusBoundary:true}, '', location.href);
+      history.pushState(entry(), '', routeHash(stack.route));
+    } else publish();
+    history.scrollRestoration = 'manual';
+    window.addEventListener('popstate', browserBack);
+  });
+  onUnmounted(() => window.removeEventListener('popstate', browserBack));
   return {
-    page,
-    section,
-    overlay,
-    move,
-    open,
-    close,
+    page, section, overlay,
+    move(p: Page, s = 'overview') { stack.move(p, s); publish(); },
+    open(value: string) { stack.overlay = value; publish(); },
+    // Explicit completion/cancel bypasses the dirty-editor back guard.
+    close() { stack.overlay = ''; publish(); },
     back,
-    setOverlayCloseGuard,
-    canBack: () => depth > 0 || page.value !== "home" || !!overlay.value,
+    setOverlayCloseGuard(guard: () => boolean) { overlayGuard = guard; },
+    setBeforeBack(guard: () => boolean) { beforeBack = guard; },
+    canBack: () => stack.canBack(),
   };
 }

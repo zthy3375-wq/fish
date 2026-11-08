@@ -1,0 +1,7 @@
+{
+  "build_variant": "regular-debug",
+  "application_id": "org.example.campus",
+  "version_name": "0.0.7-fixture",
+  "version_code": 7,
+  "min_sdk": 23
+}

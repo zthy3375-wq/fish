@@ -1,8 +1,9 @@
+import {normalizeGrade} from '../domain/grade-analysis';
 import {uid,validateCourse,validateSemester,validateTimeTable, type Semester,type ManagedCourse,type TimeTable} from '../domain/schedule';
 import {handanTimeTable} from '../domain/handan-time-table';
 import {previewZhengfangTimetable} from './academic-adapters/zhengfang-timetable';
 import type {HandanAcademicClient,NativeAcademicResult,SchoolTerm,SchoolProfile,SchoolGrade,SchoolExam,SessionState,SchoolTimetable} from './handan-academic-client';
-export interface CachedModule<T> {data:T|null;updatedAt:string|null;error:string|null}
+export interface CachedModule<T> {data:T|null;updatedAt:string|null;error:string|null;scope?:'all'|'term'|'unknown'}
 export interface SchoolTermCache {term:SchoolTerm;semester:Semester;table:TimeTable;courses:ManagedCourse[];practice:SchoolTimetable['practice']}
 export interface AcademicCache {
  version:1;connected:boolean;session:SessionState;selectedTerm:string|null;lastError:string|null;
@@ -61,16 +62,21 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
   try{
    let data:unknown=module.data;
    if(name==='semesters')data=validateArray<SchoolTerm>(data,r=>{try{validTerm(r);return true}catch{return false}});
-   if(name==='grades')data=validateArray<SchoolGrade>(data,r=>typeof r.name==='string'&&r.name.length<=150&&typeof r.scoreText==='string'&&r.scoreText.length<=40&&(r.credit===null||Number.isFinite(r.credit))&&(r.gpa===null||Number.isFinite(r.gpa)));
+   if(name==='grades'){
+    if(module.scope==='term'&&target.scope==='all'&&target.data?.length)throw Error('GRADE_SCOPE');
+    if(!Array.isArray(data)||data.length>2000)throw Error('SCHEMA');
+    data=data.map(normalizeGrade);
+    if(!(data as SchoolGrade[]).length&&target.data?.length)throw Error('EMPTY');
+   }
    if(name==='exams')data=validateArray<SchoolExam>(data,r=>['name','date','time','room','seat'].every(k=>typeof r[k]==='string'&&r[k].length<=150));
    if(name==='profile'){
     const p=data as SchoolProfile;if(!p||!['name','major','className','year'].every(k=>typeof p[k as keyof SchoolProfile]==='string'&&p[k as keyof SchoolProfile].length<=150))throw Error('SCHEMA');
     data={name:p.name,major:p.major,className:p.className,year:p.year};
    }
-   if(name==='grades')data=(data as SchoolGrade[]).map(({name,scoreText,credit,gpa,term,kind})=>({name,scoreText,credit,gpa,term,kind}));
    if(name==='exams')data=(data as SchoolExam[]).map(({name,date,time,room,seat})=>({name,date,time,room,seat}));
+   if(name==='grades')target.scope=module.scope??'unknown';
    target.data=data;target.updatedAt=new Date().toISOString();target.error=null;
-  }catch{target.error=schoolError('SCHEMA')}
+  }catch(e){target.error=(e as Error).message==='EMPTY'?'学校返回空成绩，保留上次记录':(e as Error).message==='GRADE_SCOPE'?'仅收到单学期成绩，保留历年缓存':schoolError('SCHEMA')}
  }
  return next;
 }
@@ -101,7 +107,7 @@ export class AcademicSyncEngine {
       const query=name==='grades'?this.client.getGrades:this.client.getExams;
       if(!query)continue;
       let r:NativeAcademicResult;
-      try{r=await query.call(this.client,term)}catch{r={session:this.read().session,modules:{[name]:{status:'error',code:'NETWORK'}}}}
+      try{r=await query.call(this.client,name==='grades'?undefined:term)}catch{r={session:this.read().session,modules:{[name]:{status:'error',code:'NETWORK'}}}}
       if(token!==this.generation)return;
       await this.commit(applyAcademicResult(this.read(),r,this.calendar()));
       if(r.session==='expired')break;

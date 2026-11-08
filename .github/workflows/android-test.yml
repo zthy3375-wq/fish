@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
     paths:
       - 'android/**'
       - 'src/**'
@@ -42,16 +41,83 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - run: npm ci
+      - name: Test APK evidence checks without an SDK
+        run: node --test scripts/check-apk-evidence.mjs
       - run: npm test
       - run: npm run build
       - run: npx cap sync android
       - run: chmod +x android/gradlew
-      - run: ./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease
+      - name: Prepare verified Gradle distribution with download fallback
+        shell: bash
+        run: |
+          gradle_archive="$RUNNER_TEMP/gradle-8.11.1-bin.zip"
+          for distribution_source in \
+            'https://downloads.gradle.org/distributions/gradle-8.11.1-bin.zip' \
+            'https://repo.huaweicloud.com/repository/toolkit/gradle/gradle-8.11.1-bin.zip'; do
+            if curl --fail --location --retry 2 --connect-timeout 15 --max-time 120 "$distribution_source" --output "$gradle_archive" && \
+              echo "f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6  $gradle_archive" | sha256sum --check; then
+              GRADLE_VERIFIED_ARCHIVE="$gradle_archive" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          wrapper = Path('android/gradle/wrapper/gradle-wrapper.properties')
+          lines = wrapper.read_text().splitlines()
+          wrapper.write_text('\n'.join('distributionUrl=' + Path(os.environ['GRADLE_VERIFIED_ARCHIVE']).as_uri() if line.startswith('distributionUrl=') else line for line in lines) + '\n')
+          PY
+              exit 0
+            fi
+          done
+          echo 'Unable to download an archive matching the official Gradle checksum.' >&2
+          exit 1
+      - run: ./gradlew --no-daemon --init-script ../scripts/apk-evidence.init.gradle testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease :app:writeDebugApkEvidenceExpectation
         working-directory: android
+      - name: Package unsigned release for private offline signing
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-signing"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -P 16 4 android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/release-signing/app-release-unsigned.apk"
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" "$RUNNER_TEMP/release-signing/"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$RUNNER_TEMP/release-signing/app-release-unsigned.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: handan-campus-test-apk-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: hanyuantong-unsigned-release-${{ github.sha }}
+          path: ${{ runner.temp }}/release-signing/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Verify and record regular debug APK evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk-delivery/regular-debug"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/apk-delivery/regular-debug/handan-campus-regular-debug.apk"
+          node scripts/apk-evidence.mjs \
+            --apk "$RUNNER_TEMP/apk-delivery/regular-debug/handan-campus-regular-debug.apk" \
+            --expected android/app/build/outputs/apk-evidence/expected-debug.json \
+            --variant regular-debug \
+            --source-commit "$GITHUB_SHA" \
+            --build-tools-dir "$ANDROID_HOME/build-tools/35.0.0" \
+            --output "$RUNNER_TEMP/apk-delivery/regular-debug/build-evidence.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: handan-campus-regular-debug-${{ github.sha }}
+          path: ${{ runner.temp }}/apk-delivery/regular-debug/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Build parallel preview debug APK
+        run: ./gradlew --no-daemon --init-script ../scripts/apk-evidence.init.gradle -PlearningPreview=true assembleDebug :app:writeDebugApkEvidenceExpectation
+        working-directory: android
+      - name: Verify and record parallel preview APK evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk-delivery/parallel-preview-debug"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/apk-delivery/parallel-preview-debug/handan-campus-parallel-preview-debug.apk"
+          node scripts/apk-evidence.mjs \
+            --apk "$RUNNER_TEMP/apk-delivery/parallel-preview-debug/handan-campus-parallel-preview-debug.apk" \
+            --expected android/app/build/outputs/apk-evidence/expected-debug.json \
+            --variant parallel-preview-debug \
+            --regular-evidence "$RUNNER_TEMP/apk-delivery/regular-debug/build-evidence.json" \
+            --source-commit "$GITHUB_SHA" \
+            --build-tools-dir "$ANDROID_HOME/build-tools/35.0.0" \
+            --output "$RUNNER_TEMP/apk-delivery/parallel-preview-debug/build-evidence.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: handan-campus-parallel-preview-debug-${{ github.sha }}
+          path: ${{ runner.temp }}/apk-delivery/parallel-preview-debug/
           if-no-files-found: error
           retention-days: 14
   browser:

@@ -1,8 +1,17 @@
 # 文档导航
 
-阅读项目现状请以 [当前进度](STATUS.md) 和根目录 [README](../README.md) 为准。版本文档描述对应时点，不覆盖较新的真机反馈。
+阅读项目现状请以 [当前进度](STATUS.md) 和根目录 [README](../README.md) 为准。版本文档描述对应时点，不覆盖较新的真机反馈。历史记录中的其他平台计划均已停止；当前只维护Android。
 
 ## 当前维护入口
+
+- [胖乖官方页面模式与边界](V082-PANGGUAI-OFFICIAL.md)
+- [淘宝/拼多多出库码直达](V082-PARCEL-SHORTCUTS.md)
+- [胖乖协议、金额口径与官方来源](research/V082-PANGGUAI.md)
+- [APK 包名、签名与文件校验](APK-EVIDENCE.md)
+- [趣智钱包与真机验收](V081-QUZHI-WALLET.md)
+- [开源项目比较与复用策略](OPEN-SOURCE-STRATEGY.md)
+
+- [成绩分析算法口径、培养方案调查与验证范围](V060-GRADE-ANALYSIS.md)
 
 - [当前功能、验证证据与未完成事项](STATUS.md)
 - [变更记录](../CHANGELOG.md)

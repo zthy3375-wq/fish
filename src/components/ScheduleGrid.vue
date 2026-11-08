@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {courseTint as tint} from "../services/course-colors";
 import { computed } from "vue";
 import { Layers, Plus } from "lucide-vue-next";
 import type { Course } from "../domain/academic";
@@ -120,7 +121,7 @@ const currentPosition = computed(() =>
             v-if="group.items.length === 1"
             class="positioned-course"
             :class="group.items[0].course.color"
-            :style="pos(group.top, group.bottom)"
+            :style="{...pos(group.top, group.bottom),...tint(group.items[0].course)}"
             :data-course-id="group.items[0].course.id"
             :aria-label="`${group.items[0].course.name}，${group.items[0].course.room}，${group.items[0].course.start}至${group.items[0].course.end}`"
             @click="emit('course', group.items[0].course)"
