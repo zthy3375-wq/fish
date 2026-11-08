@@ -5,7 +5,17 @@ if(envId!=='hanyuantong-d8gjzt1jh12370215')throw Error('Unexpected target enviro
 console.log('Secret configured; checking target environment with read-only requests.');
 // Never stream CLI output: login/SDK errors can contain credential material.
 for(const region of ['ap-shanghai','ap-guangzhou']){
- const r=spawnSync('tcb',['env','list','--json','-e',envId,'-r',region],{encoding:'utf8',timeout:90000,maxBuffer:2*1024*1024});
+ let credential;
+ try {
+  const response=await fetch(`https://${envId}.${region}.tcb-api.tencentcloudapi.com/capi/credential`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${key.trim()}`},body:JSON.stringify({env:envId}),signal:AbortSignal.timeout(25000)});
+  const body=await response.json();
+  const code=String(body.code??body.error?.code??'unknown');
+  console.log(JSON.stringify({region,httpStatus:response.status,exchangeCode:/^[A-Za-z0-9_.-]{1,80}$/.test(code)?code:'unrecognized'}));
+  if(body.code!==0||!body.data?.TmpSecretId||!body.data?.TmpSecretKey||!body.data?.Token)continue;
+  credential=body.data;
+ }catch(e){console.log(JSON.stringify({region,transportError:e.name}));continue}
+ const childEnv={...process.env,CLOUDBASE_API_KEY:'',TENCENTCLOUD_SECRETID:credential.TmpSecretId,TENCENTCLOUD_SECRETKEY:credential.TmpSecretKey,TENCENTCLOUD_SESSIONTOKEN:credential.Token};
+ const r=spawnSync('tcb',['env','list','--json','-e',envId,'-r',region],{env:childEnv,encoding:'utf8',timeout:90000,maxBuffer:2*1024*1024});
  const out=(r.stdout||'')+'\n'+(r.stderr||'');
  if(r.status===0&&out.includes(envId)){
   console.log(JSON.stringify({verified:true,envId,region}));process.exit(0);
