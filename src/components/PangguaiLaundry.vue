@@ -60,7 +60,7 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
   </template>
   <template v-else>
    <div v-for="sku in device.skus" :key="sku.id" class="program"><span><strong>{{sku.name||'设备出水口'}}</strong><small>{{sku.feature}}</small></span><b>{{sku.price==null?'价格未提供':'标价 ¥'+pgAmount(sku.price)}}</b></div>
-   <p class="feedback">本版可识别饮水设备并查询账户。扫码开水、暂停和结算尚未接入，请继续按机身和官方端提示使用。</p>
+   <p class="feedback">这类设备暂仅支持识别，请按机身和官方端提示使用。</p>
   </template>
  </section>
  <section v-if="quote" ref="confirmPanel" class="wash-confirm" role="group" aria-label="确认洗衣费用">

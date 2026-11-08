@@ -29,6 +29,7 @@ class PangguaiPlugin : Plugin() {
     private var state=JSONObject();private var loaded=false
     private var scannedDevice:JSONObject?=null
     private var laundryQuote:JSONObject?=null
+    private var waterQuote:JSONObject?=null
     private var loginDialog:AlertDialog?=null
     private var cancelLogin:(()->Unit)?=null
     private fun <T> owned(work:()->T):T=fence.owned(owner,work)
@@ -40,6 +41,7 @@ class PangguaiPlugin : Plugin() {
         result.put("connected",state.optString("token").isNotBlank()).put("expired",state.optBoolean("expired"))
             .put("phone",if(phone.length==11)phone.take(3)+"****"+phone.takeLast(4) else "")
         PangguaiLaundry.view(state.optJSONObject("laundry"))?.let{result.put("laundry",it)}
+        PangguaiWater.view(state.optJSONObject("water"))?.let{result.put("water",it)}
         JSObject.fromJSONObject(result)
     }
     private fun reject(call:PluginCall,e:Exception){
@@ -63,7 +65,7 @@ class PangguaiPlugin : Plugin() {
         val source=owned{JSONObject(state.toString())}
         save(PangguaiRefresh.execute(source,{p,v,t->api.request(p,v,t)},{System.currentTimeMillis()}));snapshot()
     }
-    @PluginMethod fun logout(call:PluginCall)=work(call){owned{vault.clear();state=JSONObject();scannedDevice=null;laundryQuote=null};snapshot()}
+    @PluginMethod fun logout(call:PluginCall)=work(call){owned{vault.clear();state=JSONObject();scannedDevice=null;laundryQuote=null;waterQuote=null};snapshot()}
     @PluginMethod fun login(call:PluginCall){
         if(!busy.compareAndSet(false,true)){call.reject("正在处理，请稍候","BUSY");return}
         val host=activity
@@ -106,13 +108,13 @@ class PangguaiPlugin : Plugin() {
                             if(!profile.isNull("balance"))firstSnapshot.put("walletUpdatedAt",System.currentTimeMillis())
                             val next=JSONObject().put("id",profile.getString("id")).put("phone",number).put("token",token).put("snapshot",firstSnapshot)
                             restore()
-                            if(state.optString("id")==profile.getString("id"))state.optJSONObject("laundry")?.let{next.put("laundry",it)}
+                            if(state.optString("id")==profile.getString("id")){state.optJSONObject("laundry")?.let{next.put("laundry",it)};state.optJSONObject("water")?.let{next.put("water",it)}}
                             candidate=next
                         }
                         host.runOnUiThread {
                             if(finished||!fence.isCurrent(owner)){busy.set(false);return@runOnUiThread}
                             if(sms){enabled(true);status.text="验证码已发送"}
-                            else{try{fence.commit(attempt){save(candidate ?: throw PangguaiFailure("FORMAT"));scannedDevice=null;laundryQuote=null};finished=true;phone.text.clear();code.text.clear();busy.set(false);dialog.dismiss();call.resolve(snapshot())}catch(e:Exception){enabled(true);status.text=message((e as? PangguaiFailure)?.kind ?: "NETWORK")}}
+                            else{try{fence.commit(attempt){save(candidate ?: throw PangguaiFailure("FORMAT"));scannedDevice=null;laundryQuote=null;waterQuote=null};finished=true;phone.text.clear();code.text.clear();busy.set(false);dialog.dismiss();call.resolve(snapshot())}catch(e:Exception){enabled(true);status.text=message((e as? PangguaiFailure)?.kind ?: "NETWORK")}}
                         }
                     }catch(e:Exception){host.runOnUiThread {if(finished||!fence.isCurrent(owner)){busy.set(false);return@runOnUiThread};enabled(true);status.text=message((e as? PangguaiFailure)?.kind ?: "NETWORK")}}
                 }}catch(_:Exception){cancel();busy.set(false);dialog.dismiss()}
@@ -152,8 +154,43 @@ class PangguaiPlugin : Plugin() {
         scannedDevice=JSONObject(publicDevice.toString()).put("imei",PangguaiProtocol.text(detail,"imei"))
             .put("routeShopId",PangguaiProtocol.text(scan,"shopId")).put("shopId",PangguaiProtocol.text(detail,"shopId"))
             .put("isBluetooth",PangguaiProtocol.text(detail,"isBluetooth"))
-        laundryQuote=null
+        laundryQuote=null;waterQuote=null
         JSObject.fromJSONObject(publicDevice)
+    }
+    private fun water():PangguaiWater {
+        val token=state.optString("token")
+        if(token.isBlank()||state.optBoolean("expired"))throw PangguaiFailure("AUTH")
+        return PangguaiWater(request={p,f->api.request(p,f,token)},persist={s->save(JSONObject(state.toString()).put("water",s))},alive={owned{Unit}})
+    }
+    @PluginMethod fun prepareWater(call:PluginCall)=work(call){
+        waterQuote=null
+        val q=water().prepare(scannedDevice ?: throw PangguaiFailure("DEVICE"),call.getString("skuId") ?: throw PangguaiFailure("FORMAT"))
+        waterQuote=q;JSObject.fromJSONObject(q)
+    }
+    @PluginMethod fun startWater(call:PluginCall)=work(call){
+        val q=waterQuote ?: throw PangguaiFailure("QUOTE_EXPIRED")
+        if(call.getString("quoteId")!=q.optString("id"))throw PangguaiFailure("QUOTE_EXPIRED")
+        waterQuote=null
+        water().start(scannedDevice ?: throw PangguaiFailure("DEVICE"),q,state.optJSONObject("water"));snapshot()
+    }
+    @PluginMethod fun pollWater(call:PluginCall)=work(call){
+        state.optJSONObject("water")?.let{water().poll(it)};snapshot()
+    }
+    @PluginMethod fun endWater(call:PluginCall)=work(call){
+        val s=state.optJSONObject("water") ?: throw PangguaiFailure("FORMAT")
+        if(call.getString("sessionId")!=s.optString("id"))throw PangguaiFailure("ORDER_MISMATCH")
+        water().end(s);snapshot()
+    }
+    @PluginMethod fun confirmPhysicalWaterEnd(call:PluginCall)=work(call){
+        val s=state.optJSONObject("water") ?: throw PangguaiFailure("FORMAT")
+        if(call.getString("sessionId")!=s.optString("id"))throw PangguaiFailure("ORDER_MISMATCH")
+        water().confirmPhysicalEnd(s);snapshot()
+    }
+    @PluginMethod fun openWaterPaymentSetup(call:PluginCall)=work(call){
+        water() // require current authenticated account; setup itself remains in official Alipay UI
+        val intent=Intent(Intent.ACTION_VIEW,Uri.parse("alipays://platformapi/startapp?appId=2018072460764274")).setPackage("com.eg.android.AlipayGphone")
+        try{owned{activity.startActivity(intent)}}catch(_:android.content.ActivityNotFoundException){throw PangguaiFailure("NO_ALIPAY")}
+        JSObject().put("opened",true)
     }
     private fun laundry():PangguaiLaundry {
         val token=state.optString("token")

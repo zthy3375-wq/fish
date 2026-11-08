@@ -6,6 +6,7 @@ import {ScanLine,RefreshCw,Wallet,ArrowUpRight,ChevronRight} from 'lucide-vue-ne
 import {pangguai,pgBusy,pgReady,pgError,initPangguai,connectPangguai,refreshPangguai,disconnectPangguai,scanPangguai,rechargePangguai} from '../composables/pangguai';
 import {pgAmount,pangguaiError,pangguaiSupported,type PangguaiDevice,type PangguaiTicket} from '../services/pangguai-client';
 import PangguaiLaundry from './PangguaiLaundry.vue';
+import PangguaiWater from './PangguaiWater.vue';
 import {openPangguaiOfficial} from '../services/pangguai-official';
 const supported=pangguaiSupported(),device=ref<PangguaiDevice>(),confirm=ref<PangguaiTicket>(),logout=ref(false),tab=ref<'wallet'|'orders'>('wallet'),notice=ref('');
 const valid=computed(()=>pangguai.value.connected&&!pangguai.value.expired),blocked=computed(()=>pgBusy.value||!pgReady.value);
@@ -30,7 +31,7 @@ onUnmounted(()=>{disposed=true;clearTimeout(retry);void listener?.remove()});
    <p v-if="pangguai.expired" class="pg-status">登录已失效，下方保留上次结果。<button class="text-button" :disabled="blocked" @click="connectPangguai">重新连接</button></p>
    <section class="pg-balance"><span>普通账户余额 · 元</span><strong><small>¥</small>{{pgAmount(pangguai.balance)}}</strong><small>查询于 {{updated(pangguai.walletUpdatedAt)}}</small><button class="primary full" :disabled="blocked||!valid" @click="scan"><ScanLine :size="19"/>扫码识别设备</button></section>
    <p v-if="pangguai.issues?.wallet" class="pg-status">余额未更新：{{pangguaiError(pangguai.issues.wallet)}}</p>
-   <PangguaiLaundry :device="device" @close="device=undefined"/>
+   <PangguaiWater :device="device?.category==='04'?device:undefined" @close="device=undefined"/><PangguaiLaundry :device="device?.category!=='04'?device:undefined" @close="device=undefined"/>
    <div class="pg-tabs" role="tablist" aria-label="胖乖钱包内容"><button role="tab" :aria-selected="tab==='wallet'" @click="tab='wallet'">商户钱包</button><button role="tab" :aria-selected="tab==='orders'" @click="tab='orders'">最近消费</button></div>
    <section v-if="tab==='wallet'">
     <p class="pg-hint">小票按商户单独使用，单位为点，不与普通余额相加。</p>

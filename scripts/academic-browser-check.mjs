@@ -17,7 +17,7 @@ try{
   const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
     if(plugin==='PangguaiCampus'){
@@ -27,9 +27,14 @@ try{
      if(method==='logout')window.__pgState={connected:false,expired:false,phone:''};
      if(method==='refresh'){if(window.__pgFailure)window.__pgState.issues={wallet:'NETWORK',tickets:'NETWORK',orders:'NETWORK'};else Object.assign(window.__pgState,{tickets:[{id:'synthetic-merchant',name:'人工测试商户',balance:'120',principal:'100',gift:'20'}],ticketsUpdatedAt:Date.now(),orders:[{id:'synthetic-order',name:'人工测试洗衣机',amount:'3.50',status:'测试状态',time:'2026-11-08 10:00'}],ordersUpdatedAt:Date.now(),issues:{}})}
      if(method==='openRecharge')return {opened:true};
+     if(method==='scan'&&window.__pgWater)return {id:'synthetic-water',name:'人工测试饮水机',operator:'人工测试商户',category:'04',payment:'after',issue:'',skus:[{id:'synthetic-outlet',name:'常温水',feature:'按实际用量计费',price:'1',available:true}]};
      if(method==='scan')return {id:'synthetic-device',name:'人工测试设备',operator:'人工测试商户',category:'00',payment:'before',issue:'',skus:[{id:'synthetic-sku',name:'标准洗',price:'3.50',feature:'约40分钟',available:true}]};
      if(method==='quoteLaundry')return {id:'synthetic-quote',expiresAt:Date.now()+60000,deviceName:'人工测试设备',program:'标准洗',amount:'3.50',channels:[{id:'2',name:'余额支付',available:true,reason:''}]};
      if(method==='startLaundry')window.__pgState.laundry={id:'synthetic-session',deviceId:'synthetic-device',deviceName:'人工测试设备',program:'标准洗',amount:'3.50',phase:'paid',orderNo:'synthetic-order-no',updatedAt:Date.now(),paySent:true};
+     if(method==='prepareWater')return {id:'water-quote',expiresAt:Date.now()+60000,deviceId:'synthetic-water',deviceName:'人工测试饮水机',outlet:'常温水',feature:'按实际用量计费',price:'1',remoteEnd:true,paymentName:'支付宝免密',canStart:true,reason:''};
+     if(method==='startWater')window.__pgState.water={id:'water-session',deviceId:'synthetic-water',deviceName:'人工测试饮水机',outlet:'常温水',feature:'按实际用量计费',paymentName:'支付宝免密',phase:'using',orderNo:'synthetic-water-order',remoteEnd:true,updatedAt:Date.now(),startedAt:Date.now()};
+     if(method==='endWater')Object.assign(window.__pgState.water,{phase:'ending',endSent:true});
+     if(method==='pollWater'&&window.__pgWaterEnded)Object.assign(window.__pgState.water,{phase:'settled',amount:'0.13',endedAt:Date.now()});
      return JSON.parse(JSON.stringify(window.__pgState));
     }
     if(plugin==='PangguaiOfficial'){

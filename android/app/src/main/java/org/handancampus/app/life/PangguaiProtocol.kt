@@ -14,7 +14,7 @@ internal object PangguaiProtocol {
     const val VERSION = "1.109.1"
     private const val CLIENT_SALT = "nFU9pbG8YQoAe1kFh+E7eyrdlSLglwEJeA0wwHB1j5o="
     val paths = setOf("common/sms/sendCode", "user/reg", "user/info", "user/astrict/list",
-        "tokenCoin/userTokenCoins", "order/list", "goods/scan/v2", "goods/normal/details", "goods/normal/skus") + PangguaiLaundry.paths
+        "tokenCoin/userTokenCoins", "order/list", "goods/scan/v2", "goods/normal/details", "goods/normal/skus") + PangguaiLaundry.paths + PangguaiWater.paths
     fun text(obj: JSONObject, key: String): String = obj.opt(key)?.takeUnless { it == JSONObject.NULL }?.toString().orEmpty()
     fun required(obj: JSONObject, key: String) = text(obj,key).takeIf { it.isNotBlank() && it.length <= 256 } ?: throw PangguaiFailure("FORMAT")
     fun phone(raw: String): String = raw.trim().takeIf { it.matches(Regex("1[0-9]{10}")) } ?: throw PangguaiFailure("PHONE")
