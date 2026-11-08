@@ -1,3 +1,4 @@
+import {learningTaskState} from './learning-status';
 import { beijingDay, beijingTimestamp, shiftDay, validateTask, type CampusTask, type TaskSnapshot } from './agenda';
 export type SmartList = 'today' | 'inbox' | 'planned' | 'due' | 'completed';
 export interface TaskFilter {
@@ -18,12 +19,15 @@ export const TASK_TEMPLATES = [
     { name: '个人事务', title: '个人事务', duration: 30, steps: [] },
 ];
 export function createTask(title: string, id: string, now = new Date()): CampusTask { return validateTask({ id, title, course: '', deadline: null, notes: '', completed: false, remindMinutes: null, createdAt: now.toISOString(), updatedAt: now.toISOString() }); }
+export function plannedDay(t: CampusTask) { return t.plannedAt?.slice(0,10) || t.plannedDay || null; }
 export function taskOverdue(t: CampusTask, now = new Date()) { return !t.completed && !!t.deadline && beijingTimestamp(t.deadline) < +now; }
 export function selectTasks(tasks: CampusTask[], filter: TaskFilter, now = new Date()) {
     const today = beijingDay(now), soon = shiftDay(today, 7);
     return tasks.filter(t => {
-        const plan = t.plannedAt?.slice(0, 10), due = t.deadline?.slice(0, 10);
-        const match = filter.view === 'completed' ? t.completed : !t.completed && (filter.view === 'inbox' ? !plan && !due : filter.view === 'today' ? !!plan && plan <= today || !!due && due <= today : filter.view === 'planned' ? !!plan || !!due : !!due && due <= soon);
+        const plan = plannedDay(t), due = t.deadline?.slice(0, 10);
+        if (t.source === 'chaoxing' && filter.view === 'due' && learningTaskState(t,now).key !== 'pending') return false;
+        if (t.source === 'chaoxing' && !plan && filter.view !== 'due' && filter.view !== 'completed') return false;
+        const match = filter.view === 'completed' ? t.completed : !t.completed && (filter.view === 'inbox' ? !plan : filter.view === 'today' ? !!plan && plan <= today : filter.view === 'planned' ? !!plan && plan > today : !!due && due <= soon);
         return match && (!filter.source || filter.source==='all' || (t.source==='chaoxing'?'chaoxing':'personal')===filter.source) && (!filter.course || t.course === filter.course) && (filter.priority < 0 || (t.priority ?? 0) === filter.priority) && (!filter.search || `${t.title} ${t.course} ${t.notes}`.toLocaleLowerCase().includes(filter.search.trim().toLocaleLowerCase()));
     }).sort((a, b) => {
         if (filter.group && a.course !== b.course)
@@ -58,7 +62,7 @@ function occurrenceId(root: string, day: string) {
 export function nextOccurrence(task: CampusTask, now = new Date()): CampusTask | null {
     if (!task.repeat)
         return null;
-    const base = task.plannedAt || task.deadline;
+    const base = task.plannedAt || (task.plannedDay ? task.plannedDay+'T00:00' : task.deadline);
     if (!base)
         return null;
     const day = base.slice(0, 10), today = beijingDay(now), rule = task.repeat;
@@ -71,7 +75,7 @@ export function nextOccurrence(task: CampusTask, now = new Date()): CampusTask |
             continue;
         const move = (v: string | null | undefined) => v ? shiftDay(v.slice(0, 10), offset) + v.slice(10) : null;
         const stamp = now.toISOString();
-        return validateTask({ ...task, id: occurrenceId(task.seriesId || task.id, next), seriesId: task.seriesId || task.id, generatedFrom: task.id, plannedAt: move(task.plannedAt), deadline: move(task.deadline), snoozedUntil: null, completed: false, completedAt: null, createdAt: stamp, updatedAt: stamp, steps: task.steps?.map(s => ({ ...s, completed: false })), reminders: task.reminders?.map(m => m.anchor === 'absolute' ? { ...m, at: move(m.at)! } : m) });
+        return validateTask({ ...task, id: occurrenceId(task.seriesId || task.id, next), seriesId: task.seriesId || task.id, generatedFrom: task.id, plannedAt: move(task.plannedAt), plannedDay: task.plannedDay ? shiftDay(task.plannedDay,offset) : null, deadline: move(task.deadline), snoozedUntil: null, completed: false, completedAt: null, createdAt: stamp, updatedAt: stamp, steps: task.steps?.map(s => ({ ...s, completed: false })), reminders: task.reminders?.map(m => m.anchor === 'absolute' ? { ...m, at: move(m.at)! } : m) });
     }
     throw Error('未找到有效的下次重复日期，请检查规则');
 }
@@ -101,7 +105,7 @@ export function setTaskCompleted(s: TaskSnapshot, id: string, completed: boolean
     }
     task.updatedAt = now.toISOString();
 }
-export function replanTask(task: CampusTask, day: string, now = new Date()) { task.plannedAt = day + 'T' + (task.plannedAt?.slice(11) || '09:00'); task.snoozedUntil = null; task.updatedAt = now.toISOString(); return task; }
+export function replanTask(task: CampusTask, day: string, now = new Date()) { if(task.plannedAt) task.plannedAt = day + 'T' + task.plannedAt.slice(11); else task.plannedDay = day; task.snoozedUntil = null; task.updatedAt = now.toISOString(); return task; }
 export function taskSummary(tasks: CampusTask[], now = new Date()) {
     const f: TaskFilter = { view: 'today', search: '', course: '', sort: 'smart', priority: -1, group: false };
     const today = selectTasks(tasks, f, now), due = selectTasks(tasks, { ...f, view: 'due' }, now);

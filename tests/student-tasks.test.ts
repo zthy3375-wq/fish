@@ -8,7 +8,7 @@ describe('student task planning', () => {
     it('quick capture only requires title; no invented deadline or notification', () => { const t = createTask('读一章书', 'a', now); expect(t.deadline).toBeNull(); expect(t.plannedAt).toBeNull(); expect(t.reminders).toEqual([]); expect(selectTasks([t], { ...filter, view: 'inbox' }, now)).toHaveLength(1); });
     it('today includes advance execution, deadlines and unfinished earlier plans', () => { const tasks = [task({ id: 'early', plannedAt: '2026-11-06T15:00', deadline: '2026-11-12T18:00' }), task({ id: 'missed', plannedAt: '2026-11-04T10:00', deadline: null }), task({ id: 'future', plannedAt: '2026-11-08T10:00', deadline: '2026-11-09T12:00' }), task({ id: 'done', completed: true })]; expect(selectTasks(tasks, filter, now).map(t => t.id)).toEqual(['early', 'missed']); expect(taskSummary(tasks, now).today).toHaveLength(2); });
     it('keeps each smart list, search, course filter and completion distinct', () => { const tasks = [createTask('买书', 'inbox', now), task({ id: 'planned', plannedAt: '2026-11-07T13:00', course: '高数', title: '复习高数' }), task({ id: 'complete', completed: true })]; expect(selectTasks(tasks, { ...filter, view: 'completed' }, now).map(t => t.id)).toEqual(['complete']); expect(selectTasks(tasks, { ...filter, view: 'planned', course: '高数', search: '复习' }, now).map(t => t.id)).toEqual(['planned']); expect(selectTasks(tasks, { ...filter, view: 'due' }, now)).toHaveLength(1); });
-    it('sorts pinned then priority without treating zero scores as missing', () => { const tasks = [task({ id: 'low', priority: 1 }), task({ id: 'high', priority: 3 }), task({ id: 'pinned', pinned: true, priority: 0 })]; expect(selectTasks(tasks, filter, now).map(t => t.id)).toEqual(['pinned', 'high', 'low']); expect(selectTasks(tasks, { ...filter, priority: 0 }, now).map(t => t.id)).toEqual(['pinned']); });
+    it('sorts pinned then priority without treating zero scores as missing', () => { const tasks = [task({ id: 'low', priority: 1, plannedDay:'2026-11-06' }), task({ id: 'high', priority: 3, plannedDay:'2026-11-06' }), task({ id: 'pinned', pinned: true, priority: 0, plannedDay:'2026-11-06' })]; expect(selectTasks(tasks, filter, now).map(t => t.id)).toEqual(['pinned', 'high', 'low']); expect(selectTasks(tasks, { ...filter, priority: 0 }, now).map(t => t.id)).toEqual(['pinned']); });
     it('rescheduling changes execution date and leaves deadline and course untouched', () => { const t = task({ plannedAt: '2026-11-04T14:00' }); const next = replanTask(t, '2026-11-07', now); expect(next.plannedAt).toBe('2026-11-07T14:00'); expect(next.deadline).toBe('2026-11-06T18:00'); expect(next.course).toBe('人工课程'); });
     it('shows plan and submission as two independently dated timeline items', () => { const t = task({ plannedAt: '2026-11-05T10:00', durationMinutes: 90 }); const a = buildAgenda([], [], [t], '2026-11-05', 2, now); expect(a.events.map(e => e.source)).toEqual(['个人计划', '任务截止']); expect(a.events[0].endAt! - a.events[0].startAt!).toBe(90 * 60000); });
     it('legacy v1 migration normalizes metadata without dropping completed/reminder data', () => { const old = { version: 1, tasks: [task({ completed: true })], notificationsEnabled: true, updatedAt: now.toISOString() }; const migrated = validateTaskSnapshot(old); expect(migrated.version).toBe(2); expect(migrated.tasks[0]).toMatchObject({ completed: true, priority: 0, steps: [], reminders: [{ id: 'legacy', anchor: 'deadline', minutes: 30 }] }); expect(migrated.notificationsEnabled).toBe(true); expect(old.version).toBe(1); });
@@ -27,3 +27,29 @@ describe('multiple reminders', () => {
 });
 
 it('repeating an imported long task identity remains bounded over multiple cycles',()=>{const original=task({id:'long-'.repeat(20),repeat:repeat('daily')});const next=nextOccurrence(original,now)!;expect(next.id.length).toBeLessThanOrEqual(100);expect(nextOccurrence(next,new Date('2026-11-08T04:00:00Z'))!.id.length).toBeLessThanOrEqual(100)});
+
+// Daily-flow behavior: a date-only plan must not invent a start time or reminder.
+it('date-only plans survive backup and produce all-day timeline entries without start reminders',()=>{
+ const t=validateTask({...createTask('读书','day-only',now),plannedDay:'2026-11-06',reminders:[{id:'start',anchor:'start',minutes:0}]});
+ const copy=validateTaskSnapshot({...emptyTasks(),notificationsEnabled:true,tasks:[t]});
+ expect(copy.tasks[0].plannedDay).toBe('2026-11-06');expect(copy.tasks[0].plannedAt).toBeNull();
+ expect(taskReminderPlan(copy,now)).toEqual([]);
+ expect(buildAgenda([],[],copy.tasks,'2026-11-06',1,now).events[0]).toMatchObject({time:'当天安排',startAt:null,endAt:null});
+ expect(selectTasks(copy.tasks,filter,now)).toHaveLength(1);
+});
+it('deadline alone does not manufacture a today plan and unplanned external work stays in learning',()=>{
+ const personal=task({id:'p'}), external={...task({id:'cx'}),source:'chaoxing' as const,platformStatus:'pending',platformStatusText:'未提交'};
+ expect(selectTasks([personal,external],filter,now)).toEqual([]);
+ expect(selectTasks([personal,external],{...filter,view:'inbox'},now).map(t=>t.id)).toEqual(['p']);
+ expect(selectTasks([personal,external],{...filter,view:'due'},now)).toHaveLength(2);
+});
+it('replanning and repeating a date-only task preserve the absence of a clock time',()=>{
+ const t=validateTask({...createTask('阅读','r',now),plannedDay:'2026-11-06',repeat:repeat('daily')});
+ const next=nextOccurrence(t,now)!;expect(next.plannedAt).toBeNull();expect(next.plannedDay).toBe('2026-11-07');
+ replanTask(t,'2026-11-08',now);expect(t.plannedAt).toBeNull();expect(t.plannedDay).toBe('2026-11-08');
+});
+
+it('upcoming deadlines exclude closed or unknown platform history',()=>{
+ const records=['pending','closed','unknown'].map(platformStatus=>({...task({id:platformStatus}),source:'chaoxing' as const,platformStatus,platformStatusText:''}));
+ expect(selectTasks(records,{...filter,view:'due'},now).map(t=>t.id)).toEqual(['pending']);
+});

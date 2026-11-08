@@ -1,59 +1,54 @@
+<script lang="ts">
+import {reactive} from 'vue';
+const learningView=reactive<{tab:'homework'|'courses'|'exams'|'notices';status:LearningFilter;search:string;course:string}>({tab:'homework',status:'pending',search:'',course:''});
+</script>
 <script setup lang="ts">
-import {computed,onMounted,onUnmounted,reactive,ref} from 'vue';
-import {BookOpen,ChevronRight,ChevronDown,Search,ExternalLink,CalendarClock} from 'lucide-vue-next';
+import {computed,onMounted,onUnmounted,ref} from 'vue';
+import {BookOpen,ChevronRight,ChevronDown,Search,Settings2} from 'lucide-vue-next';
 import LearningSyncPanel from './LearningSyncPanel.vue';
 import LearningConnection from './LearningConnection.vue';
-import {learningCache,learningTasks,initLearning,syncLearning,openLearningItem} from '../composables/learning';
+import {learningCache,learningTasks,learningBusy,initLearning,syncLearning,saveLearningPlan} from '../composables/learning';
 import {learningState,type LearningFilter} from '../domain/learning-status';
-import {beijingTimestamp,type CampusTask} from '../domain/agenda';
+import {beijingDay,beijingTimestamp,type CampusTask} from '../domain/agenda';
+import {plannedDay,replanTask} from '../domain/tasks';
 import {resolveLearningItems,groupLearningItems} from '../domain/learning-groups';
 import type {LearningItem} from '../services/chaoxing-client';
 const emit=defineEmits<{plan:[task:CampusTask]}>();
-// Kept at module scope through a separate shared view object, independent of personal task filters.
-const view=learningView;
-const now=ref(new Date()),error=ref('');const timer=setInterval(()=>now.value=new Date(),30000);onUnmounted(()=>clearInterval(timer));
+const view=learningView,now=ref(new Date()),message=ref(''),saving=ref(false),management=ref<HTMLDetailsElement>();
+const timer=setInterval(()=>now.value=new Date(),30000);onUnmounted(()=>clearInterval(timer));
 onMounted(()=>{void initLearning().then(()=>syncLearning()).catch(()=>{})});
 const homework=computed(()=>resolveLearningItems(learningCache.value.items,learningCache.value.courses).filter(i=>i.kind==='homework'));
-const filters:[LearningFilter,string][]=[['all','全部'],['pending','待提交'],['submitted','已提交 / 完成'],['closed','已截止'],['unknown','状态未知']];
-const count=(key:LearningFilter)=>homework.value.filter(i=>key==='all'||learningState(i,now.value).key===key).length;
+const filters:[LearningFilter,string][]=[['pending','待提交'],['unknown','待核对'],['submitted','已提交'],['closed','已截止'],['all','全部']];
 const list=computed(()=>homework.value.filter(i=>(view.status==='all'||learningState(i,now.value).key===view.status)&&(!view.course||i.courseId+'/'+i.classId===view.course)&&(!view.search||`${i.title} ${i.course}`.toLowerCase().includes(view.search.trim().toLowerCase()))).sort((a,b)=>(a.deadline?beijingTimestamp(a.deadline):Infinity)-(b.deadline?beijingTimestamp(b.deadline):Infinity)||a.title.localeCompare(b.title,'zh-CN')));
 const groups=computed(()=>groupLearningItems(list.value,now.value));
+const count=(key:LearningFilter)=>homework.value.filter(i=>(key==='all'||learningState(i,now.value).key===key)&&(!view.course||i.courseId+'/'+i.classId===view.course)).length;
+const courseName=computed(()=>learningCache.value.courses.find(c=>c.courseId+'/'+c.classId===view.course)?.name);
+const needsAction=computed(()=>!learningCache.value.connected||learningCache.value.session==='expired'||learningCache.value.issues.connection==='VERIFY');
+const status=computed(()=>learningBusy.value?`正在更新 ${learningCache.value.completedCount}/${learningCache.value.plannedCount||'…'} 门课程`:!learningCache.value.connected?'连接后查看课程作业':learningCache.value.session==='expired'?'登录已过期，点击重新连接':learningCache.value.issues.connection==='VERIFY'?'需要完成验证码，已有作业保留':learningCache.value.remaining?`还有 ${learningCache.value.remaining} 门课程待更新`:Object.keys(learningCache.value.issues).length?'部分内容待更新 · 查看详情':learningCache.value.updatedAt?'上次更新 '+new Date(learningCache.value.updatedAt).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}):'选择关注课程开始同步');
 function task(item:LearningItem){return learningTasks.value.find(t=>t.externalId===item.id)}
-async function open(item:LearningItem){const t=task(item);if(!t)return;try{error.value='';await openLearningItem(t)}catch(e){error.value=(e as Error).message}}
-function plan(item:LearningItem){const t=task(item);if(t)emit('plan',t)}
-function deadline(item:LearningItem){if(!item.deadline)return '截止时间未知';return '截止 '+item.deadline.replace('T',' ')}
-</script>
-<script lang="ts">
-// Survives navigation without borrowing or overwriting the unified task view.
-const learningView=reactive<{tab:'homework'|'courses'|'exams'|'notices';status:LearningFilter;search:string;course:string}>({tab:'homework',status:'all',search:'',course:''});
+function isToday(item:LearningItem){const t=task(item);return !!t&&plannedDay(t)===beijingDay(now.value)}
+function open(item:LearningItem){const t=task(item);if(t)emit('plan',t)}
+async function today(item:LearningItem){const t=task(item);if(!t||saving.value)return;try{saving.value=true;await saveLearningPlan(replanTask({...t},beijingDay(now.value)));message.value='已加入今天，截止时间不变'}catch(e){message.value=(e as Error).message}finally{saving.value=false}}
+function deadline(item:LearningItem){if(!item.deadline)return '截止时间待核对';const d=item.deadline.slice(0,10);return (d===beijingDay(now.value)?'今天':d.slice(5).replace('-','月')+'日')+' '+item.deadline.slice(11)+' 截止'}
+function chooseCourse(key:string){view.course=key;view.status='all';view.tab='homework'}
 </script>
 <template>
-<section class="learning-center" aria-label="学习通中心">
- <LearningConnection/>
- <LearningSyncPanel/>
- <div class="task-mode" role="tablist" aria-label="学习通内容"><button v-for="[id,label] in [['homework','作业'],['courses','课程'],['exams','考试'],['notices','通知']]" :key="id" role="tab" :aria-selected="view.tab===id" @click="view.tab=id as typeof view.tab">{{label}}</button></div>
- <p v-if="error" role="alert" class="task-message danger">{{error}}</p>
- <template v-if="view.tab==='homework'">
-  <div class="learning-overview"><strong>已读取 {{homework.length}} 份作业</strong><small>{{learningCache.remaining?`剩余 ${learningCache.remaining} 门课程待扫描`:'按已读取记录统计'}} · {{groups.length}} 门课程</small></div>
-  <div class="smart-lists learning-filters" aria-label="作业状态筛选"><button v-for="[key,label] in filters" :key="key" :aria-pressed="view.status===key" @click="view.status=key">{{label}}<small>{{count(key)}}</small></button></div>
-  <div class="task-search"><Search :size="16"/><input v-model="view.search" type="search" placeholder="搜索作业或课程" aria-label="搜索学习通作业"/></div>
-  <select v-model="view.course" class="learning-course-select" aria-label="学习通课程筛选"><option value="">全部课程</option><option v-for="c in learningCache.courses" :key="c.courseId+'/'+c.classId" :value="c.courseId+'/'+c.classId">{{c.name}}</option></select>
-  <p v-if="!list.length" class="task-hint">{{homework.length?'当前筛选下没有作业':'尚未读取到作业。连接后自动扫描；遇到验证时，完成验证后继续。'}}</p>
-  <details v-for="group in groups" :key="group.key" class="learning-course-group" open>
-   <summary><span class="learning-group-icon"><BookOpen :size="18"/></span><span class="learning-group-copy"><strong>{{group.name}}</strong><small>{{group.items.length}} 份作业<template v-if="group.pending"> · {{group.pending}} 待提交</template><template v-if="group.unknown"> · {{group.unknown}} 状态待核对</template><template v-if="group.closed"> · {{group.closed}} 已截止</template><template v-if="group.submitted"> · {{group.submitted}} 已提交 / 完成</template></small></span><ChevronDown :size="17" class="learning-group-chevron"/></summary>
-  <article v-for="item in group.items" :key="item.id" class="learning-work">
-   <div class="learning-work-head"><strong>{{item.title}}</strong><span class="learning-state" :class="learningState(item,now).key">{{learningState(item,now).label}}</span></div>
-   <small>{{deadline(item)}}</small>
-   <small v-if="learningState(item,now).key==='unknown'" class="learning-status-note">平台提交状态尚未识别，可打开原作业核对</small>
-   <small v-if="item.statusText&&item.statusText!=='未知'&&item.statusText!=='提交状态未知'">平台：{{item.statusText}}</small>
-   <small v-if="item.stale||learningCache.session!=='valid'" class="danger">上次同步记录，当前状态待更新</small>
-   <div class="learning-work-actions"><button class="text-button" @click="plan(item)"><CalendarClock :size="14"/>安排到日程</button><button class="text-button" :disabled="!item.hasLink" @click="open(item)">打开原作业 <ExternalLink :size="14"/></button></div>
-   <small v-if="!item.hasLink">平台未提供可识别的作业详情链接</small>
-  </article>
-  </details>
- </template>
- <template v-else-if="view.tab==='courses'"><h3 class="learning-section-title">{{learningCache.courses.length}} 门课程</h3><p v-if="!learningCache.courses.length" class="task-hint">课程尚未读取。</p><button v-for="c in learningCache.courses" :key="c.courseId+'/'+c.classId" class="learning-course-button" @click="view.course=c.courseId+'/'+c.classId;view.status='all';view.tab='homework'"><BookOpen :size="18"/><span><strong>{{c.name}}</strong><small>{{c.teacher||'教师信息未提供'}} · {{homework.filter(i=>i.courseId===c.courseId&&i.classId===c.classId).length}} 份已读取作业</small></span><ChevronRight :size="16"/></button></template>
- <template v-else-if="view.tab==='exams'"><p class="task-hint">{{learningCache.issues.exams?'考试暂未完整更新，保留上次记录':learningCache.examUpdatedAt?'展示上次同步的考试安排':'考试尚未同步。作业扫描完成后再查询。'}}</p><article v-for="item in learningCache.items.filter(i=>i.kind==='exam')" :key="item.id" class="learning-work"><div class="learning-work-head"><strong>{{item.title}}</strong><span class="learning-state" :class="learningState(item,now).key">{{learningState(item,now).label}}</span></div><p>{{item.course}}</p><small>开始 {{item.startAt?.replace('T',' ')||'未知'}} · {{deadline(item)}}</small><button class="text-button" :disabled="!item.hasLink" @click="open(item)">打开原考试</button></article></template>
- <template v-else><p class="task-hint">{{learningCache.issues.notices?'通知暂未完整更新，保留上次记录':learningCache.noticeUpdatedAt?'展示上次同步的通知':'通知尚未同步。作业扫描完成后再查询。'}}</p><details v-for="n in learningCache.notices" :key="n.id" class="learning-work"><summary>{{n.title}}</summary><small>{{n.sender||'发布者未知'}} · {{n.publishedText||'时间未知'}}</small><p>{{n.content}}</p></details></template>
+<section class="learning-center daily-learning" aria-label="学习通中心">
+<div class="learning-toolbar"><button class="sync-status-line" :class="{attention:needsAction}" @click="management!.open=!management!.open"><span class="status-dot"/>{{status}}</button><button class="icon-button" aria-label="同步管理" @click="management!.open=!management!.open"><Settings2 :size="18"/></button></div>
+<details ref="management" class="learning-management" :open="!learningCache.connected||(learningCache.connected&&!learningCache.selectedCourses.length)"><summary>连接与关注课程</summary><LearningConnection/><LearningSyncPanel/></details>
+<div class="task-mode" role="tablist" aria-label="学习通内容"><button role="tab" :aria-selected="view.tab==='homework'" @click="view.tab='homework'">待处理</button><button role="tab" :aria-selected="view.tab==='courses'" @click="view.tab='courses'">按课程</button><button role="tab" :aria-selected="view.tab==='exams'" @click="view.tab='exams'">考试</button><button role="tab" :aria-selected="view.tab==='notices'" @click="view.tab='notices'">通知</button></div>
+<p v-if="message" role="status" class="task-message">{{message}}</p>
+<template v-if="view.tab==='homework'">
+<div v-if="view.course" class="course-context"><strong>{{courseName||'所选课程'}}</strong><button class="text-button" @click="view.course='';view.status='pending'">全部课程</button></div>
+<div class="smart-lists learning-filters" aria-label="作业状态筛选"><button v-for="[key,label] in filters" :key="key" :aria-pressed="view.status===key" @click="view.status=key">{{label}}<small>{{count(key)}}</small></button></div>
+<div class="task-search"><Search :size="16"/><input v-model="view.search" type="search" placeholder="搜索作业或课程" aria-label="搜索学习通作业"/></div>
+<p class="task-hint">{{list.length}} 份已读取作业<template v-if="view.status==='unknown'"> · 提交状态需要核对</template><template v-else-if="view.status==='closed'"> · 截止与提交是不同状态</template></p>
+<details v-for="group in groups" :key="group.key" class="learning-course-group" open><summary><BookOpen :size="17"/><span class="learning-group-copy"><strong>{{group.name}}</strong><small>{{group.items.length}} 份作业</small></span><ChevronDown :size="16"/></summary>
+<article v-for="item in group.items" :key="item.id" class="learning-work compact-work"><button class="work-open" @click="open(item)"><strong>{{item.title}}</strong><small>{{deadline(item)}}</small><span class="learning-state" :class="learningState(item,now).key">{{learningState(item,now).label}}</span><small v-if="item.stale" class="danger">上次记录 · 待更新</small></button><button v-if="learningState(item,now).key==='pending'" class="text-button plan-today" :disabled="saving||isToday(item)" @click="today(item)">{{isToday(item)?'已安排今天':'今天做'}}</button></article></details>
+<div v-if="!list.length" class="task-empty"><BookOpen :size="25"/><strong>{{view.search?'没有匹配作业':!learningCache.connected?'先连接学习通':!homework.length?'尚未读取到作业':'当前分类没有作业'}}</strong><p>{{!learningCache.connected?'登录后选择需要关注的课程。':'可切换分类，或在同步管理中查看课程读取情况。'}}</p></div>
+</template>
+<template v-else-if="view.tab==='courses'"><p class="task-hint">关注的课程优先显示，点击课程查看全部已读取作业。</p><button v-for="c in [...learningCache.courses].sort((a,b)=>Number(learningCache.selectedCourses.includes(b.courseId+'/'+b.classId))-Number(learningCache.selectedCourses.includes(a.courseId+'/'+a.classId)))" :key="c.courseId+'/'+c.classId" class="learning-course-button" @click="chooseCourse(c.courseId+'/'+c.classId)"><BookOpen :size="18"/><span><strong>{{c.name}}</strong><small>{{learningCache.selectedCourses.includes(c.courseId+'/'+c.classId)?'已关注 · ':''}}{{homework.filter(i=>i.courseId===c.courseId&&i.classId===c.classId).length}} 份已读取作业</small></span><ChevronRight :size="16"/></button></template>
+<template v-else-if="view.tab==='exams'"><p class="task-hint">{{learningCache.issues.exams?'考试尚未完整更新，保留上次记录':learningCache.examUpdatedAt?'学习通考试 · 上次同步记录':'考试尚未同步'}}</p><article v-for="item in learningCache.items.filter(i=>i.kind==='exam')" :key="item.id" class="learning-work"><button class="work-open" @click="open(item)"><strong>{{item.title}}</strong><small>{{item.course}} · {{deadline(item)}}</small><span class="learning-state" :class="learningState(item,now).key">{{learningState(item,now).label}}</span></button></article><p v-if="!learningCache.items.some(i=>i.kind==='exam')" class="task-empty">暂无已读取考试</p></template>
+<template v-else><p class="task-hint">{{learningCache.issues.notices?'通知尚未完整更新，保留上次记录':learningCache.noticeUpdatedAt?'上次同步的通知':'通知尚未同步'}}</p><details v-for="n in learningCache.notices" :key="n.id" class="learning-work"><summary>{{n.title}}</summary><small>{{n.sender}} · {{n.publishedText}}</small><p>{{n.content}}</p></details><p v-if="!learningCache.notices.length" class="task-empty">暂无已读取通知</p></template>
 </section>
 </template>

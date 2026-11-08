@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import LearningCenter from './components/LearningCenter.vue';
-import type {CampusTask} from './domain/agenda';
+import TaskDetail from './components/TaskDetail.vue';
+import TaskSettings from './components/TaskSettings.vue';
+import TodayTasks from './components/TodayTasks.vue';
+import {beijingDay,type CampusTask} from './domain/agenda';
 import {initLearning,syncLearning,learningTasks} from './composables/learning';
 import {taskSummary} from './domain/tasks';
 import CampusAgenda from './components/CampusAgenda.vue';
-import {initTasks,reloadTasks,taskSnapshot,tasksReady,agendaView,allTasks,reconcileTaskReminders} from './composables/tasks';
+import {initTasks,reloadTasks,taskSnapshot,tasksReady,agendaView,taskView,allTasks,reconcileTaskReminders} from './composables/tasks';
 import {version as appVersion} from '../package.json';
 import {
   ref,
@@ -188,9 +191,10 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
     editorBusy.value = false;
   }
 }
-const agendaRef=ref<InstanceType<typeof CampusAgenda>>();
-async function planLearning(task:CampusTask){go('agenda');await nextTick();agendaRef.value?.edit(task)}
-setBeforeBack(()=>page.value==='academic'&&section.value==='agenda'&&!modal.value?agendaRef.value?.requestBack()??false:false);
+const taskDetailRef=ref<InstanceType<typeof TaskDetail>>();
+function planLearning(task:CampusTask){taskDetailRef.value?.edit(task)}
+function editDailyTask(task?:CampusTask,day?:string){taskDetailRef.value?.edit(task,day)}
+setBeforeBack(()=>!modal.value?taskDetailRef.value?.requestBack()??false:false);
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
   if (modal.value==='course-editor'&&editorRef.value?.hasChanges()) {
@@ -308,7 +312,7 @@ const about = [
   { id: "about", title: "版本信息", subtitle: `邯郸校园 · v${appVersion}`, icon: Info },
 ];
 const sectionNames: Record<string, string> = {
-  overview: "教务中心",
+  overview: "学习",
   agenda: "统一日程",
   learning: "学习通",
   schedule: "课程表",
@@ -320,15 +324,15 @@ const sectionNames: Record<string, string> = {
 };
 const title = computed(() =>
   page.value === "home"
-    ? "今日"
-    : page.value === "schedule" ? "课程表" : page.value === "academic"
+    ? "今天"
+    : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
       ? sectionNames[section.value]
       : "我的",
 );
 const subtitle = computed(() =>
   page.value === "home"
     ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
-    : page.value === "academic" && section.value==='learning' ? "本人学习任务 · 自动同步" : page.value === "academic" || page.value === "schedule"
+    : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
       ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
       : "学校账号 · 本机设置",
 );
@@ -348,7 +352,8 @@ watch(data, (d) => {
 });
 watch(learningTasks,()=>{if(tasksReady.value)void reconcileTaskReminders()});
 function go(id: string) {
-  move(id === "schedule" ? "schedule" : "academic", id);
+  if(id==='due'){taskView.view='due';taskView.mode='list';taskView.source='all';taskView.course='';taskView.search='';move('tasks','agenda');return;}
+  move(id==='agenda'?'tasks':id === 'schedule' ? 'schedule' : 'academic', id);
 }
 function nav(p: Page) { move(p, p === "schedule" ? "schedule" : "overview"); }
 const content=ref<HTMLElement>();
@@ -473,7 +478,7 @@ function trapFocus(e: KeyboardEvent) {
   }
 }
 function escape(e: KeyboardEvent) {
-  if(e.key === "Escape"){if(modal.value)requestClose();else if(agendaView.editor)agendaRef.value?.requestBack();}
+  if(e.key === "Escape"){if(modal.value)requestClose();else if(agendaView.editor)taskDetailRef.value?.requestBack();}
 }
 async function recalibrate() {
   void syncLearning().catch(()=>{});
@@ -488,7 +493,7 @@ async function recalibrate() {
 watch(schedule, (s) => reconcileReminders(s));
 let pullY=0;
 function pullStart(e:TouchEvent){pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
-function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='academic'&&['agenda','learning'].includes(section.value))void syncLearning({force:true});else void syncAcademic()}}
+function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='academic'&&['overview','learning'].includes(section.value))void syncLearning({force:true});else if(page.value!=='tasks')void syncAcademic()}}
 function viewportChange() {
   const v = window.visualViewport;
   document.documentElement.classList.toggle(
@@ -538,6 +543,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
+  <TaskDetail ref="taskDetailRef" @saved="notify"/>
   <div
     class="app-shell"
     :class="{ compact: prefs.compact, 'home-active': page === 'home' }"
@@ -564,7 +570,6 @@ onUnmounted(() => {
       <div v-else class="page-content">
           <template v-if="page === 'home'">
             <SchoolConnection compact @connected="move('home')" />
-            <button class="agenda-home-entry" @click="go('agenda')"><span><strong>日程与待办</strong><small>{{tasksReady?`${taskSummary(allTasks,now).today.length} 项今日任务 · ${taskSummary(allTasks,now).overdue.length} 项逾期 · ${taskSummary(allTasks,now).due.length} 项近期截止`:'待办尚未读取'}}</small><span v-if="tasksReady" class="task-home-summary"><span v-for="t in taskSummary(allTasks,now).important" :key="t.id">{{t.title}}</span></span></span><ChevronRight :size="18"/></button>
             <div class="home-greeting">
               <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
               ><span class="quiet-label">北京时间 {{ timeOf(now) }}</span>
@@ -609,6 +614,7 @@ onUnmounted(() => {
                 :description="academicCache.connected && !schoolTerm?.data ? '当前无法判断课程安排，请查看上方连接状态。' : '可以在教务中心管理课程，或检查当前学期配置。'"
               />
             </div>
+            <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
             <SectionHeader
               title="今日课程"
               :meta="`${todayCourses.length} 节${current ? ' · 正在上课' : ''}`"
@@ -687,12 +693,12 @@ onUnmounted(() => {
               </button>
             </div>
           </template>
-          <template v-else-if="page === 'academic' || page === 'schedule'">
-            <CampusAgenda ref="agendaRef" v-if="section==='agenda'" @course="details" @navigate="go" />
+          <template v-else-if="page === 'academic' || page === 'schedule' || page === 'tasks'">
+            <CampusAgenda v-if="section==='agenda'" @course="details" @navigate="go" @edit="editDailyTask" />
             <LearningCenter v-else-if="section==='learning'" @plan="planLearning"/><SchoolAcademicRecords v-else-if="['grades','exams','study','official'].includes(section)" :section="section" />
             <template v-else-if="section === 'overview'">
-              <SchoolConnection compact />
-              <SectionHeader title="教务服务" meta="本人数据"/><ServiceGroup :items="academicServices" @select="go"/>
+              <LearningCenter @plan="planLearning"/>
+              <SectionHeader title="学校教务" meta="本人数据"/><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/>
               <SectionHeader title="学校服务" meta="官方外链"/><ServiceGroup :items="official" @select="go"/>
             </template>
             <AcademicDetail v-else
@@ -724,6 +730,7 @@ onUnmounted(() => {
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
+            <TaskSettings/>
             <SectionHeader title="外观设置" />
             <section class="settings-group">
               <div class="theme-row">

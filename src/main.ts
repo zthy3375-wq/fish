@@ -13,3 +13,5 @@ import './grade-analysis.css';
 import './agenda.css';
 
 import './navigation.css';
+
+import './daily-flow.css';

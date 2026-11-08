@@ -19,6 +19,8 @@ export interface RepeatRule {
 export interface CampusTask {
     source?: 'chaoxing'; externalId?: string; platformStatus?: string; platformStatusText?: string; platformStale?: boolean; platformDescription?:string; platformKind?: string; platformStartAt?:string|null; timeText?: string;
     plannedAt?: string | null;
+    plannedDay?: string | null;
+    prepared?: boolean;
     durationMinutes?: number;
     priority?: number;
     pinned?: boolean;
@@ -97,6 +99,8 @@ export function validateTask(value: unknown): CampusTask {
             throw Error('计划时间无效');
         beijingTimestamp(plannedAt);
     }
+    const plannedDay = plannedAt ? null : r.plannedDay ?? null;
+    if (plannedDay !== null && (typeof plannedDay !== 'string' || !validDay(plannedDay))) throw Error('计划日期无效');
     const durationMinutes = r.durationMinutes ?? 30, priority = r.priority ?? 0;
     if (!Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 1440 || !Number.isInteger(priority) || priority < 0 || priority > 3)
         throw Error('时长或优先级无效');
@@ -113,7 +117,7 @@ export function validateTask(value: unknown): CampusTask {
     const repeat = r.repeat ?? null;
     if (repeat && (!['daily', 'weekdays', 'weekly', 'days', 'interval'].includes(repeat.kind) || !Number.isInteger(repeat.interval) || repeat.interval < 1 || repeat.interval > 365 || !Array.isArray(repeat.weekdays) || repeat.weekdays.some(d => !Number.isInteger(d) || d < 1 || d > 7) || (repeat.kind === 'days' && !repeat.weekdays.length)))
         throw Error('重复规则无效');
-    if (repeat && !plannedAt && !r.deadline)
+    if (repeat && !plannedAt && !plannedDay && !r.deadline)
         throw Error('重复任务需设置计划时间或截止时间');
     const reminders = r.reminders ?? (r.deadline && r.remindMinutes !== null ? [{ id: 'legacy', anchor: 'deadline' as const, minutes: r.remindMinutes }] : []);
     if (!Array.isArray(reminders) || reminders.length > 5)
@@ -136,7 +140,7 @@ export function validateTask(value: unknown): CampusTask {
             throw Error('稍后提醒无效');
         beijingTimestamp(snoozedUntil);
     }
-    return { id, title, course, notes, deadline: r.deadline, completed: r.completed, remindMinutes: r.deadline ? r.remindMinutes : null, createdAt: r.createdAt, updatedAt: r.updatedAt, plannedAt, durationMinutes, priority, pinned: r.pinned ?? false, steps: cleanSteps, repeat: repeat ? { kind: repeat.kind, interval: repeat.interval, weekdays: [...new Set(repeat.weekdays)] } : null, reminders: cleanReminders, completedAt, snoozedUntil, ...(r.generatedFrom ? { generatedFrom: bounded(r.generatedFrom, 100) } : {}), ...(r.seriesId ? { seriesId: bounded(r.seriesId, 100) } : {}) };
+    return { id, title, course, notes, deadline: r.deadline, completed: r.completed, remindMinutes: r.deadline ? r.remindMinutes : null, createdAt: r.createdAt, updatedAt: r.updatedAt, plannedAt, plannedDay, durationMinutes, priority, pinned: r.pinned ?? false, steps: cleanSteps, repeat: repeat ? { kind: repeat.kind, interval: repeat.interval, weekdays: [...new Set(repeat.weekdays)] } : null, reminders: cleanReminders, completedAt, snoozedUntil, ...(r.generatedFrom ? { generatedFrom: bounded(r.generatedFrom, 100) } : {}), ...(r.seriesId ? { seriesId: bounded(r.seriesId, 100) } : {}) };
 }
 export function validateTaskSnapshot(value: unknown): TaskSnapshot {
     const r = value as TaskSnapshot;
@@ -234,6 +238,7 @@ export function buildAgenda(series: CourseSeries[], exams: Exam[], tasks: Campus
     }
     for (const t of tasks) {
         if(t.source==='chaoxing'&&t.platformKind==='exam'&&t.platformStartAt){const start=beijingTimestamp(t.platformStartAt),end=t.deadline?beijingTimestamp(t.deadline):null;add({id:'learning-exam/'+t.id,kind:'exam',title:t.title,date:t.platformStartAt.slice(0,10),time:t.platformStartAt.slice(11)+'–'+(t.deadline?.slice(11)||'结束未知'),startAt:start,endAt:end,location:t.course,source:'学习通考试',completed:t.completed,taskId:t.id})}
+        if (t.plannedDay && !t.plannedAt) add({id:'plan/'+t.id,kind:'task',title:t.title,date:t.plannedDay,time:'当天安排',startAt:null,endAt:null,location:t.course,source:'个人计划',completed:t.completed,taskId:t.id});
         if (t.plannedAt) {
             const start = beijingTimestamp(t.plannedAt);
             add({ id: 'plan/' + t.id, kind: 'task', title: t.title, date: t.plannedAt.slice(0, 10), time: t.plannedAt.slice(11) + ' · ' + (t.durationMinutes ?? 30) + '分钟', startAt: start, endAt: start + (t.durationMinutes ?? 30) * 60000, location: t.course, source: '个人计划', completed: t.completed, taskId: t.id });

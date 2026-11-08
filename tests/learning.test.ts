@@ -67,3 +67,11 @@ it('verification after a single-course retry resumes the same scope instead of e
  await h.engine.sync({force:true,courseKeys:['12/34']});h.client.login.mockResolvedValueOnce({...response(),resumeCursor:0,nextCursor:undefined});
  await h.engine.sync({login:true});expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({courseKeys:['12/34'],cursor:0});
 });
+
+it('date-only planning and prepared state survive cache migration without claiming platform submission',()=>{
+ const cache=populated(),t=projectLearning(cache)[0];
+ cache.plans[t.externalId!]=learningPlan({...t,plannedDay:'2026-11-06',prepared:true});
+ const restored=validateLearningCache(JSON.parse(JSON.stringify(cache)));
+ const projected=projectLearning(applyLearningResponse(restored,response(),now))[0];
+ expect(projected).toMatchObject({plannedDay:'2026-11-06',plannedAt:null,prepared:true,completed:false,platformStatus:'pending'});
+});

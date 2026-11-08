@@ -5,9 +5,9 @@ import {NavigationStack,parseRoute} from '../src/domain/navigation';
 import {useNavigation} from '../src/composables/navigation';
 
 describe('导航返回路径',()=>{
- it('四个 Tab 连续切换不会留下返回堆栈',()=>{
+ it('五个 Tab 连续切换不会留下返回堆栈',()=>{
   const n=new NavigationStack(parseRoute('#/home'));
-  for(let i=0;i<20;i++){n.move('schedule');n.move('profile');n.move('academic');n.move('home')}
+  for(let i=0;i<20;i++){n.move('schedule');n.move('tasks');n.move('profile');n.move('academic');n.move('home')}
   expect(n.parents).toEqual([]);expect(n.canBack()).toBe(false);
  });
  it.each(['home','academic','profile'] as const)('二级页返回原入口 %s',page=>{
@@ -45,5 +45,5 @@ describe('浏览器与 Android 共用导航适配',()=>{
 it('学习通独立页接受深链接并返回我的或教务的实际入口',()=>{
  expect(parseRoute('#/academic/learning')).toEqual({page:'academic',section:'learning'});
  const n=new NavigationStack(parseRoute('#/profile'));n.move('academic','learning');n.back();expect(n.route.page).toBe('profile');
- n.move('academic');n.move('academic','learning');n.move('academic','agenda');n.back();expect(n.route.section).toBe('learning');
+ n.move('academic');n.move('academic','learning');n.move('academic','agenda');expect(n.route.page).toBe('tasks');n.back();expect(n.route.page).toBe('home');
 });
