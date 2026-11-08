@@ -14,4 +14,12 @@ class UpdatePolicyTest {
     @Test fun cachedPolicyRoundTripsWithoutChangingRequirement() {val p=UpdatePolicy.parse(manifest().toString());assertEquals(p,UpdatePolicy.parse(p.json().toString()))}
     @Test fun operatorCanWithdrawMandatoryRequirement() {val p=UpdatePolicy.parse(manifest().put("minSupportedVersionCode",100).toString());assertFalse(p.mandatory(100,35));assertTrue(p.available(100,35))}
     @Test fun boundsReleaseNotes() {rejected(manifest().put("notes",org.json.JSONArray().put("a".repeat(501))))}
+    @Test fun tencentChannelIsSeparateFromDownloadCdn() {
+        assertTrue(UpdatePolicy.trustedChannelUrl(UpdatePolicy.CHANNEL+"?t=1"))
+        assertFalse(UpdatePolicy.trustedChannelUrl("https://cdn-app2.pgyer.com/android/stable.json"))
+        assertFalse(UpdatePolicy.trustedChannelUrl(UpdatePolicy.ORIGIN+"/other/stable.json"))
+        assertTrue(UpdatePolicy.trustedUrl("https://cdn-app2.pgyer.com/apps/test.apk?sign=opaque"))
+        assertTrue(UpdatePolicy.trustedUrl("https://hanyuantong-updates.dewydahlia.chatgpt.site/android/old.apk"))
+        for(url in listOf("https://evilpgyer.com/x.apk","https://pgyer.com.evil.test/x.apk","https://cdn-app2.pgyer.com:444/x.apk","https://www.pgyer.com/install?_api_key=secret","https://www.pgyer.com/install?%5fapi_key=secret")) assertFalse(UpdatePolicy.trustedUrl(url))
+    }
 }
