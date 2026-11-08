@@ -24,6 +24,8 @@ async function api(path,params={},method='POST'){
  if(!response.ok)throw Error('Pgyer API HTTP '+response.status);
  return response.json();
 }
+let verified;
+if(candidate.buildKey){verified=release(candidate)}else{
 const token=await api('getCOSToken',{buildType:'android',buildUpdateDescription:candidate.notes.join('\n')});
 if(token.code!==0)throw Error('Pgyer upload authorization code '+token.code);
 const upload=token.data,endpoint=new URL(upload.endpoint);
@@ -42,10 +44,12 @@ for(let i=0;i<60;i++){
 }
 if(!info)throw Error('Pgyer publishing timed out');
 if(info.buildIdentifier!=='org.handancampus.app'||Number(info.buildVersionNo)!==candidate.versionCode||info.buildVersion!==candidate.versionName||Number(info.buildFileSize)!==candidate.sizeBytes)throw Error('Published APK metadata mismatch');
-const verified=release({...candidate,buildKey:info.buildKey});
+verified=release({...candidate,buildKey:info.buildKey});
 mkdirSync('release-evidence',{recursive:true});
 writeFileSync('release-evidence/upload.json',JSON.stringify({release:verified,shortcut:info.buildShortcutUrl},null,2)+'\n');
 console.log(JSON.stringify({uploaded:true,versionCode:verified.versionCode,buildKey:verified.buildKey}));
+}
+mkdirSync('release-evidence',{recursive:true});
 let url=await resolveDownload(verified,key),download;
 for(let i=0;i<6;i++){
  if(!publicDownloadUrl(url)||url.includes(key))throw Error('Untrusted APK redirect');

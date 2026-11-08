@@ -24,6 +24,11 @@ export async function resolveDownload(r,key,fetcher=fetch){
  const response=await fetcher(url,{redirect:'manual',headers:{'User-Agent':'Hanyuantong/Android (Linux; Android 13)'},signal:AbortSignal.timeout(15000)});
  const target=response.headers.get('location');
  // Never send the API-key-bearing install URL or unverified redirects to a device.
- if(![301,302,303,307,308].includes(response.status)||!target||!publicDownloadUrl(target)||target.includes(key.trim()))throw Error('provider_download_unavailable');
+ if(![301,302,303,307,308].includes(response.status)||!target||!publicDownloadUrl(target)||target.includes(key.trim())){
+  let host='none',code='unknown';
+  try{const h=new URL(target).hostname;if(/^[a-z0-9.-]+$/i.test(h)&&!h.includes(key.trim()))host=h}catch{}
+  try{const body=await response.json();if(Number.isInteger(body.code))code=String(body.code)}catch{}
+  throw Error('provider_download_unavailable: HTTP '+response.status+' host '+host+' code '+code);
+ }
  return target;
 }

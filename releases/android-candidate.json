@@ -6,5 +6,9 @@
   "sha256": "c195e7ce4bcbb6f59d5655d4dfb932d28503855bd16166b7e29d5f99613e4a5f",
   "sizeBytes": 12319357,
   "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.0.5.apk",
-  "notes": ["应用内更新接入腾讯云，安装包由蒲公英提供。", "保留直饮水余额展示及自愿参与的使用统计。"]
+  "notes": [
+    "应用内更新接入腾讯云，安装包由蒲公英提供。",
+    "保留直饮水余额展示及自愿参与的使用统计。"
+  ],
+  "buildKey": "4096e214652a8a1fcbc43f3c0db64bef"
 }
