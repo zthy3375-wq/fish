@@ -28,4 +28,4 @@ console.log('Health and protected statistics checks passed');
 
 const uid=randomUUID(),testToken=randomBytes(32).toString('hex');
 const call=async(action,payload)=>{const r=await fetch(service+'/api/metrics/'+action,{method:'POST',headers:{Authorization:'Bearer '+testToken,'Content-Type':'application/json'},body:JSON.stringify({id:uid,...payload})});const b=await r.json();console.log('Smoke check',action,r.status,b);return r.status;};
-try{if(await call('enroll',{})!==200){cli(['fn','log','hyt-analytics','--limit','20','--json']);throw Error('Enrollment smoke check failed')}}finally{await call('delete',{})}
+try{if(await call('enroll',{})!==200){throw Error('Enrollment smoke check failed')}}finally{await call('delete',{})}
