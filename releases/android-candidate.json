@@ -3,13 +3,12 @@
   "versionName": "1.0.5",
   "minSupportedVersionCode": 102,
   "minSdk": 23,
-  "sha256": "c195e7ce4bcbb6f59d5655d4dfb932d28503855bd16166b7e29d5f99613e4a5f",
+  "sha256": "db1316d771590fa2456a9c7980c00e7a0d2e0ed5f545c33793944195b193aef8",
   "sizeBytes": 12319357,
-  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.0.5.apk",
+  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.0.5-db1316d77159.apk",
   "notes": [
     "应用内更新接入腾讯云，安装包由蒲公英提供。",
     "保留直饮水余额展示及自愿参与的使用统计。"
   ],
-  "buildKey": "4096e214652a8a1fcbc43f3c0db64bef",
-  "ready": false
+  "ready": true
 }

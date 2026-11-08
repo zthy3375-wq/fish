@@ -11,7 +11,8 @@ if(existing){
  console.log('Candidate already published; skipping upload');
  process.exit(0);
 }
-if(candidate.sourceUrl!==`https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v${candidate.versionName}.apk`)throw Error('Unexpected APK source');
+const sourcePrefix=`https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v${candidate.versionName}`;
+if(![sourcePrefix+'.apk',sourcePrefix+'-'+candidate.sha256.slice(0,12)+'.apk'].includes(candidate.sourceUrl))throw Error('Unexpected APK source');
 const sha=b=>createHash('sha256').update(b).digest('hex');
 const source=await fetch(candidate.sourceUrl,{redirect:'error',signal:AbortSignal.timeout(60000)});
 if(!source.ok)throw Error('APK source unavailable');

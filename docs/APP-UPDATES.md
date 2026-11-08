@@ -10,6 +10,14 @@ GitHub Actions Repository Secret：`PGYER_API_KEY`。工作流 `.github/workflow
 
 接通后验收：普通更新提示 → 应用内下载 → SHA-256/签名/包名校验 → 系统安装权限 → 覆盖安装 → 数据保留。强制更新验证无“稍后”、返回不绕过、断网保留已知策略、撤回策略恢复；接水和编辑中的安全延后保持原逻辑。
 
+## 发布验证与迁移
+
+`releases/android-candidate.json` 固定待发布签名 APK 的哈希、大小、版本和来源。`publish-android-candidate.yml` 使用 GitHub Secret 上传到蒲公英，核对包名及版本后，实际下载并比较 SHA-256 和字节数；验证通过后才部署腾讯云版本清单。发布凭证产物随后应回写到 `cloudbase/functions/updates/releases.json`，避免后续部署回退。
+
+已实际观察蒲公英 install 接口跳转至 `pgyer-apps-cfw.appmeme.com`；服务端及 Android 只额外允许这个确切主机，不允许整个 appmeme.com 域。版本信息只允许腾讯云固定接口。安装包仍检查签名、包名、版本、大小和哈希。
+
+当前候选发布支持上传、下载验证及更新清单；构建与签名仍使用现有 CI 和离线签名，还没有完成“一次确认即自动打包签名发布”。手机上的系统安装、数据保留及国内关闭 VPN 的网络表现需用户实测。强制更新自动化已覆盖，尚未宣布手机实测通过。
+
 以下为旧通道记录，保留兼容说明。
 
 # 邯院通应用内更新
