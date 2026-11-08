@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ChevronDown,
   Plus,
-  MapPin,
   CalendarDays,
   Clock3,
 } from "lucide-vue-next";

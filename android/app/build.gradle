@@ -5,12 +5,12 @@ android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.life.v089' : 'org.handancampus.app')
-        manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·生活测试版' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·生活测试版' : '@string/title_activity_main']
+        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.preview' : 'org.handancampus.app')
+        manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·预览版' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·预览版' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 89
-        versionName "0.8.9-interface-test"
+        versionCode 100
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

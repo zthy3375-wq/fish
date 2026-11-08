@@ -496,6 +496,6 @@ export function backup(state: ScheduleState) {
 export function restoreBackup(input: string) {
   const x = JSON.parse(input);
   if (x.format !== "handan-campus-schedule")
-    throw Error("不是邯郸校园课表备份");
+    throw Error("不是邯院通课表备份");
   return validateState(x.data);
 }

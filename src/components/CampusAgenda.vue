@@ -39,7 +39,7 @@ const nextEvent=computed(()=>timelineEvents.value.find(e=>e.startAt!==null&&e.st
 const count=(view:SmartList)=>selectTasks(allTasks.value,{...taskView,view,search:'',course:'',priority:-1},now.value).length;
 function report(e:unknown){error.value=e instanceof Error?e.message:'操作未完成，请重试'}
 async function quickAdd(){if(!taskView.quick.trim()||tasksBusy.value)return;error.value='';try{const task=createTask(taskView.quick.trim(),uid(),now.value);if(taskView.view==='today')task.plannedDay=beijingDay(now.value);if(taskView.course)task.course=taskView.course;await changeTasks(()=>taskStore.upsert(task));taskView.quick='';if(taskView.view!=='today')taskView.view='inbox';message.value='任务已添加';}catch(e){report(e)}}
-function edit(task?:CampusTask){emit('edit',task,!task&&taskView.view==='today'?beijingDay(now.value):undefined)}
+function edit(task?:CampusTask){emit('edit',task,!task?(taskView.mode==='timeline'?selectedDay.value:taskView.view==='today'?beijingDay(now.value):undefined):undefined)}
 async function complete(task:CampusTask){if(task.source==='chaoxing')return;try{await changeTasks(()=>taskStore.complete(task.id,!task.completed));message.value=task.completed?'已恢复任务':'已完成，可在「已完成」中撤销'}catch(e){report(e)}}
 async function replan(task:CampusTask,offset:number){try{if(task.source==='chaoxing'){await saveLearningPlan(replanTask({...task},shiftDay(beijingDay(now.value),offset),now.value));message.value='计划已调整，最终截止时间保持原样';return;}await changeTasks(()=>taskStore.change(s=>{const t=s.tasks.find(t=>t.id===task.id);if(!t)throw Error('任务已不存在');replanTask(t,shiftDay(beijingDay(now.value),offset),now.value)}));message.value='计划已调整，最终截止时间保持原样'}catch(e){report(e)}}
 function selectEvent(e:AgendaEvent){if(e.taskId){const task=allTasks.value.find(t=>t.id===e.taskId);if(task){edit(task)}}else if(e.course)emit('course',e.course);else emit('navigate','exams')}
@@ -83,6 +83,6 @@ onMounted(()=>{void initTasks().catch(()=>{});void initLearning().then(()=>syncL
    </article></template><div v-if="day.date===beijingDay(now)&&nowIndex(day.events)===day.events.length" class="timeline-now">现在 {{new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit'}).format(now)}}</div><p v-if="!day.events.length" class="task-hint">暂无已知安排</p></div>
   <p class="task-hint">任务执行时间和最终截止分别展示。学校课程日期依赖本机学期配置；个人任务不会修改学校安排。</p>
  </template>
- <form class="task-quick" aria-label="快速添加任务" @submit.prevent="quickAdd"><Plus :size="18"/><input v-model="taskView.quick" aria-label="快速任务标题" maxlength="100" placeholder="添加任务，回车保存" :disabled="!tasksReady"/><button class="primary" aria-label="快速保存任务" :disabled="!tasksReady||tasksBusy||!taskView.quick.trim()"><ArrowUp :size="18"/></button></form>
+ <form v-if="taskView.mode==='list'" class="task-quick" aria-label="快速添加任务" @submit.prevent="quickAdd"><Plus :size="18"/><input v-model="taskView.quick" aria-label="快速任务标题" maxlength="100" placeholder="添加任务，回车保存" :disabled="!tasksReady"/><button class="primary" aria-label="快速保存任务" :disabled="!tasksReady||tasksBusy||!taskView.quick.trim()"><ArrowUp :size="18"/></button></form>
 </section>
 </template>

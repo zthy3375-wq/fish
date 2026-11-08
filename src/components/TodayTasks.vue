@@ -2,13 +2,13 @@
 import {computed,ref} from 'vue';
 import {allTasks,tasksReady,tasksBusy,changeTasks} from '../composables/tasks';
 import {saveLearningPlan} from '../composables/learning';
-import {taskSummary,plannedDay,replanTask} from '../domain/tasks';
+import {taskSummary,replanTask} from '../domain/tasks';
 import {beijingDay,shiftDay,beijingTimestamp,type CampusTask} from '../domain/agenda';
 import {learningTaskState} from '../domain/learning-status';
 import {taskStore} from '../services/task-store';
 import DailyTaskRow from './DailyTaskRow.vue';
 const props=defineProps<{now:Date}>();
-const emit=defineEmits<{open:[task:CampusTask];navigate:[section:string];create:[]}>();
+defineEmits<{open:[task:CampusTask];navigate:[section:string];create:[]}>();
 const message=ref(''),undoTask=ref<CampusTask|null>(null);
 const today=computed(()=>taskSummary(allTasks.value,props.now).today);
 const urgent=computed(()=>allTasks.value.filter(t=>!t.completed&&t.deadline&&t.deadline.slice(0,10)<=shiftDay(beijingDay(props.now),7)&&!today.value.some(x=>x.id===t.id)&&(t.source!=='chaoxing'||learningTaskState(t,props.now).key==='pending')).sort((a,b)=>beijingTimestamp(a.deadline!)-beijingTimestamp(b.deadline!)));

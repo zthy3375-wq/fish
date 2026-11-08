@@ -14,15 +14,12 @@ import {
   restoreBackup,
   collisions,
   validateSemester,
-  type ManagedCourse,
   type Semester,
 } from "../domain/schedule";
 import {
   fields,
   guessMapping,
-  readTable,
   previewRows,
-  previewICS,
   csvTemplate,
   type Table,
   type Mapping,

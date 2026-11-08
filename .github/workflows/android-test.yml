@@ -70,6 +70,18 @@ jobs:
           exit 1
       - run: ./gradlew --no-daemon --init-script ../scripts/apk-evidence.init.gradle testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease :app:writeDebugApkEvidenceExpectation
         working-directory: android
+      - name: Package unsigned release for private offline signing
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-signing"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -P 16 4 android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/release-signing/app-release-unsigned.apk"
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" "$RUNNER_TEMP/release-signing/"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$RUNNER_TEMP/release-signing/app-release-unsigned.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hanyuantong-unsigned-release-${{ github.sha }}
+          path: ${{ runner.temp }}/release-signing/
+          retention-days: 7
+          if-no-files-found: error
       - name: Verify and record regular debug APK evidence
         run: |
           mkdir -p "$RUNNER_TEMP/apk-delivery/regular-debug"

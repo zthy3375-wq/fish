@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import QuzhiWallet from './components/QuzhiWallet.vue';
 import LifeServices from './components/LifeServices.vue';
-import PangguaiWallet from './components/PangguaiWallet.vue';
 import {defineAsyncComponent} from 'vue';
+const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
+const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
 const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
 import ParcelShortcuts from './components/ParcelShortcuts.vue';
 import LearningCenter from './components/LearningCenter.vue';
@@ -11,9 +11,8 @@ import TaskSettings from './components/TaskSettings.vue';
 import TodayTasks from './components/TodayTasks.vue';
 import {beijingDay,type CampusTask} from './domain/agenda';
 import {initLearning,syncLearning,learningTasks} from './composables/learning';
-import {taskSummary} from './domain/tasks';
 import CampusAgenda from './components/CampusAgenda.vue';
-import {initTasks,reloadTasks,taskSnapshot,tasksReady,agendaView,taskView,allTasks,reconcileTaskReminders} from './composables/tasks';
+import {initTasks,reloadTasks,tasksReady,agendaView,taskView,reconcileTaskReminders} from './composables/tasks';
 import {version as appVersion} from '../package.json';
 import {
   ref,
@@ -49,11 +48,10 @@ import {
   Clock3,
   MapPin,
   CheckCheck,
-  Github,
   MessageSquare,
 } from "lucide-vue-next";
 import type { AcademicData, Course } from "./domain/academic";
-import { coursesForDay, weightedAverage } from "./domain/academic";
+import { coursesForDay } from "./domain/academic";
 import {
   campusNow,
   currentWeek,
@@ -304,18 +302,11 @@ const settings = [
 const about = [
   { id: "privacy", title: "隐私政策", icon: ShieldCheck },
   {
-    id: "github",
-    title: "GitHub 开源项目",
-    icon: Github,
-    href: "https://github.com/zthy3375-wq/fish",
-  },
-  {
     id: "feedback",
     title: "问题反馈",
     icon: MessageSquare,
-    href: "https://github.com/zthy3375-wq/fish/issues",
   },
-  { id: "about", title: "版本信息", subtitle: `邯郸校园 · v${appVersion}`, icon: Info },
+  { id: "about", title: "版本信息", subtitle: `邯院通 · v${appVersion}`, icon: Info },
 ];
 const sectionNames: Record<string, string> = {
   overview: "学习",
@@ -781,7 +772,7 @@ onUnmounted(() => {
             </p>
           </template>
           <footer>
-            邯郸校园 <span>·</span> 独立开源学生项目
+            邯院通 <span>·</span> 独立学生项目
             <span>·</span> 非学校官方应用
           </footer>
         </div>
@@ -973,7 +964,7 @@ onUnmounted(() => {
               ><article class="notice">
                 <Info :size="20" />
                 <div>
-                  <h3>欢迎使用邯郸校园</h3>
+                  <h3>欢迎使用邯院通</h3>
                   <p>
                     连接学校后自动同步，离线时可查看上次数据。公开通知请前往学校官网查看。
                   </p>
@@ -1059,23 +1050,18 @@ onUnmounted(() => {
               我知道了
             </button></template
           >
+          <template v-else-if="modal==='feedback'"><h2>问题反馈</h2><p>请将问题截图、发生步骤、手机型号和版本号发送给邀请你参加内测的开发者。不要发送密码或验证码。</p><p>邯院通 {{appVersion}}</p><button class="primary full" @click="close">我知道了</button></template>
           <template v-else
-            ><span class="brand-mark"><GraduationCap :size="27" /></span>
-            <h2>邯郸校园 <small>v{{appVersion}}</small></h2>
+            ><img class="brand-mark" src="/icon.svg" alt="邯院通图标"/>
+            <h2>邯院通 <small>v{{appVersion}}</small></h2>
             <p>
-              为同学，由同学。独立开源的学生校园助手，未获邯郸学院官方认证或合作授权。
+              为同学，由同学。独立开发的学生校园助手，未获邯郸学院官方认证或合作授权。
             </p>
             <p>
-              原创代码采用 MIT 许可证。工程研究参考
+              当前为内测版本。第三方开源组件保留各自许可证。工程研究参考
               UBAA、HFUT-Schedule、DanXi、fzuhelper-app；设计吸收用户提供参考图的通用布局原则。
             </p>
-            <a
-              class="secondary full"
-              href="https://github.com/zthy3375-wq/fish"
-              target="_blank"
-              rel="noopener noreferrer"
-              ><Github :size="17" />查看开源项目</a
-            ></template
+</template
           >
         </section>
       </div></Transition

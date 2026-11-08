@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import {computed} from 'vue';
+import {computed,defineAsyncComponent} from 'vue';
 import {academicCache,schoolTerm} from '../composables/handan-academic';
 import SchoolConnection from './SchoolConnection.vue';
-import GradeAnalysis from './GradeAnalysis.vue';
+const GradeAnalysis=defineAsyncComponent(()=>import('./GradeAnalysis.vue'));
 defineProps<{section:string}>();
 const profile=computed(()=>academicCache.value.profile.data);
 const stamp=(s:string|null)=>s?new Date(s).toLocaleString('zh-CN',{hour12:false}):'尚未获取';

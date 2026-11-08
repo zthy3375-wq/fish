@@ -217,6 +217,12 @@ try{
   await dialog.getByRole('button',{name:'保存待办',exact:true}).click();
   await dialog.waitFor({state:'hidden'});
   await page.getByRole('tab',{name:'日程',exact:true}).click();
+  assert(await page.getByRole('form',{name:'快速添加任务'}).count()===0,`${width}: timeline never overlays the list composer`);
+  await page.getByLabel('日程日期',{exact:true}).fill('2026-11-09');
+  await page.getByRole('button',{name:'添加待办',exact:true}).click();await dialog.getByLabel('待办标题').waitFor();
+  assert(await dialog.getByLabel('计划日期',{exact:true}).inputValue()==='2026-11-09',`${width}: timeline composer uses selected day`);
+  await dialog.getByRole('button',{name:'关闭任务详情',exact:true}).click();
+  await page.getByLabel('日程日期',{exact:true}).fill('2026-11-06');
   assert(await page.locator('.timeline-event.task').count()===2,`${width}: timeline retains separate plan and deadline`);
   await page.screenshot({path:path.join(output,`task-timeline-${width}.png`),animations:'disabled'});
   await page.getByRole('tab',{name:'任务清单',exact:true}).click();
