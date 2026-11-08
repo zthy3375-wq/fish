@@ -97,7 +97,8 @@ internal class PangguaiLaundry(
         save(s)
         try {
             val created=obj(post("trade/create",mapOf("items" to items(req(device,"id"),req(q,"skuId")),"promotions" to "[]")))
-            s.put("orderNo",req(created,"tradeNo")).put("orderId",req(created,"orderId")).put("phase","pending");save(s)
+            val number=req(created,"tradeNo");val orderId=req(created,"orderId")
+            s.put("orderNo",number).put("orderId",orderId).put("phase","pending");save(s)
             read(s)
             if(text(s,"phase")!="pending")return s
             if(!samePrice(req(s,"amount"),req(q,"amount")))throw PangguaiFailure("PRICE_CHANGED")
@@ -112,7 +113,8 @@ internal class PangguaiLaundry(
             text(rows.getJSONObject(0),"goodsId")!=text(s,"deviceId")||text(rows.getJSONObject(0),"skuId")!=text(s,"skuId"))throw PangguaiFailure("ORDER_MISMATCH")
         val phase=when(text(data,"orderStatus")){"0"->if(s.optBoolean("paySent"))"checking" else "pending";"1"->"closed";"2"->"paid";"3"->"completed";"4"->"refunding";"5"->"refunded";else->"unknown"}
         // A stale pending response must not erase previously confirmed payment/start.
-        if(!(phase in setOf("pending","checking") && text(s,"phase") in setOf("paid","running","completed")))s.put("phase",phase)
+        if(!(phase in setOf("pending","checking","paid") && text(s,"phase") in setOf("running","completed","refunded")) &&
+            !(phase in setOf("pending","checking") && text(s,"phase")=="paid"))s.put("phase",phase)
         s.put("amount",price(data.opt("payPrice"))).put("updatedAt",now());s.remove("error")
         listOf("completeTime" to "expectedEnd","finishTime" to "finishedAt").forEach{(from,to)->timestamp(text(data,from))?.let{s.put(to,it)}}
         save(s)

@@ -42,7 +42,9 @@ class PangguaiPlugin : Plugin() {
         PangguaiLaundry.view(state.optJSONObject("laundry"))?.let{result.put("laundry",it)}
         JSObject.fromJSONObject(result)
     }
-    private fun reject(call:PluginCall,e:Exception){val code=if(e is QuzhiLifecycleCancelled)"CANCELLED" else (e as? PangguaiFailure)?.kind ?: "NETWORK";call.reject(message(code),code)}
+    private fun reject(call:PluginCall,e:Exception){
+        if(e is PangguaiFailure && e.kind in setOf("AUTH","ACCOUNT"))runCatching{save(JSONObject(state.toString()).put("expired",true))}
+        val code=if(e is QuzhiLifecycleCancelled)"CANCELLED" else (e as? PangguaiFailure)?.kind ?: "NETWORK";call.reject(message(code),code)}
     private fun message(code:String)=when(code){
         "PHONE"->"请输入正确的手机号";"AUTH","ACCOUNT"->"胖乖登录已失效，请重新连接"
         "VERIFY"->"平台要求验证或稍后重试，请在官方页面完成验证后再试"

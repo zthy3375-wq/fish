@@ -69,4 +69,7 @@ class PangguaiLaundryTest {
         fails("CREATE_UNKNOWN"){h.engine.poll(h.saved!!)};assertFalse(h.calls.contains("pay/unify/pay"))
     }
 
+    @Test fun partialCreateResponseLeavesRecoverableIntent(){val h=Harness();val q=h.engine.quote(device,"wash");h.handler={p->if(p=="trade/create")JSONObject("{tradeNo:'trade-test'}") else h.response(p)};fails("FORMAT"){h.engine.start(device,q,"2",null)};assertFalse(h.saved!!.has("orderNo"));assertEquals("creating",h.saved!!.getString("phase"))}
+    @Test fun delayedStatusDoesNotEraseConfirmedRunning(){val h=Harness();h.started=true;val s=h.engine.start(device,h.engine.quote(device,"wash"),"2",null);h.started=false;h.status="2";assertEquals("running",h.engine.poll(s).getString("phase"))}
+
 }
