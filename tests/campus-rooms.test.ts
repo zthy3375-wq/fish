@@ -17,6 +17,7 @@ describe('verified classroom directory',()=>{
  it('finds actual A201 and supports campus and floor filtering',()=>{
   expect(searchRooms('ａ２０１','east').some(r=>r.cdmc==='A201'&&r.lch==='2')).toBe(true);
   expect(searchRooms('机器人','west').length).toBeGreaterThan(0);
+  expect(searchRooms('天玑','west').length).toBe(27);
   expect(searchRooms('','east','东区文理综合楼','2').every(r=>r.lch==='2')).toBe(true);
  });
 });

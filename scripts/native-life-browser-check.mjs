@@ -29,7 +29,9 @@ export async function checkNativeLife(page,assert,{width,output}){
  await map.getByRole('textbox',{name:'搜索教室',exact:true}).fill('A201');
  await map.locator('.rows button').filter({hasText:'A201'}).first().click();
  assert((await map.locator('.address').innerText()).includes('东区文理综合楼 · 2 层'),`${width}: verified room floor appears`);
- await map.getByRole('button',{name:'校园平面图',exact:true}).click();
+ await map.getByRole('button',{name:'在平面图查看楼栋',exact:true}).click();
+ await map.getByText('文理综合楼 A 区 · 楼栋参考点',{exact:true}).waitFor();
+ await map.getByRole('button',{name:'西校区平面图',exact:true}).click();
  await map.locator('.plan .leaflet-image-layer').waitFor();
  assert(await map.locator('.plan .leaflet-image-layer').evaluate(img=>img.complete&&img.naturalWidth===864),`${width}: provided west plan loaded`);
  await page.screenshot({path:path.join(output,`campus-plan-${width}.png`),animations:'disabled'});

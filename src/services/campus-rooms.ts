@@ -1,4 +1,5 @@
 import catalog from '../data/campus-rooms.json';
+import {roomPlanTarget} from './campus-plan';
 export type RoomCampus = 'east' | 'west' | 'unknown';
 export interface CampusRoom {cdbh:string;cdmc:string;xqmc:string;cdlbmc:string;zws:string;jxlmc:string;lch:string}
 export const campusRooms:CampusRoom[]=catalog.records;
@@ -14,5 +15,5 @@ export function roomFloor(room:CampusRoom):string{
 export function searchRooms(query:string,campus:RoomCampus|'all'='all',building='',floor=''):CampusRoom[]{
  const normalize=(s:string)=>s.normalize('NFKC').toLocaleLowerCase().replace(/[\s—–-]/g,'');
  const terms=normalize(query).split(/[,，]/).filter(Boolean);
- return campusRooms.filter(r=>(campus==='all'||roomCampus(r)===campus)&&(!building||r.jxlmc===building)&&(!floor||r.lch===floor)&&terms.every(q=>normalize(`${r.cdmc} ${r.cdbh} ${r.jxlmc}`).includes(q)));
+ return campusRooms.filter(r=>(campus==='all'||roomCampus(r)===campus)&&(!building||r.jxlmc===building)&&(!floor||r.lch===floor)&&terms.every(q=>normalize(`${r.cdmc} ${r.cdbh} ${r.jxlmc} ${roomPlanTarget(r)?.name||''}`).includes(q)));
 }

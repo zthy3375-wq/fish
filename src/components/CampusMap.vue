@@ -7,6 +7,9 @@ import {Search,Star,MapPin,Navigation,Plus,Layers,LocateFixed,Download,Upload} f
 import geometry from '../data/campus-geometry.json';
 import CampusRoomDirectory from './CampusRoomDirectory.vue';
 import CampusPlan from './CampusPlan.vue';
+import type {PlanTarget} from '../services/campus-plan';
+const planTarget=ref<PlanTarget>();
+function showRoomPlan(target:PlanTarget){planTarget.value=target;view.value='plan'}
 import {locateCampus,stopCampusLocation} from '../services/campus-location';
 const view=ref<'rooms'|'plan'|'geo'>('rooms');
 const locating=ref(false);
@@ -53,7 +56,7 @@ onUnmounted(()=>{clearLocation();resize?.disconnect();map?.remove();map=undefine
 <template>
  <div class="campus-map"><span class="micro-label">探索校园</span><h2>校园地图</h2>
   <div class="map-campus" aria-label="地图视图"><button :class="{active:view==='rooms'}" @click="view='rooms'">找教室</button><button :class="{active:view==='plan'}" @click="view='plan'">校园平面图</button><button :class="{active:view==='geo'}" @click="view='geo'">道路与地点</button></div>
-  <CampusRoomDirectory v-if="view==='rooms'"/><CampusPlan v-if="view==='plan'"/>
+  <CampusRoomDirectory v-show="view==='rooms'" @show-plan="showRoomPlan"/><CampusPlan v-if="view==='plan'" :target="planTarget"/>
   <div v-show="view==='geo'">
   <div class="map-campus"><button v-for="(c,id) in campusCenters" :key="id" :class="{active:campus===id}" @click="campus=id">{{c.name}}</button></div>
   <label class="map-search"><Search :size="17"/><input v-model="query" aria-label="搜索校园地点" placeholder="搜索楼名或自己保存的地点"/></label>
