@@ -4,6 +4,9 @@
 
 ## 当前维护入口
 
+- [趣智钱包与真机验收](V081-QUZHI-WALLET.md)
+- [开源项目比较与复用策略](OPEN-SOURCE-STRATEGY.md)
+
 - [成绩分析算法口径、培养方案调查与验证范围](V060-GRADE-ANALYSIS.md)
 
 - [当前功能、验证证据与未完成事项](STATUS.md)

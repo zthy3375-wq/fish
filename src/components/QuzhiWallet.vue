@@ -50,7 +50,7 @@ onUnmounted(()=>{disposed=true;clearTimeout(resumeTimer);void listener?.remove()
     <div v-if="quzhi.expired" class="quzhi-notice">登录已失效，下方为上次查询结果。<button class="text-button" :disabled="blocked" @click="connectQuzhi(month)">重新连接</button></div>
     <section class="quzhi-balance" aria-label="趣智钱包余额">
       <span>账户总余额</span><strong class="quzhi-amount"><small>¥</small>{{quzhiMoney(quzhi.wallet?.total)}}</strong>
-      <div class="quzhi-breakdown"><span>充值余额 <b>¥{{quzhiMoney(quzhi.wallet?.cash)}}</b></span><span>赠送余额 <b>¥{{quzhiMoney(quzhi.wallet?.gift)}}</b></span></div>
+      <div v-if="quzhi.wallet?.cash != null || quzhi.wallet?.gift != null" class="quzhi-breakdown"><span v-if="quzhi.wallet?.cash != null">充值余额 <b>¥{{quzhiMoney(quzhi.wallet.cash)}}</b></span><span v-if="quzhi.wallet?.gift != null">赠送余额 <b>¥{{quzhiMoney(quzhi.wallet.gift)}}</b></span></div>
       <small class="quzhi-updated">{{quzhiBusy?'正在更新…':'查询于 '+timestamp(quzhi.walletUpdatedAt)}}</small>
       <button class="primary full" :disabled="blocked||!valid" @click="confirmation='recharge'"><ArrowUpRight :size="17"/>充值 · 支付宝</button>
     </section>

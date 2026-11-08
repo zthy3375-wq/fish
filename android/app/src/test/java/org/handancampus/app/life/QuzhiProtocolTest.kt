@@ -31,10 +31,32 @@ class QuzhiProtocolTest {
     }
     @Test fun walletPreservesUnknownFieldsAndZeroWithoutInventingTotals() {
         val wallet = QuzhiProtocol.wallet(JSONObject("""{"money":"0.00","accountRealMoney":0,"accountGivenMoney":"1.250"}"""))
-        assertEquals("0", wallet.getString("total")); assertEquals("1.25", wallet.getString("gift"))
-        assertTrue(QuzhiProtocol.wallet(JSONObject("""{"accountRealMoney":"3.5"}""")).isNull("total"))
-        rejected("FORMAT") { QuzhiProtocol.wallet(JSONObject()) }
+        assertEquals("0", wallet.getString("total")); assertTrue(wallet.isNull("gift")); assertTrue(wallet.isNull("cash"))
+        rejected("UNVERIFIED_UNITS") { QuzhiProtocol.wallet(JSONObject("""{"accountRealMoney":"3.5"}""")) }
+        rejected("UNVERIFIED_UNITS") { QuzhiProtocol.wallet(JSONObject()) }
         rejected("FORMAT") { QuzhiProtocol.wallet(JSONObject("""{"money":"免费"}""")) }
+    }
+    @Test fun walletUnitsRequireExplicitFieldsAndAgreeWhenBothProvided() {
+        assertEquals("12.345", QuzhiProtocol.wallet(JSONObject("""{"accountMoney":12345}""")).getString("total"))
+        assertEquals("12.345", QuzhiProtocol.wallet(JSONObject("""{"money":"12.345","accountMoney":12345}""")).getString("total"))
+        rejected("UNVERIFIED_UNITS") { QuzhiProtocol.wallet(JSONObject("""{"money":"12.34","accountMoney":12345}""")) }
+        rejected("FORMAT") { QuzhiProtocol.wallet(JSONObject("""{"accountMoney":12.345}""")) }
+        rejected("FORMAT") { QuzhiProtocol.wallet(JSONObject("""{"accountMoney":"9999999999999999"}""")) }
+    }
+    @Test fun ambiguousOrInvalidWalletNeverReplacesLastSuccessfulSnapshot() {
+        for (response in listOf("{}", "{\"money\":null}", "{\"money\":\"invalid\"}", "{\"accountRealMoney\":12345}")) {
+            val result = QuzhiRefresh.execute(prior(), "2026-11", { path, _ -> if (path == "account/wallet") JSONObject(response) else JSONArray() }, { 10 })
+            val cached = result.getJSONObject("snapshot")
+            assertEquals("12.34", cached.getJSONObject("wallet").getString("total"))
+            assertEquals(1, cached.getLong("walletUpdatedAt"))
+            assertTrue(cached.getJSONObject("issues").has("wallet"))
+        }
+    }
+    @Test fun flatSessionsPreferTheV3LoginCodeWithoutChangingNestedSessions() {
+        val flat = QuzhiProtocol.session(JSONObject("""{"loginCode":"legacy","v3LoginCode":"v3","userId":12,"projectId":56}"""), "13800000000")
+        assertEquals("v3", flat.getString("loginCode"))
+        val nested = QuzhiProtocol.session(JSONObject("""{"loginCode":"nested","v3LoginCode":"unused","userId":12,"userAccount":{"projectId":56}}"""), "13800000000")
+        assertEquals("nested", nested.getString("loginCode"))
     }
     @Test fun onlyExplicitSuccessIsAcceptedAndAuthDoesNotHideSignatureFailures() {
         assertEquals(3, QuzhiProtocol.payload(JSONObject("""{"success":true,"errorCode":"0","data":3}""")))

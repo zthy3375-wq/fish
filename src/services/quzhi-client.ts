@@ -35,6 +35,6 @@ export function quzhiMoney(value?: string | null): string {
 }
 export function quzhiIssue(code?: string): string {
   return ({AUTH:'登录已失效，请重新连接', VERIFY:'平台要求验证或稍后重试，请勿连续提交', FORMAT:'返回信息暂时无法识别，保留上次数据',
-    SERVICE:'趣智暂未完成请求，请稍后刷新', NETWORK:'网络连接失败，保留上次数据', NO_ALIPAY:'请先安装支付宝，再进入趣智充值页',
+    UNVERIFIED_UNITS:'余额单位暂无法核对，保留上次数据', SERVICE:'趣智暂未完成请求，请稍后刷新', NETWORK:'网络连接失败，保留上次数据', NO_ALIPAY:'请先安装支付宝，再进入趣智充值页',
     BUSY:'趣智操作正在进行，请稍候', UNAVAILABLE:'请在 Android 客户端连接趣智校园'} as Record<string,string>)[code ?? ''] ?? '操作未完成，请稍后重试';
 }

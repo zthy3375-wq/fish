@@ -9,7 +9,7 @@ vi.mock('@capacitor/app',()=>({App:{addListener:vi.fn(async(_event:string,callba
 vi.mock('../src/services/quzhi-client',async original=>({...await original<typeof import('../src/services/quzhi-client')>(),quzhiSupported:()=>true}));
 vi.mock('../src/composables/quzhi',async()=>{
   const {ref}=await import('vue');
-  return {quzhi:ref({connected:true,expired:false,phone:'138****0000',school:'人工测试学校',wallet:{total:'12.34',cash:'10',gift:'2.34'}}),quzhiBusy:ref(false),quzhiReady:ref(true),quzhiError:ref(''),initQuzhi:vi.fn(async()=>{}),refreshQuzhi:vi.fn(async()=>true),connectQuzhi:vi.fn(),disconnectQuzhi:vi.fn(),rechargeQuzhi:vi.fn()};
+  return {quzhi:ref({connected:true,expired:false,phone:'138****0000',school:'人工测试学校',wallet:{total:'12.34',cash:null,gift:null}}),quzhiBusy:ref(false),quzhiReady:ref(true),quzhiError:ref(''),initQuzhi:vi.fn(async()=>{}),refreshQuzhi:vi.fn(async()=>true),connectQuzhi:vi.fn(),disconnectQuzhi:vi.fn(),rechargeQuzhi:vi.fn()};
 });
 let app:ReturnType<typeof createApp>|undefined,root:HTMLElement;
 async function settle(){await Promise.resolve();await Promise.resolve();await nextTick()}
@@ -32,3 +32,5 @@ it('removes the listener and pending refresh when the wallet closes',async()=>{
   await vi.advanceTimersByTimeAsync(250);
   expect(native.remove).toHaveBeenCalledTimes(1);expect(refreshQuzhi).not.toHaveBeenCalled();
 });
+
+it('hides component balances when their units cannot be verified',()=>{expect(root.querySelector('.quzhi-breakdown')).toBeNull();expect(root.textContent).toContain('12.34')});

@@ -50,7 +50,8 @@ internal object QuzhiProtocol {
         val obj = data as? JSONObject ?: throw QuzhiFailure("FORMAT")
         val nested = obj.optJSONObject("userAccount") ?: obj
         fun first(vararg candidates: String) = candidates.firstOrNull { it.isNotBlank() }.orEmpty()
-        val result = JSONObject().put("loginCode", text(obj, "loginCode"))
+        val loginCode = if (obj.optJSONObject("userAccount") != null) text(obj, "loginCode") else first(text(obj, "v3LoginCode"), text(obj, "loginCode"))
+        val result = JSONObject().put("loginCode", loginCode)
             .put("userId", first(text(obj, "userId"), text(obj, "v3UserId"), text(nested, "userId")))
             .put("accountId", first(text(nested, "accountId"), text(obj, "accountId")))
             .put("projectId", first(text(nested, "projectId"), text(obj, "projectId")))
@@ -70,10 +71,16 @@ internal object QuzhiProtocol {
     }
     fun wallet(data: Any?): JSONObject {
         val obj = data as? JSONObject ?: throw QuzhiFailure("FORMAT")
-        val result = JSONObject().put("total", amount(obj, "money"))
-            .put("cash", amount(obj, "accountRealMoney")).put("gift", amount(obj, "accountGivenMoney"))
-        if (listOf("total", "cash", "gift").all { result.isNull(it) }) throw QuzhiFailure("FORMAT")
-        return result
+        // The published clients disagree on component-field units. Never display them as yuan.
+        val yuan = amount(obj, "money").takeUnless { it == JSONObject.NULL } as? String
+        val milliRaw = text(obj, "accountMoney")
+        val milli = if (milliRaw.isBlank()) null else {
+            if (!milliRaw.matches(Regex("-?[0-9]{1,15}"))) throw QuzhiFailure("FORMAT")
+            BigDecimal(milliRaw).movePointLeft(3).stripTrailingZeros().toPlainString()
+        }
+        if (yuan != null && milli != null && BigDecimal(yuan).compareTo(BigDecimal(milli)) != 0) throw QuzhiFailure("UNVERIFIED_UNITS")
+        val total = yuan ?: milli ?: throw QuzhiFailure("UNVERIFIED_UNITS")
+        return JSONObject().put("total", total).put("cash", JSONObject.NULL).put("gift", JSONObject.NULL)
     }
     fun bills(data: Any?): JSONObject {
         val array = data as? JSONArray ?: throw QuzhiFailure("FORMAT")

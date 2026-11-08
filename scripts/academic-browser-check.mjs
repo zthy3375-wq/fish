@@ -20,7 +20,7 @@ try{
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
     if(plugin==='QuzhiCampus'){
      window.__quzhiCalls.push({method,args});
-     if(method==='login')window.__quzhiState={connected:true,expired:false,phone:'138****0000',school:'人工测试学校',wallet:{total:'12.34',cash:'10',gift:'2.34'},walletUpdatedAt:Date.now()};
+     if(method==='login')window.__quzhiState={connected:true,expired:false,phone:'138****0000',school:'人工测试学校',wallet:{total:'12.34',cash:null,gift:null},walletUpdatedAt:Date.now()};
      if(method==='logout')window.__quzhiState={connected:false,expired:false,phone:''};
      if(method==='openRecharge'){window.__quzhiOpened=true;return {opened:true}}
      if(method==='refresh'){
@@ -278,6 +278,7 @@ try{
   await walletDialog.getByText('人工测试浴室',{exact:true}).waitFor();
   assert(await walletDialog.locator('.quzhi-amount').innerText()==='¥12.34',`${width}: quzhi balance comes from native wallet`);
   assert(await walletDialog.getByText('138****0000',{exact:true}).isVisible(),`${width}: quzhi exposes masked phone only`);
+  assert(await walletDialog.locator('.quzhi-breakdown').count()===0,`${width}: ambiguous wallet components hidden`);
   await page.screenshot({path:path.join(output,`quzhi-wallet-${width}.png`),animations:'disabled'});
   assert(await walletDialog.evaluate(el=>el.scrollWidth<=el.clientWidth),`${width}: quzhi wallet fits mobile sheet`);
   await walletDialog.getByRole('button',{name:'充值 · 支付宝',exact:true}).click();
