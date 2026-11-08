@@ -1,0 +1,1 @@
+Synthetic bytes for APK evidence tests. This is not an installable APK.

@@ -3,10 +3,12 @@ import {createServer} from 'node:http';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
+import {checkParcelShortcuts} from './parcel-browser-check.mjs';
+import {checkPangguaiOfficial} from './pangguai-browser-check.mjs';
 const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,{recursive:true});
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
 await new Promise(resolve=>server.listen(4175,'127.0.0.1',resolve));
-const browser=await chromium.launch({args:['--no-sandbox']});const checks=[];let activePage;
+const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined});const checks=[];let activePage;
 const syntheticLearning=JSON.parse(await readFile('tests/fixtures/learning/synthetic.json','utf8'));
 const syntheticGrades=JSON.parse(await readFile('tests/fixtures/grades/synthetic.json','utf8'));
 function assert(value,label){if(!value)throw Error(label);checks.push(label)}
@@ -15,9 +17,18 @@ try{
   const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
-   window.androidBridge={};window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
+   const methods={PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
+    if(plugin==='PangguaiOfficial'){
+     (window.__pangguaiCalls??=[]).push({method,args});
+     return {page:args.page,status:window.__pangguaiStatus||'opened'};
+    }
+    if(plugin==='ParcelShortcuts'){
+     window.__parcelCalls.push({method,args});
+     if(window.__parcelDelayed)return new Promise(resolve=>{window.__parcelFinish=()=>resolve({provider:args.provider,status:'opened'})});
+     return {provider:args.provider,status:window.__parcelStatus||'opened'};
+    }
     if(plugin==='QuzhiCampus'){
      window.__quzhiCalls.push({method,args});
      if(method==='login')window.__quzhiState={connected:true,expired:false,phone:'138****0000',school:'人工测试学校',wallet:{total:'12.34',cash:null,gift:null},walletUpdatedAt:Date.now()};
@@ -55,6 +66,8 @@ try{
   const page=await context.newPage(),errors=[];activePage=page;page.on('pageerror',e=>errors.push(e.message));
   await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
   await page.goto('http://127.0.0.1:4175');
+  await checkParcelShortcuts(page,assert,{width,output});
+  await checkPangguaiOfficial(page,assert,{width,output});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'学习',exact:true}).click();
   await page.getByRole('heading',{name:'学习',exact:true}).waitFor();
   await page.getByRole('button',{name:/成绩分析/}).click();
@@ -311,5 +324,13 @@ try{
   assert(!errors.length,`${width}: no runtime errors`);
   await page.screenshot({path:path.join(output,`records-${width}.png`),fullPage:true,animations:'disabled'});await context.close();
  }
+ const webContext=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'});
+ const webPage=await webContext.newPage();activePage=webPage;
+ await webPage.goto('http://127.0.0.1:4175');
+ await webPage.getByRole('region',{name:'菜鸟驿站出库码'}).waitFor();
+ for(const label of ['淘宝出库码','拼多多出库码','官方钱包','官方充值页面'])assert(await webPage.getByRole('button',{name:label,exact:true}).isDisabled(),`web: ${label} does not launch a native-only shortcut`);
+ assert(await webPage.locator('.parcel-shortcuts').innerText().then(text=>text.includes('Android 客户端')), 'web: parcel unsupported explanation is visible');
+ assert(await webPage.locator('.pangguai-official').innerText().then(text=>text.includes('Android 客户端')), 'web: Pangguai unsupported explanation is visible');
+ await webContext.close();
  await writeFile(path.join(output,'checks.json'),JSON.stringify({source:'synthetic-native-ui-test',schoolAccountVerified:false,checks},null,2));console.log(checks.join('\n'));
 }catch(error){if(activePage&&!activePage.isClosed()){await activePage.screenshot({path:path.join(output,'failure.png'),fullPage:true,animations:'disabled'});await writeFile(path.join(output,'failure.txt'),await activePage.locator('body').innerText());console.error(await activePage.locator('body').innerText())}throw error}finally{await browser.close();server.close()}

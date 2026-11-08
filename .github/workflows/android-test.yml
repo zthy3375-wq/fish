@@ -41,25 +41,50 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - run: npm ci
+      - name: Test APK evidence checks without an SDK
+        run: node --test scripts/check-apk-evidence.mjs
       - run: npm test
       - run: npm run build
       - run: npx cap sync android
       - run: chmod +x android/gradlew
-      - run: ./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease
+      - run: ./gradlew --no-daemon --init-script ../scripts/apk-evidence.init.gradle testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease :app:writeDebugApkEvidenceExpectation
         working-directory: android
+      - name: Verify and record regular debug APK evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk-delivery/regular-debug"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/apk-delivery/regular-debug/handan-campus-regular-debug.apk"
+          node scripts/apk-evidence.mjs \
+            --apk "$RUNNER_TEMP/apk-delivery/regular-debug/handan-campus-regular-debug.apk" \
+            --expected android/app/build/outputs/apk-evidence/expected-debug.json \
+            --variant regular-debug \
+            --source-commit "$GITHUB_SHA" \
+            --build-tools-dir "$ANDROID_HOME/build-tools/35.0.0" \
+            --output "$RUNNER_TEMP/apk-delivery/regular-debug/build-evidence.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: handan-campus-test-apk-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: handan-campus-regular-debug-${{ github.sha }}
+          path: ${{ runner.temp }}/apk-delivery/regular-debug/
           if-no-files-found: error
           retention-days: 14
-      - name: Build parallel Chaoxing learning test APK
-        run: ./gradlew --no-daemon -PlearningPreview=true assembleDebug
+      - name: Build parallel preview debug APK
+        run: ./gradlew --no-daemon --init-script ../scripts/apk-evidence.init.gradle -PlearningPreview=true assembleDebug :app:writeDebugApkEvidenceExpectation
         working-directory: android
+      - name: Verify and record parallel preview APK evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk-delivery/parallel-preview-debug"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/apk-delivery/parallel-preview-debug/handan-campus-parallel-preview-debug.apk"
+          node scripts/apk-evidence.mjs \
+            --apk "$RUNNER_TEMP/apk-delivery/parallel-preview-debug/handan-campus-parallel-preview-debug.apk" \
+            --expected android/app/build/outputs/apk-evidence/expected-debug.json \
+            --variant parallel-preview-debug \
+            --regular-evidence "$RUNNER_TEMP/apk-delivery/regular-debug/build-evidence.json" \
+            --source-commit "$GITHUB_SHA" \
+            --build-tools-dir "$ANDROID_HOME/build-tools/35.0.0" \
+            --output "$RUNNER_TEMP/apk-delivery/parallel-preview-debug/build-evidence.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: handan-campus-learning-test-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: handan-campus-parallel-preview-debug-${{ github.sha }}
+          path: ${{ runner.temp }}/apk-delivery/parallel-preview-debug/
           if-no-files-found: error
           retention-days: 14
   browser:

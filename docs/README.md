@@ -4,6 +4,10 @@
 
 ## 当前维护入口
 
+- [胖乖官方页面模式与边界](V082-PANGGUAI-OFFICIAL.md)
+- [淘宝/拼多多出库码直达](V082-PARCEL-SHORTCUTS.md)
+- [胖乖协议、金额口径与官方来源](research/V082-PANGGUAI.md)
+- [APK 包名、签名与文件校验](APK-EVIDENCE.md)
 - [趣智钱包与真机验收](V081-QUZHI-WALLET.md)
 - [开源项目比较与复用策略](OPEN-SOURCE-STRATEGY.md)
 

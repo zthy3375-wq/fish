@@ -5,12 +5,12 @@ android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.life.v081' : 'org.handancampus.app')
-        manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·趣智测试版' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·趣智测试版' : '@string/title_activity_main']
+        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.life.v082' : 'org.handancampus.app')
+        manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·生活测试版' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯郸校园·生活测试版' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 81
-        versionName "0.8.1-quzhi-test"
+        versionCode 82
+        versionName "0.8.2-life-test"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -36,6 +36,7 @@ repositories {
 
 dependencies {
     implementation 'org.jsoup:jsoup:1.18.3'
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     testImplementation 'org.json:json:20240303'
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"

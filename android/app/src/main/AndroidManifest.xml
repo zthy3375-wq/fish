@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <queries><package android:name="com.eg.android.AlipayGphone" /></queries>
+    <queries>
+        <package android:name="com.eg.android.AlipayGphone" />
+        <package android:name="com.taobao.taobao" />
+        <package android:name="com.xunmeng.pinduoduo" />
+    </queries>
 
     <application
+        android:name=".life.PangguaiProfileApplication"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher"
@@ -25,6 +30,14 @@
             </intent-filter>
 
         </activity>
+
+        <activity
+            android:name=".life.PangguaiOfficialActivity"
+            android:process=":pangguai_official"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:windowSoftInputMode="adjustResize" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import QuzhiEntry from './components/QuzhiEntry.vue';
 import QuzhiWallet from './components/QuzhiWallet.vue';
+import ParcelShortcuts from './components/ParcelShortcuts.vue';
+import PangguaiOfficialEntry from './components/PangguaiOfficialEntry.vue';
 import LearningCenter from './components/LearningCenter.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import TaskSettings from './components/TaskSettings.vue';
@@ -644,8 +646,8 @@ onUnmounted(() => {
                 "
               />
             </div>
-            <SectionHeader title="校园生活" meta="余额与充值" />
-            <div class="service-group"><QuzhiEntry @open="open('quzhi-wallet')"/></div>
+            <SectionHeader title="校园生活" meta="钱包与取件" />
+            <div class="service-group"><QuzhiEntry @open="open('quzhi-wallet')"/><PangguaiOfficialEntry/><ParcelShortcuts/></div>
             <SectionHeader title="教务速览" meta="成绩与考试" />
             <div class="quick-grid home-quick">
               <QuickAction
@@ -734,7 +736,7 @@ onUnmounted(() => {
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
-            <SectionHeader title="校园生活"/><div class="service-group"><QuzhiEntry @open="open('quzhi-wallet')"/></div>
+            <SectionHeader title="校园生活"/><div class="service-group"><QuzhiEntry @open="open('quzhi-wallet')"/><PangguaiOfficialEntry/><ParcelShortcuts/></div>
             <TaskSettings/>
             <SectionHeader title="外观设置" />
             <section class="settings-group">

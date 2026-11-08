@@ -1,0 +1,29 @@
+import groovy.json.JsonOutput
+
+// Read the evaluated Android configuration, not duplicated version/package literals.
+// This task intentionally has no cached output: the second build changes learningPreview.
+gradle.afterProject { project, state ->
+    if (project.path == ':app' && project.plugins.hasPlugin('com.android.application')) {
+        project.tasks.register('writeDebugApkEvidenceExpectation') {
+            doLast {
+                def android = project.extensions.getByName('android')
+                def config = android.defaultConfig
+                def debug = android.buildTypes.getByName('debug')
+                // Add explicit variant support before changing the current two-build layout.
+                if (!android.productFlavors.isEmpty() || debug.applicationIdSuffix || debug.versionNameSuffix) {
+                    throw new GradleException('APK evidence expectations need updating for flavors or debug suffixes.')
+                }
+                def expected = [
+                    build_variant: project.findProperty('learningPreview') == 'true' ? 'parallel-preview-debug' : 'regular-debug',
+                    application_id: config.applicationId,
+                    version_name: config.versionName,
+                    version_code: config.versionCode,
+                    min_sdk: config.minSdkVersion.apiLevel,
+                ]
+                def output = project.layout.buildDirectory.file('outputs/apk-evidence/expected-debug.json').get().asFile
+                output.parentFile.mkdirs()
+                output.setText(JsonOutput.prettyPrint(JsonOutput.toJson(expected)) + '\n', 'UTF-8')
+            }
+        }
+    }
+}

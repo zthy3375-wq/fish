@@ -7,33 +7,53 @@ import {quzhi,quzhiBusy,quzhiReady,quzhiError,initQuzhi,refreshQuzhi,connectQuzh
 import {quzhiSupported,quzhiMonth,quzhiMoney,quzhiIssue} from '../services/quzhi-client';
 
 const month=ref(quzhiMonth()), confirmation=ref<'recharge'|'logout'|''>(''), returned=ref(false);
-let listener:PluginListenerHandle|undefined, disposed=false, awaitingReturn=false;
+let listener:PluginListenerHandle|undefined, disposed=false, awaitingReturn=false, appActive=true, refreshing=false;
 let resumeTimer:ReturnType<typeof setTimeout>|undefined;
+const foregroundRefreshInterval=60_000;
+// Local cooldown only: failed requests must not make cached balances look fresh.
+let lastRefreshActivityAt=0;
 const supported=quzhiSupported();
 const valid=computed(()=>quzhi.value.connected&&!quzhi.value.expired);
 const billsMatch=computed(()=>month.value===quzhi.value.billsMonth);
 const blocked=computed(()=>quzhiBusy.value||!quzhiReady.value);
 function timestamp(value?:number){return value?new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'尚未查询'}
+function clearResumeTimer(){clearTimeout(resumeTimer);resumeTimer=undefined}
+function cancelReturn(){awaitingReturn=false;clearResumeTimer()}
+async function refreshWallet(){
+  if(disposed||!supported||!valid.value||blocked.value||refreshing)return false;
+  refreshing=true;lastRefreshActivityAt=Date.now();
+  try{return await refreshQuzhi(month.value)}
+  finally{refreshing=false;lastRefreshActivityAt=Date.now()}
+}
 async function recharge(){
-  confirmation.value='';returned.value=false;awaitingReturn=true;
-  if(!await rechargeQuzhi())awaitingReturn=false;
+  cancelReturn();confirmation.value='';returned.value=false;awaitingReturn=true;
+  if(!await rechargeQuzhi())cancelReturn();
 }
 async function resume(){
-  if(disposed||!awaitingReturn)return;
-  if(quzhiBusy.value){clearTimeout(resumeTimer);resumeTimer=setTimeout(()=>void resume(),200);return}
-  awaitingReturn=false;returned.value=true;
-  await refreshQuzhi(month.value);
+  clearResumeTimer();
+  if(disposed||!supported||!appActive||document.visibilityState!=='visible')return;
+  if(!valid.value){cancelReturn();return}
+  if(blocked.value||refreshing){
+    // Only a recharge return needs a deferred retry. Ordinary resumes never queue.
+    if(awaitingReturn&&quzhiReady.value)resumeTimer=setTimeout(()=>void resume(),200);
+    return;
+  }
+  if(awaitingReturn){awaitingReturn=false;returned.value=true}
+  else if(Date.now()-Math.max(lastRefreshActivityAt,quzhi.value.walletUpdatedAt??0)<foregroundRefreshInterval)return;
+  await refreshWallet();
 }
-async function logout(){confirmation.value='';returned.value=false;awaitingReturn=false;await disconnectQuzhi()}
+function visibilityChanged(){if(document.visibilityState==='visible')void resume();else clearResumeTimer()}
+async function logout(){confirmation.value='';returned.value=false;cancelReturn();await disconnectQuzhi()}
 onMounted(async()=>{
   await initQuzhi();
   if(disposed)return;
   if(supported){
-    try{const handle=await App.addListener('appStateChange',({isActive})=>{if(isActive)void resume()});if(disposed)void handle.remove();else listener=handle}catch{/* Manual refresh remains available. */}
-    if(!disposed)await refreshQuzhi(month.value);
+    document.addEventListener('visibilitychange',visibilityChanged);
+    try{const handle=await App.addListener('appStateChange',({isActive})=>{appActive=isActive;if(isActive)void resume();else clearResumeTimer()});if(disposed)void handle.remove();else listener=handle}catch{/* Manual refresh remains available. */}
+    if(!disposed)await refreshWallet();
   }
 });
-onUnmounted(()=>{disposed=true;clearTimeout(resumeTimer);void listener?.remove()});
+onUnmounted(()=>{disposed=true;cancelReturn();document.removeEventListener('visibilitychange',visibilityChanged);void listener?.remove()});
 </script>
 <template>
 <div class="quzhi-wallet">
@@ -46,7 +66,7 @@ onUnmounted(()=>{disposed=true;clearTimeout(resumeTimer);void listener?.remove()
     <p class="quzhi-note">手机号、密码或验证码在原生登录窗口填写。会话加密留在本机，不保存密码，不加载趣智 App 的广告页面。</p>
   </template>
   <template v-else>
-    <div class="quzhi-identity"><span><strong>{{quzhi.school||'学校信息尚未取得'}}</strong><small>{{quzhi.phone}}</small></span><button class="icon-button" aria-label="刷新趣智余额与账单" :disabled="blocked||!valid" @click="refreshQuzhi(month)"><RefreshCw :size="18" :class="{'quzhi-spin':quzhiBusy}"/></button></div>
+    <div class="quzhi-identity"><span><strong>{{quzhi.school||'学校信息尚未取得'}}</strong><small>{{quzhi.phone}}</small></span><button class="icon-button" aria-label="刷新趣智余额与账单" :disabled="blocked||!valid" @click="refreshWallet"><RefreshCw :size="18" :class="{'quzhi-spin':quzhiBusy}"/></button></div>
     <div v-if="quzhi.expired" class="quzhi-notice">登录已失效，下方为上次查询结果。<button class="text-button" :disabled="blocked" @click="connectQuzhi(month)">重新连接</button></div>
     <section class="quzhi-balance" aria-label="趣智钱包余额">
       <span>账户总余额</span><strong class="quzhi-amount"><small>¥</small>{{quzhiMoney(quzhi.wallet?.total)}}</strong>
@@ -61,7 +81,7 @@ onUnmounted(()=>{disposed=true;clearTimeout(resumeTimer);void listener?.remove()
       <div><button class="secondary" @click="confirmation=''">取消</button><button class="primary" :disabled="blocked" @click="recharge">打开充值页</button></div>
     </div>
     <section class="quzhi-bills" aria-label="趣智消费账单">
-      <div class="quzhi-bills-heading"><h3>消费账单</h3><label>月份<input v-model="month" type="month" min="2020-01" :max="quzhiMonth()" :disabled="blocked||!valid" @change="refreshQuzhi(month)"/></label></div>
+      <div class="quzhi-bills-heading"><h3>消费账单</h3><label>月份<input v-model="month" type="month" min="2020-01" :max="quzhiMonth()" :disabled="blocked||!valid" @change="refreshWallet"/></label></div>
       <p v-if="quzhi.issues?.bills" class="quzhi-notice" role="status">账单未更新：{{quzhiIssue(quzhi.issues.bills)}}</p>
       <p v-if="quzhi.billsMonth&&!billsMatch" class="quzhi-note">{{month}} 尚未取得，下方保留 {{quzhi.billsMonth}} 的账单。</p>
       <p v-if="!quzhi.billsUpdatedAt" class="quzhi-note">{{quzhiBusy?'正在查询消费记录…':'尚未取得消费记录，点击右上角刷新。'}}</p>
