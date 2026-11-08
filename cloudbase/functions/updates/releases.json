@@ -1,5 +1,5 @@
 {
-  "latest": 105,
+  "latest": 106,
   "releases": [
     {
       "schema": 1,
@@ -14,6 +14,21 @@
         "保留直饮水余额展示及自愿参与的使用统计。"
       ],
       "buildKey": "cee1df37448ff15b3e3e998957ba24ce"
+    },
+    {
+      "schema": 1,
+      "versionCode": 106,
+      "versionName": "1.0.6",
+      "minSupportedVersionCode": 102,
+      "minSdk": 23,
+      "sha256": "fd0ea63ed80baab000d354de14067bfe1f69942a606506a4bd0db14084ade38d",
+      "sizeBytes": 12401359,
+      "notes": [
+        "全新校园小鱼首页，小鱼可轻缓游动并支持暂停。",
+        "四个导航：首页、课表、待办、我的；合并重复课程入口。",
+        "突出趣智洗澡余额、胖乖饮水余额与取快递。"
+      ],
+      "buildKey": "e5b29039569e105ea7d8c19f7bacfa14"
     }
   ]
 }
