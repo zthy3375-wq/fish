@@ -590,7 +590,7 @@ onUnmounted(() => {
       </div>
       <div v-else class="page-content">
           <template v-if="page === 'home'">
-            <AnalyticsSettings prompt/>
+            <AnalyticsSettings prompt @policy="open('privacy')"/>
             <SchoolConnection compact @connected="move('home')" />
             <div class="home-greeting">
               <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
@@ -757,7 +757,7 @@ onUnmounted(() => {
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
             <SectionHeader title="教务服务"/><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/>
-            <TaskSettings/><AnalyticsSettings/>
+            <TaskSettings/>
             <SectionHeader title="外观设置" />
             <section class="settings-group">
               <div class="theme-row">
@@ -1059,8 +1059,10 @@ onUnmounted(() => {
           >
           <template v-else-if="modal === 'privacy'"
             ><ShieldCheck :size="27" />
-            <h2>隐私政策</h2>
-            <p>匿名使用统计需你主动允许。开启后上报随机安装标识、应用版本、北京时间日期和预定义功能的累计操作次数，用于统计活跃设备与改善体验；不上传学号、密码、课程内容、余额、订单或设备硬件标识。每日汇总统计近90天，过期明细随后续上报清理，匿名设备记录用于累计统计。可在“我的”关闭统计或删除已上报记录。为防滥用，服务端短期保留每日加盐后的网络地址摘要，不保存原始地址到统计数据库。</p>
+            <h2>使用说明与隐私政策</h2>
+            <p>邯院通是免费的独立学生项目，提供课表、待办和校园生活服务。学校与生活服务数据以对应平台为准；付款前请核对设备、账户与金额。请勿分享账号密码、验证码或登录凭证。</p>
+            <AnalyticsSettings/>
+            <p>匿名使用统计需你主动允许。开启后上报随机安装标识、应用版本、北京时间日期和预定义功能的累计操作次数，用于统计活跃设备与改善体验；不上传学号、密码、课程内容、余额、订单或设备硬件标识。每日汇总统计近90天，过期明细随后续上报清理，匿名设备记录用于累计统计。可在“我的 → 隐私政策”关闭统计或删除已上报记录。为防滥用，服务端短期保留每日加盐后的网络地址摘要，不保存原始地址到统计数据库。</p>
             <p>
               学校密码只在官方页面输入。Android 原生模块使用系统密钥库加密保存学校会话，供本人数据查询复用。退出学校账号后清除会话与学校缓存。
             </p>
