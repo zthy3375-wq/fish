@@ -88,7 +88,9 @@ internal class PangguaiLaundry(
         val fresh=quote(device,req(q,"skuId"));allowed(fresh,method)
         if(!samePrice(req(q,"amount"),req(fresh,"amount")))throw PangguaiFailure("PRICE_CHANGED")
         ready(req(device,"id"))
-        val s=JSONObject().put("id",UUID.randomUUID().toString()).put("deviceId",req(device,"id"))
+        val before=obj(post("order/list",mapOf("page" to "1","pageSize" to "20"))).optJSONArray("items") ?: throw PangguaiFailure("FORMAT")
+        val known=JSONArray();for(i in 0 until before.length())known.put(req(before.getJSONObject(i),"id"))
+        val s=JSONObject().put("knownOrders",known).put("createSentAt",now()).put("id",UUID.randomUUID().toString()).put("deviceId",req(device,"id"))
             .put("deviceName",req(device,"name")).put("skuId",req(q,"skuId")).put("program",text(q,"program"))
             .put("shopId",req(device,"shopId")).put("amount",req(q,"amount")).put("phase","creating").put("paySent",false).put("updatedAt",now())
         // A durable intent precedes the HTTP mutation. An unknown create result never triggers a second create.
@@ -115,9 +117,26 @@ internal class PangguaiLaundry(
         listOf("completeTime" to "expectedEnd","finishTime" to "finishedAt").forEach{(from,to)->timestamp(text(data,from))?.let{s.put(to,it)}}
         save(s)
     }
+    private fun recover(s:JSONObject) {
+        val known=s.optJSONArray("knownOrders") ?: throw PangguaiFailure("CREATE_UNKNOWN")
+        val ids=(0 until known.length()).map{known.getString(it)}.toSet()
+        val rows=obj(post("order/list",mapOf("page" to "1","pageSize" to "20"))).optJSONArray("items") ?: throw PangguaiFailure("FORMAT")
+        val sent=s.optLong("createSentAt",0)
+        val matches=(0 until rows.length()).map{rows.getJSONObject(it)}.filter{row->
+            val items=row.optJSONArray("tradeOrderItem") ?: row.optJSONArray("lineItems")
+            val created=timestamp(text(row,"createTime"))
+            text(row,"id").isNotBlank() && text(row,"id") !in ids && text(row,"orderNo").isNotBlank() &&
+                items?.length()==1 && text(items.getJSONObject(0),"goodsId")==text(s,"deviceId") &&
+                text(items.getJSONObject(0),"skuId")==text(s,"skuId") && created!=null && sent>0 && created in (sent-5000)..(sent+120000)
+        }
+        if(matches.size!=1)throw PangguaiFailure("CREATE_UNKNOWN")
+        val candidate=JSONObject(s.toString()).put("orderId",req(matches.single(),"id")).put("orderNo",req(matches.single(),"orderNo"))
+        read(candidate) // Bind identity via order/detail before adopting a recovered list item. Never pays.
+        candidate.keys().forEach{key->s.put(key,candidate.get(key))}
+    }
     fun poll(source:JSONObject):JSONObject {
         val s=JSONObject(source.toString())
-        if(text(s,"orderNo").isBlank())throw PangguaiFailure("CREATE_UNKNOWN")
+        if(text(s,"orderNo").isBlank())recover(s)
         try {
             read(s)
             if(text(s,"phase") in setOf("checking","pending","paid","running")) {

@@ -9,7 +9,7 @@ class PangguaiLaundryTest {
     private val device=JSONObject("""{"id":"77","name":"测试洗衣机","category":"00","payment":"before","isBluetooth":"0","imei":"synthetic-imei","routeShopId":"42","shopId":"shop-test","skus":[{"id":"wash","name":"标准洗","available":true}]}""")
     private class Harness {
         var saved:JSONObject?=null
-        var time=1000L
+        var time=1794126600000L
         var status="0"
         var paid=false
         var started=false
@@ -22,6 +22,7 @@ class PangguaiLaundryTest {
             if(handler!=null)handler!!.invoke(p) else response(p)
         },persist={saved=JSONObject(it.toString())},now={time},pause={},alipay={paid=true})
         fun response(p:String):Any?=when(p) {
+            "order/list"->JSONObject("{items:[]}")
             "trade/preview/v4"->JSONObject("""{"realPrice":"3.50","items":[{"goodsId":"77","skuId":"wash"}]}""")
             "payChannelRoute/prePay","payChannelRoute/againPay"->JSONArray("""[{"method":2,"methodName":"余额","useStatus":true,"needOpenFlag":false},{"method":13,"methodName":"支付宝","useStatus":true,"needOpenFlag":false}]""")
             "trade/check_device_status"->JSONObject("""{"health":true,"msgId":"test-message"}""")
@@ -52,4 +53,20 @@ class PangguaiLaundryTest {
     @Test fun sdkReturnAloneDoesNotConfirmPayment(){val h=Harness();h.handler={p->if(p=="order/pay_status")false else h.response(p)};val result=h.engine.start(device,h.engine.quote(device,"wash"),"13",null);assertEquals("checking",result.getString("phase"));assertFalse(h.calls.contains("machine/device_is_start"))}
     @Test fun cancelRechecksPaymentBeforeMutation(){val h=Harness();h.detailPrice="4";fails("PRICE_CHANGED"){h.engine.start(device,h.engine.quote(device,"wash"),"2",null)};h.status="2";fails("ORDER_ACTIVE"){h.engine.cancel(h.saved!!)};assertFalse(h.calls.contains("order/cancel"))}
     @Test fun nativeSnapshotDoesNotLeakPrivateRoutingOrQuote(){val v=PangguaiLaundry.view(JSONObject().put("id","session").put("imei","private").put("token","secret").put("shopId","routing").put("phase","paid"))!!;assertEquals("paid",v.getString("phase"));assertFalse(v.has("token"));assertFalse(v.has("imei"));assertFalse(v.has("shopId"))}
+    @Test fun lostCreateCanRecoverOnlyOneNewMatchingOrderWithoutPaying(){
+        val h=Harness();val q=h.engine.quote(device,"wash")
+        h.handler={p->if(p=="trade/create")throw PangguaiFailure("NETWORK") else h.response(p)}
+        fails("NETWORK"){h.engine.start(device,q,"2",null)}
+        val date=java.time.Instant.ofEpochMilli(h.time).atZone(java.time.ZoneId.of("Asia/Shanghai")).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        val row=JSONObject().put("id","id-test").put("orderNo","trade-test").put("createTime",date).put("tradeOrderItem",JSONArray().put(JSONObject().put("goodsId","77").put("skuId","wash")))
+        h.handler={p->if(p=="order/list")JSONObject().put("items",JSONArray().put(row)) else h.response(p)}
+        val result=h.engine.poll(h.saved!!)
+        assertEquals("pending",result.getString("phase"));assertFalse(h.calls.contains("pay/unify/pay"));assertEquals(1,h.calls.count{it=="trade/create"})
+    }
+    @Test fun missingRecoveredOrdersRemainUnknown(){
+        val h=Harness();val q=h.engine.quote(device,"wash");h.handler={p->if(p=="trade/create")throw PangguaiFailure("NETWORK") else h.response(p)}
+        fails("NETWORK"){h.engine.start(device,q,"2",null)}
+        fails("CREATE_UNKNOWN"){h.engine.poll(h.saved!!)};assertFalse(h.calls.contains("pay/unify/pay"))
+    }
+
 }

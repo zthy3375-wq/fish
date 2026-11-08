@@ -19,6 +19,7 @@ export async function checkNativeLife(page,assert,{width,output}){
  await dialog.getByRole('radio',{name:/标准洗/}).check();
  await dialog.getByRole('button',{name:'查看费用',exact:true}).click();
  await dialog.getByRole('group',{name:'确认洗衣费用'}).waitFor();
+ await dialog.getByRole('button',{name:'确认支付 ¥3.50 并洗衣',exact:true}).scrollIntoViewIfNeeded();
  await page.screenshot({path:path.join(output,`laundry-confirm-${width}.png`),animations:'disabled'});
  await dialog.getByRole('group',{name:'确认洗衣费用'}).getByRole('button',{name:'取消',exact:true}).click();
  assert(await page.evaluate(()=>window.__pgCalls.filter(c=>c.method==='startLaundry').length)===0,`${width}: cancelling fee confirmation never pays`);

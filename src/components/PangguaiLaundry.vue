@@ -33,7 +33,7 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
   <p v-if="order.phase==='completed'">{{order.finishedAt?'完成于 '+time(order.finishedAt):'平台已确认完成'}}，记得取衣。</p>
   <p v-if="order.phase==='paid'">付款已确认，尚未收到设备启动确认，请查看机身提示。</p>
   <p v-if="order.phase==='checking'">正在查询原订单，请勿重复付款。取消了支付宝付款也请先查询状态。</p>
-  <p v-if="order.phase==='creating'">未取得完整下单结果，已阻止重复下单。请查看最近消费和胖乖官方订单核对。</p>
+  <p v-if="order.phase==='creating'">未取得完整下单结果，已阻止重复下单。点击查询状态尝试找回；仍未找到时请核对官方订单。</p>
   <p class="subtle">应付 ¥{{pgAmount(order.amount)}}<template v-if="order.updatedAt"> · 查询于 {{time(order.updatedAt)}}</template></p>
   <p v-if="order.error" class="feedback" role="alert">{{pangguaiError(order.error)}}，保留上次已确认的进度。</p>
   <div v-if="['pending','checking'].includes(order.phase)" class="actions">
@@ -43,7 +43,7 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
   <div v-if="cancelConfirm" class="feedback"><p>确认取消这笔未完成付款的订单？以平台返回结果为准。</p><div class="actions"><button class="secondary" @click="cancelConfirm=false">保留订单</button><button class="primary" :disabled="blocked" @click="cancel">确认取消</button></div></div>
   <details v-if="order.orderNo"><summary>订单编号</summary><p class="order-number">{{order.orderNo}}</p></details>
  </section>
- <section v-if="device" class="wash-device" aria-label="胖乖设备信息">
+ <section v-if="device&&!quote&&(!existing||device.id!==order?.deviceId)" class="wash-device" aria-label="胖乖设备信息">
   <div class="heading"><h3>{{device.name}}</h3><button class="text-button" :disabled="blocked" @click="$emit('close')">收起</button></div>
   <p class="subtle">{{device.operator||'运营商名称未提供'}} · {{device.category==='00'?'洗衣机':device.category==='04'?'饮水机':'淋浴设备'}}</p>
   <p v-if="device.issue" class="feedback">{{device.issue}}</p>
