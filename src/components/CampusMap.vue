@@ -25,7 +25,8 @@ async function importPlaces(event:Event){const input=event.target as HTMLInputEl
 watch(campus,()=>{selected.value=undefined;draft.value=undefined;recenter();renderMarkers()});watch(filtered,renderMarkers);
 onMounted(async()=>{await nextTick();if(!element.value)return;map=L.map(element.value,{zoomControl:false,minZoom:14,maxZoom:19,maxBounds:[[36.55,114.47],[36.60,114.53]],maxBoundsViscosity:1,attributionControl:true});
  map.attributionControl.setPrefix(false);map.attributionControl.addAttribution('© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · 2026-11-08');
- L.geoJSON(geometry as GeoJsonObject,{style:feature=>({color:feature?.properties?.kind==='road'?'#fff':feature?.properties?.kind==='campus'?'#a3c5ad':'#c2cad5',weight:feature?.properties?.kind==='road'?6:1.5,fillColor:feature?.properties?.kind==='campus'?'#e0ecdf':'#e0e5ec',fillOpacity:0.75})}).addTo(map);
+ const ordered={...geometry,features:[...geometry.features].sort((a,b)=>["campus","building","road"].indexOf(a.properties.kind)-["campus","building","road"].indexOf(b.properties.kind))};
+ L.geoJSON(ordered as GeoJsonObject,{style:feature=>({color:feature?.properties?.kind==='road'?'#fff':feature?.properties?.kind==='campus'?'#a3c5ad':'#c2cad5',weight:feature?.properties?.kind==='road'?6:1.5,fillColor:feature?.properties?.kind==='campus'?'#e0ecdf':'#e0e5ec',fillOpacity:0.75})}).addTo(map);
  markers=L.layerGroup().addTo(map);L.control.zoom({position:'bottomright'}).addTo(map);map.on('click',e=>{if(adding.value)pickLocation(e.latlng)});map.on('contextmenu',e=>{adding.value=true;pickLocation(e.latlng)});recenter();renderMarkers();resize=new ResizeObserver(()=>map?.invalidateSize());resize.observe(element.value);
 });
 onUnmounted(()=>{resize?.disconnect();map?.remove();map=undefined});

@@ -40,7 +40,7 @@ internal object PangguaiRefresh {
                 rows.put(JSONObject().put("id",PangguaiProtocol.required(row,"id"))
                     .put("name",PangguaiProtocol.text(row,"machineName").ifBlank { PangguaiProtocol.text(row,"goodsName") }.take(100))
                     .put("amount",PangguaiProtocol.money(row.opt("payPrice")) ?: JSONObject.NULL)
-                    .put("status",PangguaiProtocol.text(row,"orderStatusName").ifBlank { "状态待核对" }.take(40))
+                    .put("status",PangguaiProtocol.orderStatus(row))
                     .put("time",PangguaiProtocol.text(row,"createTime").take(40)))
             }
             snapshot.put("orders",rows).put("ordersUpdatedAt",now())

@@ -337,10 +337,14 @@ try{
  const webContext=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'});
  const webPage=await webContext.newPage();activePage=webPage;
  await webPage.goto('http://127.0.0.1:4175');
+ await webPage.getByRole('button',{name:/取快递/}).click();
  await webPage.getByRole('region',{name:'菜鸟驿站出库码'}).waitFor();
- for(const label of ['淘宝出库码','拼多多出库码','官方钱包','官方充值页面'])assert(await webPage.getByRole('button',{name:label,exact:true}).isDisabled(),`web: ${label} does not launch a native-only shortcut`);
+ for(const label of ['淘宝出库码','拼多多出库码'])assert(await webPage.getByRole('button',{name:label,exact:true}).isDisabled(),`web: ${label} does not launch a native-only shortcut`);
  assert(await webPage.locator('.parcel-shortcuts').innerText().then(text=>text.includes('Android 客户端')), 'web: parcel unsupported explanation is visible');
- assert(await webPage.locator('.pangguai-official').innerText().then(text=>text.includes('Android 客户端')), 'web: Pangguai unsupported explanation is visible');
+ await webPage.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+ await webPage.locator('.life-laundry').click();
+ assert(await webPage.getByRole('button',{name:'连接胖乖生活',exact:true}).isDisabled(),'web: native Pangguai login is disabled');
+ assert(await webPage.locator('.pg-wallet').innerText().then(text=>text.includes('Android 客户端')), 'web: Pangguai unsupported explanation is visible');
  await webContext.close();
  await writeFile(path.join(output,'checks.json'),JSON.stringify({source:'synthetic-native-ui-test',schoolAccountVerified:false,checks},null,2));console.log(checks.join('\n'));
 }catch(error){if(activePage&&!activePage.isClosed()){await activePage.screenshot({path:path.join(output,'failure.png'),fullPage:true,animations:'disabled'});await writeFile(path.join(output,'failure.txt'),await activePage.locator('body').innerText());console.error(await activePage.locator('body').innerText())}throw error}finally{await browser.close();server.close()}

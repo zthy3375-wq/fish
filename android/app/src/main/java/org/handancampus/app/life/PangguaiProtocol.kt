@@ -46,6 +46,9 @@ internal object PangguaiProtocol {
         return JSONObject().put("id",required(obj,"id")).put("phone",phone)
             .put("balance",money(obj.opt("balance")) ?: JSONObject.NULL)
     }
+    fun orderStatus(row:JSONObject):String = text(row,"orderStatusName").take(40).ifBlank {
+        when(text(row,"orderStatus")){"0"->"待支付";"1"->"订单超时";"2"->"已支付";"3"->"已完成";else->"状态待核对"}
+    }
     fun tickets(data: Any?): Pair<JSONArray, Int> {
         val obj = data as? JSONObject ?: throw PangguaiFailure("FORMAT")
         val items = obj.optJSONArray("items") ?: throw PangguaiFailure("FORMAT")
