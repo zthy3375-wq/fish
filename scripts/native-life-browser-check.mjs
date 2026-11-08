@@ -33,6 +33,7 @@ export async function checkNativeLife(page,assert,{width,output}){
  await map.getByText('文理综合楼 A 区 · 楼栋参考点',{exact:true}).waitFor();
  await map.getByRole('button',{name:'西校区平面图',exact:true}).click();
  await map.locator('.plan .leaflet-image-layer').waitFor();
+ await page.waitForFunction(()=>{const img=document.querySelector('.plan .leaflet-image-layer');return img instanceof HTMLImageElement&&img.complete&&img.naturalWidth===864});
  assert(await map.locator('.plan .leaflet-image-layer').evaluate(img=>img.complete&&img.naturalWidth===864),`${width}: provided west plan loaded`);
  await page.screenshot({path:path.join(output,`campus-plan-${width}.png`),animations:'disabled'});
  await map.getByRole('button',{name:'道路与地点',exact:true}).click();
