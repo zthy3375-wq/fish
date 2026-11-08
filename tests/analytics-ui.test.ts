@@ -9,14 +9,13 @@ let app:ReturnType<typeof createApp>,root:HTMLElement;
 beforeEach(()=>{vi.useFakeTimers();vi.clearAllMocks();analytics.value={choice:'unset',deletePending:false,lastSent:0};analyticsReady.value=true;root=document.createElement('div');document.body.append(root);app=createApp({render:()=>h(AnalyticsSettings)});app.mount(root)});
 afterEach(()=>{app.unmount();root.remove();vi.useRealTimers()});
 it('never records before consent or after opting out',async()=>{await recordFeature('water');analytics.value.choice='off';await recordFeature('water');expect(native.record).not.toHaveBeenCalled()});
-it('requires an unchecked consent box before enabling and keeps a skip action',async()=>{
+it('enables only after the agree button and keeps a skip action',async()=>{
  app.unmount();app=createApp({render:()=>h(AnalyticsSettings,{prompt:true})});app.mount(root);
- const checkbox=root.querySelector<HTMLInputElement>('input')!;
+ expect(root.querySelector('input')).toBeNull();
  const accept=root.querySelector<HTMLButtonElement>('button.primary')!;
- expect(checkbox.checked).toBe(false);expect(accept.disabled).toBe(true);
+ expect(accept.disabled).toBe(false);
  expect(root.textContent).toContain('暂不参与');expect(root.querySelector('[role=dialog]')).toBeNull();
- accept.click();expect(native.setEnabled).not.toHaveBeenCalled();
- checkbox.checked=true;checkbox.dispatchEvent(new Event('change',{bubbles:true}));await nextTick();expect(accept.disabled).toBe(false);
+ expect(native.setEnabled).not.toHaveBeenCalled();
  native.setEnabled.mockResolvedValue({choice:'on',deletePending:false,lastSent:0});accept.click();await Promise.resolve();await nextTick();
  expect(native.setEnabled).toHaveBeenCalledWith({enabled:true});expect(root.textContent).toBe('');
 });
