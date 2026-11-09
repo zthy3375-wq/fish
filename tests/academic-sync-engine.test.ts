@@ -63,3 +63,22 @@ it('preserves successful grade history on empty, malformed and expired results',
 });
 
 it('an explicit single-term response cannot replace a known all-term grade cache',()=>{const r=result();r.modules!.grades={status:'ok',scope:'all',data:[{name:'历史课',scoreText:'80',credit:2,gpa:3,term:'2025 秋季',kind:'必修'}]};const c=applyAcademicResult(emptyAcademicCache(),r,calendar());const n=applyAcademicResult(c,{session:'valid',modules:{grades:{status:'ok',scope:'term',data:[{name:'当前课',scoreText:'90',credit:2,gpa:4,term:'2026 秋季',kind:'必修'}]}}},calendar());expect(n.grades.data).toEqual(c.grades.data);expect(n.grades.error).toContain('单学期');expect(n.grades.scope).toBe('all')});
+
+it('accepts full-width and alternate parity weeks end-to-end without dropping courses',()=>{
+ const r=result();const t=r.modules!.timetable.data as any;
+ t.kbList.push({...t.kbList[0],kcmc:'人工兼容课',jcs:'3-4',zcd:'第１９－２１（单）周'});
+ const c=applyAcademicResult(emptyAcademicCache(),r,calendar());const saved=c.terms[c.selectedTerm!];
+ expect(saved.error).toBeNull();expect(saved.data!.semester.weekCount).toBeGreaterThanOrEqual(21);
+ expect(saved.data!.courses).toHaveLength(2);expect(saved.data!.courses[1].arrangements[0].customWeeks).toEqual([19,21]);
+});
+it('reports only bounded numeric week formats and preserves the last complete timetable',()=>{
+ const initial=applyAcademicResult(emptyAcademicCache(),result(),calendar());
+ for(const expression of ['1/3周','student-name secret-token=abc']){
+  const r=result();(r.modules!.timetable.data as any).kbList[0].zcd=expression;
+  const c=applyAcademicResult(initial,r,calendar());
+  expect(c.terms[initial.selectedTerm!].data).toEqual(initial.terms[initial.selectedTerm!].data);
+  expect(c.lastError).toContain('教学周');
+  if(expression==='1/3周')expect(c.lastError).toContain('1/3周');
+  else expect(c.lastError).not.toContain('secret');
+ }
+});

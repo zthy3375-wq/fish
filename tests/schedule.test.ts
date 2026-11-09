@@ -2,7 +2,8 @@ import {describe,it,expect} from 'vitest';
 import {defaultState,newArrangement,validateCourse,validateState,semesterWeek,semesterDate,flatten,activeWeeks,collisions,backup,restoreBackup,type ManagedCourse} from '../src/domain/schedule';
 import {nextOccurrence} from '../src/domain/presentation';
 import {notificationPlan} from '../src/services/reminders';
-const state=()=>defaultState(),term=()=>state().semesters[0];
+// Fixed synthetic calendar for generic timetable/reminder rules.
+const state=()=>{const s=defaultState();Object.assign(s.semesters[0],{startDate:'2026-09-07',weekStartDate:'2026-09-07',weekCount:18});return s},term=()=>state().semesters[0];
 const course=():ManagedCourse=>({id:'c1',semesterId:term().id,name:'测试课程',teacher:'教师',color:'blue',notes:'',arrangements:[{...newArrangement(18),id:'a1',room:'101'}]});
 describe('personal timetable rules',()=>{
 it('calculates configured weeks across year and Sunday',()=>{const s={...term(),weekStartDate:'2026-12-28'};expect(semesterWeek(new Date(2027,0,3),s)).toBe(1);expect(semesterWeek(new Date(2027,0,4),s)).toBe(2);expect(semesterDate(s,2,7).getDate()).toBe(10)});

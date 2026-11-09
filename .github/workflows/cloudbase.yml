@@ -1,0 +1,28 @@
+name: CloudBase analytics deployment
+on:
+  workflow_dispatch:
+  push:
+    branches: [chore/cloudbase-connection]
+    paths: ['.github/workflows/cloudbase.yml', 'scripts/cloudbase/**', 'cloudbase/**']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test analytics contracts
+        run: node --test cloudbase/tests/*.verify.mjs
+      - name: Install official CLI
+        run: npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
+      - name: Deploy analytics with private credentials
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          CLOUDBASE_ENV_ID: hanyuantong-d8gjzt1jh12370215
+          TCB_SITE: domestic
+          CI: 'true'
+        run: node scripts/cloudbase/deploy-analytics.mjs

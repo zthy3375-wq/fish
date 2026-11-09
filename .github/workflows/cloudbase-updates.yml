@@ -1,0 +1,29 @@
+name: Tencent application update service
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['cloudbase/functions/updates/**', 'cloudbase/tests/updates.verify.mjs', 'scripts/cloudbase/deploy-updates.mjs', '.github/workflows/cloudbase-updates.yml']
+permissions:
+  contents: read
+concurrency:
+  group: tencent-update-service
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test cloudbase/tests/updates.verify.mjs
+      - run: npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
+      - name: Deploy independent update service
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          PGYER_API_KEY: ${{ secrets.PGYER_API_KEY }}
+          TCB_SITE: domestic
+          CI: 'true'
+        run: node scripts/cloudbase/deploy-updates.mjs

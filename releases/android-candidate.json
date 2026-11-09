@@ -1,0 +1,15 @@
+{
+  "versionCode": 108,
+  "versionName": "1.0.8-test.1",
+  "minSupportedVersionCode": 108,
+  "minSdk": 23,
+  "sha256": "e418e400bd2936a71bede54e39eebfbb6842da64fb94f972be1c1eb419dc35fb",
+  "sizeBytes": 12421839,
+  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.0.8-test.1-e418e400bd29.apk",
+  "notes": [
+    "新增「我的 → 导出并发送到 QQ」，方便反馈课表与学习通故障。",
+    "改进课表周次格式兼容，完善学习通逐课程失败提示。",
+    "本次为强制更新，请安装新版本后继续使用。"
+  ],
+  "ready": true
+}

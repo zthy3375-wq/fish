@@ -216,7 +216,17 @@ class ChaoxingPlugin:Plugin() {
     }}
     @PluginMethod fun openItem(next:PluginCall){activity.runOnUiThread {
         if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread}
-        try {loadState();if(account()!=state.optString("account"))throw LearningFailure("AUTH");val id=next.getString("id") ?: throw LearningFailure("ITEM");val url=state.optJSONObject("urls")?.optString(id).orEmpty();if(!ChaoxingPolicy.allowed(url))throw LearningFailure("LINK_EXPIRED");call=next;++generation;showPage(url,false)}catch(e:LearningFailure){next.reject("请先刷新学习通或重新登录",e.reason)}
+        try {
+            loadState()
+            val id=next.getString("id").orEmpty()
+            if(!id.matches(Regex("[0-9]{1,24}/[0-9]{1,24}/(?:homework|exam)/[0-9]{1,24}"))){next.reject("作业标识无效，请重新读取","ITEM");return@runOnUiThread}
+            val same=try{account()==state.optString("account")}catch(_:LearningFailure){false}
+            val detail=state.optJSONObject("urls")?.optString(id)
+            val url=if(same)ChaoxingPolicy.itemDestination(id,detail,knownCourses+plan) else ChaoxingPolicy.LOGIN
+            call=next;++generation
+            if(same&&!ChaoxingPolicy.allowed(detail))android.widget.Toast.makeText(context,"此作业没有详情链接，已打开官方课程入口",android.widget.Toast.LENGTH_LONG).show()
+            showPage(url,!same)
+        }catch(_:Exception){next.reject("官方页面打开失败，请重试","OPEN")}
     }}
     @PluginMethod fun openPortal(next:PluginCall){activity.runOnUiThread {if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread};call=next;++generation;showPage(ChaoxingPolicy.HOME,false)}}
     private fun probeLogin(token:Int) {

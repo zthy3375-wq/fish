@@ -1,0 +1,64 @@
+{
+  "latest": 108,
+  "releases": [
+    {
+      "schema": 1,
+      "versionCode": 105,
+      "versionName": "1.0.5",
+      "minSupportedVersionCode": 102,
+      "minSdk": 23,
+      "sha256": "db1316d771590fa2456a9c7980c00e7a0d2e0ed5f545c33793944195b193aef8",
+      "sizeBytes": 12319357,
+      "notes": [
+        "应用内更新接入腾讯云，安装包由蒲公英提供。",
+        "保留直饮水余额展示及自愿参与的使用统计。"
+      ],
+      "buildKey": "cee1df37448ff15b3e3e998957ba24ce"
+    },
+    {
+      "schema": 1,
+      "versionCode": 106,
+      "versionName": "1.0.6",
+      "minSupportedVersionCode": 102,
+      "minSdk": 23,
+      "sha256": "fd0ea63ed80baab000d354de14067bfe1f69942a606506a4bd0db14084ade38d",
+      "sizeBytes": 12401359,
+      "notes": [
+        "全新校园小鱼首页，小鱼可轻缓游动并支持暂停。",
+        "四个导航：首页、课表、待办、我的；合并重复课程入口。",
+        "突出趣智洗澡余额、胖乖饮水余额与取快递。"
+      ],
+      "buildKey": "e5b29039569e105ea7d8c19f7bacfa14"
+    },
+    {
+      "schema": 1,
+      "versionCode": 107,
+      "versionName": "1.0.7",
+      "minSupportedVersionCode": 107,
+      "minSdk": 23,
+      "sha256": "d1c97ca28e160987ab3ae1c8982502f17805c2e56bc2cc4fad18abc7e31376ad",
+      "sizeBytes": 12421839,
+      "notes": [
+        "新增「我的 → 加入 QQ 交流群」，群号 434217654。",
+        "支持打开 QQ 群资料页和复制群号。",
+        "本次为强制更新，请安装 1.0.7 后继续使用。"
+      ],
+      "buildKey": "b7fb0faba897419d8b689eb379dc41e4"
+    },
+    {
+      "schema": 1,
+      "versionCode": 108,
+      "versionName": "1.0.8-test.1",
+      "minSupportedVersionCode": 108,
+      "minSdk": 23,
+      "sha256": "e418e400bd2936a71bede54e39eebfbb6842da64fb94f972be1c1eb419dc35fb",
+      "sizeBytes": 12421839,
+      "notes": [
+        "新增「我的 → 导出并发送到 QQ」，方便反馈课表与学习通故障。",
+        "改进课表周次格式兼容，完善学习通逐课程失败提示。",
+        "本次为强制更新，请安装新版本后继续使用。"
+      ],
+      "buildKey": "5bbfc9884bd708665b8d36401e081bb4"
+    }
+  ]
+}

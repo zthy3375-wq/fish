@@ -5,6 +5,9 @@ import AppUpdateDialog from './components/AppUpdateDialog.vue';
 import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred} from './composables/updates';
 import {initPangguai,pangguai,pgBusy} from './composables/pangguai';
 import LifeServices from './components/LifeServices.vue';
+import CampusHero from './components/CampusHero.vue';
+import CommunityGroup from './components/CommunityGroup.vue';
+import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
@@ -69,6 +72,7 @@ import {
   upcomingExams,
   weekdays,
 } from "./domain/presentation";
+import {initWeekCalibration,calibratedSemester} from "./composables/week-calibration";
 import ScheduleManager from "./components/ScheduleManager.vue";
 import CourseEditor from "./components/CourseEditor.vue";
 import { isSchoolPageSemester } from "./services/legacy-school-semester";
@@ -131,7 +135,7 @@ const prefs = ref(loadPreferences()),
 const localSemester = personalSemester;
 const localTable = computed(() => tableForSemester(schedule.value));
 const officialActive = computed(() => !!schoolTerm.value?.data);
-const semester = computed(() => schoolTerm.value?.data?.semester ?? localSemester.value);
+const semester = computed(() => calibratedSemester(schoolTerm.value?.data?.semester ?? localSemester.value));
 const table = computed(() => schoolTerm.value?.data?.table ?? localTable.value);
 const data = computed<AcademicData>(() => {
  const cached=schoolTerm.value?.data;
@@ -252,6 +256,7 @@ const current = computed(() =>
 const next = computed(() =>
   nextOccurrence(data.value.courses, now.value, semester.value),
 );
+const homeFocus = computed(()=>current.value ?? next.value?.course);
 const exams = computed(() => upcomingExams(data.value.exams, now.value));
 const weekCount = computed(
   () => data.value.courses.filter((c) => c.weeks.includes(week.value)).length,
@@ -384,6 +389,7 @@ async function load() {
   error.value = "";
   try {
     await initSchedule();
+    await initWeekCalibration();
     await initAcademic();
     void autoSyncAcademic();
     await reconcileReminders(schedule.value);
@@ -569,7 +575,7 @@ onUnmounted(() => {
     :inert="updatesOpen"
     :class="{ compact: prefs.compact, 'home-active': page === 'home', 'schedule-active':page==='schedule' }"
   >
-    <AppHeader
+    <AppHeader v-if="page !== 'home'"
       :inert="!!modal || agendaView.editor"
       :title="title"
       :subtitle="subtitle"
@@ -590,131 +596,25 @@ onUnmounted(() => {
       </div>
       <div v-else class="page-content">
           <template v-if="page === 'home'">
-            <AnalyticsSettings prompt/>
-            <SchoolConnection compact @connected="move('home')" />
-            <div class="home-greeting">
-              <span>{{ greeting }}，{{ academicCache.profile.data?.name || prefs.name }}</span
-              ><span class="quiet-label">北京时间 {{ timeOf(now) }}</span>
-            </div>
-            <button
-              v-if="next"
-              type="button"
-              class="next-course compact-next-course"
-              :aria-label="'查看下一节课程 ' + next.course.name"
-              @click="details(next.course)"
-            >
-              <span class="next-top"
-                ><span class="micro-label"><Clock3 :size="14" />下一节课程</span
-                ><span class="time-until">{{
-                  untilLabel(next.minutes)
-                }}</span></span
-              >
-              <span class="next-main"
-                ><strong :title="next.course.name">{{
-                  next.course.name
-                }}</strong
-                ><span class="next-room"
-                  ><MapPin :size="13" /><span>{{
-                    next.course.room
-                  }}</span></span
-                ><ArrowRight :size="18"
-              /></span>
-              <span class="next-meta"
-                ><span
-                  ><CalendarDays :size="12" />{{ dateLabel(next.date) }} 周{{
-                    weekdays[dayNumber(next.date) - 1]
-                  }}</span
-                ><span>{{ next.course.start }}–{{ next.course.end }}</span
-                ><span
-                  ><UserRound :size="12" />{{ next.course.teacher }}</span
-                ></span
-              >
-            </button>
-            <div v-else class="next-course">
-              <EmptyState
-                :title="academicCache.connected && !schoolTerm?.data ? '课表尚未同步成功' : '本学期没有后续课程'"
-                :description="academicCache.connected && !schoolTerm?.data ? '当前无法判断课程安排，请查看上方连接状态。' : '可以在教务中心管理课程，或检查当前学期配置。'"
-              />
-            </div>
-            <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
-            <SectionHeader
-              title="今日课程"
-              :meta="`${todayCourses.length} 节${current ? ' · 正在上课' : ''}`"
-              action="完整课表"
-              @action="go('schedule')"
-            />
-            <div class="course-list home-course-list">
-              <CourseCard
-                grouped
-                v-for="c in todayCourses"
-                :key="c.id"
-                :course="c"
-                :status="courseState(c, now)"
-                :next="
-                  next?.course.id === c.id &&
-                  next?.week === week &&
-                  dayNumber(next.date) === dayNumber(now)
-                "
-                @select="details"
-              /><EmptyState
-                v-if="!todayCourses.length"
-                :title="academicCache.connected && !schoolTerm?.data ? '尚未取得今日课程' : '今天没有课程'"
-                :description="
-                  next ? '下一次课程会显示在上方。' : '当前学期没有后续安排。'
-                "
-              />
-            </div>
-            <SectionHeader title="校园生活" meta="钱包与取件" />
-            <LifeServices @open="open"/>
-            <SectionHeader title="教务速览" meta="成绩与考试" />
-            <div class="quick-grid home-quick">
-              <QuickAction
-                v-for="e in [
-                  ...entries.slice(1, 3),
-                ]"
-                :key="e.id"
-                :title="e.title"
-                :subtitle="e.subtitle"
-                :icon="e.icon"
-                @select="go(e.id)"
-              />
-            </div>
-            <SectionHeader
-              title="近期安排"
-              :meta="officialActive ? '学校缓存' : '个人安排'"
-            />
-            <div class="service-group upcoming-group">
-              <button
-                v-if="schedule.mode === 'personal'"
-                class="service-row"
-                @click="manage()"
-              >
-                <BookOpen class="row-icon" /><span class="row-copy"
-                  ><strong>管理个人课表</strong
-                  ><small>{{
-                    !officialActive && next
-                      ? next.course.name + " · " + dateLabel(next.date)
-                      : "添加或导入课程，安排你的学期"
-                  }}</small></span
-                ><ChevronRight class="row-chevron" :size="18" /></button
-              ><button
-                v-for="e in exams.slice(0, 2)"
-                :key="e.name"
-                class="service-row"
-                @click="go('exams')"
-              >
-                <CalendarDays class="row-icon" /><span class="row-copy"
-                  ><strong>{{ e.name }} · 考试</strong
-                  ><small
-                    >{{ e.date.slice(5) }} · {{ e.time }} · {{ e.room }}</small
-                  ></span
-                ><ChevronRight class="row-chevron" :size="18" /></button
-              ><button class="service-row" @click="go('official')">
-                <Bell class="row-icon" /><span class="row-copy"
-                  ><strong>公开教务通知</strong
-                  ><small>未同步 · 前往官方入口查看</small></span
-                ><ChevronRight class="row-chevron" :size="18" />
-              </button>
+            <CampusHero :date="`${dateLabel(now)} · 周${weekdays[dayNumber(now)-1]}`" :week="week>=1&&week<=semester.weekCount?`第 ${week} 教学周`:'学期外'" :unread="!read&&prefs.notifications" :obscured="!!modal||updatesOpen||agendaView.editor" @notifications="open('notifications')"/>
+            <div class="home-body">
+              <AnalyticsSettings prompt @policy="open('privacy')"/>
+              <section class="home-course-panel" aria-label="课程速览">
+                <button v-if="homeFocus" class="home-next" :aria-label="'查看'+(current?'当前':'下一节')+'课程 '+homeFocus.name" @click="details(homeFocus)">
+                  <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'进行中':next?untilLabel(next.minutes):''}}</span></span>
+                  <strong class="home-next-title">{{homeFocus.name}}</strong>
+                  <span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><time>{{homeFocus.start}}–{{homeFocus.end}}</time><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span>
+                </button>
+                <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{academicCache.connected&&!schoolTerm?.data?'请查看下方学校连接状态。':'查看课表，安排自己的校园时光。'}}</p></div>
+                <div class="home-timeline-head"><span>今日课程 · {{todayCourses.length}} 节</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
+                <div v-if="todayCourses.length" class="home-timeline" aria-label="今日课程时间线">
+                  <button v-for="c in todayCourses" :key="c.id" :class="{'is-current':courseState(c,now)==='current','is-ended':courseState(c,now)==='ended','is-next':!current&&next?.course.id===c.id}" :aria-label="`${c.name} ${c.start} ${c.room}`" @click="details(c)"><strong>{{c.name}}</strong><time>{{c.start}}</time></button>
+                </div>
+              </section>
+              <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
+              <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
+              <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="23"/><span><strong>学习通</strong><small>课程与作业</small></span><ChevronRight/></button><button @click="move('profile')"><GraduationCap :size="23"/><span><strong>教务与账号</strong><small>成绩 · 考试 · 学业</small></span><ChevronRight/></button></div>
+              <SchoolConnection compact @connected="move('home')"/>
             </div>
           </template>
           <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
@@ -756,8 +656,9 @@ onUnmounted(() => {
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
+            <CommunityGroup/>
             <SectionHeader title="教务服务"/><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/>
-            <TaskSettings/><AnalyticsSettings/>
+            <TaskSettings/>
             <SectionHeader title="外观设置" />
             <section class="settings-group">
               <div class="theme-row">
@@ -788,6 +689,7 @@ onUnmounted(() => {
               :items="settings"
               @select="(id) => (id === 'manager' ? manage() : open(id))"
             />
+            <FailureFeedback/>
             <SectionHeader title="关于与隐私" /><ServiceGroup
               :items="about"
               @select="(id) => (id === 'app-update' ? checkUpdates(true) : open(id))"
@@ -1059,8 +961,10 @@ onUnmounted(() => {
           >
           <template v-else-if="modal === 'privacy'"
             ><ShieldCheck :size="27" />
-            <h2>隐私政策</h2>
-            <p>匿名使用统计需你主动允许。开启后上报随机安装标识、应用版本、北京时间日期和预定义功能的累计操作次数，用于统计活跃设备与改善体验；不上传学号、密码、课程内容、余额、订单或设备硬件标识。每日汇总统计近90天，过期明细随后续上报清理，匿名设备记录用于累计统计。可在“我的”关闭统计或删除已上报记录。为防滥用，服务端短期保留每日加盐后的网络地址摘要，不保存原始地址到统计数据库。</p>
+            <h2>使用说明与隐私政策</h2>
+            <p>邯院通是免费的独立学生项目，提供课表、待办和校园生活服务。学校与生活服务数据以对应平台为准；付款前请核对设备、账户与金额。请勿分享账号密码、验证码或登录凭证。</p>
+            <AnalyticsSettings/>
+            <p>匿名使用统计需你主动允许。开启后上报随机安装标识、应用版本、北京时间日期和预定义功能的累计操作次数，用于统计活跃设备与改善体验；不上传学号、密码、课程内容、余额、订单或设备硬件标识。每日汇总统计近90天，过期明细随后续上报清理，匿名设备记录用于累计统计。可在“我的 → 隐私政策”关闭统计或删除已上报记录。为防滥用，服务端短期保留每日加盐后的网络地址摘要，不保存原始地址到统计数据库。</p>
             <p>
               学校密码只在官方页面输入。Android 原生模块使用系统密钥库加密保存学校会话，供本人数据查询复用。退出学校账号后清除会话与学校缓存。
             </p>

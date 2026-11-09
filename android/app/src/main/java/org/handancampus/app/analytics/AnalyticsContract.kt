@@ -1,6 +1,7 @@
 package org.handancampus.app.analytics
 import org.json.JSONObject
 object AnalyticsContract {
+    const val ENDPOINT = "https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-analytics/api/metrics"
     val features = setOf("schedule","tasks","learning","shower","wallet","water","laundry","parcel","grades","map")
     fun counters(raw: String?, day: String): JSONObject {
         val old = try { JSONObject(raw ?: "{}") } catch (_:Exception) { JSONObject() }

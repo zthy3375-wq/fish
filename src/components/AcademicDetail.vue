@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import WeekCalibration from "./WeekCalibration.vue";
+import { computed, ref, watch } from "vue";
 import { ChevronLeft, ChevronRight, Info } from 'lucide-vue-next';
 import type { AcademicData, Course } from "../domain/academic";
 import { coursesForDay } from "../domain/academic";
@@ -50,6 +51,7 @@ function termChange(event:Event) {
   const [xnm,xqm]=(event.target as HTMLSelectElement).value.split('-');
   void selectSchoolTerm({xnm,xqm});
 }
+watch(()=>props.semester.weekStartDate,()=>{week.value=Math.max(1,Math.min(props.semester.weekCount,currentWeek(props.now,props.semester)));day.value=dayNumber(props.now)});
 const actualWeek = computed(() => currentWeek(props.now, props.semester));
 const selectedCourses = computed(() =>
   coursesForDay(props.data.courses, day.value, week.value),
@@ -100,6 +102,7 @@ function touchEnd(e: TouchEvent) {
     <label v-if="academicCache.semesters.data?.length" class="schedule-term">
       <span>学期</span><select :value="academicCache.selectedTerm" :disabled="academicBusy" aria-label="课表学期" @change="termChange"><option v-for="t in academicCache.semesters.data" :key="`${t.xnm}-${t.xqm}`" :value="`${t.xnm}-${t.xqm}`">{{t.xnm}}–{{Number(t.xnm)+1}} {{t.xqm==='3'?'秋季':'春季'}}</option></select>
     </label>
+    <WeekCalibration :semester="semester" :now="now" @saved="week=Math.max(1,Math.min(semester.weekCount,currentWeek(now,semester)));day=dayNumber(now)"/>
     <div class="schedule-toolbar"><button class="text-button" :aria-pressed="comfortable" @click="comfortable=!comfortable">{{comfortable?'舒适阅读':'整周总览'}}</button>
       <div class="segmented" aria-label="课表视图">
         <button

@@ -49,7 +49,7 @@ class AppUpdatePlugin : Plugin() {
         stage = "checking"; error = ""
         worker.execute {
             try {
-                val c = connect(UpdatePolicy.CHANNEL + "?t=" + System.currentTimeMillis())
+                val c = connect(UpdatePolicy.CHANNEL + "?t=" + System.currentTimeMillis(), channel = true)
                 val bytes = try { c.inputStream.use { stream ->
                     val out = java.io.ByteArrayOutputStream(); val b = ByteArray(4096)
                     while (true) { val n = stream.read(b); if (n < 0) break; require(out.size() + n <= 65536); out.write(b, 0, n) }; out.toByteArray()
@@ -65,10 +65,10 @@ class AppUpdatePlugin : Plugin() {
             } finally { busy.set(false); if (!destroyed) call.resolve(snapshot()) }
         }
     }
-    private fun connect(raw: String): HttpURLConnection {
+    private fun connect(raw: String, channel: Boolean = false): HttpURLConnection {
         var url = raw
         repeat(5) {
-            require(UpdatePolicy.trustedUrl(url))
+            require(if(channel) UpdatePolicy.trustedChannelUrl(url) else UpdatePolicy.trustedUrl(url))
             val c = URL(url).openConnection() as HttpURLConnection
             c.connectTimeout = 15000; c.readTimeout = 20000; c.instanceFollowRedirects = false
             c.setRequestProperty("User-Agent", "Hanyuantong/${BuildConfig.VERSION_NAME} Android")

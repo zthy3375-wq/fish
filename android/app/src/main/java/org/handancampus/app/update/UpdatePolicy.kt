@@ -12,13 +12,20 @@ data class UpdatePolicy(val code: Int, val name: String, val minimum: Int, val m
         .put("minSupportedVersionCode", minimum).put("minSdk", minSdk).put("apkUrl", url)
         .put("sha256", sha256).put("sizeBytes", size).put("notes", org.json.JSONArray(notes))
     companion object {
-        const val ORIGIN = "https://hanyuantong-updates.dewydahlia.chatgpt.site"
-        const val CHANNEL = "$ORIGIN/android/stable.json"
+        const val ORIGIN = "https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com"
+        private const val LEGACY_HOST = "hanyuantong-updates.dewydahlia.chatgpt.site"
+        const val CHANNEL = "$ORIGIN/hyt-updates/android/stable.json"
         const val MAX_APK_BYTES = 80L * 1024 * 1024
         fun trustedUrl(raw: String): Boolean = try {
             val u = URI(raw); val origin = URI(ORIGIN)
-            u.scheme == "https" && u.host == origin.host && (u.port == -1 || u.port == 443) &&
-                u.rawUserInfo == null && u.rawFragment == null
+            u.scheme == "https" && (u.host == origin.host || u.host == LEGACY_HOST || u.host == "pgyer-apps-cfw.appmeme.com" || u.host == "pgyer.com" || u.host?.endsWith(".pgyer.com") == true) && (u.port == -1 || u.port == 443) &&
+                u.rawUserInfo == null && u.rawFragment == null &&
+                !Regex("(?:^|&)(?:_api_key|api_key|buildpassword)=",RegexOption.IGNORE_CASE).containsMatchIn(u.query ?: "")
+        } catch (_: Exception) { false }
+        fun trustedChannelUrl(raw: String): Boolean = try {
+            val u=URI(raw); val channel=URI(CHANNEL)
+            u.scheme==channel.scheme && u.host==channel.host && u.path==channel.path &&
+                (u.port == -1 || u.port == 443) && u.rawUserInfo==null && u.rawFragment==null
         } catch (_: Exception) { false }
         fun parse(raw: String): UpdatePolicy {
             require(raw.toByteArray(Charsets.UTF_8).size <= 64 * 1024)

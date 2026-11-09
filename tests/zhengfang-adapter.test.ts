@@ -62,6 +62,12 @@ describe("offline Zhengfang adapter — synthetic fixtures, no school connection
     ["2-16周（双周）", [2, 4, 6, 8, 10, 12, 14, 16]],
     ["1、3、5周, 8-10周(双)", [1, 3, 5, 8, 10]],
     ["1-3周,2周", [1, 2, 3]],
+    ["第1—5周", [1,2,3,4,5]],
+    ["１－５（单）周", [1,3,5]],
+    ["第2至第6周（双周）", [2,4,6]],
+    ["1-5单周；6-8双周", [1,3,5,6,8]],
+    ["1-5(单)周,8-10(双)周", [1,3,5,8,10]],
+    ["第１到３周\u200b", [1,2,3]],
   ])("fully parses week expression %s", (input, expected) =>
     expect(parseZhengfangWeeks(input, 18)).toEqual(expected),
   );
@@ -76,6 +82,10 @@ describe("offline Zhengfang adapter — synthetic fixtures, no school connection
     "1,,3",
     "2周(单)",
     "1-3周(单)(双)",
+    "1-3(单)周(双)",
+    "1-3周调至第5周",
+    "1-3周停课",
+    "1-3周/5周",
   ])("rejects ambiguous/bounded week expression %s", (input) =>
     expect(() => parseZhengfangWeeks(input, 18)).toThrow(),
   );
@@ -233,7 +243,7 @@ describe("offline Zhengfang adapter — synthetic fixtures, no school connection
       state.activeSemesterId,
       state.timeTables[0],
     );
-    const monday = new Date(2026, 8, 7, 7, 0);
+    const monday = new Date(2026, 8, 14, 7, 0);
     expect(semesterWeek(monday, state.semesters[0])).toBe(1);
     expect(coursesForDay(local, 1, 1)).toHaveLength(1);
     expect(coursesForDay(local, 1, 2)).toHaveLength(0);

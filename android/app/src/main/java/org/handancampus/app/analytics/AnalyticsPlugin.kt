@@ -3,7 +3,6 @@ package org.handancampus.app.analytics
 import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.handancampus.app.BuildConfig
-import org.handancampus.app.update.UpdatePolicy
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -55,10 +54,10 @@ class AnalyticsPlugin: Plugin() {
         call.resolve(state());send(true)
     }
     private fun request(action:String,id:String,token:String,body:JSONObject):Pair<Int,JSONObject>{
-        val c=URL(UpdatePolicy.ORIGIN+"/api/metrics/"+action).openConnection() as HttpURLConnection
+        val c=URL(AnalyticsContract.ENDPOINT+"/"+action).openConnection() as HttpURLConnection
         c.requestMethod="POST";c.connectTimeout=8000;c.readTimeout=8000;c.instanceFollowRedirects=false;c.doOutput=true
         c.setRequestProperty("User-Agent","Hanyuantong/${BuildConfig.VERSION_NAME} Android")
-        c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Authorization","Bearer $token")
+        c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("X-Hyt-Token",token)
         val bytes=body.put("id",id).toString().toByteArray(Charsets.UTF_8);c.setFixedLengthStreamingMode(bytes.size)
         try{
             c.outputStream.use {it.write(bytes)};val status=c.responseCode
@@ -86,15 +85,15 @@ class AnalyticsPlugin: Plugin() {
                 val snapshot=synchronized(lock){AnalyticsContract.counters(prefs.getString("counters",null),day())}
                 val lastDay=prefs.getString("sent_day","")
                 if(!force&&!prefs.getBoolean("dirty",false)&&lastDay==day()&&prefs.getInt("sent_version",0)==BuildConfig.VERSION_CODE)return@execute
-                if(!prefs.getBoolean("enrolled",false)){
+                if(!prefs.getBoolean("enrolled",false)||prefs.getString("backend","")!=AnalyticsContract.ENDPOINT){
                     val result=request("enroll",id,token,JSONObject())
                     if(result.first!=200||!result.second.optBoolean("ok"))return@execute
-                    prefs.edit().putBoolean("enrolled",true).apply()
+                    prefs.edit().putBoolean("enrolled",true).putString("backend",AnalyticsContract.ENDPOINT).apply()
                 }
                 if(prefs.getString("choice","")!="on"||prefs.getBoolean("delete_pending",false))return@execute
                 val payload=JSONObject(snapshot.toString()).put("version",BuildConfig.VERSION_NAME).put("versionCode",BuildConfig.VERSION_CODE)
                 val result=request("record",id,token,payload)
-                if(result.first==401){prefs.edit().putBoolean("enrolled",false).apply();return@execute}
+                if(result.first==401||result.first==430){prefs.edit().putBoolean("enrolled",false).apply();return@execute}
                 if(result.first==200&&result.second.optBoolean("ok"))synchronized(lock){
                     val clean=AnalyticsContract.counters(prefs.getString("counters",null),day()).toString()==snapshot.toString()
                     prefs.edit().putString("sent_day",snapshot.getString("day")).putInt("sent_version",BuildConfig.VERSION_CODE).putLong("last_sent",System.currentTimeMillis()).putBoolean("dirty",!clean).apply()

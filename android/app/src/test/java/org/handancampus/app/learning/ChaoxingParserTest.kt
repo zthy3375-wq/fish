@@ -112,4 +112,23 @@ class ChaoxingParserTest {
         assertTrue(ChaoxingScanPlan.select(listOf(course),setOf(course.key),mapOf(course.key to 999999L),false,1000000).isEmpty())
         assertEquals(listOf(course),ChaoxingScanPlan.select(listOf(course),setOf(course.key),mapOf(course.key to 999999L),true,1000000))
     }
+
+    @Test fun explicitEmptyListsAreSuccessButUnknownAndBlockedPagesAreNot(){
+        for(html in listOf("<p>尚无作业</p>","<img alt='暂无相关作业'>","<p>老师尚未发布作业</p>","<input id='totalCount' value='0'><ul class='bottomList'></ul>")){
+            val result=ChaoxingParser.work(html,course.url,course)
+            assertTrue(result.recognized);assertTrue(result.complete);assertTrue(result.records.isEmpty())
+        }
+        for(html in listOf("<ul class='bottomList'></ul>","<script>const tip='暂无作业'</script>","<div hidden>暂无作业</div>","<p>请重新登录</p><p>暂无作业</p>","<p>请输入验证码</p><p>暂无作业</p>","<li onclick='goTask(this)'>未知格式</li><p>暂无作业</p>")){
+            assertFalse(ChaoxingParser.work(html,course.url,course).recognized)
+        }
+    }
+    @Test fun missingTaskLinksFallBackToMatchingOfficialCourseThenPortal(){
+        val id="12/34/homework/78"
+        val detail="https://mooc1.chaoxing.com/mooc2/work/task?workId=78"
+        assertEquals(detail,ChaoxingPolicy.itemDestination(id,detail,listOf(course)))
+        assertEquals(course.url,ChaoxingPolicy.itemDestination(id,"",listOf(course)))
+        assertEquals(course.url,ChaoxingPolicy.itemDestination(id,"https://evil.test",listOf(course)))
+        assertEquals(ChaoxingPolicy.HOME,ChaoxingPolicy.itemDestination("90/91/exam/78",null,listOf(course)))
+        assertEquals(ChaoxingPolicy.HOME,ChaoxingPolicy.itemDestination(id,null,listOf(course.copy(url="https://evil.test"))))
+    }
 }

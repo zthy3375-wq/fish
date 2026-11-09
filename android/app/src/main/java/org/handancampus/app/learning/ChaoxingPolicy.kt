@@ -22,6 +22,13 @@ object ChaoxingPolicy {
     fun query(url: String): Map<String,String> = try { (URI(url).rawQuery ?: "").split('&').filter { it.contains('=') }.associate { val p=it.split('=',limit=2); URLDecoder.decode(p[0],"UTF-8").lowercase() to URLDecoder.decode(p[1],"UTF-8") } } catch (_:Exception) { emptyMap() }
     fun absolute(raw: String, base: String): String? = try { val trimmed=raw.trim();val value=if(trimmed.startsWith("?"))base.substringBefore('?').substringBefore('#')+trimmed else URI(base).resolve(trimmed).toString(); if(allowed(value)) value else null } catch (_:Exception) { null }
     fun params(base: String, values: Map<String,String>) = base + (if(base.contains('?')) "&" else "?") + values.entries.joinToString("&") { URLEncoder.encode(it.key,"UTF-8")+"="+URLEncoder.encode(it.value,"UTF-8") }
+    /** Use only previously supplied official URLs, otherwise open the official portal. */
+    fun itemDestination(id:String,detail:String?,courses:List<LearningCourse>):String {
+        require(id.matches(Regex("[0-9]{1,24}/[0-9]{1,24}/(?:homework|exam)/[0-9]{1,24}")))
+        if(allowed(detail))return detail!!
+        val key=id.split('/').take(2).joinToString("/")
+        return courses.firstOrNull { it.key==key&&safeRead(it.url) }?.url ?: HOME
+    }
     fun numeric(value: String) = value.matches(Regex("[0-9]{1,24}"))
     fun safeRead(url:String):Boolean {
         if(!allowed(url))return false

@@ -1,3 +1,4 @@
+import {correctLegacyCalendar} from "../domain/week-calibration";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { validateState, type ScheduleState } from "../domain/schedule";
@@ -33,6 +34,7 @@ export async function readSchedule(): Promise<ScheduleState | null> {
   const raw = await readRaw(KEY);
   if (!raw) return null;
   const state = validateState(raw);
+  state.semesters=state.semesters.map(correctLegacyCalendar);
   if ((raw as { version: number }).version === 1) {
     await writeSchedule(state, raw);
     return validateState(await readRaw(KEY));
