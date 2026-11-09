@@ -6,7 +6,7 @@ export async function checkProfile(page,assert,{width,output}) {
  const details=account.locator('.school-account-details');
  assert(await details.getAttribute('open')===null,`${width}: school account details collapsed by default`);
  assert(await account.evaluate(el=>el.getBoundingClientRect().height)<140,`${width}: school account stays compact`);
- assert(await profile.locator('.profile-academics .service-row').count()===4,`${width}: four academic shortcuts grouped together`);
+ assert(await profile.locator('.profile-academics .service-row').count()===3,`${width}: unified grades and study has one shortcut`);
  assert(await profile.locator('.school-module').first().isVisible()===false,`${width}: sync timestamps stay behind account details`);
  await profile.locator('.school-account-details>summary').click();
  assert(await profile.getByRole('button',{name:'退出学校账号',exact:true}).isVisible(),`${width}: school logout remains accessible`);

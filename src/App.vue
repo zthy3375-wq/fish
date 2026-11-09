@@ -270,7 +270,7 @@ const entries = computed(() => [
   },
   {
     id: "grades",
-    title: "成绩分析",
+    title: "成绩与学业",
     subtitle: academicCache.value.grades.updatedAt ? `${academicCache.value.grades.data?.length??0} 门成绩` : "尚未同步",
     icon: ChartNoAxesColumnIncreasing,
   },
@@ -280,12 +280,7 @@ const entries = computed(() => [
     subtitle: academicCache.value.exams.updatedAt ? `${exams.value.length} 场考试` : "尚未同步",
     icon: CalendarDays,
   },
-  {
-    id: "study",
-    title: "学业中心",
-    subtitle: "已获学分、课程类型与学籍",
-    icon: GraduationCap,
-  },
+
 ]);
 const academicServices=computed(()=>[...entries.value.filter(e=>e.id!=='schedule'),{id:'learning',title:'学习通',subtitle:'作业、课程、考试与通知',icon:BookOpen},{id:'agenda',title:'统一日程',subtitle:'课程、考试与个人待办',icon:CalendarDays},{id:'calendar',title:'学期校历',subtitle:'教学周与学期安排',icon:CalendarDays}]);
 const official=[{id:'school',title:'邯郸学院官网',subtitle:'学校新闻与公开信息',icon:ArrowUpRight,href:'https://www.hdc.edu.cn/'}];
@@ -324,9 +319,9 @@ const sectionNames: Record<string, string> = {
   agenda: "统一日程",
   learning: "学习通",
   schedule: "课程表",
-  grades: "成绩分析",
+  grades: "成绩与学业",
   exams: "考试安排",
-  study: "学业中心",
+  study: "成绩与学业",
   calendar: "学期校历",
   official: "官方教务",
 };
@@ -360,6 +355,7 @@ watch(data, (d) => {
 });
 watch(learningTasks,()=>{if(tasksReady.value)void reconcileTaskReminders()});
 function go(id: string) {
+  if(id==='study')id='grades';
   if(id==='due'){taskView.view='due';taskView.mode='list';taskView.source='all';taskView.course='';taskView.search='';move('tasks','agenda');return;}
   move(id==='agenda'?'tasks':id === 'schedule' ? 'schedule' : 'academic', id);
 }
@@ -599,22 +595,24 @@ onUnmounted(() => {
             <CampusHero :date="`${dateLabel(now)} · 周${weekdays[dayNumber(now)-1]}`" :week="week>=1&&week<=semester.weekCount?`第 ${week} 教学周`:'学期外'" :unread="!read&&prefs.notifications" :obscured="!!modal||updatesOpen||agendaView.editor" @notifications="open('notifications')"/>
             <div class="home-body">
               <AnalyticsSettings prompt @policy="open('privacy')"/>
+              <SchoolConnection v-if="!academicCache.connected||academicCache.session==='expired'||schoolTerm?.error" compact @connected="move('home')"/>
               <section class="home-course-panel" aria-label="课程速览">
                 <button v-if="homeFocus" class="home-next" :aria-label="'查看'+(current?'当前':'下一节')+'课程 '+homeFocus.name" @click="details(homeFocus)">
                   <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'进行中':next?untilLabel(next.minutes):''}}</span></span>
                   <strong class="home-next-title">{{homeFocus.name}}</strong>
                   <span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><time>{{homeFocus.start}}–{{homeFocus.end}}</time><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span>
                 </button>
-                <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{academicCache.connected&&!schoolTerm?.data?'请查看下方学校连接状态。':'查看课表，安排自己的校园时光。'}}</p></div>
+                <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{academicCache.connected&&!schoolTerm?.data?'请查看上方学校连接状态。':'查看课表，安排自己的校园时光。'}}</p></div>
                 <div class="home-timeline-head"><span>今日课程 · {{todayCourses.length}} 节</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
                 <div v-if="todayCourses.length" class="home-timeline" aria-label="今日课程时间线">
                   <button v-for="c in todayCourses" :key="c.id" :class="{'is-current':courseState(c,now)==='current','is-ended':courseState(c,now)==='ended','is-next':!current&&next?.course.id===c.id}" :aria-label="`${c.name} ${c.start} ${c.room}`" @click="details(c)"><strong>{{c.name}}</strong><time>{{c.start}}</time></button>
                 </div>
+              <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
               </section>
               <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
               <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
-              <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="23"/><span><strong>学习通</strong><small>课程与作业</small></span><ChevronRight/></button><button @click="move('profile')"><GraduationCap :size="23"/><span><strong>教务与账号</strong><small>成绩 · 考试 · 学业</small></span><ChevronRight/></button></div>
-              <SchoolConnection compact @connected="move('home')"/>
+
+
             </div>
           </template>
           <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
@@ -739,7 +737,7 @@ onUnmounted(() => {
               ? '课程详情'
               : modal === 'quzhi-wallet' ? '趣智校园钱包'
               : modal === 'pangguai-wallet' ? '胖乖生活钱包'
-              : modal === 'campus-map' ? '校园地图'
+              : modal === 'campus-map' ? '校园平面图'
               : modal === 'parcel' ? '快递出库码'
               : '校园助手设置'
           "

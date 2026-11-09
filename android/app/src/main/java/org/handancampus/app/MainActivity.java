@@ -9,7 +9,6 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(org.handancampus.app.life.ParcelShortcutsPlugin.class);
         registerPlugin(org.handancampus.app.life.PangguaiOfficialPlugin.class);
         registerPlugin(org.handancampus.app.life.PangguaiPlugin.class);
-        registerPlugin(org.handancampus.app.life.CampusLocationPlugin.class);
         registerPlugin(org.handancampus.app.update.AppUpdatePlugin.class);
         registerPlugin(org.handancampus.app.analytics.AnalyticsPlugin.class);
         registerPlugin(org.handancampus.app.community.CommunityGroupPlugin.class);

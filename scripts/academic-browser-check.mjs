@@ -108,7 +108,7 @@ try{
   await checkNativeLife(page,assert,{width,output});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
-  await page.getByRole('button',{name:/成绩分析/}).click();
+  await page.getByRole('button',{name:/成绩与学业/}).click();
   await page.getByText('还没有本人已同步成绩',{exact:true}).waitFor();
   assert(await page.locator('.ga-stats').count()===0,`${width}: no invented statistics before school login`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
@@ -116,6 +116,9 @@ try{
   await page.locator('.home-next-meta time').waitFor();
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(output,`campus-home-connected-${width}.png`),animations:'disabled'});
+  assert(await page.locator('.home-course-panel .home-study-links').count()===1,`${width}: study actions share course card`);
+  assert(await page.locator('.home-body>.school-connection').count()===0,`${width}: connected home hides redundant account card`);
+  assert(await page.locator('.home-course-panel').evaluate(el=>{const life=document.querySelector('#home-life-title').closest('section'),tasks=document.querySelector('.today-tasks');return !!(el.compareDocumentPosition(life)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(life.compareDocumentPosition(tasks)&Node.DOCUMENT_POSITION_FOLLOWING)}),`${width}: home orders courses, services, then plans`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   assert(await page.locator('.floating-nav button').count()===4,`${width}: four navigation tabs`);
@@ -124,7 +127,7 @@ try{
   const historyLength=await page.evaluate(()=>history.length);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
-  await page.getByRole('button',{name:/成绩分析/}).click();
+  await page.getByRole('button',{name:/成绩与学业/}).click();
   await page.getByRole('button',{name:'返回上一页',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
   assert(await page.evaluate(()=>history.length)===historyLength,`${width}: tab and detail navigation do not grow browser history`);
@@ -150,7 +153,7 @@ try{
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
   await checkProfile(page,assert,{width,output});
-  await page.getByRole('button',{name:/成绩分析/}).first().click();
+  await page.getByRole('button',{name:/成绩与学业/}).first().click();
   await page.locator('.ga-stats').waitFor();
   assert(await page.locator('.ga-stats strong').nth(0).innerText()==='7',`${width}: distinct course count`);
   assert(await page.locator('.ga-stats strong').nth(1).innerText()==='75',`${width}: numeric mean excludes levels and repeated attempts`);
@@ -188,7 +191,7 @@ try{
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
-  await page.getByRole('button',{name:/成绩分析/}).click();
+  await page.getByRole('button',{name:/成绩与学业/}).click();
   await page.getByLabel('搜索成绩课程',{exact:true}).waitFor();
   assert(await page.getByLabel('搜索成绩课程',{exact:true}).inputValue()==='人工数值',`${width}: filters survive navigation`);
   assert(await page.evaluate(()=>window.__academicCalls.filter(m=>m==='getGrades').length)===calls,`${width}: chart navigation does not request school again`);
@@ -202,8 +205,9 @@ try{
   assert(await page.locator('.ga-record').count()===1,`${width}: expiry does not erase records`);
   await page.screenshot({path:path.join(output,`grade-details-${width}.png`),fullPage:true,animations:'disabled'});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
-  await page.getByRole('button',{name:/学业中心/}).click();
-  await page.getByText('培养方案与毕业要求 · 待接入',{exact:true}).waitFor();
+  await page.getByRole('button',{name:/成绩与学业/}).click();
+  await page.getByRole('tab',{name:'学分与学籍',exact:true}).click();
+  await page.getByRole('heading',{name:'学籍资料',exact:true}).waitFor();
   assert(await page.getByRole('heading',{name:'课程性质与学分',exact:true}).count()===1,`${width}: study center shows categories without fabricated graduation targets`);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: study center no horizontal overflow`);
   await page.screenshot({path:path.join(output,`study-center-${width}.png`),fullPage:true,animations:'disabled'});
