@@ -134,6 +134,9 @@ try{
   assert(homeLayout.timelineBottom<=homeLayout.studyTop&&!homeLayout.overflow,`${width}: today's timeline stays clear of shortcuts without page overflow`);
   assert(await page.locator('.home-timeline button').count()===1&&await page.locator('.home-timeline time').textContent()==='11:15',`${width}: today's course name and start remain on the timeline`);
   await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
+  await page.locator('.home-timeline button').click();
+  assert(await page.getByRole('dialog').getByRole('heading',{name:'大学物理',exact:true}).isVisible(),`${width}: retained home timeline opens course details`);
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   await page.evaluate(()=>document.documentElement.style.removeProperty('--native-safe-top'));
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
