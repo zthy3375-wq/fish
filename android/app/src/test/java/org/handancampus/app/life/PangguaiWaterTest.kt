@@ -39,7 +39,7 @@ class PangguaiWaterTest {
     @Test fun physicalOnlyDeviceDoesNotSendRemoteEnd(){val h=Harness();h.finish=false;val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);fails("WATER_PHYSICAL_END"){h.engine.end(s)};assertEquals(0,h.count("goods/endWater"));h.readingPhase="ended";assertEquals("settled",h.engine.poll(h.saved!!).getString("phase"))}
     @Test fun remoteFinishSettlesTheSameOrderOnce(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);val done=h.engine.end(s);assertEquals("settled",done.getString("phase"));assertEquals("0.13",done.getString("amount"));h.engine.poll(done);assertEquals(1,h.count("goods/endWater"));assertEquals(1,h.count("order/afterPay/creating"));assertEquals(1,h.count("order/sync"));assertEquals("water-order",h.calls.single{it.first=="order/sync"}.second["orderNo"])}
     @Test fun zeroUsageDoesNotCreateOrCharge(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.amount="0.00";h.readingPhase="ended";val done=h.engine.poll(s);assertEquals("ended_zero",done.getString("phase"));assertFalse(done.has("amount"));assertEquals(0,h.count("order/sync"));assertEquals(0,h.count("order/afterPay/creating"))}
-    @Test fun otherOrderIsNeverEndedOrSettled(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.identity="someone-else";fails("WATER_OWNERSHIP"){h.engine.end(s)};assertEquals(0,h.count("goods/endWater"));assertEquals(0,h.count("order/sync"))}
+    @Test fun otherOrderIsNeverEndedOrSettled(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.identity="someone-else";val closed=h.engine.end(s);assertEquals("closed_unknown",closed.getString("phase"));assertEquals(0,h.count("goods/endWater"));assertEquals(0,h.count("order/sync"));assertEquals(0,h.count("order/afterPay/creating"))}
     @Test fun unknownUsageIsNotTreatedAsZero(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.amount=JSONObject.NULL;h.readingPhase="ended";assertEquals("settled",h.engine.poll(s).getString("phase"));assertEquals(1,h.count("order/afterPay/creating"))}
     @Test fun lostSettlementResponseOnlyQueriesExistingBill(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.readingPhase="ended";h.handler={p,_->if(p=="order/sync"){h.paid=true;throw PangguaiFailure("NETWORK")}else h.response(p)};fails("NETWORK"){h.engine.poll(s)};assertTrue(h.saved!!.getBoolean("settleSent"));assertEquals("settled",h.engine.poll(h.saved!!).getString("phase"));assertEquals(1,h.count("order/sync"))}
     @Test fun lostAfterPayCreationCanRecoverWithoutRecreating(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.readingPhase="ended";h.handler={p,_->if(p=="order/afterPay/creating"){h.orderExists=true;throw PangguaiFailure("NETWORK")}else h.response(p)};fails("NETWORK"){h.engine.poll(s)};assertEquals("settled",h.engine.poll(h.saved!!).getString("phase"));assertEquals(1,h.count("order/afterPay/creating"))}
@@ -53,5 +53,54 @@ class PangguaiWaterTest {
     @Test fun immediateEndAndLostPaymentKeepsNewestDurableIntent(){val h=Harness();val q=h.engine.prepare(device,"outlet-test");h.handler={p,_->when(p){"goods/water/unlock"->{h.readingPhase="ended";JSONObject("{msgId:'message-test',orderNo:'water-order'}")};"order/sync"->{h.paid=true;throw PangguaiFailure("NETWORK")};else->h.response(p)}};fails("NETWORK"){h.engine.start(device,q,null)};assertTrue(h.saved!!.getBoolean("settleSent"));assertEquals("settled",h.engine.poll(h.saved!!).getString("phase"));assertEquals(1,h.count("order/sync"));assertEquals(1,h.count("order/afterPay/creating"))}
 
     @Test fun remoteEndAndLostPaymentKeepsNewestDurableIntent(){val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.handler={p,_->if(p=="order/sync"){h.paid=true;throw PangguaiFailure("NETWORK")}else h.response(p)};fails("NETWORK"){h.engine.end(s)};assertTrue(h.saved!!.getBoolean("settleSent"));assertEquals("settled",h.engine.poll(h.saved!!).getString("phase"));assertEquals(1,h.count("goods/endWater"));assertEquals(1,h.count("order/sync"))}
+
+    @Test fun persistedOwnershipMismatchClosesOldSessionAndCanStartAgainOnIdleDevice(){
+        val h=Harness();val running=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        val legacy=JSONObject(running.toString()).put("error","WATER_OWNERSHIP").put("startedAt",-21_000_000)
+        h.identity="someone-else"
+        val closed=h.engine.poll(legacy)
+        assertEquals("closed_unknown",closed.getString("phase"));assertEquals("order_replaced",closed.getString("endBasis"))
+        assertEquals(1000,closed.getLong("endedAt"));assertFalse(closed.getBoolean("remoteEnd"));assertFalse(closed.has("amount"))
+        assertEquals(0,h.count("goods/endWater"));assertEquals(0,h.count("order/afterPay/creating"));assertEquals(0,h.count("order/sync"))
+        h.readingPhase="idle";h.identity="water-order"
+        // Even callers still holding the legacy snapshot are reconciled before start's active-session guard.
+        val fresh=h.engine.start(device,h.engine.prepare(device,"outlet-test"),legacy)
+        assertEquals("using",fresh.getString("phase"));assertEquals(2,h.count("goods/water/unlock"))
+    }
+    @Test fun replacedSessionOnlyReadsOriginalBillAndMayLaterBecomeSettled(){
+        val h=Harness();val running=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        h.identity="someone-else";val closed=h.engine.poll(running)
+        h.orderExists=true;h.paid=true;val billed=h.engine.poll(JSONObject(closed.toString()))
+        assertEquals("settled",billed.getString("phase"));assertEquals("0.13",billed.getString("amount"))
+        assertTrue(h.calls.filter{it.first=="order/detail"}.all{it.second["orderNo"]=="water-order"})
+        assertEquals(0,h.count("goods/endWater"));assertEquals(0,h.count("order/afterPay/creating"));assertEquals(0,h.count("order/sync"))
+    }
+    @Test fun ownOngoingSessionStillBlocksDuplicateUnlock(){
+        val h=Harness();val running=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        fails("WATER_ACTIVE"){h.engine.start(device,h.engine.prepare(device,"outlet-test"),running)}
+        assertEquals(1,h.count("goods/water/unlock"))
+    }
+    @Test fun blankIdentityOnBusyDeviceDoesNotFreeSessionOrSendEnd(){
+        val h=Harness();val running=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.identity=""
+        val uncertain=h.engine.poll(running);assertEquals("using",uncertain.getString("phase"))
+        assertEquals("WATER_OWNERSHIP",uncertain.getString("error"));fails("WATER_OWNERSHIP"){h.engine.end(uncertain)}
+        assertEquals(0,h.count("goods/endWater"));assertEquals(0,h.count("order/sync"))
+    }
+    @Test fun idleDeviceWithoutIdentityReleasesUsedRecordWithoutCharging(){
+        val h=Harness();val running=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        h.readingPhase="idle";h.handler={p,_->if(p=="goods/water/sync")JSONObject("{status:5,workStatus:1}") else h.response(p)}
+        val closed=h.engine.poll(running);assertEquals("closed_unknown",closed.getString("phase"))
+        assertEquals("device_idle",closed.getString("endBasis"));assertEquals(0,h.count("order/afterPay/creating"))
+    }
+    @Test fun ownershipChangeBetweenEndChecksNeverEndsReplacementOrder(){
+        val h=Harness();val running=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);var reads=0
+        h.handler={p,_->if(p=="goods/water/sync"&&++reads==2)JSONObject("{status:1,workStatus:2,identify:'someone-else'}") else h.response(p)}
+        assertEquals("closed_unknown",h.engine.end(running).getString("phase"));assertEquals(0,h.count("goods/endWater"))
+    }
+    @Test fun commandAcknowledgementFailureCannotBlockAuthoritativeOwnershipRecovery(){
+        val h=Harness();val running=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.identity="someone-else"
+        h.handler={p,_->if(p=="machine/msg/sync")throw PangguaiFailure("NETWORK") else h.response(p)}
+        assertEquals("closed_unknown",h.engine.poll(running).getString("phase"));assertEquals(0,h.count("order/sync"))
+    }
 
 }

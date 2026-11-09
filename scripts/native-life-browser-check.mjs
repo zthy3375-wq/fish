@@ -49,6 +49,20 @@ export async function checkNativeLife(page,assert,{width,output}){
  await dialog.locator('.water-history summary').filter({hasText:'本次接水已结算'}).waitFor();
  assert((await dialog.locator('.water-history').innerText()).includes('0.13'),`${width}: displays server-confirmed water bill`);
  await page.screenshot({path:path.join(output,`water-settled-${width}.png`),animations:'disabled'});
+ await page.evaluate(()=>{window.__pgWaterEnded=false;window.__pgOwnershipLost=true;window.__pgState.water={...window.__pgState.water,id:'legacy-stuck-water',phase:'using',startedAt:Date.now()-21500000,endedAt:undefined,amount:undefined,endBasis:undefined,remoteEnd:true,error:'WATER_OWNERSHIP'}});
+ await dialog.getByRole('button',{name:'刷新胖乖余额与记录'}).click();
+ await dialog.locator('.water-progress').waitFor({state:'hidden'});
+ assert(await dialog.getByRole('button',{name:'结束接水并结算',exact:true}).count()===0,`${width}: replaced water order has no remote end control`);
+ await dialog.getByRole('button',{name:'扫码识别设备',exact:true}).click();
+ const nextWater=dialog.getByRole('button',{name:'接水',exact:true});await nextWater.waitFor();
+ assert(await nextWater.isEnabled(),`${width}: restored stuck record releases next water action`);
+ await nextWater.click();await dialog.getByRole('button',{name:'确认开始接水',exact:true}).click();
+ await dialog.getByRole('heading',{name:'接水中',exact:true}).waitFor();
+ assert(await page.evaluate(()=>window.__pgCalls.filter(c=>c.method==='startWater').length)===2,`${width}: next water session starts after explicit confirmation`);
+ await page.evaluate(()=>window.__pgWaterEnded=true);
+ await dialog.locator('.water-progress').getByRole('button',{name:'查询状态',exact:true}).click();
+ await dialog.locator('.water-history').waitFor();
+
  await dialog.getByRole('tab',{name:'最近消费'}).click();
  await dialog.getByText('人工测试洗衣机',{exact:true}).waitFor();
  await page.evaluate(()=>window.__pgFailure=true);

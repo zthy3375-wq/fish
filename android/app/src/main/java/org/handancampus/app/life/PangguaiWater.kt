@@ -58,7 +58,12 @@ internal class PangguaiWater(
             .put("canStart",canStart).put("reason",when{channel==null->"设备未返回支付宝免密渠道";yes(channel,"needOpenFlag")->"请先在支付宝胖乖小程序开通本账户的免密付款";!canStart->text(channel,"notUseRemark").take(150).ifBlank{"付款方式暂不可用，请在官方端核对"};else->""})
     }
     fun start(device:JSONObject,quote:JSONObject,previous:JSONObject?):JSONObject {
-        if(previous!=null&&text(previous,"phase") !in terminal)throw PangguaiFailure("WATER_ACTIVE")
+        if(previous!=null&&text(previous,"phase") !in terminal){
+            // Reconcile a durable, previously running session before refusing a new start.
+            // Unknown unlock intents still cannot be replayed.
+            val current=if(previous.has("startedAt"))poll(previous) else previous
+            if(text(current,"phase") !in terminal)throw PangguaiFailure("WATER_ACTIVE")
+        }
         if(now()>quote.getLong("expiresAt"))throw PangguaiFailure("QUOTE_EXPIRED")
         if(req(quote,"deviceId")!=req(device,"id"))throw PangguaiFailure("DEVICE")
         if(!quote.optBoolean("canStart"))throw PangguaiFailure("WATER_CHANNEL")
@@ -114,16 +119,24 @@ internal class PangguaiWater(
         }
         bill(s)
     }
+    private fun closeReplaced(s:JSONObject,basis:String):JSONObject {
+        s.put("phase","closed_unknown").put("deviceEnded",true).put("endBasis",basis)
+            .put("remoteEnd",false).put("updatedAt",now()).put("error","WATER_BILL_UNKNOWN")
+        if(!s.has("endedAt"))s.put("endedAt",now())
+        save(s)
+        // Release immediately. Optional bill lookup must not hold the device lock or delay another scan.
+        // poll(closed_unknown) reads this user's original bill only; never create/pay/end here.
+        return s
+    }
     fun poll(source:JSONObject):JSONObject {
         val s=JSONObject(source.toString())
-        if(text(s,"phase") in terminal)return s
+        if(text(s,"phase") in terminal){
+            if(text(s,"phase")=="closed_unknown"&&text(s,"orderNo").isNotBlank())runCatching{bill(s)}
+            return s
+        }
         try {
             if(text(s,"orderNo").isBlank())throw PangguaiFailure("WATER_UNKNOWN")
             if(text(s,"phase") in setOf("ended","settling")){settle(s);return s}
-            if(text(s,"msgId").isNotBlank()&&!s.optBoolean("commandChecked")) {
-                val message=post("machine/msg/sync",mapOf("msgId" to req(s,"msgId"))) as? JSONObject
-                if(message!=null&&text(message,"state")=="OK"&&text(message,"code")=="0")s.put("commandChecked",true)
-            }
             val reading=reading(req(s,"skuId"))
             if(reading==null){
                 s.put("emptyReads",s.optInt("emptyReads")+1)
@@ -135,7 +148,10 @@ internal class PangguaiWater(
             }
             s.put("emptyReads",0)
             if(text(reading,"identify")!=text(s,"orderNo")) {
-                s.put("error","WATER_OWNERSHIP");save(s);runCatching{bill(s)};return s
+                val replaced=text(reading,"identify").isNotBlank()
+                val idle=text(reading,"status")=="5"&&text(reading,"workStatus")=="1"
+                if(s.has("startedAt")&&(replaced||idle))return closeReplaced(s,if(replaced)"order_replaced" else "device_idle")
+                s.put("error","WATER_OWNERSHIP").put("updatedAt",now());save(s);return s
             }
             when {
                 text(reading,"status")=="5"&&text(reading,"workStatus")=="1"->{
@@ -162,7 +178,10 @@ internal class PangguaiWater(
         if(text(s,"orderNo").isBlank())throw PangguaiFailure("WATER_UNKNOWN")
         // Never send an end command against a stale or different user's device session.
         val reading=obj(post("goods/water/sync",mapOf("skuId" to req(s,"skuId"))))
-        if(text(reading,"identify")!=text(s,"orderNo"))throw PangguaiFailure("WATER_OWNERSHIP")
+        if(text(reading,"identify")!=text(s,"orderNo")){
+            if(s.has("startedAt")&&text(reading,"identify").isNotBlank())return closeReplaced(s,"order_replaced")
+            throw PangguaiFailure("WATER_OWNERSHIP")
+        }
         if(text(reading,"status")!="1"||text(reading,"workStatus")!="2")throw PangguaiFailure("WATER_WAIT")
         val details=obj(post("goods/normal/details",mapOf("goodsId" to req(s,"deviceId"))))
         if(text(details,"goodsId")!=text(s,"deviceId")||text(details,"categoryCode")!="04")throw PangguaiFailure("DEVICE")

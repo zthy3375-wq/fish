@@ -44,6 +44,7 @@ try{
      if(method==='prepareWater')return {id:'water-quote',expiresAt:Date.now()+60000,deviceId:'synthetic-water',deviceName:'人工测试饮水机',outlet:'常温水',feature:'按实际用量计费',price:'1',remoteEnd:true,paymentName:'支付宝免密',canStart:true,reason:''};
      if(method==='startWater')window.__pgState.water={id:'water-session',deviceId:'synthetic-water',deviceName:'人工测试饮水机',outlet:'常温水',feature:'按实际用量计费',paymentName:'支付宝免密',phase:'using',orderNo:'synthetic-water-order',remoteEnd:true,updatedAt:Date.now(),startedAt:Date.now()};
      if(method==='endWater')Object.assign(window.__pgState.water,{phase:'ending',endSent:true});
+     if(method==='pollWater'&&window.__pgOwnershipLost){window.__pgOwnershipLost=false;Object.assign(window.__pgState.water,{phase:'closed_unknown',endBasis:'order_replaced',remoteEnd:false,endedAt:Date.now(),updatedAt:Date.now(),error:'WATER_BILL_UNKNOWN'})}
      if(method==='pollWater'&&window.__pgWaterEnded)Object.assign(window.__pgState.water,{phase:'settled',amount:'0.13',endedAt:Date.now()});
      return JSON.parse(JSON.stringify(window.__pgState));
     }
