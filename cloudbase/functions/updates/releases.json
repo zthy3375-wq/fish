@@ -1,5 +1,5 @@
 {
-  "latest": 121,
+  "latest": 133,
   "releases": [
     {
       "schema": 1,
@@ -72,6 +72,25 @@
         "修复了一些问题"
       ],
       "buildKey": "035422fbe5fc87eac984ac7cc46e6e47"
+    },
+    {
+      "schema": 1,
+      "versionCode": 133,
+      "versionName": "1.2",
+      "minSupportedVersionCode": 133,
+      "minSdk": 23,
+      "sha256": "f58b8656cfd2990d6ced14834898b9f849d581618a09f7cedd8d76c0a62c900e",
+      "sizeBytes": 12422175,
+      "notes": [
+        "新增桌面课表小组件，支持查看今天和明天的课程。",
+        "新增趣智校园洗澡码查看与刷新。",
+        "修复接水状态卡住、无法再次扫码的问题。",
+        "优化首页、“我的”及接水页面布局。",
+        "合并成绩与学业入口，校园地图精简为校区平面图。",
+        "学习通待办支持取消安排。",
+        "修复部分手机整周课表重叠的问题。"
+      ],
+      "buildKey": "bcf1b4e913f7dc3bcca301df939bc7f1"
     }
   ]
 }

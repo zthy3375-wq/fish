@@ -15,5 +15,6 @@
     "学习通待办支持取消安排。",
     "修复部分手机整周课表重叠的问题。"
   ],
-  "ready": true
+  "ready": true,
+  "buildKey": "bcf1b4e913f7dc3bcca301df939bc7f1"
 }
