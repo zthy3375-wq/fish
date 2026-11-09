@@ -6,6 +6,7 @@ import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred}
 import {initPangguai,pangguai,pgBusy} from './composables/pangguai';
 import LifeServices from './components/LifeServices.vue';
 import CampusHero from './components/CampusHero.vue';
+import CommunityGroup from './components/CommunityGroup.vue';
 import {defineAsyncComponent} from 'vue';
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
@@ -652,6 +653,7 @@ onUnmounted(() => {
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
             <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
+            <CommunityGroup/>
             <SectionHeader title="教务服务"/><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/>
             <TaskSettings/>
             <SectionHeader title="外观设置" />
