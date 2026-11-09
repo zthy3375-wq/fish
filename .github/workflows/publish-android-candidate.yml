@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'feature/tencent-app-updates' || github.head_ref == 'feature/campus-fish-home' || github.head_ref == 'feature/qq-community')
+    if: github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'feature/tencent-app-updates' || github.head_ref == 'feature/campus-fish-home' || github.head_ref == 'feature/qq-community' || github.head_ref == 'fix/student-sync-compat')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
