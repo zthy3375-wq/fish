@@ -11,5 +11,6 @@
     "支持打开 QQ 群资料页和复制群号。",
     "本次为强制更新，请安装 1.0.7 后继续使用。"
   ],
-  "ready": true
+  "ready": true,
+  "buildKey": "b7fb0faba897419d8b689eb379dc41e4"
 }
