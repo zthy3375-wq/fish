@@ -12,6 +12,25 @@ class QuzhiProtocolTest {
     private fun session() = QuzhiProtocol.session(JSONObject("""{"loginCode":"synthetic-session","userId":12,"userAccount":{"accountId":34,"projectId":56}}"""), "13800000000")
     private fun prior() = JSONObject().put("session", session()).put("snapshot", JSONObject("""{"school":"人工测试学校","wallet":{"total":"12.34"},"walletUpdatedAt":1,"billsMonth":"2026-10","billsUpdatedAt":2,"bills":[{"id":"old","amount":"1.20"}]}"""))
 
+    @Test fun bathCodePreservesLeadingZerosAndRequiresExplicitEnabledState() {
+        val code = QuzhiProtocol.bathCode(JSONObject("""{"useCode":"00123456","useCodeStatus":1,"useCodeRandom":"456"}"""))
+        assertEquals("00123456", code.getString("code")); assertTrue(code.getBoolean("enabled"))
+        assertEquals(2, code.length())
+        val disabled = QuzhiProtocol.bathCode(JSONObject("""{"useCodeStatus":"0"}"""))
+        assertFalse(disabled.getBoolean("enabled")); assertTrue(disabled.isNull("code"))
+        assertFalse(QuzhiProtocol.bathCode(JSONObject("""{"useCode":"00123456","useCodeStatus":0}""")).getBoolean("enabled"))
+    }
+    @Test fun bathCodeNeverGuessesMissingDigitsOrUnknownStatus() {
+        for (body in listOf("""{"useCodeRandom":"456","useCodeStatus":1}""", """{"useCode":"123","useCodeStatus":1}""",
+            """{"useCode":"00123456"}""", """{"useCode":"00123456","useCodeStatus":2}""",
+            """{"useCode":"00123456<script>","useCodeStatus":1}""")) {
+            rejected("FORMAT") { QuzhiProtocol.bathCode(JSONObject(body)) }
+        }
+        rejected("FORMAT") { QuzhiProtocol.bathCode(JSONArray()) }
+        assertTrue(QuzhiProtocol.paths.contains("account/useCode/new"))
+        assertFalse(QuzhiProtocol.paths.any { it.startsWith("account/useCode/") && it != "account/useCode/new" })
+    }
+
     @Test fun loginShapesAreNormalizedWithoutExportingCredentials() {
         val nested = session()
         assertEquals("34", nested.getString("accountId"))

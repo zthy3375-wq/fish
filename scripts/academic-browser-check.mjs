@@ -21,7 +21,7 @@ try{
   await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
     if(plugin==='AppUpdate'){
@@ -61,6 +61,7 @@ try{
      if(method==='login')window.__quzhiState={connected:true,expired:false,phone:'138****0000',school:'人工测试学校',wallet:{total:'12.34',cash:null,gift:null},walletUpdatedAt:Date.now()};
      if(method==='logout')window.__quzhiState={connected:false,expired:false,phone:''};
      if(method==='openRecharge'){window.__quzhiOpened=true;return {opened:true}}
+     if(method==='getBathCode'){if(window.__bathFailure)throw Error('NETWORK');return {code:'00123456',enabled:true,phone:window.__quzhiState.phone,queriedAt:Date.now()}}
      if(method==='refresh'){
       if(window.__quzhiFailure)window.__quzhiState.issues={wallet:'NETWORK',bills:'NETWORK'};
       else if(window.__quzhiExpired){window.__quzhiState.expired=true;window.__quzhiState.issues={wallet:'AUTH',bills:'AUTH'}}
@@ -391,6 +392,21 @@ try{
   assert(await walletDialog.locator('.quzhi-amount').innerText()==='¥12.34',`${width}: quzhi balance comes from native wallet`);
   assert(await walletDialog.getByText('138****0000',{exact:true}).isVisible(),`${width}: quzhi exposes masked phone only`);
   assert(await walletDialog.locator('.quzhi-breakdown').count()===0,`${width}: ambiguous wallet components hidden`);
+  assert(await page.evaluate(()=>window.__quzhiCalls.filter(c=>c.method==='getBathCode').length)===0,`${width}: bath code queried only on explicit action`);
+  await walletDialog.getByRole('button',{name:'查看洗澡码',exact:true}).click();
+  await walletDialog.getByLabel('当前洗澡码',{exact:true}).waitFor();
+  assert(await walletDialog.getByLabel('当前洗澡码',{exact:true}).innerText()==='00123456',`${width}: full bath code preserves leading zeros`);
+  assert(await page.evaluate(()=>!JSON.stringify(window.__quzhiState).includes('00123456')&&Object.values(localStorage).every(v=>!v.includes('00123456'))),`${width}: bath code not persisted in wallet or browser storage`);
+  await walletDialog.getByRole('button',{name:'收起',exact:true}).click();
+  await walletDialog.getByLabel('当前洗澡码',{exact:true}).waitFor({state:'hidden'});
+  await walletDialog.getByRole('button',{name:'查看洗澡码',exact:true}).click();
+  await walletDialog.getByLabel('当前洗澡码',{exact:true}).waitFor();
+  await page.evaluate(()=>window.__bathFailure=true);
+  await walletDialog.getByRole('button',{name:'刷新洗澡码',exact:true}).click();
+  await walletDialog.locator('.bath-error').waitFor();
+  assert(await walletDialog.getByLabel('当前洗澡码',{exact:true}).count()===0,`${width}: failed refresh clears old bath code`);
+  await page.evaluate(()=>window.__bathFailure=false);
+
   await page.screenshot({path:path.join(output,`quzhi-wallet-${width}.png`),animations:'disabled'});
   assert(await walletDialog.evaluate(el=>el.scrollWidth<=el.clientWidth),`${width}: quzhi wallet fits mobile sheet`);
   await walletDialog.getByRole('button',{name:'充值 · 支付宝',exact:true}).click();

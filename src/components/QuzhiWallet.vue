@@ -2,12 +2,14 @@
 import {computed,onMounted,onUnmounted,ref} from 'vue';
 import {App} from '@capacitor/app';
 import type {PluginListenerHandle} from '@capacitor/core';
+import QuzhiBathCode from './QuzhiBathCode.vue';
 import {Droplets,RefreshCw,ArrowUpRight,WalletCards} from 'lucide-vue-next';
 import {quzhi,quzhiBusy,quzhiReady,quzhiError,initQuzhi,refreshQuzhi,connectQuzhi,disconnectQuzhi,rechargeQuzhi} from '../composables/quzhi';
 import {quzhiSupported,quzhiMonth,quzhiMoney,quzhiIssue} from '../services/quzhi-client';
 
+const bathCode=ref<InstanceType<typeof QuzhiBathCode>>(),appActive=ref(true);
 const month=ref(quzhiMonth()), confirmation=ref<'recharge'|'logout'|''>(''), returned=ref(false);
-let listener:PluginListenerHandle|undefined, disposed=false, awaitingReturn=false, appActive=true, refreshing=false;
+let listener:PluginListenerHandle|undefined, disposed=false, awaitingReturn=false, refreshing=false;
 let resumeTimer:ReturnType<typeof setTimeout>|undefined;
 const foregroundRefreshInterval=60_000;
 // Local cooldown only: failed requests must not make cached balances look fresh.
@@ -33,7 +35,7 @@ async function recharge(){
 }
 async function resume(){
   clearResumeTimer();
-  if(disposed||!supported||!appActive||document.visibilityState!=='visible')return;
+  if(disposed||!supported||!appActive.value||document.visibilityState!=='visible')return;
   if(!valid.value){cancelReturn();return}
   if(blocked.value||refreshing){
     // Only a recharge return needs a deferred retry. Ordinary resumes never queue.
@@ -45,13 +47,13 @@ async function resume(){
   await refreshWallet();
 }
 function visibilityChanged(){if(document.visibilityState==='visible')void resume();else clearResumeTimer()}
-async function logout(){confirmation.value='';returned.value=false;cancelReturn();await disconnectQuzhi()}
+async function logout(){bathCode.value?.conceal();confirmation.value='';returned.value=false;cancelReturn();await disconnectQuzhi()}
 onMounted(async()=>{
   await initQuzhi();
   if(disposed)return;
   if(supported){
     document.addEventListener('visibilitychange',visibilityChanged);
-    try{const handle=await App.addListener('appStateChange',({isActive})=>{appActive=isActive;if(isActive)void resume();else clearResumeTimer()});if(disposed)void handle.remove();else listener=handle}catch{/* Manual refresh remains available. */}
+    try{const handle=await App.addListener('appStateChange',({isActive})=>{appActive.value=isActive;if(isActive)void resume();else clearResumeTimer()});if(disposed)void handle.remove();else listener=handle}catch{/* Manual refresh remains available. */}
     if(!disposed)await refreshWallet();
   }
 });
@@ -60,16 +62,16 @@ onUnmounted(()=>{disposed=true;cancelReturn();document.removeEventListener('visi
 <template>
 <div class="quzhi-wallet">
   <span class="micro-label"><Droplets :size="17"/>校园生活</span>
-  <h2>趣智校园</h2><p class="muted">洗澡余额、消费账单与充值</p>
+  <h2>趣智校园</h2><p class="muted">洗澡码、余额、账单与充值</p>
   <p v-if="!supported" class="quzhi-notice">请安装 Android 客户端后连接趣智校园。</p>
   <p v-if="quzhiError" class="quzhi-notice" role="alert">{{quzhiError}}</p>
   <template v-if="!quzhi.connected">
-    <section class="quzhi-empty"><WalletCards :size="32"/><h3>把洗澡钱包放在这里</h3><p>连接已有趣智账户，直接查余额和账单。充值可直达支付宝中的趣智充值页。</p><button class="primary full" :disabled="!supported||blocked" @click="connectQuzhi(month)">{{quzhiBusy?'正在连接…':'连接趣智校园'}}</button></section>
+    <section class="quzhi-empty"><WalletCards :size="32"/><h3>把洗澡钱包放在这里</h3><p>连接已有趣智账户，直接查余额和账单。充值可直达支付宝中的趣智充值页。</p><button class="primary full" :disabled="!supported||blocked" @click="bathCode?.conceal();connectQuzhi(month)">{{quzhiBusy?'正在连接…':'连接趣智校园'}}</button></section>
     <p class="quzhi-note">手机号、密码或验证码在原生登录窗口填写。会话加密留在本机，不保存密码，不加载趣智 App 的广告页面。</p>
   </template>
   <template v-else>
     <div class="quzhi-identity"><span><strong>{{quzhi.school||'学校信息尚未取得'}}</strong><small>{{quzhi.phone}}</small></span><button class="icon-button" aria-label="刷新趣智余额与账单" :disabled="blocked||!valid" @click="refreshWallet"><RefreshCw :size="18" :class="{'quzhi-spin':quzhiBusy}"/></button></div>
-    <div v-if="quzhi.expired" class="quzhi-notice">登录已失效，下方为上次查询结果。<button class="text-button" :disabled="blocked" @click="connectQuzhi(month)">重新连接</button></div>
+    <div v-if="quzhi.expired" class="quzhi-notice">登录已失效，下方为上次查询结果。<button class="text-button" :disabled="blocked" @click="bathCode?.conceal();connectQuzhi(month)">重新连接</button></div>
     <section class="quzhi-balance" aria-label="趣智钱包余额">
       <span>账户总余额</span><strong class="quzhi-amount"><small>¥</small>{{quzhiMoney(quzhi.wallet?.total)}}</strong>
       <div v-if="quzhi.wallet?.cash != null || quzhi.wallet?.gift != null" class="quzhi-breakdown"><span v-if="quzhi.wallet?.cash != null">充值余额 <b>¥{{quzhiMoney(quzhi.wallet.cash)}}</b></span><span v-if="quzhi.wallet?.gift != null">赠送余额 <b>¥{{quzhiMoney(quzhi.wallet.gift)}}</b></span></div>
@@ -82,6 +84,7 @@ onUnmounted(()=>{disposed=true;cancelReturn();document.removeEventListener('visi
       <strong>前往支付宝的趣智充值页</strong><p>当前连接：{{quzhi.phone}} · {{quzhi.school||'学校待核对'}}。支付宝可能登录了另一个账户，请在付款前核对学校与手机号。</p>
       <div><button class="secondary" @click="confirmation=''">取消</button><button class="primary" :disabled="blocked" @click="recharge">打开充值页</button></div>
     </div>
+    <QuzhiBathCode ref="bathCode" :active="appActive"/>
     <section class="quzhi-bills" aria-label="趣智消费账单">
       <div class="quzhi-bills-heading"><h3>消费账单</h3><label>月份<input v-model="month" type="month" min="2020-01" :max="quzhiMonth()" :disabled="blocked||!valid" @change="refreshWallet"/></label></div>
       <p v-if="quzhi.issues?.bills" class="quzhi-notice" role="status">账单未更新：{{quzhiIssue(quzhi.issues.bills)}}</p>
