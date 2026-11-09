@@ -7,6 +7,7 @@ import {initPangguai,pangguai,pgBusy} from './composables/pangguai';
 import LifeServices from './components/LifeServices.vue';
 import CampusHero from './components/CampusHero.vue';
 import CommunityGroup from './components/CommunityGroup.vue';
+import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
@@ -686,6 +687,7 @@ onUnmounted(() => {
               :items="settings"
               @select="(id) => (id === 'manager' ? manage() : open(id))"
             />
+            <FailureFeedback/>
             <SectionHeader title="关于与隐私" /><ServiceGroup
               :items="about"
               @select="(id) => (id === 'app-update' ? checkUpdates(true) : open(id))"
