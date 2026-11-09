@@ -2,7 +2,7 @@ import { reactive, ref, toRaw, watch, computed } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { LocalNotifications, type ActionPerformed } from '@capacitor/local-notifications';
-import { emptyTasks, taskReminderPlan, beijingDay, type TaskSnapshot } from '../domain/agenda';
+import { emptyTasks, taskReminderPlan, beijingDay, type TaskSnapshot, type CampusTask } from '../domain/agenda';
 import { type TaskFilter, setTaskCompleted } from '../domain/tasks';
 import { taskStore } from '../services/task-store';
 import {learningTasks,initLearning,saveLearningPlan,openLearningItem} from './learning';
@@ -156,3 +156,11 @@ export function reconcileTaskReminders(request = false) {
 }
 export async function enableTaskReminders(enabled: boolean) { await changeTasks(() => taskStore.change(s => { s.notificationsEnabled = enabled; })); if (enabled)
     await reconcileTaskReminders(true); }
+
+export async function cancelLearningSchedule(task:CampusTask){
+ const current=learningTasks.value.find(t=>t.id===task.id);
+ if(!current||current.source!=='chaoxing')throw Error('学习通任务已变化，请重新打开');
+ tasksBusy.value=++writes>0;
+ try{await saveLearningPlan({...current,plannedAt:null,plannedDay:null,snoozedUntil:null});await reconcileTaskReminders()}
+ finally{tasksBusy.value=--writes>0}
+}

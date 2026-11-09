@@ -307,6 +307,30 @@ try{
   await nav('首页').click();
   assert(await page.locator('.today-tasks .task-row').count()===2,`${width}: home contains same personal plan and homework once each`);
   await page.screenshot({path:path.join(output,`today-${width}.png`),animations:'disabled'});
+  const learningRow=page.locator('.today-tasks .today-planned-row:has(.task-source-icon)');
+  await learningRow.locator('.row-menu>summary').click();
+  await learningRow.getByRole('button',{name:'取消安排',exact:true}).click();
+  await learningRow.waitFor({state:'hidden'});
+  const cancelled=await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')));
+  assert(cancelled.plans['12/34/homework/78'].plannedDay===null&&cancelled.plans['12/34/homework/78'].plannedAt===null,`${width}: cancel menu clears persisted schedule`);
+  assert(cancelled.items[0].status==='pending',`${width}: cancellation preserves original homework`);
+  await page.reload();await nav('首页').click();
+  assert(await page.locator('.today-tasks .today-planned-row:has(.task-source-icon)').count()===0,`${width}: cancelled homework stays out of today after reload`);
+  await nav('待办').click();
+  await page.getByRole('button',{name:'筛选',exact:true}).click();
+  await page.getByRole('combobox',{name:'任务范围',exact:true}).selectOption('due');
+  const dueLearning=page.locator('.task-center .task-row:has(.task-source-icon)').first();
+  await dueLearning.locator('.row-menu>summary').click();
+  await dueLearning.getByRole('button',{name:'今天做',exact:true}).click();
+  await dueLearning.locator('.task-copy').click();await dialog.waitFor();
+  await dialog.getByRole('button',{name:'取消安排',exact:true}).click();await dialog.waitFor({state:'hidden'});
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).plans['12/34/homework/78'].plannedDay)===null,`${width}: detail cancellation persists`);
+  await dueLearning.locator('.row-menu>summary').click();
+  await dueLearning.getByRole('button',{name:'今天做',exact:true}).click();
+  await page.getByRole('combobox',{name:'任务范围',exact:true}).selectOption('today');
+  await nav('首页').click();
+  assert(await learningRow.count()===1,`${width}: cancelled work can be planned again`);
+
   // Synthetic native insets: background stays at y=0 while foreground clears a tall status bar.
   await page.evaluate(()=>document.documentElement.style.setProperty('--native-safe-top','40px'));
   const heroBox=await page.locator('.campus-hero').boundingBox();

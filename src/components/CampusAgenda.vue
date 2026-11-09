@@ -5,7 +5,7 @@ import {computed,onMounted,onUnmounted,ref} from 'vue';
 import {Plus,ChevronLeft,ChevronRight,Check,Search,ArrowUp} from 'lucide-vue-next';
 import {academicCache,schoolTerm} from '../composables/handan-academic';
 import {schedule} from '../composables/schedule';
-import {agendaView,taskView,tasksReady,tasksBusy,taskError,allTasks,initTasks,reloadTasks,changeTasks} from '../composables/tasks';
+import {agendaView,taskView,tasksReady,tasksBusy,taskError,allTasks,initTasks,reloadTasks,changeTasks,cancelLearningSchedule} from '../composables/tasks';
 import {beijingDay,validDay,shiftDay,buildAgenda,type CampusTask,type AgendaEvent,type CourseSeries} from '../domain/agenda';
 import {selectTasks,taskSummary,createTask,replanTask,type SmartList} from '../domain/tasks';
 import {flatten,uid} from '../domain/schedule';
@@ -41,6 +41,7 @@ function report(e:unknown){error.value=e instanceof Error?e.message:'操作未�
 async function quickAdd(){if(!taskView.quick.trim()||tasksBusy.value)return;error.value='';try{const task=createTask(taskView.quick.trim(),uid(),now.value);if(taskView.view==='today')task.plannedDay=beijingDay(now.value);if(taskView.course)task.course=taskView.course;await changeTasks(()=>taskStore.upsert(task));taskView.quick='';if(taskView.view!=='today')taskView.view='inbox';message.value='任务已添加';}catch(e){report(e)}}
 function edit(task?:CampusTask){emit('edit',task,!task?(taskView.mode==='timeline'?selectedDay.value:taskView.view==='today'?beijingDay(now.value):undefined):undefined)}
 async function complete(task:CampusTask){if(task.source==='chaoxing')return;try{await changeTasks(()=>taskStore.complete(task.id,!task.completed));message.value=task.completed?'已恢复任务':'已完成，可在「已完成」中撤销'}catch(e){report(e)}}
+async function cancelPlan(task:CampusTask){try{await cancelLearningSchedule(task);message.value='已取消安排，原作业保留在学习通'}catch(e){report(e)}}
 async function replan(task:CampusTask,offset:number){try{if(task.source==='chaoxing'){await saveLearningPlan(replanTask({...task},shiftDay(beijingDay(now.value),offset),now.value));message.value='计划已调整，最终截止时间保持原样';return;}await changeTasks(()=>taskStore.change(s=>{const t=s.tasks.find(t=>t.id===task.id);if(!t)throw Error('任务已不存在');replanTask(t,shiftDay(beijingDay(now.value),offset),now.value)}));message.value='计划已调整，最终截止时间保持原样'}catch(e){report(e)}}
 function selectEvent(e:AgendaEvent){if(e.taskId){const task=allTasks.value.find(t=>t.id===e.taskId);if(task){edit(task)}}else if(e.course)emit('course',e.course);else emit('navigate','exams')}
 function moveDay(n:number){agendaView.date=shiftDay(selectedDay.value,n)}
@@ -65,7 +66,7 @@ onMounted(()=>{void initTasks().catch(()=>{});void initLearning().then(()=>syncL
   <div v-if="filters" class="task-filters"><select v-model="taskView.source" aria-label="任务来源"><option value="all">全部来源</option><option value="personal">个人任务</option><option value="chaoxing">学习通</option></select><select v-model="taskView.view" aria-label="任务范围"><option value="today">今天</option><option value="planned">接下来</option><option value="inbox">未安排</option><option value="due">即将截止</option><option value="completed">已完成</option></select><select v-model="taskView.course" aria-label="按课程筛选"><option value="">所有课程</option><option v-for="course in courseOptions" :key="course">{{course}}</option></select><select v-model="taskView.sort" aria-label="任务排序"><option value="smart">智能排序</option><option value="deadline">截止时间</option><option value="priority">重要程度</option><option value="title">标题</option></select><select v-model.number="taskView.priority" aria-label="优先级筛选"><option :value="-1">全部优先级</option><option v-for="(p,i) in priorities" :key="i" :value="i">{{p}}</option></select><label><input v-model="taskView.group" type="checkbox"/>个人任务也按课程分组</label></div>
   <div v-if="taskView.search||taskView.course||['due','completed'].includes(taskView.view)" class="task-list-heading"><h3>{{taskView.view==='completed'?'已完成':taskView.view==='due'?'即将截止':smartLists.find(([id])=>id===taskView.view)?.[1]}}</h3><span>{{tasks.length}} 项</span></div>
   <section v-for="group in groups" :key="group.key" class="task-group"><h4 v-if="group.name">{{group.name}} <small>{{group.tasks.length}} 项</small></h4>
-   <DailyTaskRow v-for="task in group.tasks" :key="task.id" :task="task" :now="now" :busy="tasksBusy" @open="edit" @complete="toggleTask" @replan="replan"/>
+   <DailyTaskRow v-for="task in group.tasks" :key="task.id" :task="task" :now="now" :busy="tasksBusy" @open="edit" @complete="toggleTask" @replan="replan" @cancel-plan="cancelPlan"/>
   </section>
   <div v-if="!tasks.length" class="task-empty"><Check :size="26"/><strong>{{taskView.search||taskView.course?'没有匹配任务':taskView.view==='inbox'?'先记下来，再安排':'这里暂时没有任务'}}</strong><p>在下方输入标题即可添加。学习通作业可在「学习」中安排到今天。</p></div>
  </template>
