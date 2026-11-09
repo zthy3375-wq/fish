@@ -56,7 +56,7 @@ onUnmounted(()=>{disposed=true;version++;stop();document.removeEventListener('vi
   <h2>桌面课表</h2>
   <p class="widget-intro">今天、明天的课程，一眼查看。</p>
   <p class="widget-status" role="status">{{statusMessage}}</p>
-  <button class="primary" :disabled="busy||stage==='pending'||!supported||!widgetSupported()" @click="add">{{busy?'正在发送…':stage==='pending'?'正在检查添加结果…':'请求系统添加'}}</button>
+  <button class="primary" :disabled="busy||stage==='pending'||!supported||!widgetSupported()" @click="add">{{busy?'正在发送…':stage==='pending'?'等待添加结果…':'请求系统添加'}}</button>
   <section class="widget-manual" aria-labelledby="widget-manual-title">
    <h3 id="widget-manual-title">没有弹窗？从桌面手动添加</h3>
    <ol><li>长按桌面空白处，进入“小组件”或“添加小部件”。</li><li>在应用列表中找到“邯院通”。</li><li>选择“邯院通 · 近日课程”，拖到桌面并调整大小。</li></ol>

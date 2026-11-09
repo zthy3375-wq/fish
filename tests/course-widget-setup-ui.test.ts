@@ -10,7 +10,7 @@ vi.mock('../src/services/course-widget',async original=>({
 let app:ReturnType<typeof createApp>|undefined,root:HTMLElement;
 async function settle(){for(let i=0;i<6;i++)await Promise.resolve();await nextTick();}
 function mount(){app=createApp({render:()=>h(CourseWidgetSetup)});app.mount(root);}
-function button(name:string){return [...root.querySelectorAll('button')].find(b=>b.textContent?.includes(name))!;}
+function button(name:string){return [...root.querySelectorAll('button')].find(b=>b.textContent?.trim()===name)!;}
 beforeEach(()=>{vi.useFakeTimers();bridge.status.mockReset().mockResolvedValue({supported:true,ids:[]});bridge.pin.mockReset().mockResolvedValue({requested:true,baselineIds:[]});bridge.home.mockReset().mockResolvedValue(undefined);root=document.createElement('div');document.body.append(root);});
 afterEach(()=>{app?.unmount();app=undefined;root.remove();vi.useRealTimers();});
 it('opens instructions without claiming a system dialog or making an automatic pin request',async()=>{
