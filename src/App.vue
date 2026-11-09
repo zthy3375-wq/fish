@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import {widgetSupported,widgetSnapshot,publishWidget,widgetTarget,pinCourseWidget} from './services/course-widget';
+import {widgetSupported,widgetSnapshot,publishWidget,widgetTarget} from './services/course-widget';
+import CourseWidgetSetup from './components/CourseWidgetSetup.vue';
 import {scheduleViews} from './composables/view-state';
 import AnalyticsSettings from './components/AnalyticsSettings.vue';
 import {initAnalytics,flushAnalytics,recordFeature,refreshAnalytics} from './composables/analytics';
@@ -155,11 +156,7 @@ watch(()=>!loading.value&&!error.value?widgetSnapshot(semester.value,data.value.
   return publishWidget(widgetSnapshot(semester.value,data.value.courses,!!schoolTerm.value?.data||schedule.value.mode==='personal'||data.value.courses.length>0));
  }).catch(()=>{});
 });
-async function addCourseWidget(){
- if(!widgetSupported()){notify('请在 Android 应用内添加桌面小组件');return;}
- try{const result=await pinCourseWidget();notify(result.requested?'请在系统窗口确认添加小组件':'请长按桌面，进入小组件并选择“邯院通 · 近日课程”');}
- catch{notify('请长按桌面，在小组件中选择邯院通');}
-}
+function addCourseWidget(){open('course-widget');}
 async function openWidgetTarget(){
  if(!widgetSupported()||loading.value)return;
  try{
@@ -767,6 +764,7 @@ onUnmounted(() => {
               : modal === 'pangguai-wallet' ? '胖乖生活钱包'
               : modal === 'campus-map' ? '校园平面图'
               : modal === 'parcel' ? '快递出库码'
+              : modal === 'course-widget' ? '桌面课表'
               : '校园助手设置'
           "
         >
@@ -782,6 +780,7 @@ onUnmounted(() => {
           <PangguaiWallet v-else-if="modal === 'pangguai-wallet'"/>
           <CampusMap v-else-if="modal === 'campus-map'"/>
           <ParcelShortcuts v-else-if="modal === 'parcel'"/>
+          <CourseWidgetSetup v-else-if="modal === 'course-widget'"/>
           <CourseEditor
             v-else-if="modal === 'course-editor'"
             ref="editorRef"

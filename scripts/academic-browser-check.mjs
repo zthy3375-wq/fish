@@ -21,10 +21,10 @@ try{
   await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={CourseWidget:['publish','target','pin'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
-    if(plugin==='CourseWidget'){if(method==='publish'){(window.__widgetSnapshots??=[]).push(JSON.parse(args.snapshot));return {}}if(method==='target'){const date=window.__widgetTarget||'';window.__widgetTarget='';return {date}}if(method==='pin'){window.__widgetPinCalls=(window.__widgetPinCalls||0)+1;return {requested:true}}}
+    if(plugin==='CourseWidget'){if(method==='publish'){(window.__widgetSnapshots??=[]).push(JSON.parse(args.snapshot));return {}}if(method==='target'){const date=window.__widgetTarget||'';window.__widgetTarget='';return {date}}if(method==='status')return {supported:true,ids:window.__widgetIds||[]};if(method==='openHome'){window.__widgetHomeCalls=(window.__widgetHomeCalls||0)+1;return {}}if(method==='pin'){window.__widgetPinCalls=(window.__widgetPinCalls||0)+1;return {requested:true,baselineIds:[...(window.__widgetIds||[])]}}}
     if(plugin==='AppUpdate'){
      window.__updateState??={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:false,mandatory:false,checkedAt:Date.now()};
      if(method==='download'){window.__updateState.stage='ready';window.__updateDownloaded=true}
@@ -142,7 +142,17 @@ try{
   assert(await page.evaluate(()=>window.__widgetSnapshots?.at(-1)?.courses.some(c=>c.name==='大学物理')),`${width}: synchronized timetable reaches the native widget`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('button',{name:/桌面课表/}).click();
-  assert(await page.evaluate(()=>window.__widgetPinCalls)===1,`${width}: explicit widget add requests system confirmation`);
+  await page.getByRole('dialog',{name:'桌面课表',exact:true}).waitFor();
+  assert(await page.evaluate(()=>!window.__widgetPinCalls),`${width}: opening widget setup does not pretend a system window is visible`);
+  await page.getByRole('button',{name:'请求系统添加',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'尚未确认添加成功'}).waitFor();
+  assert(await page.evaluate(()=>window.__widgetPinCalls)===1,`${width}: explicit widget request is sent once without claiming addition`);
+  assert(await page.getByRole('button',{name:'前往桌面',exact:true}).isVisible(),`${width}: launcher silence keeps the manual add path visible`);
+  await page.screenshot({path:path.join(output,`widget-add-pending-${width}.png`),animations:'disabled'});
+  await page.evaluate(()=>window.__widgetIds=[42]);
+  await page.getByRole('button',{name:'检查添加结果',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'已检测到新添加'}).waitFor();
+  await page.getByRole('dialog',{name:'桌面课表',exact:true}).getByRole('button',{name:'关闭',exact:true}).click();
   await page.evaluate(()=>{window.__widgetTarget='2026-11-16';window.dispatchEvent(new Event('focus'))});
   await page.getByLabel('跳转教学周',{exact:true}).waitFor();
   await page.waitForFunction(()=>document.querySelector('[aria-label="跳转教学周"]')?.value==='10');

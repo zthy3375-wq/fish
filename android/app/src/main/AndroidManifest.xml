@@ -56,6 +56,7 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+        <receiver android:name=".widget.CourseWidgetPinReceiver" android:exported="false"/>
         <receiver android:name=".widget.CourseWidgetProvider" android:exported="false" android:label="@string/course_widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
