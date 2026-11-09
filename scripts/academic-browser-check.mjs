@@ -97,6 +97,7 @@ try{
   await page.goto('http://127.0.0.1:4175');
   await page.getByRole('heading',{name:'邯院通',exact:true}).waitFor();
   assert(await page.locator('.floating-nav button').count()===4,`${width}: home has four navigation tabs`);
+  assert(await page.locator('.home-body .school-connection').count()===0,`${width}: disconnected home keeps school account in profile`);
   await page.getByRole('button',{name:'暂停小鱼动画',exact:true}).click();
   assert(await page.getByRole('button',{name:'播放小鱼动画',exact:true}).getAttribute('aria-pressed')==='true',`${width}: fish can be paused`);
   assert(!await page.locator('.campus-hero').evaluate(el=>el.classList.contains('fish-running')),`${width}: paused mascot stops animation`);
@@ -113,14 +114,27 @@ try{
   await page.getByRole('button',{name:/成绩与学业/}).click();
   await page.getByText('还没有本人已同步成绩',{exact:true}).waitFor();
   assert(await page.locator('.ga-stats').count()===0,`${width}: no invented statistics before school login`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+  await page.locator('.profile-accounts').getByRole('button',{name:'连接',exact:true}).click();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
-  await page.getByRole('button',{name:'连接邯郸学院',exact:true}).click();
   await page.locator('.home-next-meta time').waitFor();
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(output,`campus-home-connected-${width}.png`),animations:'disabled'});
   assert(await page.locator('.home-course-panel .home-study-links').count()===1,`${width}: study actions share course card`);
   assert(await page.locator('.home-body>.school-connection').count()===0,`${width}: connected home hides redundant account card`);
   assert(await page.locator('.home-course-panel').evaluate(el=>{const life=document.querySelector('#home-life-title').closest('section'),tasks=document.querySelector('.today-tasks');return !!(el.compareDocumentPosition(life)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(life.compareDocumentPosition(tasks)&Node.DOCUMENT_POSITION_FOLLOWING)}),`${width}: home orders courses, services, then plans`);
+  await page.evaluate(()=>document.documentElement.style.setProperty('--native-safe-top','40px'));
+  await page.locator('main').evaluate(el=>el.scrollTop=0);
+  const homeLayout=await page.evaluate(()=>{
+   const box=s=>document.querySelector(s).getBoundingClientRect();
+   return {hero:box('.campus-hero').height,walletBottom:box('.life-wallets').bottom,mainBottom:box('main').bottom,timelineBottom:box('.home-timeline').bottom,studyTop:box('.home-study-links').top,overflow:document.documentElement.scrollWidth>innerWidth};
+  });
+  assert(homeLayout.hero>=264,`${width}: campus illustration retains a generous height with status inset`);
+  assert(homeLayout.walletBottom<=homeLayout.mainBottom,`${width}: both life wallets fit above navigation with status inset`);
+  assert(homeLayout.timelineBottom<=homeLayout.studyTop&&!homeLayout.overflow,`${width}: today's timeline stays clear of shortcuts without page overflow`);
+  assert(await page.locator('.home-timeline button').count()===1&&await page.locator('.home-timeline time').textContent()==='11:15',`${width}: today's course name and start remain on the timeline`);
+  await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
+  await page.evaluate(()=>document.documentElement.style.removeProperty('--native-safe-top'));
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   assert(await page.locator('.floating-nav button').count()===4,`${width}: four navigation tabs`);

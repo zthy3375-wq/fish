@@ -595,14 +595,13 @@ onUnmounted(() => {
             <CampusHero :date="`${dateLabel(now)} · 周${weekdays[dayNumber(now)-1]}`" :week="week>=1&&week<=semester.weekCount?`第 ${week} 教学周`:'学期外'" :unread="!read&&prefs.notifications" :obscured="!!modal||updatesOpen||agendaView.editor" @notifications="open('notifications')"/>
             <div class="home-body">
               <AnalyticsSettings prompt @policy="open('privacy')"/>
-              <SchoolConnection v-if="!academicCache.connected||academicCache.session==='expired'||schoolTerm?.error" compact @connected="move('home')"/>
               <section class="home-course-panel" aria-label="课程速览">
                 <button v-if="homeFocus" class="home-next" :aria-label="'查看'+(current?'当前':'下一节')+'课程 '+homeFocus.name" @click="details(homeFocus)">
                   <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'进行中':next?untilLabel(next.minutes):''}}</span></span>
                   <strong class="home-next-title">{{homeFocus.name}}</strong>
                   <span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><time>{{homeFocus.start}}–{{homeFocus.end}}</time><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span>
                 </button>
-                <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{academicCache.connected&&!schoolTerm?.data?'请查看上方学校连接状态。':'查看课表，安排自己的校园时光。'}}</p></div>
+                <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{!academicCache.connected||!schoolTerm?.data?'前往“我的”连接学校或刷新课表。':'查看课表，安排自己的校园时光。'}}</p></div>
                 <div class="home-timeline-head"><span>今日课程 · {{todayCourses.length}} 节</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
                 <div v-if="todayCourses.length" class="home-timeline" aria-label="今日课程时间线">
                   <button v-for="c in todayCourses" :key="c.id" :class="{'is-current':courseState(c,now)==='current','is-ended':courseState(c,now)==='ended','is-next':!current&&next?.course.id===c.id}" :aria-label="`${c.name} ${c.start} ${c.room}`" @click="details(c)"><strong>{{c.name}}</strong><time>{{c.start}}</time></button>
