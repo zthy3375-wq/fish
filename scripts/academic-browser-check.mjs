@@ -5,16 +5,19 @@ import path from 'node:path';
 import {chromium} from 'playwright';
 import {checkParcelShortcuts} from './parcel-browser-check.mjs';
 import {checkNativeLife} from './native-life-browser-check.mjs';
+import {checkWeekGrid} from './week-grid-browser-check.mjs';
 const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,{recursive:true});
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.webp':'image/webp'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
 await new Promise(resolve=>server.listen(4175,'127.0.0.1',resolve));
 const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined});const checks=[];let activePage;
 const syntheticLearning=JSON.parse(await readFile('tests/fixtures/learning/synthetic.json','utf8'));
+const syntheticPractice=JSON.parse(await readFile('tests/fixtures/academic/practice-synthetic.json','utf8'));
 const syntheticGrades=JSON.parse(await readFile('tests/fixtures/grades/synthetic.json','utf8'));
 function assert(value,label){if(!value)throw Error(label);checks.push(label)}
 try{
  for(const width of [360,390,430]){
   const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
+  await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
    const methods={AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
@@ -81,7 +84,7 @@ try{
      if(method==='logout')return {session:'disconnected'};
      if(method==='getGrades'&&window.__gradeFailure)throw Error('network');
      if(window.__gradeExpired)return {session:'expired'};
-     const timetable={term:{xnm:'2026',xqm:'3'},kbList:[{kcmc:'人工 UI 链路课程',xm:'教师',cdmc:'教室',xqj:'1',jcs:'1-2',zcd:'1-18周'},...['高等数学','大学英语','工程制图','大学物理','机械设计'].map((kcmc,i)=>({kcmc,xm:'测试教师',cdmc:'天枢楼'+(201+i),xqj:String(i+2),jcs:i%2?'5-6':'3-4',zcd:'1-18周'}))],practice:[]};
+     const timetable={term:{xnm:'2026',xqm:'3'},kbList:[{kcmc:'人工 UI 链路课程',xm:'教师',cdmc:'教室',xqj:'1',jcs:'1-2',zcd:'1-18周'},...['高等数学','大学英语','工程制图','大学物理','机械设计'].map((kcmc,i)=>({kcmc,xm:'测试教师',cdmc:'天枢楼'+(201+i),xqj:String(i+2),jcs:i%2?'5-6':'3-4',zcd:'1-18周'}))],practice:window.__practiceFixture};
      return {session:'valid',modules:method==='getGrades'?{grades:{status:'ok',scope:'all',data:grades}}:method==='getExams'?{exams:{status:'ok',data:[{name:'人工 UI 考试',date:'2026-11-07',time:'09:00-11:00',room:'测试考场',seat:''}]}}:{timetable:{status:'ok',data:timetable}}};
     }return {};
    }};
@@ -134,6 +137,7 @@ try{
   await page.getByRole('button',{name:'周视图',exact:true}).click();
   await page.getByLabel('跳转教学周',{exact:true}).selectOption('9');
   await page.screenshot({path:path.join(output,`navigation-schedule-${width}.png`),animations:'disabled'});
+  await checkWeekGrid(page,assert,{width,output});
   await page.getByRole('button',{name:'添加个人事项',exact:true}).click();
   await page.locator('.course-editor-page').waitFor();
   await page.goBack();
