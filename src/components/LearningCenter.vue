@@ -4,7 +4,7 @@ const learningView=reactive<{tab:'homework'|'courses'|'exams'|'notices';status:L
 </script>
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,ref} from 'vue';
-import {BookOpen,ChevronRight,ChevronDown,Search,Settings2,RefreshCw,ArrowRight,Pause} from 'lucide-vue-next';
+import {BookOpen,ChevronRight,ChevronDown,Search,Settings2,RefreshCw,ArrowRight,Pause,Bell} from 'lucide-vue-next';
 import LearningSyncPanel from './LearningSyncPanel.vue';
 import LearningConnection from './LearningConnection.vue';
 import {learningCache,learningTasks,learningBusy,initLearning,syncLearning,saveLearningPlan,pauseLearning,learningError} from '../composables/learning';
@@ -37,12 +37,12 @@ function chooseCourse(key:string){view.course=key;view.status='all';view.tab='ho
 </script>
 <template>
 <section class="learning-center daily-learning" aria-label="学习通中心">
-<div class="lc-topbar"><span>{{learningCache.connected?'学习通已连接':'课程与作业，一处查看'}}</span><button class="icon-button" aria-label="同步管理" @click="management!.open=!management!.open"><Settings2 :size="19"/></button></div>
+<div class="lc-topbar"><span>{{learningCache.connected?'学习通已连接':'课程与作业，一处查看'}}</span><button v-if="learningCache.connected" class="lc-notices-button" :aria-pressed="view.tab==='notices'" @click="view.tab='notices'"><Bell :size="16"/>通知</button><button class="icon-button" aria-label="同步管理" @click="management!.open=!management!.open"><Settings2 :size="19"/></button></div>
 <details ref="management" class="learning-management" :open="!learningCache.connected"><summary>账号设置</summary><LearningConnection/></details>
 <template v-if="learningCache.connected">
  <div class="lc-navigation">
   <div class="lc-primary-tabs" role="tablist" aria-label="学习任务"><button role="tab" :aria-selected="view.tab==='homework'" @click="view.tab='homework'">作业</button><button role="tab" :aria-selected="view.tab==='exams'" @click="view.tab='exams'">考试</button></div>
-  <div class="lc-tools"><button :aria-pressed="view.tab==='courses'" @click="showCourses"><BookOpen :size="16"/>课程管理</button><button :aria-pressed="view.tab==='notices'" @click="view.tab='notices'">通知<ChevronRight :size="15"/></button></div>
+  <button class="lc-course-entry" aria-label="课程管理" :aria-pressed="view.tab==='courses'" @click="showCourses"><span class="lc-entry-icon"><BookOpen :size="24"/></span><span class="lc-entry-copy"><strong>课程管理</strong><small>选择课程 · 更新作业</small></span><span class="lc-entry-count">{{learningCache.selectedCourses.length}} 门已关注</span><ChevronRight :size="20"/></button>
  </div>
  <div v-if="view.tab==='homework'" class="lc-overview"><div><h2>{{count('pending')?`${count('pending')} 份作业待提交`:'看看今天的学习任务'}}</h2><p>{{status}}</p></div><button class="lc-refresh" :disabled="learningBusy" aria-label="更新关注课程" @click="refresh"><RefreshCw :size="18"/>{{learningBusy?'更新中':'更新'}}</button></div>
  <div v-if="learningBusy||learningCache.remaining" class="lc-progress" role="status"><span>{{learningBusy?'正在读取':'更新已暂停'}} · 已处理 {{learningCache.completedCount}} / {{learningCache.plannedCount}} 门</span><button v-if="learningBusy" class="text-button" @click="pauseLearning"><Pause :size="14"/>暂停</button><button v-else class="text-button" @click="syncLearning({force:true})">继续更新</button><progress :max="Math.max(1,learningCache.plannedCount)" :value="learningCache.completedCount"/></div>
