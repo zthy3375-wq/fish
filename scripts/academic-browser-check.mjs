@@ -263,9 +263,12 @@ try{
   await page.screenshot({path:path.join(output,`tasks-${width}.png`),animations:'disabled'});
   await nav('待办').click();await page.getByRole('button',{name:/学习通作业/}).click();
   await page.getByRole('button',{name:'连接学习通',exact:true}).click();
-  await page.getByText('学习通已连接',{exact:true}).waitFor();
-  await page.locator('.sync-course-row input[type=checkbox]').first().check();
-  await page.getByRole('button',{name:'保存并更新 1 门课程',exact:true}).click();
+  await page.locator('.lc-topbar').getByText('学习通已连接',{exact:true}).waitFor();
+  await page.getByRole('tab',{name:'课程',exact:true}).click();
+  await page.getByRole('button',{name:/^关注并读取 /}).first().click();
+  await page.getByRole('button',{name:/^取消关注 /}).first().waitFor();
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).selectedCourses.includes('12/34')),`${width}: following saves immediately`);
+  await page.getByRole('tab',{name:'作业',exact:true}).click();
   await page.locator('.learning-state.pending').waitFor();
   assert(await page.locator('.learning-management').getAttribute('open')===null,`${width}: sync controls collapse after course selection`);
   const workTop=await page.locator('.learning-work').first().boundingBox();
@@ -285,7 +288,7 @@ try{
   await dialog.getByRole('button',{name:'保存安排',exact:true}).click();
   await dialog.waitFor({state:'hidden'});
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).items[0].status)==='pending',`${width}: prepared checkbox does not manufacture submitted status`);
-  await page.getByRole('tab',{name:'按课程',exact:true}).click();
+  await page.getByRole('tab',{name:'课程',exact:true}).click();
   await page.locator('.learning-course-button').first().click();
   assert(await page.locator('.course-context').isVisible(),`${width}: course opens its homework context`);
   await page.getByRole('button',{name:/^已提交/}).click();
@@ -308,7 +311,7 @@ try{
   await page.getByRole('button',{name:'同步管理',exact:true}).click();
   await page.evaluate(()=>window.__learningFailure=true);
   await page.getByRole('button',{name:'刷新学习通',exact:true}).click();
-  await page.getByText(/学习通暂未更新/).waitFor();
+  await page.getByText(/学习通暂未更新/).first().waitFor();
   assert(await page.locator('.learning-work').count()===1,`${width}: failed refresh retains submitted homework`);
   await page.evaluate(()=>{window.__learningFailure=false;window.__learningExpired=true});
   await page.getByRole('button',{name:'刷新学习通',exact:true}).click();
