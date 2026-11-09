@@ -46,8 +46,8 @@ export async function checkNativeLife(page,assert,{width,output}){
  assert(!(await dialog.locator('.water-progress').innerText()).includes('实付'),`${width}: end acknowledgement does not claim settlement`);
  await page.evaluate(()=>window.__pgWaterEnded=true);
  await dialog.locator('.water-progress').getByRole('button',{name:'查询状态',exact:true}).click();
- await dialog.getByRole('heading',{name:'本次接水已结算',exact:true}).waitFor();
- assert((await dialog.locator('.water-progress').innerText()).includes('0.13'),`${width}: displays server-confirmed water bill`);
+ await dialog.locator('.water-history summary').filter({hasText:'本次接水已结算'}).waitFor();
+ assert((await dialog.locator('.water-history').innerText()).includes('0.13'),`${width}: displays server-confirmed water bill`);
  await page.screenshot({path:path.join(output,`water-settled-${width}.png`),animations:'disabled'});
  await dialog.getByRole('tab',{name:'最近消费'}).click();
  await dialog.getByText('人工测试洗衣机',{exact:true}).waitFor();
