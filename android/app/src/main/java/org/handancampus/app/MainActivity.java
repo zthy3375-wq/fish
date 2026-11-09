@@ -2,6 +2,10 @@ package org.handancampus.app;
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
+    @Override protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+    }
     @Override public void onCreate(Bundle savedInstanceState) {
         registerPlugin(org.handancampus.app.academic.HandanAcademicPlugin.class);
         registerPlugin(org.handancampus.app.learning.ChaoxingPlugin.class);
@@ -13,6 +17,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(org.handancampus.app.analytics.AnalyticsPlugin.class);
         registerPlugin(org.handancampus.app.community.CommunityGroupPlugin.class);
         registerPlugin(org.handancampus.app.feedback.FeedbackSharePlugin.class);
+        registerPlugin(org.handancampus.app.widget.CourseWidgetPlugin.class);
         super.onCreate(savedInstanceState);
         CampusInsets.install(this);
     }

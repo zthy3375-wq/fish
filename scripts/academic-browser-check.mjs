@@ -21,9 +21,10 @@ try{
   await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={CourseWidget:['publish','target','pin'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
+    if(plugin==='CourseWidget'){if(method==='publish'){(window.__widgetSnapshots??=[]).push(JSON.parse(args.snapshot));return {}}if(method==='target'){const date=window.__widgetTarget||'';window.__widgetTarget='';return {date}}if(method==='pin'){window.__widgetPinCalls=(window.__widgetPinCalls||0)+1;return {requested:true}}}
     if(plugin==='AppUpdate'){
      window.__updateState??={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:false,mandatory:false,checkedAt:Date.now()};
      if(method==='download'){window.__updateState.stage='ready';window.__updateDownloaded=true}
@@ -138,6 +139,15 @@ try{
   assert(await page.getByRole('dialog').getByRole('heading',{name:'大学物理',exact:true}).isVisible(),`${width}: retained home timeline opens course details`);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   await page.evaluate(()=>document.documentElement.style.removeProperty('--native-safe-top'));
+  assert(await page.evaluate(()=>window.__widgetSnapshots?.at(-1)?.courses.some(c=>c.name==='大学物理')),`${width}: synchronized timetable reaches the native widget`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+  await page.getByRole('button',{name:/桌面课表/}).click();
+  assert(await page.evaluate(()=>window.__widgetPinCalls)===1,`${width}: explicit widget add requests system confirmation`);
+  await page.evaluate(()=>{window.__widgetTarget='2026-11-16';window.dispatchEvent(new Event('focus'))});
+  await page.getByLabel('跳转教学周',{exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('[aria-label="跳转教学周"]')?.value==='10');
+  assert(await page.getByRole('button',{name:'日视图',exact:true}).getAttribute('aria-pressed')==='true',`${width}: widget date opens the correct teaching week in day view`);
+
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   assert(await page.locator('.floating-nav button').count()===4,`${width}: four navigation tabs`);

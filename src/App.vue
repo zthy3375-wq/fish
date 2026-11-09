@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {widgetSupported,widgetSnapshot,publishWidget,widgetTarget,pinCourseWidget} from './services/course-widget';
+import {scheduleViews} from './composables/view-state';
 import AnalyticsSettings from './components/AnalyticsSettings.vue';
 import {initAnalytics,flushAnalytics,recordFeature,refreshAnalytics} from './composables/analytics';
 import AppUpdateDialog from './components/AppUpdateDialog.vue';
@@ -145,6 +147,30 @@ const data = computed<AcademicData>(() => {
  }) : schedule.value.courses;
  return {source:cached?'official':'personal',courses:cached?[...flatten(cached.courses,cached.semester.id,cached.table),...personal.flatMap(c=>flatten([c],c.semesterId,cached.table))]:flatten(personal,schedule.value.activeSemesterId,localTable.value),grades:[],exams:academicCache.value.exams.data??[]};
 });
+let widgetQueue:Promise<unknown>=Promise.resolve();
+watch(()=>!loading.value&&!error.value?widgetSnapshot(semester.value,data.value.courses,!!schoolTerm.value?.data||schedule.value.mode==='personal'||data.value.courses.length>0):null,()=>{
+ if(!widgetSupported())return;
+ widgetQueue=widgetQueue.catch(()=>{}).then(()=>{
+  if(loading.value||error.value)return;
+  return publishWidget(widgetSnapshot(semester.value,data.value.courses,!!schoolTerm.value?.data||schedule.value.mode==='personal'||data.value.courses.length>0));
+ }).catch(()=>{});
+});
+async function addCourseWidget(){
+ if(!widgetSupported()){notify('请在 Android 应用内添加桌面小组件');return;}
+ try{const result=await pinCourseWidget();notify(result.requested?'请在系统窗口确认添加小组件':'请长按桌面，进入小组件并选择“邯院通 · 近日课程”');}
+ catch{notify('请长按桌面，在小组件中选择邯院通');}
+}
+async function openWidgetTarget(){
+ if(!widgetSupported()||loading.value)return;
+ try{
+  const {date}=await widgetTarget();
+  if(!/^20\d{2}-\d{2}-\d{2}$/.test(date))return;
+  const d=new Date(date+'T12:00:00');
+  if(!Number.isFinite(+d))return;
+  scheduleViews[semester.value.id]={week:Math.max(1,Math.min(semester.value.weekCount,currentWeek(d,semester.value))),day:dayNumber(d),view:'day'};
+  close();move('schedule');
+ }catch{}
+}
 const editorRef = ref<InstanceType<typeof CourseEditor>>(),
   editorCourse = ref<ManagedCourse>(),
   editorPreset = ref<CellPreset>(),
@@ -394,6 +420,7 @@ async function load() {
     error.value = storageError.value || "教务信息加载失败：" + String(e);
   } finally {
     loading.value = false;
+    void openWidgetTarget();
   }
 }
 function saveProfile() {
@@ -494,6 +521,7 @@ async function recalibrate() {
   now.value = campusNow();
   if (document.visibilityState === "visible") {
     await refreshSchedule();
+    await openWidgetTarget();
     await reconcileReminders(schedule.value);
     void autoSyncAcademic();
   }
@@ -656,6 +684,7 @@ onUnmounted(() => {
             <SectionHeader title="账号与教务"/><section class="profile-accounts"><SchoolConnection collapsible /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
             </section>
             <div class="profile-academics"><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/></div>
+            <button class="learning-page-link" @click="addCourseWidget"><CalendarDays :size="20"/><strong>桌面课表</strong><span>添加今天与明天的小组件</span><ChevronRight :size="16"/></button>
             <SectionHeader title="偏好与数据" />
             <section class="profile-preferences">
             <section class="settings-group">
