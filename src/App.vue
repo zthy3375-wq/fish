@@ -72,6 +72,7 @@ import {
   upcomingExams,
   weekdays,
 } from "./domain/presentation";
+import {initWeekCalibration,calibratedSemester} from "./composables/week-calibration";
 import ScheduleManager from "./components/ScheduleManager.vue";
 import CourseEditor from "./components/CourseEditor.vue";
 import { isSchoolPageSemester } from "./services/legacy-school-semester";
@@ -134,7 +135,7 @@ const prefs = ref(loadPreferences()),
 const localSemester = personalSemester;
 const localTable = computed(() => tableForSemester(schedule.value));
 const officialActive = computed(() => !!schoolTerm.value?.data);
-const semester = computed(() => schoolTerm.value?.data?.semester ?? localSemester.value);
+const semester = computed(() => calibratedSemester(schoolTerm.value?.data?.semester ?? localSemester.value));
 const table = computed(() => schoolTerm.value?.data?.table ?? localTable.value);
 const data = computed<AcademicData>(() => {
  const cached=schoolTerm.value?.data;
@@ -388,6 +389,7 @@ async function load() {
   error.value = "";
   try {
     await initSchedule();
+    await initWeekCalibration();
     await initAcademic();
     void autoSyncAcademic();
     await reconcileReminders(schedule.value);

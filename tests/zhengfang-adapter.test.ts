@@ -243,7 +243,7 @@ describe("offline Zhengfang adapter — synthetic fixtures, no school connection
       state.activeSemesterId,
       state.timeTables[0],
     );
-    const monday = new Date(2026, 8, 7, 7, 0);
+    const monday = new Date(2026, 8, 14, 7, 0);
     expect(semesterWeek(monday, state.semesters[0])).toBe(1);
     expect(coursesForDay(local, 1, 1)).toHaveLength(1);
     expect(coursesForDay(local, 1, 2)).toHaveLength(0);

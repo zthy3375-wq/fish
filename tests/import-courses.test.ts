@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {defaultState} from '../src/domain/schedule';
 import {guessMapping,readTable,previewRows,previewICS,csvTemplate,parseWeeks} from '../src/services/import-courses';
-const s=defaultState().semesters[0];const buf=(s:string)=>new TextEncoder().encode(s).buffer;
+const s={...defaultState().semesters[0],startDate:'2026-09-07',weekStartDate:'2026-09-07',weekCount:18};const buf=(s:string)=>new TextEncoder().encode(s).buffer;
 describe('file import',()=>{
 it('parses quoted CSV and maps aliases, does not commit',async()=>{const table=await readTable('courses.csv',buf(csvTemplate));const preview=previewRows(table,guessMapping(table.headers),s,[]);expect(preview.errors).toEqual([]);expect(preview.courses[0].arrangements[0].endWeek).toBe(18)});
 it('requires mapping without silently guessing times',async()=>{const table=await readTable('courses.csv',buf('标题,日期\nA,1'));expect(previewRows(table,{},s,[]).errors[0]).toContain('映射');expect(parseWeeks('第1–4周',18)).toEqual([1,2,3,4]);expect(()=>parseWeeks('1-30',18)).toThrow()});
