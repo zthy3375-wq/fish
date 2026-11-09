@@ -21,3 +21,12 @@ it('physical-only device gives physical settlement instruction',async()=>{panggu
 it('ending cannot claim a paid amount',async()=>{pangguai.value.water={id:'s',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'ending',orderNo:'order-test',remoteEnd:true,endSent:true,updatedAt:Date.now()};await settle();expect(root.textContent).toContain('等待设备结束');expect(root.textContent).not.toContain('本次实付')});
 it('zero reported device usage is not presented as zero cash paid',async()=>{pangguai.value.water={id:'s',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'ended_zero',remoteEnd:true,updatedAt:Date.now()};await settle();expect(root.textContent).not.toContain('¥0.00');expect(root.textContent).toContain('费用仍以平台消费记录为准')});
 it('unknown startup does not automatically clear or end',async()=>{pangguai.value.water={id:'s',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'starting',remoteEnd:true,updatedAt:Date.now()};await settle();await vi.advanceTimersByTimeAsync(5000);expect(confirmPhysicalWaterEnd).not.toHaveBeenCalled();expect(endWater).not.toHaveBeenCalled();expect(startWater).not.toHaveBeenCalled()});
+
+it('legacy ownership error hides remote end and runaway timer while checking',async()=>{
+ pangguai.value.water={id:'old',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'using',orderNo:'old-order',remoteEnd:true,startedAt:Date.now()-21_000_000,updatedAt:Date.now(),error:'WATER_OWNERSHIP'};
+ await settle();expect(button('结束接水并结算')).toBeUndefined();expect(root.querySelector('.elapsed')).toBeNull();expect(root.textContent).toContain('接水状态待核对');expect(button('核对旧记录并恢复扫码')).toBeDefined();
+});
+it('recovered replaced record no longer blocks selecting and preparing next water session',async()=>{
+ pangguai.value.water={id:'old',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'closed_unknown',orderNo:'old-order',remoteEnd:false,startedAt:Date.now()-21_000_000,endedAt:Date.now(),updatedAt:Date.now(),endBasis:'order_replaced',error:'WATER_BILL_UNKNOWN'};
+ await settle();expect(button('接水').disabled).toBe(false);expect(root.querySelector('.water-progress')).toBeNull();await preview();expect(prepareWater).toHaveBeenCalledExactlyOnceWith('outlet-test');expect(startWater).not.toHaveBeenCalled();
+});

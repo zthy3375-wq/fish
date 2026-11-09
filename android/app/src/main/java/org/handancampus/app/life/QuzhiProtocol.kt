@@ -13,7 +13,7 @@ internal object QuzhiProtocol {
     const val BASE = "https://v3-api.china-qzxy.cn/"
     const val RECHARGE = "alipays://platformapi/startapp?appId=2018090661238647&page=pages%2Frecharge%2Frecharge"
     val common = mapOf("phoneSystem" to "android", "version" to "6.5.28")
-    val paths = setOf("user/login", "user/verification/code/get", "user/registerAndLogin", "account/wallet", "project/info/triple", "order/query/account/bill/list")
+    val paths = setOf("user/login", "user/verification/code/get", "user/registerAndLogin", "account/wallet", "project/info/triple", "order/query/account/bill/list", "account/useCode/new")
 
     fun text(value: JSONObject, key: String): String = when (val raw = value.opt(key)) {
         is String -> raw.trim().take(240)
@@ -93,6 +93,17 @@ internal object QuzhiProtocol {
                 .put("description", text(bill, "deviceDescription").ifBlank { text(bill, "description") }.ifBlank { "用水消费" }))
         }
         return JSONObject().put("items", rows).put("truncated", array.length() > 200)
+    }
+    /** Read the complete server-supplied code only; never reconstruct it from a phone or suffix. */
+    fun bathCode(data: Any?): JSONObject {
+        val obj = data as? JSONObject ?: throw QuzhiFailure("FORMAT")
+        val status = text(obj, "useCodeStatus")
+        if (status != "0" && status != "1") throw QuzhiFailure("FORMAT")
+        val value = text(obj, "useCode")
+        if (value.isNotEmpty() && !value.matches(Regex("[0-9]{8}"))) throw QuzhiFailure("FORMAT")
+        if (status == "1" && value.isEmpty()) throw QuzhiFailure("FORMAT")
+        return JSONObject().put("enabled", status == "1")
+            .put("code", if (value.isEmpty()) JSONObject.NULL else value)
     }
     fun maskedPhone(session: JSONObject): String = text(session, "telephone").let {
         if (it.length == 11) it.take(3) + "****" + it.takeLast(4) else "已连接账户"

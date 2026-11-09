@@ -1,0 +1,8 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_course_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingBottom="5dp">
+<TextView android:id="@+id/widget_course_color" android:layout_width="3dp" android:layout_height="match_parent" android:background="@color/widget_accent"/>
+<LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:paddingStart="7dp" android:orientation="vertical">
+<TextView android:id="@+id/widget_course_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:includeFontPadding="false" android:textSize="13sp" android:textStyle="bold" android:maxLines="2" android:ellipsize="end" android:textColor="@color/widget_text"/>
+<TextView android:id="@+id/widget_course_place" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" android:textSize="10sp" android:textColor="@color/widget_muted"/>
+<TextView android:id="@+id/widget_course_time" android:layout_width="match_parent" android:layout_height="wrap_content" android:includeFontPadding="false" android:textSize="10sp" android:textColor="@color/widget_muted"/>
+<TextView android:id="@+id/widget_course_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:includeFontPadding="false" android:textSize="9sp" android:textColor="@color/widget_accent"/>
+</LinearLayout></LinearLayout>

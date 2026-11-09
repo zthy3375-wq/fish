@@ -40,7 +40,7 @@
 .compact.home-active .home-course-list>.course-card{min-height:64px;padding-block:9px}
 /* Root viewport and scroll area deliberately reserve the pill's own space.
    The dock never covers interactive content, including midway through a list. */
-.app-shell{height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.app-shell{height:100vh;height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .app-header{flex:0 0 auto}
 main{flex:1 1 auto;min-height:0;min-width:0;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:var(--space-5);scroll-padding-block:var(--space-4);-webkit-overflow-scrolling:touch}
 .navigation-dock{flex:0 0 auto;padding:var(--space-2) 0 calc(var(--space-3) + var(--safe-bottom));background:var(--color-bg)}

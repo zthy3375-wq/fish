@@ -210,6 +210,7 @@ class HandanAcademicPlugin : Plugin() {
     @PluginMethod fun logout(next: PluginCall) {
         activity.runOnUiThread {
             if (call != null) fail("连接已退出", "CANCELLED")
+            org.handancampus.app.widget.CourseWidgetProvider.clear(context)
             vault.clear(); authenticated = false
             WebStorage.getInstance().deleteOrigin(AcademicPolicy.ORIGIN)
             cookies.getCookie(AcademicPolicy.ORIGIN)?.split(";")?.forEach { entry ->

@@ -56,3 +56,7 @@
 对照 quzhi-lite 固定提交 `29463db5395c7c2cbcf45411a627e2ee9bb57b9d` 的 QuzhiApi.kt，确认 accountMoney 是整数厘，消费账单 consumeMoney 仍按元。只借鉴协议事实，不复制未授权源码。新增单位冲突、非法金额保留缓存、扁平 v3LoginCode 登录回归。更完整开源比较见 [OPEN-SOURCE-STRATEGY.md](OPEN-SOURCE-STRATEGY.md)。
 
 生命周期复核：新的原生实例和销毁事件会使旧实例失效，所有会话恢复/保存/退出与所有权切换共用锁，旧网络请求不能在新实例退出后重新写回凭据。短信冷却按手机号保存在进程级状态，取消后重开登录窗口不会重置 60 秒冷却。
+
+## 1.1.2-test.6：读取现有使用码
+
+新增仅 GET `account/useCode/new`，复用当前会话认证字段。协议参考固定提交 [MudLife/API-qzxy.md](https://github.com/Cainite07/MudLife/blob/34224611e280d0b72ec9eee512165d716ae0f8ab/API-qzxy.md) 的 4.7 节及同提交 QzxyService.kt / LoginModels.kt。读取 `useCode`、`useCodeStatus`；完整数字串长度必须为 8，保留前导零；不从手机号或 useCodeRandom 拼码。native 不持久保存码，仅专用 bridge 返回展示数据。平台未启用时不代为开启。页面内存中的码在隐藏、后台、会话变化时清除；不提供自动复制或外发。真实校内设备兼容性仍需本人账号验收。

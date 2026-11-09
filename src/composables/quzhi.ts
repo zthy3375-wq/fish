@@ -1,5 +1,5 @@
 import {ref} from 'vue';
-import {quzhiClient, quzhiSupported, quzhiIssue, quzhiMonth, type QuzhiSnapshot} from '../services/quzhi-client';
+import {quzhiClient, quzhiSupported, quzhiIssue, quzhiMonth, type QuzhiSnapshot, type QuzhiBathCode} from '../services/quzhi-client';
 
 export const quzhi = ref<QuzhiSnapshot>({connected:false,expired:false,phone:''});
 export const quzhiBusy = ref(false);
@@ -41,4 +41,19 @@ export async function rechargeQuzhi(): Promise<boolean> {
   try {return (await quzhiClient.openRecharge()).opened}
   catch(error){quzhiError.value=quzhiIssue((error as {code?:string}).code);return false}
   finally{quzhiBusy.value=false}
+}
+
+export async function loadQuzhiBathCode():Promise<QuzhiBathCode>{
+ if(!quzhiSupported()||!quzhiReady.value||!quzhi.value.connected||quzhi.value.expired)throw Error('请先连接趣智校园');
+ if(quzhiBusy.value)throw Error('趣智操作正在进行，请稍候');
+ quzhiBusy.value=true;
+ try{return await quzhiClient.getBathCode()}
+ catch(error){
+  const kind=(error as {code?:string}).code;
+  if(kind==='AUTH'){
+   quzhi.value={...quzhi.value,expired:true};
+  }
+  throw Error(kind==='FORMAT'?'平台未返回可识别的完整洗澡码，请到趣智校园核对':quzhiIssue(kind));
+ }
+ finally{quzhiBusy.value=false}
 }

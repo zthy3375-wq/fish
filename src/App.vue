@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import {widgetSupported,widgetSnapshot,publishWidget,widgetTarget} from './services/course-widget';
+import CourseWidgetSetup from './components/CourseWidgetSetup.vue';
+import {scheduleViews} from './composables/view-state';
 import AnalyticsSettings from './components/AnalyticsSettings.vue';
 import {initAnalytics,flushAnalytics,recordFeature,refreshAnalytics} from './composables/analytics';
 import AppUpdateDialog from './components/AppUpdateDialog.vue';
@@ -145,6 +148,26 @@ const data = computed<AcademicData>(() => {
  }) : schedule.value.courses;
  return {source:cached?'official':'personal',courses:cached?[...flatten(cached.courses,cached.semester.id,cached.table),...personal.flatMap(c=>flatten([c],c.semesterId,cached.table))]:flatten(personal,schedule.value.activeSemesterId,localTable.value),grades:[],exams:academicCache.value.exams.data??[]};
 });
+let widgetQueue:Promise<unknown>=Promise.resolve();
+watch(()=>!loading.value&&!error.value?widgetSnapshot(semester.value,data.value.courses,!!schoolTerm.value?.data||schedule.value.mode==='personal'||data.value.courses.length>0):null,()=>{
+ if(!widgetSupported())return;
+ widgetQueue=widgetQueue.catch(()=>{}).then(()=>{
+  if(loading.value||error.value)return;
+  return publishWidget(widgetSnapshot(semester.value,data.value.courses,!!schoolTerm.value?.data||schedule.value.mode==='personal'||data.value.courses.length>0));
+ }).catch(()=>{});
+});
+function addCourseWidget(){open('course-widget');}
+async function openWidgetTarget(){
+ if(!widgetSupported()||loading.value)return;
+ try{
+  const {date}=await widgetTarget();
+  if(!/^20\d{2}-\d{2}-\d{2}$/.test(date))return;
+  const d=new Date(date+'T12:00:00');
+  if(!Number.isFinite(+d))return;
+  scheduleViews[semester.value.id]={week:Math.max(1,Math.min(semester.value.weekCount,currentWeek(d,semester.value))),day:dayNumber(d),view:'day'};
+  close();move('schedule');
+ }catch{}
+}
 const editorRef = ref<InstanceType<typeof CourseEditor>>(),
   editorCourse = ref<ManagedCourse>(),
   editorPreset = ref<CellPreset>(),
@@ -270,7 +293,7 @@ const entries = computed(() => [
   },
   {
     id: "grades",
-    title: "成绩分析",
+    title: "成绩与学业",
     subtitle: academicCache.value.grades.updatedAt ? `${academicCache.value.grades.data?.length??0} 门成绩` : "尚未同步",
     icon: ChartNoAxesColumnIncreasing,
   },
@@ -280,12 +303,7 @@ const entries = computed(() => [
     subtitle: academicCache.value.exams.updatedAt ? `${exams.value.length} 场考试` : "尚未同步",
     icon: CalendarDays,
   },
-  {
-    id: "study",
-    title: "学业中心",
-    subtitle: "已获学分、课程类型与学籍",
-    icon: GraduationCap,
-  },
+
 ]);
 const academicServices=computed(()=>[...entries.value.filter(e=>e.id!=='schedule'),{id:'learning',title:'学习通',subtitle:'作业、课程、考试与通知',icon:BookOpen},{id:'agenda',title:'统一日程',subtitle:'课程、考试与个人待办',icon:CalendarDays},{id:'calendar',title:'学期校历',subtitle:'教学周与学期安排',icon:CalendarDays}]);
 const official=[{id:'school',title:'邯郸学院官网',subtitle:'学校新闻与公开信息',icon:ArrowUpRight,href:'https://www.hdc.edu.cn/'}];
@@ -324,9 +342,9 @@ const sectionNames: Record<string, string> = {
   agenda: "统一日程",
   learning: "学习通",
   schedule: "课程表",
-  grades: "成绩分析",
+  grades: "成绩与学业",
   exams: "考试安排",
-  study: "学业中心",
+  study: "成绩与学业",
   calendar: "学期校历",
   official: "官方教务",
 };
@@ -360,6 +378,7 @@ watch(data, (d) => {
 });
 watch(learningTasks,()=>{if(tasksReady.value)void reconcileTaskReminders()});
 function go(id: string) {
+  if(id==='study')id='grades';
   if(id==='due'){taskView.view='due';taskView.mode='list';taskView.source='all';taskView.course='';taskView.search='';move('tasks','agenda');return;}
   move(id==='agenda'?'tasks':id === 'schedule' ? 'schedule' : 'academic', id);
 }
@@ -398,6 +417,7 @@ async function load() {
     error.value = storageError.value || "教务信息加载失败：" + String(e);
   } finally {
     loading.value = false;
+    void openWidgetTarget();
   }
 }
 function saveProfile() {
@@ -498,6 +518,7 @@ async function recalibrate() {
   now.value = campusNow();
   if (document.visibilityState === "visible") {
     await refreshSchedule();
+    await openWidgetTarget();
     await reconcileReminders(schedule.value);
     void autoSyncAcademic();
   }
@@ -605,16 +626,17 @@ onUnmounted(() => {
                   <strong class="home-next-title">{{homeFocus.name}}</strong>
                   <span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><time>{{homeFocus.start}}–{{homeFocus.end}}</time><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span>
                 </button>
-                <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{academicCache.connected&&!schoolTerm?.data?'请查看下方学校连接状态。':'查看课表，安排自己的校园时光。'}}</p></div>
+                <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{!academicCache.connected||!schoolTerm?.data?'前往“我的”连接学校或刷新课表。':'查看课表，安排自己的校园时光。'}}</p></div>
                 <div class="home-timeline-head"><span>今日课程 · {{todayCourses.length}} 节</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
                 <div v-if="todayCourses.length" class="home-timeline" aria-label="今日课程时间线">
                   <button v-for="c in todayCourses" :key="c.id" :class="{'is-current':courseState(c,now)==='current','is-ended':courseState(c,now)==='ended','is-next':!current&&next?.course.id===c.id}" :aria-label="`${c.name} ${c.start} ${c.room}`" @click="details(c)"><strong>{{c.name}}</strong><time>{{c.start}}</time></button>
                 </div>
+              <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
               </section>
               <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
               <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
-              <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="23"/><span><strong>学习通</strong><small>课程与作业</small></span><ChevronRight/></button><button @click="move('profile')"><GraduationCap :size="23"/><span><strong>教务与账号</strong><small>成绩 · 考试 · 学业</small></span><ChevronRight/></button></div>
-              <SchoolConnection compact @connected="move('home')"/>
+
+
             </div>
           </template>
           <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
@@ -647,6 +669,7 @@ onUnmounted(() => {
             />
           </template>
           <template v-else>
+            <div class="profile-page">
             <button class="profile-strip" @click="open('edit')">
               <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
               ><span class="profile-copy"
@@ -655,11 +678,12 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
-            <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
-            <CommunityGroup/>
-            <SectionHeader title="教务服务"/><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/>
-            <TaskSettings/>
-            <SectionHeader title="外观设置" />
+            <SectionHeader title="账号与教务"/><section class="profile-accounts"><SchoolConnection collapsible /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
+            </section>
+            <div class="profile-academics"><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/></div>
+            <button class="learning-page-link" @click="addCourseWidget"><CalendarDays :size="20"/><strong>桌面课表</strong><span>添加今天与明天的小组件</span><ChevronRight :size="16"/></button>
+            <SectionHeader title="偏好与数据" />
+            <section class="profile-preferences">
             <section class="settings-group">
               <div class="theme-row">
                 <span class="setting-label"><Sun :size="21" />主题</span>
@@ -685,18 +709,21 @@ onUnmounted(() => {
                 v-model="prefs.compact"
               />
             </section>
-            <SectionHeader title="应用设置" /><ServiceGroup
+            <ServiceGroup
               :items="settings"
               @select="(id) => (id === 'manager' ? manage() : open(id))"
             />
-            <FailureFeedback/>
+            <TaskSettings/>
+            </section>
+            <SectionHeader title="帮助与交流"/><section class="profile-support"><CommunityGroup/><details class="profile-feedback"><summary><span><MessageSquare :size="19"/>问题反馈</span><ChevronRight :size="16"/></summary><FailureFeedback/><ServiceGroup :items="about.filter(e=>e.id==='feedback').map(e=>({...e,title:'反馈说明'}))" @select="open"/></details></section>
             <SectionHeader title="关于与隐私" /><ServiceGroup
-              :items="about"
+              :items="about.filter(e=>e.id!=='feedback').map(e=>e.id==='about'?{...e,title:'关于邯院通',subtitle:undefined}:e)"
               @select="(id) => (id === 'app-update' ? checkUpdates(true) : open(id))"
             />
             <p class="footnote source-footnote">
               <ShieldCheck :size="13" />不保存教务密码 · 无广告 · 匿名统计可关闭
             </p>
+            </div>
           </template>
           <footer>
             邯院通 <span>·</span> 独立学生项目
@@ -735,8 +762,9 @@ onUnmounted(() => {
               ? '课程详情'
               : modal === 'quzhi-wallet' ? '趣智校园钱包'
               : modal === 'pangguai-wallet' ? '胖乖生活钱包'
-              : modal === 'campus-map' ? '校园地图'
+              : modal === 'campus-map' ? '校园平面图'
               : modal === 'parcel' ? '快递出库码'
+              : modal === 'course-widget' ? '桌面课表'
               : '校园助手设置'
           "
         >
@@ -752,6 +780,7 @@ onUnmounted(() => {
           <PangguaiWallet v-else-if="modal === 'pangguai-wallet'"/>
           <CampusMap v-else-if="modal === 'campus-map'"/>
           <ParcelShortcuts v-else-if="modal === 'parcel'"/>
+          <CourseWidgetSetup v-else-if="modal === 'course-widget'"/>
           <CourseEditor
             v-else-if="modal === 'course-editor'"
             ref="editorRef"

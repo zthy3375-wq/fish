@@ -45,7 +45,9 @@ class QuzhiPlugin : Plugin() {
     }
     private fun code(error: Exception): String = if (error is QuzhiLifecycleCancelled) "CANCELLED" else (error as? QuzhiFailure)?.kind ?: "NETWORK"
     private fun message(code: String): String = when (code) {
+        "BUSY" -> "趣智操作正在进行，请稍候"
         "CANCELLED" -> "操作已取消，请重新打开趣智校园"
+        "ACCOUNT" -> "账号信息不完整，请重新连接趣智校园"
         "PHONE" -> "请输入正确的手机号"
         "PASSWORD" -> "请输入趣智校园密码"
         "CREDENTIALS" -> "账号或密码未通过验证，请检查后重试"
@@ -76,6 +78,35 @@ class QuzhiPlugin : Plugin() {
         val next = QuzhiRefresh.execute(owned { JSONObject(state.toString()) }, call.getString("month") ?: currentMonth(),
             { path, args -> client.request(path, args) }, { System.currentTimeMillis() })
         owned { vault.save(next.toString()); state = next }
+    }
+
+    /** Explicit read-only reveal. The code never enters the persisted wallet snapshot. */
+    @PluginMethod fun getBathCode(call: PluginCall) {
+        if (!busy.compareAndSet(false, true)) { call.reject(message("BUSY"), "BUSY"); return }
+        try {
+            executor.execute {
+                try {
+                    restoreState()
+                    val auth = owned {
+                        if (state.optBoolean("expired", false)) throw QuzhiFailure("AUTH")
+                        JSONObject(session().toString())
+                    }
+                    if (QuzhiProtocol.text(auth, "accountId").isBlank()) throw QuzhiFailure("ACCOUNT")
+                    val code = QuzhiProtocol.bathCode(client.request("account/useCode/new", QuzhiProtocol.auth(auth)))
+                    owned {
+                        code.put("phone", QuzhiProtocol.maskedPhone(auth)).put("queriedAt", System.currentTimeMillis())
+                        call.resolve(JSObject.fromJSONObject(code))
+                    }
+                } catch (e: Exception) {
+                    if (code(e) == "AUTH") try {
+                        owned { state.put("expired", true); vault.save(state.toString()) }
+                    } catch (_: Exception) { }
+                    call.reject(message(code(e)), code(e))
+                } finally { busy.set(false) }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            busy.set(false); call.reject(message("CANCELLED"), "CANCELLED")
+        }
     }
 
     /** Credentials are entered in native widgets, never passed through the JS bridge. */

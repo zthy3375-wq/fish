@@ -5,21 +5,26 @@ import path from 'node:path';
 import {chromium} from 'playwright';
 import {checkParcelShortcuts} from './parcel-browser-check.mjs';
 import {checkNativeLife} from './native-life-browser-check.mjs';
+import {checkWeekGrid} from './week-grid-browser-check.mjs';
+import {checkProfile} from './profile-browser-check.mjs';
 const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,{recursive:true});
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.webp':'image/webp'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
 await new Promise(resolve=>server.listen(4175,'127.0.0.1',resolve));
 const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined});const checks=[];let activePage;
 const syntheticLearning=JSON.parse(await readFile('tests/fixtures/learning/synthetic.json','utf8'));
+const syntheticPractice=JSON.parse(await readFile('tests/fixtures/academic/practice-synthetic.json','utf8'));
 const syntheticGrades=JSON.parse(await readFile('tests/fixtures/grades/synthetic.json','utf8'));
 function assert(value,label){if(!value)throw Error(label);checks.push(label)}
 try{
  for(const width of [360,390,430]){
   const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
+  await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
+    if(plugin==='CourseWidget'){if(method==='publish'){(window.__widgetSnapshots??=[]).push(JSON.parse(args.snapshot));return {}}if(method==='target'){const date=window.__widgetTarget||'';window.__widgetTarget='';return {date}}if(method==='status')return {supported:true,ids:window.__widgetIds||[]};if(method==='openHome'){window.__widgetHomeCalls=(window.__widgetHomeCalls||0)+1;return {}}if(method==='pin'){window.__widgetPinCalls=(window.__widgetPinCalls||0)+1;return {requested:true,baselineIds:[...(window.__widgetIds||[])]}}}
     if(plugin==='AppUpdate'){
      window.__updateState??={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:false,mandatory:false,checkedAt:Date.now()};
      if(method==='download'){window.__updateState.stage='ready';window.__updateDownloaded=true}
@@ -40,6 +45,7 @@ try{
      if(method==='prepareWater')return {id:'water-quote',expiresAt:Date.now()+60000,deviceId:'synthetic-water',deviceName:'人工测试饮水机',outlet:'常温水',feature:'按实际用量计费',price:'1',remoteEnd:true,paymentName:'支付宝免密',canStart:true,reason:''};
      if(method==='startWater')window.__pgState.water={id:'water-session',deviceId:'synthetic-water',deviceName:'人工测试饮水机',outlet:'常温水',feature:'按实际用量计费',paymentName:'支付宝免密',phase:'using',orderNo:'synthetic-water-order',remoteEnd:true,updatedAt:Date.now(),startedAt:Date.now()};
      if(method==='endWater')Object.assign(window.__pgState.water,{phase:'ending',endSent:true});
+     if(method==='pollWater'&&window.__pgOwnershipLost){window.__pgOwnershipLost=false;Object.assign(window.__pgState.water,{phase:'closed_unknown',endBasis:'order_replaced',remoteEnd:false,endedAt:Date.now(),updatedAt:Date.now(),error:'WATER_BILL_UNKNOWN'})}
      if(method==='pollWater'&&window.__pgWaterEnded)Object.assign(window.__pgState.water,{phase:'settled',amount:'0.13',endedAt:Date.now()});
      return JSON.parse(JSON.stringify(window.__pgState));
     }
@@ -57,6 +63,7 @@ try{
      if(method==='login')window.__quzhiState={connected:true,expired:false,phone:'138****0000',school:'人工测试学校',wallet:{total:'12.34',cash:null,gift:null},walletUpdatedAt:Date.now()};
      if(method==='logout')window.__quzhiState={connected:false,expired:false,phone:''};
      if(method==='openRecharge'){window.__quzhiOpened=true;return {opened:true}}
+     if(method==='getBathCode'){if(window.__bathFailure)throw Error('NETWORK');return {code:'00123456',enabled:true,phone:window.__quzhiState.phone,queriedAt:Date.now()}}
      if(method==='refresh'){
       if(window.__quzhiFailure)window.__quzhiState.issues={wallet:'NETWORK',bills:'NETWORK'};
       else if(window.__quzhiExpired){window.__quzhiState.expired=true;window.__quzhiState.issues={wallet:'AUTH',bills:'AUTH'}}
@@ -81,7 +88,7 @@ try{
      if(method==='logout')return {session:'disconnected'};
      if(method==='getGrades'&&window.__gradeFailure)throw Error('network');
      if(window.__gradeExpired)return {session:'expired'};
-     const timetable={term:{xnm:'2026',xqm:'3'},kbList:[{kcmc:'人工 UI 链路课程',xm:'教师',cdmc:'教室',xqj:'1',jcs:'1-2',zcd:'1-18周'},...['高等数学','大学英语','工程制图','大学物理','机械设计'].map((kcmc,i)=>({kcmc,xm:'测试教师',cdmc:'天枢楼'+(201+i),xqj:String(i+2),jcs:i%2?'5-6':'3-4',zcd:'1-18周'}))],practice:[]};
+     const timetable={term:{xnm:'2026',xqm:'3'},kbList:[{kcmc:'人工 UI 链路课程',xm:'教师',cdmc:'教室',xqj:'1',jcs:'1-2',zcd:'1-18周'},...['高等数学','大学英语','工程制图','大学物理','机械设计'].map((kcmc,i)=>({kcmc,xm:'测试教师',cdmc:'天枢楼'+(201+i),xqj:String(i+2),jcs:i%2?'5-6':'3-4',zcd:'1-18周'}))],practice:window.__practiceFixture};
      return {session:'valid',modules:method==='getGrades'?{grades:{status:'ok',scope:'all',data:grades}}:method==='getExams'?{exams:{status:'ok',data:[{name:'人工 UI 考试',date:'2026-11-07',time:'09:00-11:00',room:'测试考场',seat:''}]}}:{timetable:{status:'ok',data:timetable}}};
     }return {};
    }};
@@ -91,6 +98,7 @@ try{
   await page.goto('http://127.0.0.1:4175');
   await page.getByRole('heading',{name:'邯院通',exact:true}).waitFor();
   assert(await page.locator('.floating-nav button').count()===4,`${width}: home has four navigation tabs`);
+  assert(await page.locator('.home-body .school-connection').count()===0,`${width}: disconnected home keeps school account in profile`);
   await page.getByRole('button',{name:'暂停小鱼动画',exact:true}).click();
   assert(await page.getByRole('button',{name:'播放小鱼动画',exact:true}).getAttribute('aria-pressed')==='true',`${width}: fish can be paused`);
   assert(!await page.locator('.campus-hero').evaluate(el=>el.classList.contains('fish-running')),`${width}: paused mascot stops animation`);
@@ -104,14 +112,52 @@ try{
   await checkNativeLife(page,assert,{width,output});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
-  await page.getByRole('button',{name:/成绩分析/}).click();
+  await page.getByRole('button',{name:/成绩与学业/}).click();
   await page.getByText('还没有本人已同步成绩',{exact:true}).waitFor();
   assert(await page.locator('.ga-stats').count()===0,`${width}: no invented statistics before school login`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+  await page.locator('.profile-accounts').getByRole('button',{name:'连接',exact:true}).click();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
-  await page.getByRole('button',{name:'连接邯郸学院',exact:true}).click();
   await page.locator('.home-next-meta time').waitFor();
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(output,`campus-home-connected-${width}.png`),animations:'disabled'});
+  assert(await page.locator('.home-course-panel .home-study-links').count()===1,`${width}: study actions share course card`);
+  assert(await page.locator('.home-body>.school-connection').count()===0,`${width}: connected home hides redundant account card`);
+  assert(await page.locator('.home-course-panel').evaluate(el=>{const life=document.querySelector('#home-life-title').closest('section'),tasks=document.querySelector('.today-tasks');return !!(el.compareDocumentPosition(life)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(life.compareDocumentPosition(tasks)&Node.DOCUMENT_POSITION_FOLLOWING)}),`${width}: home orders courses, services, then plans`);
+  await page.evaluate(()=>document.documentElement.style.setProperty('--native-safe-top','40px'));
+  await page.locator('main').evaluate(el=>el.scrollTop=0);
+  const homeLayout=await page.evaluate(()=>{
+   const box=s=>document.querySelector(s).getBoundingClientRect();
+   return {hero:box('.campus-hero').height,walletBottom:box('.life-wallets').bottom,mainBottom:box('main').bottom,timelineBottom:box('.home-timeline').bottom,studyTop:box('.home-study-links').top,overflow:document.documentElement.scrollWidth>innerWidth};
+  });
+  assert(homeLayout.hero>=264,`${width}: campus illustration retains a generous height with status inset`);
+  assert(homeLayout.walletBottom<=homeLayout.mainBottom,`${width}: both life wallets fit above navigation with status inset`);
+  assert(homeLayout.timelineBottom<=homeLayout.studyTop&&!homeLayout.overflow,`${width}: today's timeline stays clear of shortcuts without page overflow`);
+  assert(await page.locator('.home-timeline button').count()===1&&await page.locator('.home-timeline time').textContent()==='11:15',`${width}: today's course name and start remain on the timeline`);
+  await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
+  await page.locator('.home-timeline button').click();
+  assert(await page.getByRole('dialog').getByRole('heading',{name:'大学物理',exact:true}).isVisible(),`${width}: retained home timeline opens course details`);
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  await page.evaluate(()=>document.documentElement.style.removeProperty('--native-safe-top'));
+  assert(await page.evaluate(()=>window.__widgetSnapshots?.at(-1)?.courses.some(c=>c.name==='大学物理')),`${width}: synchronized timetable reaches the native widget`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+  await page.getByRole('button',{name:/桌面课表/}).click();
+  await page.getByRole('dialog',{name:'桌面课表',exact:true}).waitFor();
+  assert(await page.evaluate(()=>!window.__widgetPinCalls),`${width}: opening widget setup does not pretend a system window is visible`);
+  await page.getByRole('button',{name:'请求系统添加',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'尚未确认添加成功'}).waitFor();
+  assert(await page.evaluate(()=>window.__widgetPinCalls)===1,`${width}: explicit widget request is sent once without claiming addition`);
+  assert(await page.getByRole('button',{name:'前往桌面',exact:true}).isVisible(),`${width}: launcher silence keeps the manual add path visible`);
+  await page.screenshot({path:path.join(output,`widget-add-pending-${width}.png`),animations:'disabled'});
+  await page.evaluate(()=>window.__widgetIds=[42]);
+  await page.getByRole('button',{name:'检查添加结果',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'已检测到新添加'}).waitFor();
+  await page.getByRole('dialog',{name:'桌面课表',exact:true}).getByRole('button',{name:'关闭',exact:true}).click();
+  await page.evaluate(()=>{window.__widgetTarget='2026-11-16';window.dispatchEvent(new Event('focus'))});
+  await page.getByLabel('跳转教学周',{exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('[aria-label="跳转教学周"]')?.value==='10');
+  assert(await page.getByRole('button',{name:'日视图',exact:true}).getAttribute('aria-pressed')==='true',`${width}: widget date opens the correct teaching week in day view`);
+
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   assert(await page.locator('.floating-nav button').count()===4,`${width}: four navigation tabs`);
@@ -120,7 +166,7 @@ try{
   const historyLength=await page.evaluate(()=>history.length);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
-  await page.getByRole('button',{name:/成绩分析/}).click();
+  await page.getByRole('button',{name:/成绩与学业/}).click();
   await page.getByRole('button',{name:'返回上一页',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
   assert(await page.evaluate(()=>history.length)===historyLength,`${width}: tab and detail navigation do not grow browser history`);
@@ -134,6 +180,7 @@ try{
   await page.getByRole('button',{name:'周视图',exact:true}).click();
   await page.getByLabel('跳转教学周',{exact:true}).selectOption('9');
   await page.screenshot({path:path.join(output,`navigation-schedule-${width}.png`),animations:'disabled'});
+  await checkWeekGrid(page,assert,{width,output});
   await page.getByRole('button',{name:'添加个人事项',exact:true}).click();
   await page.locator('.course-editor-page').waitFor();
   await page.goBack();
@@ -144,7 +191,8 @@ try{
   assert(await page.evaluate(()=>!!localStorage.getItem('handan.academic.cache.v050')),`${width}: school cache survives reload`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
-  await page.getByRole('button',{name:/成绩分析/}).first().click();
+  await checkProfile(page,assert,{width,output});
+  await page.getByRole('button',{name:/成绩与学业/}).first().click();
   await page.locator('.ga-stats').waitFor();
   assert(await page.locator('.ga-stats strong').nth(0).innerText()==='7',`${width}: distinct course count`);
   assert(await page.locator('.ga-stats strong').nth(1).innerText()==='75',`${width}: numeric mean excludes levels and repeated attempts`);
@@ -182,7 +230,7 @@ try{
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
-  await page.getByRole('button',{name:/成绩分析/}).click();
+  await page.getByRole('button',{name:/成绩与学业/}).click();
   await page.getByLabel('搜索成绩课程',{exact:true}).waitFor();
   assert(await page.getByLabel('搜索成绩课程',{exact:true}).inputValue()==='人工数值',`${width}: filters survive navigation`);
   assert(await page.evaluate(()=>window.__academicCalls.filter(m=>m==='getGrades').length)===calls,`${width}: chart navigation does not request school again`);
@@ -196,8 +244,9 @@ try{
   assert(await page.locator('.ga-record').count()===1,`${width}: expiry does not erase records`);
   await page.screenshot({path:path.join(output,`grade-details-${width}.png`),fullPage:true,animations:'disabled'});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
-  await page.getByRole('button',{name:/学业中心/}).click();
-  await page.getByText('培养方案与毕业要求 · 待接入',{exact:true}).waitFor();
+  await page.getByRole('button',{name:/成绩与学业/}).click();
+  await page.getByRole('tab',{name:'学分与学籍',exact:true}).click();
+  await page.getByRole('heading',{name:'学籍资料',exact:true}).waitFor();
   assert(await page.getByRole('heading',{name:'课程性质与学分',exact:true}).count()===1,`${width}: study center shows categories without fabricated graduation targets`);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}: study center no horizontal overflow`);
   await page.screenshot({path:path.join(output,`study-center-${width}.png`),fullPage:true,animations:'disabled'});
@@ -301,6 +350,30 @@ try{
   await nav('首页').click();
   assert(await page.locator('.today-tasks .task-row').count()===2,`${width}: home contains same personal plan and homework once each`);
   await page.screenshot({path:path.join(output,`today-${width}.png`),animations:'disabled'});
+  const learningRow=page.locator('.today-tasks .today-planned-row:has(.task-source-icon)');
+  await learningRow.locator('.row-menu>summary').click();
+  await learningRow.getByRole('button',{name:'取消安排',exact:true}).click();
+  await learningRow.waitFor({state:'hidden'});
+  const cancelled=await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')));
+  assert(cancelled.plans['12/34/homework/78'].plannedDay===null&&cancelled.plans['12/34/homework/78'].plannedAt===null,`${width}: cancel menu clears persisted schedule`);
+  assert(cancelled.items[0].status==='pending',`${width}: cancellation preserves original homework`);
+  await page.reload();await nav('首页').click();
+  assert(await page.locator('.today-tasks .today-planned-row:has(.task-source-icon)').count()===0,`${width}: cancelled homework stays out of today after reload`);
+  await nav('待办').click();
+  await page.getByRole('button',{name:'筛选',exact:true}).click();
+  await page.getByRole('combobox',{name:'任务范围',exact:true}).selectOption('due');
+  const dueLearning=page.locator('.task-center .task-row:has(.task-source-icon)').first();
+  await dueLearning.locator('.row-menu>summary').click();
+  await dueLearning.getByRole('button',{name:'今天做',exact:true}).click();
+  await dueLearning.locator('.task-copy').click();await dialog.waitFor();
+  await dialog.getByRole('button',{name:'取消安排',exact:true}).click();await dialog.waitFor({state:'hidden'});
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).plans['12/34/homework/78'].plannedDay)===null,`${width}: detail cancellation persists`);
+  await dueLearning.locator('.row-menu>summary').click();
+  await dueLearning.getByRole('button',{name:'今天做',exact:true}).click();
+  await page.getByRole('combobox',{name:'任务范围',exact:true}).selectOption('today');
+  await nav('首页').click();
+  assert(await learningRow.count()===1,`${width}: cancelled work can be planned again`);
+
   // Synthetic native insets: background stays at y=0 while foreground clears a tall status bar.
   await page.evaluate(()=>document.documentElement.style.setProperty('--native-safe-top','40px'));
   const heroBox=await page.locator('.campus-hero').boundingBox();
@@ -337,8 +410,9 @@ try{
   assert(await page.locator('.learning-work').count()===1,`${width}: expired session retains cached homework`);
   await nav('我的').click();
   assert(await page.locator('.task-settings').count()===1,`${width}: reminders and backup moved to profile`);
+  await page.locator('.school-account-details>summary').click();
   await page.getByRole('button',{name:'退出学校账号',exact:true}).click();
-  await page.getByRole('button',{name:'连接邯郸学院',exact:true}).waitFor();
+  await page.getByRole('button',{name:'连接',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: school logout preserves personal tasks`);
   await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
   await page.getByRole('button',{name:'同步管理',exact:true}).click();
@@ -356,6 +430,21 @@ try{
   assert(await walletDialog.locator('.quzhi-amount').innerText()==='¥12.34',`${width}: quzhi balance comes from native wallet`);
   assert(await walletDialog.getByText('138****0000',{exact:true}).isVisible(),`${width}: quzhi exposes masked phone only`);
   assert(await walletDialog.locator('.quzhi-breakdown').count()===0,`${width}: ambiguous wallet components hidden`);
+  assert(await page.evaluate(()=>window.__quzhiCalls.filter(c=>c.method==='getBathCode').length)===0,`${width}: bath code queried only on explicit action`);
+  await walletDialog.getByRole('button',{name:'查看洗澡码',exact:true}).click();
+  await walletDialog.getByLabel('当前洗澡码',{exact:true}).waitFor();
+  assert(await walletDialog.getByLabel('当前洗澡码',{exact:true}).innerText()==='00123456',`${width}: full bath code preserves leading zeros`);
+  assert(await page.evaluate(()=>!JSON.stringify(window.__quzhiState).includes('00123456')&&Object.values(localStorage).every(v=>!v.includes('00123456'))),`${width}: bath code not persisted in wallet or browser storage`);
+  await walletDialog.getByRole('button',{name:'收起',exact:true}).click();
+  await walletDialog.getByLabel('当前洗澡码',{exact:true}).waitFor({state:'hidden'});
+  await walletDialog.getByRole('button',{name:'查看洗澡码',exact:true}).click();
+  await walletDialog.getByLabel('当前洗澡码',{exact:true}).waitFor();
+  await page.evaluate(()=>window.__bathFailure=true);
+  await walletDialog.getByRole('button',{name:'刷新洗澡码',exact:true}).click();
+  await walletDialog.locator('.bath-error').waitFor();
+  assert(await walletDialog.getByLabel('当前洗澡码',{exact:true}).count()===0,`${width}: failed refresh clears old bath code`);
+  await page.evaluate(()=>window.__bathFailure=false);
+
   await page.screenshot({path:path.join(output,`quzhi-wallet-${width}.png`),animations:'disabled'});
   assert(await walletDialog.evaluate(el=>el.scrollWidth<=el.clientWidth),`${width}: quzhi wallet fits mobile sheet`);
   await walletDialog.getByRole('button',{name:'充值 · 支付宝',exact:true}).click();

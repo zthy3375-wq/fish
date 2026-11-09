@@ -19,3 +19,5 @@ import './daily-flow.css';
 import './interface.css';
 
 import './campus-home.css';
+
+import './profile.css';
