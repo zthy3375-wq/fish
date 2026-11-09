@@ -27,7 +27,7 @@ class CourseWidgetPlugin : Plugin() {
     @PluginMethod fun status(call: PluginCall) {
         try {
             val manager = AppWidgetManager.getInstance(context)
-            call.resolve(JSObject().put("supported", manager.isRequestPinAppWidgetSupported)
+            call.resolve(JSObject().put("supported", (android.os.Build.VERSION.SDK_INT >= 26 && manager.isRequestPinAppWidgetSupported))
                 .put("ids", JSONArray(ids(manager).toList())))
         } catch (_: Exception) { call.reject("暂时无法检查桌面小组件") }
     }
@@ -36,12 +36,12 @@ class CourseWidgetPlugin : Plugin() {
             try {
                 val manager = AppWidgetManager.getInstance(context)
                 val baseline = ids(manager)
-                val supported = manager.isRequestPinAppWidgetSupported
                 val callback = PendingIntent.getBroadcast(context, 62,
                     Intent(context, CourseWidgetPinReceiver::class.java).setAction(CourseWidgetPinReceiver.PINNED),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                val requested = supported && manager.requestPinAppWidget(
-                    ComponentName(context, CourseWidgetProvider::class.java), null, callback)
+                val requested = if (android.os.Build.VERSION.SDK_INT >= 26 && manager.isRequestPinAppWidgetSupported)
+                    manager.requestPinAppWidget(ComponentName(context, CourseWidgetProvider::class.java), null, callback)
+                    else false
                 // A true return value confirms only that the launcher accepts requests.
                 call.resolve(JSObject().put("requested", requested).put("baselineIds", JSONArray(baseline.toList())))
             } catch (_: Exception) { call.reject("桌面未能接收添加请求，请手动添加") }
