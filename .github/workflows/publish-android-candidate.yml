@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'feature/tencent-app-updates' || github.head_ref == 'feature/campus-fish-home' || github.head_ref == 'feature/qq-community' || github.head_ref == 'fix/student-sync-compat')
+    if: github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'feature/tencent-app-updates' || github.head_ref == 'feature/campus-fish-home' || github.head_ref == 'feature/qq-community' || github.head_ref == 'fix/student-sync-compat' || github.head_ref == 'fix/water-action-visibility')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -17,6 +17,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Verify one-time owner-authorized 1.2 release
+        if: github.head_ref == 'fix/water-action-visibility'
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          const c=JSON.parse(readFileSync('releases/android-candidate.json','utf8'));
+          assert.equal(c.versionName,'1.2');
+          assert.equal(c.versionCode,133);
+          assert.equal(c.minSupportedVersionCode,133);
+          assert.equal(c.sha256,'f58b8656cfd2990d6ced14834898b9f849d581618a09f7cedd8d76c0a62c900e');
+          NODE
       - name: Upload signed candidate and verify Pgyer download
         env:
           PGYER_API_KEY: ${{ secrets.PGYER_API_KEY }}

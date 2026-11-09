@@ -1,13 +1,19 @@
 {
-  "versionCode": 121,
-  "versionName": "1.1.1",
-  "minSupportedVersionCode": 121,
+  "versionCode": 133,
+  "versionName": "1.2",
+  "minSupportedVersionCode": 133,
   "minSdk": 23,
-  "sha256": "a42d550a1f9ed83abb1d92140eba41bc172d1f88f1acf6722bdf48cba88ec104",
-  "sizeBytes": 12425935,
-  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.1.1-a42d550a1f9e.apk",
+  "sha256": "f58b8656cfd2990d6ced14834898b9f849d581618a09f7cedd8d76c0a62c900e",
+  "sizeBytes": 12422175,
+  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.2-f58b8656cfd2.apk",
   "notes": [
-    "修复了一些问题"
+    "新增桌面课表小组件，支持查看今天和明天的课程。",
+    "新增趣智校园洗澡码查看与刷新。",
+    "修复接水状态卡住、无法再次扫码的问题。",
+    "优化首页、“我的”及接水页面布局。",
+    "合并成绩与学业入口，校园地图精简为校区平面图。",
+    "学习通待办支持取消安排。",
+    "修复部分手机整周课表重叠的问题。"
   ],
   "ready": true
 }
