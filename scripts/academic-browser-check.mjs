@@ -6,6 +6,7 @@ import {chromium} from 'playwright';
 import {checkParcelShortcuts} from './parcel-browser-check.mjs';
 import {checkNativeLife} from './native-life-browser-check.mjs';
 import {checkWeekGrid} from './week-grid-browser-check.mjs';
+import {checkProfile} from './profile-browser-check.mjs';
 const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,{recursive:true});
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.webp':'image/webp'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
 await new Promise(resolve=>server.listen(4175,'127.0.0.1',resolve));
@@ -148,6 +149,7 @@ try{
   assert(await page.evaluate(()=>!!localStorage.getItem('handan.academic.cache.v050')),`${width}: school cache survives reload`);
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
+  await checkProfile(page,assert,{width,output});
   await page.getByRole('button',{name:/成绩分析/}).first().click();
   await page.locator('.ga-stats').waitFor();
   assert(await page.locator('.ga-stats strong').nth(0).innerText()==='7',`${width}: distinct course count`);
@@ -341,8 +343,9 @@ try{
   assert(await page.locator('.learning-work').count()===1,`${width}: expired session retains cached homework`);
   await nav('我的').click();
   assert(await page.locator('.task-settings').count()===1,`${width}: reminders and backup moved to profile`);
+  await page.locator('.school-account-details>summary').click();
   await page.getByRole('button',{name:'退出学校账号',exact:true}).click();
-  await page.getByRole('button',{name:'连接邯郸学院',exact:true}).waitFor();
+  await page.getByRole('button',{name:'连接',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: school logout preserves personal tasks`);
   await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
   await page.getByRole('button',{name:'同步管理',exact:true}).click();

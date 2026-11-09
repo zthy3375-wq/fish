@@ -647,6 +647,7 @@ onUnmounted(() => {
             />
           </template>
           <template v-else>
+            <div class="profile-page">
             <button class="profile-strip" @click="open('edit')">
               <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
               ><span class="profile-copy"
@@ -655,11 +656,11 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
-            <SchoolConnection /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
-            <CommunityGroup/>
-            <SectionHeader title="教务服务"/><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/>
-            <TaskSettings/>
-            <SectionHeader title="外观设置" />
+            <SectionHeader title="账号与教务"/><section class="profile-accounts"><SchoolConnection collapsible /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
+            </section>
+            <div class="profile-academics"><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/></div>
+            <SectionHeader title="偏好与数据" />
+            <section class="profile-preferences">
             <section class="settings-group">
               <div class="theme-row">
                 <span class="setting-label"><Sun :size="21" />主题</span>
@@ -685,18 +686,21 @@ onUnmounted(() => {
                 v-model="prefs.compact"
               />
             </section>
-            <SectionHeader title="应用设置" /><ServiceGroup
+            <ServiceGroup
               :items="settings"
               @select="(id) => (id === 'manager' ? manage() : open(id))"
             />
-            <FailureFeedback/>
+            <TaskSettings/>
+            </section>
+            <SectionHeader title="帮助与交流"/><section class="profile-support"><CommunityGroup/><details class="profile-feedback"><summary><span><MessageSquare :size="19"/>问题反馈</span><ChevronRight :size="16"/></summary><FailureFeedback/><ServiceGroup :items="about.filter(e=>e.id==='feedback').map(e=>({...e,title:'反馈说明'}))" @select="open"/></details></section>
             <SectionHeader title="关于与隐私" /><ServiceGroup
-              :items="about"
+              :items="about.filter(e=>e.id!=='feedback').map(e=>e.id==='about'?{...e,title:'关于邯院通',subtitle:undefined}:e)"
               @select="(id) => (id === 'app-update' ? checkUpdates(true) : open(id))"
             />
             <p class="footnote source-footnote">
               <ShieldCheck :size="13" />不保存教务密码 · 无广告 · 匿名统计可关闭
             </p>
+            </div>
           </template>
           <footer>
             邯院通 <span>·</span> 独立学生项目
