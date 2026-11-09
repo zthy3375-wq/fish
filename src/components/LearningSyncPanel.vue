@@ -11,7 +11,7 @@ const failed=(k:string)=>['error','partial'].includes(learningCache.value.course
 const failures=computed(()=>learningCache.value.courses.filter(c=>failed(key(c))).length);
 const blocked=computed(()=>learningBusy.value||saving.value||learningCache.value.issues.connection==='VERIFY');
 const courses=computed(()=>learningCache.value.courses.filter(c=>c.name.toLowerCase().includes(search.value.trim().toLowerCase())&&(scope.value==='all'||scope.value==='followed'&&followed(key(c))||scope.value==='failed'&&failed(key(c)))).sort((a,b)=>Number(followed(key(b)))-Number(followed(key(a)))));
-function state(k:string){const r=learningCache.value.courseSync[k];return !r?'还未读取':r.status==='ok'?`已读取 ${r.count} 份作业`:r.status==='partial'?`已保留 ${r.count} 份 · 未读完整`:'读取未成功'}
+function state(k:string){const r=learningCache.value.courseSync[k];return !r?'还未读取':r.status==='ok'?(r.count===0?'暂无作业':`已读取 ${r.count} 份作业`):r.status==='partial'?`已保留 ${r.count} 份 · 未读完整`:'读取未成功'}
 async function follow(k:string){if(blocked.value)return;try{saving.value=true;error.value='';const remove=followed(k);await selectLearningCourses(remove?learningCache.value.selectedCourses.filter(v=>v!==k):[...learningCache.value.selectedCourses,k]);if(!remove)await syncLearning({force:true,courseKeys:[k]})}catch{error.value='课程关注未保存，请重试'}finally{saving.value=false}}
 </script>
 <template>

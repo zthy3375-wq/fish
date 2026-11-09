@@ -264,13 +264,16 @@ try{
   await nav('待办').click();await page.getByRole('button',{name:/学习通作业/}).click();
   await page.getByRole('button',{name:'连接学习通',exact:true}).click();
   await page.locator('.lc-topbar').getByText('学习通已连接',{exact:true}).waitFor();
-  await page.getByRole('tab',{name:'课程',exact:true}).click();
+  await page.getByRole('button',{name:'课程管理',exact:true}).click();
   await page.getByRole('button',{name:/^关注并读取 /}).first().click();
   await page.getByRole('button',{name:/^取消关注 /}).first().waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).selectedCourses.includes('12/34')),`${width}: following saves immediately`);
   await page.getByRole('tab',{name:'作业',exact:true}).click();
   await page.locator('.learning-state.pending').waitFor();
   assert(await page.locator('.learning-management').getAttribute('open')===null,`${width}: sync controls collapse after course selection`);
+  const tabsTop=await page.locator('.lc-primary-tabs').boundingBox();
+  const overviewTop=await page.locator('.lc-overview').boundingBox();
+  assert(tabsTop&&overviewTop&&tabsTop.y<overviewTop.y,`${width}: task tabs precede sync overview`);
   const workTop=await page.locator('.learning-work').first().boundingBox();
   assert(workTop&&workTop.y<600,`${width}: first homework appears above fold`);
   await page.locator('.learning-course-group>summary').click();
@@ -288,7 +291,7 @@ try{
   await dialog.getByRole('button',{name:'保存安排',exact:true}).click();
   await dialog.waitFor({state:'hidden'});
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).items[0].status)==='pending',`${width}: prepared checkbox does not manufacture submitted status`);
-  await page.getByRole('tab',{name:'课程',exact:true}).click();
+  await page.getByRole('button',{name:'课程管理',exact:true}).click();
   await page.locator('.learning-course-button').first().click();
   assert(await page.locator('.course-context').isVisible(),`${width}: course opens its homework context`);
   await page.getByRole('button',{name:/^已提交/}).click();

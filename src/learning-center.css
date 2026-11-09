@@ -3,3 +3,6 @@
 .daily-learning .learning-management:not([open]){display:none}
 
 .lc-course .learning-course-button>.lc-book{flex:0 0 38px}.lc-search input:focus{outline:none;box-shadow:none}
+
+/* Main task navigation precedes overview and sync warnings. */
+.lc-navigation{display:grid;gap:8px}.lc-primary-tabs{display:grid;grid-template-columns:1fr 1fr;background:#eae2f5;border-radius:18px;padding:4px;gap:4px}.lc-primary-tabs button{min-height:50px;border:0;border-radius:14px;background:transparent;color:#756783;font:inherit;font-size:18px;font-weight:700}.lc-primary-tabs button[aria-selected=true]{background:#7040ce;color:white;box-shadow:0 3px 8px #7040ce20}.lc-tools{display:flex;justify-content:space-between;gap:12px}.lc-tools button{display:flex;align-items:center;gap:7px;min-height:44px;padding:6px 10px;border:0;background:transparent;color:#72548c;font:inherit;font-size:13px}.lc-tools button[aria-pressed=true]{background:#eee4fa;border-radius:12px;font-weight:700}.daily-learning .lc-overview{padding:12px 15px;border-radius:18px}.daily-learning .lc-overview h2{font-size:18px;margin:0 0 4px}.daily-learning .lc-refresh{min-height:46px;width:48px;border-radius:14px}

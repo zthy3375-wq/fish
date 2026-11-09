@@ -79,7 +79,13 @@ object ChaoxingParser {
             val item=LearningRecord("$cid/$clazz/$kind/$wid",cid,clazz,wid,kind,title.take(200),name.take(200),status(statusText),statusText.take(100),deadline(rawTime),null,rawTime,"",url.orEmpty())
             out[item.id]=item
         }
-        val empty=Regex("暂无作业|没有作业|暂无任务|没有相关作业").containsMatchIn(doc.text())
+        // Ignore template/script text and hidden placeholders; an unknown blank page is not zero work.
+        val visible=doc.clone();visible.select("script,style,template,[hidden],[style*=display:none],[style*=display: none]").remove()
+        val text=visible.text()+" "+visible.select("img[alt]").joinToString(" "){it.attr("alt")}
+        val emptyText=Regex("(?:暂无|没有|还没有|尚无)(?:相关|任何|发布的|布置的)?作业|(?:老师|教师)(?:还未|尚未|未)发布作业|暂无任务").containsMatchIn(text)
+        val blocked=Regex("请.*登录|验证码|访问过于频繁|加载失败|系统异常").containsMatchIn(text)
+        val zeroList=total(html)==0&&visible.select(".bottomList,.task-list").isNotEmpty()
+        val empty=rows.isEmpty()&&!blocked&&(emptyText||zeroList)
         val recognized=out.isNotEmpty()||empty
         val next=doc.select("a[rel=next],a.next:not(.disabled),.pagingNext:not(.disabled),.nextPage:not(.disabled)").any { it.attr("aria-disabled")!="true" && !it.hasClass("disabled") }
         val total=total(html)
