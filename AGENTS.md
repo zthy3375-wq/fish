@@ -35,3 +35,5 @@ Keep mock data under tests/fixtures. Do not add generated dist/assets, APKs, SDK
 New versions are test-only by default. Building, delivering an APK, or passing tests does not authorize publishing. Only an explicit owner instruction to push the new version to users authorizes Pgyer publication or changing live Tencent update metadata. Never trigger deployment workflows as a side effect of test work.
 
 When the owner explicitly requests a push, default to a mandatory update unless they specify optional. This does not authorize publishing before an explicit push request.
+
+For future Pgyer releases, use exactly `修复了一些问题` as the public update description unless the owner explicitly requests different wording. Keep detailed technical changes in repository records.
