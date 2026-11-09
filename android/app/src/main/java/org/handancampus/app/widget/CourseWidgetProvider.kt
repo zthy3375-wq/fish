@@ -40,16 +40,38 @@ class CourseWidgetProvider : AppWidgetProvider() {
             for (id in ids) {
                 val options = manager.getAppWidgetOptions(id)
                 val portrait = context.resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                val height = options.getInt(if(portrait) AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 260)
+                val height = options.getInt(if(portrait) AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 150)
                 val width = options.getInt(if(portrait) AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 300)
+                val views = if(android.os.Build.VERSION.SDK_INT >= 31){
+                    val sizes = options.getParcelableArrayList<android.util.SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES)
+                    if(!sizes.isNullOrEmpty()) RemoteViews(sizes.take(16).associateWith { size -> render(context,model,prefs.getLong("updated",0),now,size.width.toInt(),size.height.toInt()) })
+                    else render(context,model,prefs.getLong("updated",0),now,width,height)
+                }else render(context,model,prefs.getLong("updated",0),now,width,height)
+                manager.updateAppWidget(id,views)
+            }
+            // Inexact boundary alarm plus OS periodic updates: no new exact-alarm permission.
+            val next = mutableListOf(day.plusDays(1).atStartOfDay())
+            model?.courses(day)?.forEach { c -> for(k in listOf("start","end")) { val t=day.atTime(LocalTime.parse(c.getString(k)));if(t>now)next.add(t) } }
+            val due = minOf(next.minOrNull()!!, now.plusMinutes(30)).atZone(zone).toInstant().toEpochMilli()
+            (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).set(AlarmManager.RTC, due, refreshIntent(context))
+        }
+        /** Content wraps naturally even when an existing launcher slot remains tall. */
+        internal fun render(context: Context, model: WidgetSchedule?, updated: Long, now: LocalDateTime, width: Int, height: Int): RemoteViews {
                 val scale = context.resources.configuration.fontScale.coerceAtLeast(1f)
-                val limit = ((height - 96) / (78 * scale)).toInt().coerceIn(1, 4)
+                val tiny = height < 130
+                val compact = height < 220
+                val showFooter = height >= 180
+                val overhead = 62 + 16 * scale + if(showFooter) 16 * scale else 0f
+                val rowHeight = (if(tiny) 40 else if(compact) 52 else 78) * scale
+                val limit = ((height - overhead) / rowHeight).toInt().coerceIn(1, 4)
                 val root = RemoteViews(context.packageName, R.layout.course_widget)
+                val day = now.toLocalDate()
                 val week = model?.week(day)
+                root.setViewVisibility(R.id.widget_updated, if(showFooter) View.VISIBLE else View.GONE)
                 root.setTextViewText(R.id.widget_date, day.format(DateTimeFormatter.ofPattern("M.d"))+" · "+(if (week != null && week in 1..(model?.weekCount ?: 0)) "第"+week+"周" else if(model == null) "未同步" else "学期外"))
                 root.setOnClickPendingIntent(R.id.widget_refresh, refreshIntent(context))
                 root.setOnClickPendingIntent(R.id.widget_root, open(context, day))
-                root.setTextViewText(R.id.widget_updated, if(model == null) "打开邯院通同步课表" else "本地课表 · 更新于 "+Instant.ofEpochMilli(prefs.getLong("updated", 0)).atZone(zone).format(DateTimeFormatter.ofPattern("M/d HH:mm")))
+                root.setTextViewText(R.id.widget_updated, if(model == null) "打开邯院通同步课表" else "本地课表 · 更新于 "+Instant.ofEpochMilli(updated).atZone(zone).format(DateTimeFormatter.ofPattern("M/d HH:mm")))
                 for (offset in 0..1) {
                     val date = day.plusDays(offset.toLong())
                     val column = if (offset == 0) R.id.widget_today else R.id.widget_tomorrow
@@ -58,6 +80,7 @@ class CourseWidgetProvider : AppWidgetProvider() {
                     root.removeAllViews(column)
                     val all = model?.courses(date).orEmpty()
                     val pending = if(offset == 0) model?.remaining(now).orEmpty() else all
+                    if(offset == 0 && all.isNotEmpty() && pending.isEmpty()) root.setTextViewText(heading, "今天 · 已结束")
                     val visible = if (offset == 0 && pending.isEmpty()) all.takeLast(limit) else pending.take(limit)
                     if (visible.isEmpty()) {
                         val empty = RemoteViews(context.packageName, R.layout.course_widget_empty)
@@ -67,27 +90,28 @@ class CourseWidgetProvider : AppWidgetProvider() {
                     for (c in visible) {
                         val ended = offset == 0 && model!!.status(c,now)=="已结束"
                         val row = RemoteViews(context.packageName, if(ended) R.layout.course_widget_row_ended else R.layout.course_widget_row)
-                        row.setTextViewText(R.id.widget_course_name, c.getString("name"))
+                        val status = if(offset == 0) model!!.status(c,now) else ""
+                        val prefix = if(compact && status == "上课中") "上课中 · " else if(compact && status.startsWith("还有 ")) status.removePrefix("还有 ").removeSuffix(" 分钟")+"分后 · " else ""
+                        row.setTextViewText(R.id.widget_course_name, prefix+c.getString("name"))
+                        row.setInt(R.id.widget_course_name, "setMaxLines", if(compact) 1 else 2)
                         row.setTextViewText(R.id.widget_course_place, c.optString("room").ifBlank { "教室待定" }+(if(width >= 330 && c.optString("teacher").isNotBlank()) " · "+c.optString("teacher") else ""))
-                        row.setTextViewText(R.id.widget_course_time, c.getString("start")+"–"+c.getString("end"))
+                        row.setViewVisibility(R.id.widget_course_place, if(tiny) View.GONE else View.VISIBLE)
+                        row.setTextViewText(R.id.widget_course_time, c.getString("start")+"–"+c.getString("end")+(if(tiny) " · "+c.optString("room").ifBlank { "教室待定" } else ""))
+                        row.setInt(R.id.widget_course_time, "setMaxLines", 1)
                         row.setTextViewText(R.id.widget_course_status, if(offset == 0) model!!.status(c, now) else "")
-                        row.setViewVisibility(R.id.widget_course_status, if(offset == 0) View.VISIBLE else View.GONE)
+                        row.setViewVisibility(R.id.widget_course_status, if(offset == 0 && !compact) View.VISIBLE else View.GONE)
                         row.setInt(R.id.widget_course_color, "setBackgroundColor", when(c.optString("color")) { "blue" -> 0xff478bf5.toInt(); "green" -> 0xff35bd97.toInt(); "orange" -> 0xffe9a04c.toInt(); else -> 0xff9c7be9.toInt() })
                         row.setContentDescription(R.id.widget_course_row, c.getString("name")+" "+c.optString("room")+" "+c.optString("teacher")+" "+c.getString("start"))
                         row.setOnClickPendingIntent(R.id.widget_course_row, open(context, date));root.addView(column, row)
                     }
-                    val extra = RemoteViews(context.packageName, R.layout.course_widget_empty)
                     val more = pending.size-visible.size
-                    extra.setTextViewText(R.id.widget_empty, if(more > 0) "还有 "+more+" 节 ›" else if(offset == 0 && all.isNotEmpty() && pending.isEmpty()) "今天课程已结束" else "")
-                    extra.setOnClickPendingIntent(R.id.widget_empty, open(context,date));root.addView(column,extra)
+                    if(more > 0){
+                        val extra = RemoteViews(context.packageName, R.layout.course_widget_empty)
+                        extra.setTextViewText(R.id.widget_empty, "还有 "+more+" 节 ›")
+                        extra.setOnClickPendingIntent(R.id.widget_empty, open(context,date));root.addView(column,extra)
+                    }
                 }
-                manager.updateAppWidget(id, root)
-            }
-            // Inexact boundary alarm plus OS periodic updates: no new exact-alarm permission.
-            val next = mutableListOf(day.plusDays(1).atStartOfDay())
-            model?.courses(day)?.forEach { c -> for(k in listOf("start","end")) { val t=day.atTime(LocalTime.parse(c.getString(k)));if(t>now)next.add(t) } }
-            val due = minOf(next.minOrNull()!!, now.plusMinutes(30)).atZone(zone).toInstant().toEpochMilli()
-            (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).set(AlarmManager.RTC, due, refreshIntent(context))
+                return root
         }
     }
 }

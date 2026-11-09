@@ -1,0 +1,18 @@
+{
+  "monday": "2026-09-14",
+  "weekCount": 19,
+  "courses": [
+    {
+      "name": "形势与政策七",
+      "room": "A06J104",
+      "teacher": "测试教师",
+      "color": "blue",
+      "day": 3,
+      "weeks": [
+        9
+      ],
+      "start": "14:30",
+      "end": "15:55"
+    }
+  ]
+}

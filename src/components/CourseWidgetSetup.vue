@@ -54,7 +54,7 @@ onUnmounted(()=>{disposed=true;version++;stop();document.removeEventListener('vi
 <template>
  <section class="widget-setup" aria-label="桌面课表添加">
   <h2>桌面课表</h2>
-  <p class="widget-intro">今天、明天的课程，一眼查看。</p>
+  <p class="widget-intro">今天、明天的课程，一眼查看。默认采用紧凑的 4×2 尺寸。</p>
   <p class="widget-status" role="status">{{statusMessage}}</p>
   <button class="primary" :disabled="busy||stage==='pending'||!supported||!widgetSupported()" @click="add">{{busy?'正在发送…':stage==='pending'?'等待添加结果…':'请求系统添加'}}</button>
   <section class="widget-manual" aria-labelledby="widget-manual-title">
@@ -63,7 +63,7 @@ onUnmounted(()=>{disposed=true;version++;stop();document.removeEventListener('vi
    <p>如果先看到推荐内容，请继续查找“全部小组件”或应用小组件列表。</p>
    <div class="widget-manual-actions"><button class="secondary" :disabled="!widgetSupported()" @click="home">前往桌面</button><button class="text-button" @click="check">检查添加结果</button></div>
   </section>
-  <p class="widget-note">添加后显示本机已同步的课表；课表更新请在应用内刷新。</p>
+  <p class="widget-note">已添加的旧组件如果仍占着大格子，请长按缩小，或删除后重新添加。课表更新请在应用内刷新。</p>
  </section>
 </template>
 <style scoped>
