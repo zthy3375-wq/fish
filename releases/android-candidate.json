@@ -1,16 +1,15 @@
 {
-  "versionCode": 106,
-  "versionName": "1.0.6",
-  "minSupportedVersionCode": 102,
+  "versionCode": 107,
+  "versionName": "1.0.7",
+  "minSupportedVersionCode": 107,
   "minSdk": 23,
-  "sha256": "fd0ea63ed80baab000d354de14067bfe1f69942a606506a4bd0db14084ade38d",
-  "sizeBytes": 12401359,
-  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.0.6-fd0ea63ed80b.apk",
+  "sha256": "d1c97ca28e160987ab3ae1c8982502f17805c2e56bc2cc4fad18abc7e31376ad",
+  "sizeBytes": 12421839,
+  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.0.7-d1c97ca28e16.apk",
   "notes": [
-    "全新校园小鱼首页，小鱼可轻缓游动并支持暂停。",
-    "四个导航：首页、课表、待办、我的；合并重复课程入口。",
-    "突出趣智洗澡余额、胖乖饮水余额与取快递。"
+    "新增「我的 → 加入 QQ 交流群」，群号 434217654。",
+    "支持打开 QQ 群资料页和复制群号。",
+    "本次为强制更新，请安装 1.0.7 后继续使用。"
   ],
-  "ready": true,
-  "buildKey": "e5b29039569e105ea7d8c19f7bacfa14"
+  "ready": true
 }
