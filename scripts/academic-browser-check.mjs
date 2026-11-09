@@ -301,6 +301,21 @@ try{
   await nav('首页').click();
   assert(await page.locator('.today-tasks .task-row').count()===2,`${width}: home contains same personal plan and homework once each`);
   await page.screenshot({path:path.join(output,`today-${width}.png`),animations:'disabled'});
+  // Synthetic native insets: background stays at y=0 while foreground clears a tall status bar.
+  await page.evaluate(()=>document.documentElement.style.setProperty('--native-safe-top','40px'));
+  const heroBox=await page.locator('.campus-hero').boundingBox();
+  const heroTitle=await page.locator('.campus-hero h1').boundingBox();
+  assert(heroBox&&Math.abs(heroBox.y)<1,`${width}: campus artwork reaches viewport top`);
+  assert(heroTitle&&heroTitle.y>=40,`${width}: home title clears native status inset`);
+  await page.screenshot({path:path.join(output,`immersive-home-${width}.png`),animations:'disabled'});
+  await nav('课表').click();
+  const scheduleTitle=await page.locator('.app-header h1').boundingBox();
+  assert(scheduleTitle&&scheduleTitle.y>=40,`${width}: timetable title clears native status inset`);
+  await page.evaluate(()=>document.documentElement.style.setProperty('--native-safe-top','24px'));
+  const rotatedTitle=await page.locator('.app-header h1').boundingBox();
+  assert(rotatedTitle&&rotatedTitle.y>=24&&rotatedTitle.y<scheduleTitle.y,`${width}: changed inset updates foreground spacing`);
+  await page.evaluate(()=>document.documentElement.style.removeProperty('--native-safe-top'));
+
   await nav('待办').click();
   assert(await page.locator('.task-row').count()===2,`${width}: planned homework joins personal tasks without storage duplication`);
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: platform work stays out of personal backup`);

@@ -15,5 +15,6 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(org.handancampus.app.community.CommunityGroupPlugin.class);
         registerPlugin(org.handancampus.app.feedback.FeedbackSharePlugin.class);
         super.onCreate(savedInstanceState);
+        CampusInsets.install(this);
     }
 }
