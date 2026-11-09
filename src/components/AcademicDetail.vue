@@ -102,7 +102,7 @@ function touchEnd(e: TouchEvent) {
     <label v-if="academicCache.semesters.data?.length" class="schedule-term">
       <span>学期</span><select :value="academicCache.selectedTerm" :disabled="academicBusy" aria-label="课表学期" @change="termChange"><option v-for="t in academicCache.semesters.data" :key="`${t.xnm}-${t.xqm}`" :value="`${t.xnm}-${t.xqm}`">{{t.xnm}}–{{Number(t.xnm)+1}} {{t.xqm==='3'?'秋季':'春季'}}</option></select>
     </label>
-    <WeekCalibration :semester="semester" :now="now"/>
+    <WeekCalibration :semester="semester" :now="now" @saved="week=Math.max(1,Math.min(semester.weekCount,currentWeek(now,semester)));day=dayNumber(now)"/>
     <div class="schedule-toolbar"><button class="text-button" :aria-pressed="comfortable" @click="comfortable=!comfortable">{{comfortable?'舒适阅读':'整周总览'}}</button>
       <div class="segmented" aria-label="课表视图">
         <button
