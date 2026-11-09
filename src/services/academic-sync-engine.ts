@@ -1,7 +1,7 @@
 import {normalizeGrade} from '../domain/grade-analysis';
 import {uid,validateCourse,validateSemester,validateTimeTable, type Semester,type ManagedCourse,type TimeTable} from '../domain/schedule';
 import {handanTimeTable} from '../domain/handan-time-table';
-import {previewZhengfangTimetable} from './academic-adapters/zhengfang-timetable';
+import {previewZhengfangTimetable,parseZhengfangWeeks} from './academic-adapters/zhengfang-timetable';
 import type {HandanAcademicClient,NativeAcademicResult,SchoolTerm,SchoolProfile,SchoolGrade,SchoolExam,SessionState,SchoolTimetable} from './handan-academic-client';
 export interface CachedModule<T> {data:T|null;updatedAt:string|null;error:string|null;scope?:'all'|'term'|'unknown'}
 export interface SchoolTermCache {term:SchoolTerm;semester:Semester;table:TimeTable;courses:ManagedCourse[];practice:SchoolTimetable['practice']}
@@ -24,7 +24,7 @@ function normalizeTimetable(value:unknown,calendar:Semester[],previous?:SchoolTe
  const existing=calendar.find(s=>s.academicYear.replace(/[–—]/g,'-')===`${year}-${year+1}`&&s.season===season)??calendar[0];
  if(!existing)throw Error('TERM');
  let maxWeek=existing.weekCount;
- for(const item of t.kbList){const value=(item as {zcd?:unknown})?.zcd;if(typeof value==='string')for(const n of value.match(/\d+/g)||[]){const week=Number(n);if(week>=1&&week<=40)maxWeek=Math.max(maxWeek,week)}}
+ for(const item of t.kbList){const value=(item as {zcd?:unknown})?.zcd;if(typeof value==='string')for(const n of value.normalize("NFKC").match(/\d+/g)||[]){const week=Number(n);if(week>=1&&week<=40)maxWeek=Math.max(maxWeek,week)}}
  const semester:Semester={...existing,weekCount:maxWeek,id:`handan-${key}`,academicYear:existing.academicYear.replace(/[–—]/g,'-')===`${year}-${year+1}`?existing.academicYear:`${year}–${year+1}`,season,timeTableId:table.id};
  const preview=previewZhengfangTimetable({kbList:t.kbList},{semester,timeTable:table,existing:[],sourceTerm:t.term}).preview;
  if(preview.errors.length){const errors=preview.errors.join(' ');throw Error(/教学周|周次|单双周/.test(errors)?'WEEKS':/节次/.test(errors)?'PERIODS':'LOCAL_SCHEMA')}if(!preview.courses.length&&!t.practice.length)throw Error('EMPTY');
@@ -52,7 +52,21 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
    target=next.terms[key]??=emptyModule<SchoolTermCache>();
    if(module.status==='ok'){
     try{target.data=normalizeTimetable(raw,calendar,target.data);target.updatedAt=new Date().toISOString();target.error=null;next.selectedTerm=key}
-    catch(e){target.error=schoolError((e as Error).message);next.lastError=target.error}
+    catch(e){
+     const code=(e as Error).message;target.error=schoolError(code);
+     if(code==='WEEKS'&&Array.isArray(raw?.kbList)){
+      const examples:string[]=[];
+      for(const row of raw.kbList){const v=(row as {zcd?:unknown})?.zcd;if(typeof v!=='string')continue;
+       try{parseZhengfangWeeks(v,40)}catch{
+        const safe=v.normalize('NFKC').replace(/[\s\u200b-\u200d\ufeff]/g,'');
+        if(safe.length<=80&&/^[0-9第周单双至到,、;()\[\]{}~～—–−/\-]+$/.test(safe)&&!examples.includes(safe))examples.push(safe);
+       }
+       if(examples.length===3)break;
+      }
+      if(examples.length)target.error+='（周次格式：'+examples.join('；')+'）';
+     }
+     next.lastError=target.error;
+    }
    }else {target.error=schoolError(module.code);next.lastError=target.error;}
    continue;
   }

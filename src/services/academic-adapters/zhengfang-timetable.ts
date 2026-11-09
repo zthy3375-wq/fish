@@ -49,25 +49,26 @@ export function parseZhengfangWeeks(value: string, max: number): number[] {
     max > 40
   )
     throw Error("教学周格式或范围无效");
-  const normalized = value
-    .replace(/\s/g, "")
+  const normalized = value.normalize("NFKC")
+    .replace(/[\s\u200b-\u200d\ufeff]/g, "")
     .replace(/（/g, "(")
     .replace(/）/g, ")")
     .replace(/[，、；;]/g, ",")
-    .replace(/[–—~～至]/g, "-");
+    .replace(/[–—−~～至到]/g, "-");
   const weeks = new Set<number>();
   for (const segment of normalized.split(",")) {
-    const match =
-      /^(\d{1,2})(?:-(\d{1,2}))?(?:周)?(?:\((单|双)(?:周)?\))?$/.exec(segment);
+    // 正方会将单双周放在“周”之前或之后；只接受完整的数值范围。
+    const match = /^(?:第)?(\d{1,2})(?:-(?:第)?(\d{1,2}))?(?:周)?(?:\((单|双)(?:周)?\)(?:周)?|(单|双)(?:周)?)?$/.exec(segment);
     if (!match)
-      throw Error("无法完整识别教学周；支持 1-16周(单)、2-16周(双)、1,3,5周");
+      throw Error("无法完整识别教学周；支持第1-16周、1-16(单)周、2-16双周、1,3,5周");
+    const parity = match[3] ?? match[4];
     const first = Number(match[1]),
       last = Number(match[2] ?? match[1]);
     if (first < 1 || last < first || last > max)
       throw Error("教学周超出所选学期");
     for (let week = first; week <= last; week++) {
-      if (match[3] === "单" && week % 2 === 0) continue;
-      if (match[3] === "双" && week % 2 === 1) continue;
+      if (parity === "单" && week % 2 === 0) continue;
+      if (parity === "双" && week % 2 === 1) continue;
       weeks.add(week);
     }
   }
