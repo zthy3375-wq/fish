@@ -7,3 +7,7 @@
 @media(min-width:600px){.daily-detail{max-width:520px;margin:auto;border-radius:20px}.task-sheet-backdrop{align-items:center}}
 
 .daily-task-toolbar{display:flex;align-items:center;gap:12px}.daily-task-toolbar .task-mode{flex:1}.daily-task-toolbar>.icon-button{flex-shrink:0}.daily-learning .task-message{margin:0;padding:8px 10px;font-size:11px;line-height:1.6}.home-active .course-list .empty-state{padding:16px}.task-center .task-list-heading{margin:0}
+
+/* A keyboard-shortened viewport must still leave room for the status bar. */
+.task-sheet-backdrop .task-sheet{max-height:min(90dvh,calc(100dvh - var(--safe-top) - 8px))}
+.keyboard-open .task-sheet-backdrop .task-sheet{max-height:calc(100dvh - var(--safe-top) - 8px)}

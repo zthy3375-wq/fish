@@ -435,7 +435,7 @@ async function nativeTheme() {
       });
       if (Capacitor.getPlatform() === "android")
         await StatusBar.setBackgroundColor({
-          color: dark.value ? "#171c24" : "#f7f8fb",
+          color: "#00000000",
         });
     } catch {
       /* Unsupported system-bar operations do not block the app. */
