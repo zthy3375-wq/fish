@@ -1,5 +1,5 @@
 {
-  "latest": 107,
+  "latest": 108,
   "releases": [
     {
       "schema": 1,
@@ -44,6 +44,21 @@
         "本次为强制更新，请安装 1.0.7 后继续使用。"
       ],
       "buildKey": "b7fb0faba897419d8b689eb379dc41e4"
+    },
+    {
+      "schema": 1,
+      "versionCode": 108,
+      "versionName": "1.0.8-test.1",
+      "minSupportedVersionCode": 108,
+      "minSdk": 23,
+      "sha256": "e418e400bd2936a71bede54e39eebfbb6842da64fb94f972be1c1eb419dc35fb",
+      "sizeBytes": 12421839,
+      "notes": [
+        "新增「我的 → 导出并发送到 QQ」，方便反馈课表与学习通故障。",
+        "改进课表周次格式兼容，完善学习通逐课程失败提示。",
+        "本次为强制更新，请安装新版本后继续使用。"
+      ],
+      "buildKey": "5bbfc9884bd708665b8d36401e081bb4"
     }
   ]
 }
