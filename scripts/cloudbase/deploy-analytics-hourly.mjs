@@ -9,14 +9,15 @@ const envId='hanyuantong-d8gjzt1jh12370215',region='ap-shanghai',key=process.env
 if(!key)throw Error('Missing backend deployment credential');
 process.env.CLOUDBASE_ENV_ID=envId;process.env.CLOUDBASE_APIKEY=key;
 const c=await credentials();
-const info=await cloudApi('DescribeEnvs',{EnvId:envId});
-const env=info.EnvList?.find(e=>e.EnvId===envId);const bucket=env?.Storages?.[0]?.Bucket;
-if(!bucket||env.Storages[0].Region!==region)throw Error('Environment private storage not available');
+// Target bucket and region supplied by the owner from the environment console.
+const bucket='6861-hanyuantong-d8gjzt1jh12370215-1527874185';
 process.env.ANALYTICS_BUCKET=bucket;
 const batchToken=createHmac('sha256',key).update('hyt-analytics-hourly-batch-v2').digest('hex');
 const salt=createHmac('sha256',key).update('hyt-analytics-ip-salt-v1').digest('hex');
 const sensitive=[key,c.Token,c.TmpSecretKey,c.TmpSecretId,batchToken,salt];
 const redact=s=>sensitive.reduce((v,k)=>v.replaceAll(k,'[redacted]'),s);
+process.on('uncaughtException',error=>{console.error('Deployment stopped:',redact(String(error.code||error.message).slice(0,300)));process.exit(1)});
+process.on('unhandledRejection',error=>{console.error('Deployment stopped:',redact(String(error?.code||error?.message||'request_failed').slice(0,300)));process.exit(1)});
 const cliEnv={...process.env,CLOUDBASE_API_KEY:'',TENCENTCLOUD_SECRETID:c.TmpSecretId,TENCENTCLOUD_SECRETKEY:c.TmpSecretKey,TENCENTCLOUD_SESSIONTOKEN:c.Token};
 function cli(args){const r=spawnSync('tcb',[...args,'-e',envId,'-r',region],{env:cliEnv,encoding:'utf8',timeout:300000,maxBuffer:4*1024*1024});console.log(redact((r.stdout||'')+(r.stderr||'')));if(r.status!==0)throw Error('CloudBase command failed: '+args.slice(0,2).join(' '))}
 const store=await createStore(),outbox=new Outbox(store,sql);
