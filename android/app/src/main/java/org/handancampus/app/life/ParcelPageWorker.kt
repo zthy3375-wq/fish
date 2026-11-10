@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.webkit.*
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -80,7 +81,7 @@ class ParcelPageWorker(
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = !ParcelWebPolicy.allows(provider, request.url.toString())
             override fun shouldOverrideUrlLoading(view: WebView, url: String) = !ParcelWebPolicy.allows(provider, url)
             override fun onPageStarted(view: WebView, url: String, icon: Bitmap?) {
-                document++; loadedAt = System.currentTimeMillis()
+                document++; loadedAt = SystemClock.elapsedRealtime()
                 if (!ParcelWebPolicy.allows(provider, url)) { view.stopLoading(); return }
                 if (running) schedule(100)
             }
@@ -103,17 +104,17 @@ class ParcelPageWorker(
         if (destroyed) return
         pause(); generation++; identity = showIdentity; authenticating = auth
         nativePending = false; changedAt = 0L; nativeQueried = false; successful = false; redirected = false; verified = false; lastResult = ""
-        running = true; deadline = System.currentTimeMillis() + if (auth) 180_000 else if (showIdentity) 25_000 else 40_000
+        running = true; deadline = SystemClock.elapsedRealtime() + if (auth) 180_000 else if (showIdentity) 25_000 else 40_000
         web.onResume()
         // Reuse only a very recent official identity document; never persist or reuse a bitmap.
-        if (showIdentity && ParcelWebPolicy.isEntry(provider, web.url) && System.currentTimeMillis() - loadedAt < 10_000) {
+        if (showIdentity && ParcelWebPolicy.isEntry(provider, web.url) && SystemClock.elapsedRealtime() - loadedAt < 10_000) {
             web.evaluateJavascript("if(window.HytIdentity) HytIdentity.image='';", null)
         } else web.loadUrl(target())
         schedule(100)
     }
     fun continueAuthentication() {
         if (destroyed) return
-        running = true; authenticating = true; deadline = System.currentTimeMillis() + 180_000
+        running = true; authenticating = true; deadline = SystemClock.elapsedRealtime() + 180_000
         web.onResume(); schedule(200)
     }
     private fun schedule(delay: Long) { handler.removeCallbacks(poll); if (running) handler.postDelayed(poll, delay) }
@@ -125,7 +126,7 @@ class ParcelPageWorker(
     }
     private fun read() {
         if (!running || destroyed || activity.isFinishing) return
-        if (System.currentTimeMillis() > deadline) { issue(if (successful) "partial" else "unrecognized"); return }
+        if (SystemClock.elapsedRealtime() > deadline) { issue(if (successful) "partial" else "unrecognized"); return }
         val ticket = generation; val page = document
         val current = web.url
         if (!ParcelWebPolicy.allows(provider, current)) { schedule(700); return }
@@ -139,11 +140,11 @@ class ParcelPageWorker(
             }
             if (batch.phase in setOf("partial", "empty")) {
                 successful = true
-                if (lastResult != raw) { lastResult = raw; changedAt = System.currentTimeMillis(); listener.onBatch(this, batch, accountScope()) }
+                if (lastResult != raw) { lastResult = raw; changedAt = SystemClock.elapsedRealtime(); listener.onBatch(this, batch, accountScope()) }
                 confirmSession()
                 if (!identity) {
                     // A recognised list needs no duplicate native request; allow a short quiet window for late items.
-                    if (!nativePending && System.currentTimeMillis() - changedAt >= 1500) { pause(); web.stopLoading(); return@evaluateJavascript }
+                    if (!nativePending && SystemClock.elapsedRealtime() - changedAt >= 1500) { pause(); web.stopLoading(); return@evaluateJavascript }
                     schedule(500); return@evaluateJavascript
                 }
             }
@@ -162,7 +163,7 @@ class ParcelPageWorker(
     private fun confirmSession() {
         if (verified) return
         verified = true
-        if (authenticating) { authenticating = false; deadline = System.currentTimeMillis() + 40_000 }
+        if (authenticating) { authenticating = false; deadline = SystemClock.elapsedRealtime() + 40_000 }
         listener.onVerified(this)
     }
     private fun captureIdentity(ticket: Int, page: Int, done: (Boolean) -> Unit) {
@@ -202,7 +203,7 @@ class ParcelPageWorker(
             finally {
                 handler.post {
                     if (running && !destroyed && ticket == generation && page == document) {
-                        nativePending = false; deadline = minOf(deadline, System.currentTimeMillis() + 2500); schedule(0)
+                        nativePending = false; deadline = minOf(deadline, SystemClock.elapsedRealtime() + 2500); schedule(0)
                     }
                 }
             }
