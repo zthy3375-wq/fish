@@ -29,19 +29,19 @@ it('offers two clearly labelled official-app shortcuts without a code or account
 it('opens embedded pages deliberately and fences late callbacks', async () => {
   let finish!: (value: boolean) => void;
   bridge.embedded.mockReturnValue(new Promise<boolean>(resolve => { finish = resolve })); mount();
-  button('淘宝取件页面').click(); button('淘宝取件页面').click(); await nextTick();
+  button('打开取件中心').click(); button('打开取件中心').click(); await nextTick();
   expect(bridge.embedded).toHaveBeenCalledExactlyOnceWith('taobao');
-  expect(button('拼多多取件页面').disabled).toBe(true);
+  expect(button('打开取件中心').disabled).toBe(true);
   app!.unmount(); app = undefined; mount(); finish(true); await settle();
   expect(root.querySelector('[role=status]')).toBeNull();
 });
 it('does not describe opening a window as a successful login or data sync', async () => {
-  bridge.embedded.mockResolvedValue(true); mount(); button('拼多多取件页面').click(); await settle();
-  expect(root.textContent).toContain('请在官方网页登录');
+  bridge.embedded.mockResolvedValue(true); mount(); button('打开取件中心').click(); await settle();
+  expect(root.textContent).toContain('首次使用请连接账号');
   expect(root.textContent).not.toMatch(/登录成功|同步成功|已连接账号/);
-  bridge.embedded.mockResolvedValue(false); button('拼多多取件页面').click(); await settle();
+  bridge.embedded.mockResolvedValue(false); button('打开取件中心').click(); await settle();
   expect(root.textContent).toContain('暂时无法打开应用内页面');
-  expect(button('淘宝取件页面').disabled).toBe(false);
+  expect(button('打开取件中心').disabled).toBe(false);
 });
 it('disables web previews instead of silently navigating to a provider URL', () => {
   bridge.supported = false; mount();

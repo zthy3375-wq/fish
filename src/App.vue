@@ -16,6 +16,7 @@ const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
 const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
 import ParcelShortcuts from './components/ParcelShortcuts.vue';
+import {openEmbeddedParcel, parcelShortcutsSupported} from './services/parcel-shortcuts';
 import LearningCenter from './components/LearningCenter.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import TaskSettings from './components/TaskSettings.vue';
@@ -157,6 +158,14 @@ watch(()=>!loading.value&&!error.value?widgetSnapshot(semester.value,data.value.
  }).catch(()=>{});
 });
 function addCourseWidget(){open('course-widget');}
+let parcelOpening = false;
+async function openLife(id: Parameters<typeof open>[0]) {
+ if(id !== 'parcel' || !parcelShortcutsSupported()){open(id);return;}
+ if(parcelOpening)return;
+ parcelOpening=true;
+ try { if(await openEmbeddedParcel('taobao')) void recordFeature('parcel'); else open('parcel'); }
+ finally { parcelOpening=false; }
+}
 async function openWidgetTarget(){
  if(!widgetSupported()||loading.value)return;
  try{
@@ -633,13 +642,13 @@ onUnmounted(() => {
                 </div>
               <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
               </section>
-              <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
+              <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="openLife"/></section>
               <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
 
 
             </div>
           </template>
-          <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
+          <template v-else-if="page === 'life'"><LifeServices @open="openLife"/></template>
           <template v-else-if="page === 'academic' || page === 'schedule' || page === 'tasks'">
             <button v-if="section==='agenda'" class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通作业</strong><span>按课程查看与安排</span><ChevronRight :size="16"/></button>
             <CampusAgenda v-if="section==='agenda'" @course="details" @navigate="go" @edit="editDailyTask" />
