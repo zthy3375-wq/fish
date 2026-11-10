@@ -99,7 +99,7 @@
     if (/captcha|punish|verify/.test(location.pathname)) return 'verify';
     if (/login|passport/.test(location.hostname + location.pathname)) return 'login';
     if (Array.from(document.querySelectorAll('iframe')).some(function (f) { return visible(f) && /login|passport|captcha|verify/.test(f.src); })) return 'login';
-    var fields = Array.from(document.querySelectorAll('input')).filter(function(e){ return visible(e) && /^(password|tel|text|number)$/.test(e.type); });
+    var fields = Array.from(document.querySelectorAll('input')).filter(function(e){ return visible(e) && (e.type === 'password' || e.type === 'tel' || /one-time-code/.test(e.autocomplete) || /手机号|验证码|登录密码|手机号码/.test(e.placeholder || '')); });
     if (fields.length && /登录|验证码|手机号码/.test((document.body && document.body.innerText || '').slice(0, 8000))) return 'login';
     return '';
   }

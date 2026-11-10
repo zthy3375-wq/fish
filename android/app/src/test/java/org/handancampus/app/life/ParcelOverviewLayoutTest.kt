@@ -47,4 +47,32 @@ class ParcelOverviewLayoutTest {
         assertTrue(views(root).filterIsInstance<TextView>().any{it.text.toString()=="01-02-003"})
         controller.stop().destroy()
     }
+    @Test fun loginCompletionAlwaysReturnsAndUnconfirmedEmptyDoesNotClaimNoParcels() {
+        val controller=Robolectric.buildActivity(ParcelWebActivity::class.java).create().start().resume()
+        val activity=controller.get()
+        val mode=ParcelWebActivity::class.java.getDeclaredField("mode").apply{isAccessible=true}
+        mode.set(activity,"auth")
+        val header=ParcelWebActivity::class.java.getDeclaredField("headerAction").apply{isAccessible=true}.get(activity) as TextView
+        header.performClick()
+        assertEquals("list",mode.get(activity))
+        assertFalse(activity.isFinishing)
+        val text=views(activity.findViewById(android.R.id.content)).filterIsInstance<TextView>().map{it.text.toString()}
+        assertTrue(text.contains("尚未读取到包裹"))
+        assertFalse(text.contains("暂无待取包裹"))
+        controller.pause().stop().destroy()
+    }
+    @Test fun pausingWithoutParcelResultsDoesNotInventExpiredLoginAndEmptyIsExplicit() {
+        val controller=Robolectric.buildActivity(ParcelWebActivity::class.java).create().start().resume()
+        val activity=controller.get()
+        @Suppress("UNCHECKED_CAST")
+        val phases=ParcelWebActivity::class.java.getDeclaredField("phases").apply{isAccessible=true}.get(activity) as MutableMap<String,String>
+        phases["taobao"]="syncing"
+        ParcelWebActivity::class.java.getDeclaredMethod("pauseWorkers").apply{isAccessible=true}.invoke(activity)
+        assertEquals("idle",phases["taobao"])
+        phases["taobao"]="empty";phases["pinduoduo"]="empty"
+        ParcelWebActivity::class.java.getDeclaredMethod("renderList").apply{isAccessible=true}.invoke(activity)
+        assertTrue(views(activity.findViewById(android.R.id.content)).filterIsInstance<TextView>().any{it.text.toString()=="暂无待取包裹"})
+        controller.pause().stop().destroy()
+    }
+
 }

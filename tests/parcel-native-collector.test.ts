@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 const script=readFileSync('android/app/src/main/assets/parcel/native/collector.js','utf8');
 const doms:JSDOM[]=[];
 function fixture(html='',url='https://m.pinduoduo.net/mdkd/package'){
- const dom=new JSDOM(html,{url,runScripts:'outside-only'});doms.push(dom);dom.window.HTMLElement.prototype.getClientRects=(()=>[{}]) as any;dom.window.eval(script);
+ const dom=new JSDOM(html,{url,runScripts:'outside-only'});doms.push(dom);Object.defineProperty(dom.window.HTMLElement.prototype,'innerText',{get(){return this.textContent || '';}});dom.window.HTMLElement.prototype.getClientRects=(()=>[{}]) as any;dom.window.eval(script);
  return {dom,api:(dom.window as any).HytParcel};
 }
 afterEach(()=>doms.splice(0).forEach(d=>d.window.close()));
@@ -31,6 +31,14 @@ describe('native parcel collector',()=>{
  it('returns a login state without any captured codes during authentication',()=>{
   const {api,dom}=fixture();api.consume({data:{takeCode:'01-02-003',stationName:'合成东站'}});dom.reconfigure({url:'https://m.pinduoduo.net/login.html'});
   expect(api.read()).toMatchObject({phase:'login',items:[]});
+ });
+ it('does not mistake a parcel search box and login promotion for an active login form',()=>{
+  const {api}=fixture('<input type="text" placeholder="输入包裹快递单号查询"><div>登录领取优惠</div>', 'https://pages-fast.m.taobao.com/wow/z/uniapp/1100333/last-mile-fe/m-end-school-tab/home');
+  expect(api.read().phase).toBe('loading');
+ });
+ it('recognises visible phone and verification fields while excluding hidden login forms',()=>{
+  expect(fixture('<input type="text" placeholder="手机号码"><button>登录</button>').api.read().phase).toBe('login');
+  expect(fixture('<div hidden><input type="password"><button>登录</button></div>').api.read().phase).toBe('loading');
  });
  it('distinguishes an explicit empty list from an unrecognised page',()=>{
   expect(fixture('<div>Loading</div>').api.read().phase).toBe('loading');

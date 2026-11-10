@@ -84,7 +84,7 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
         header.addView(action("‹", false) { back() }.apply { textSize=32f; contentDescription="返回" }, LinearLayout.LayoutParams(dp(48),dp(52)))
         headerTitle = label("取件中心",19f,true)
         header.addView(headerTitle,LinearLayout.LayoutParams(0,-2,1f))
-        headerAction = action("账号",false) { if(mode=="auth") workers[selected]?.continueAuthentication() else if(mode=="identity") showIdentity(selected) else accounts() }
+        headerAction = action("账号",false) { if(mode=="auth") finishAuthentication() else if(mode=="identity") showIdentity(selected) else accounts() }
         header.addView(headerAction,LinearLayout.LayoutParams(dp(64),dp(48)))
         root.addView(header)
         stage = FrameLayout(this)
@@ -124,7 +124,7 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
         val all=store.ledger.items.values.toList()
         val pending=all.count {it.takenAt==0L && it.state=="pending"}
         val summary=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
-        summary.addView(label("$pending 件待取",28f,true),LinearLayout.LayoutParams(0,-2,1f))
+        summary.addView(label(if(pending>0 || phases.values.any{it=="empty"}) "$pending 件待取" else "包裹待查询",28f,true),LinearLayout.LayoutParams(0,-2,1f))
         summary.addView(action(if(phases.values.any{it=="syncing"})"同步中…" else "刷新") {syncAll()},LinearLayout.LayoutParams(-2,dp(44)))
         list.addView(summary)
         val latest=store.ledger.updated.values.maxOrNull()
@@ -151,7 +151,7 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
                 line.addView(action(if(isLogin)"连接" else "重试"){if(isLogin)authenticate(p) else sync(p)},LinearLayout.LayoutParams(dp(64),dp(44)))
                 row.addView(line)
                 row.addView(label(when(phase){
-                    "login"->"登录已过期，连接后继续同步"
+                    "login"->"需要登录，连接后继续同步"
                     "verify"->"需要完成官方验证"
                     "network"->"连接暂不可用，已保留上次数据"
                     "unrecognized"->"暂未读取到包裹，可重新连接后重试"
@@ -167,10 +167,17 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
             else->p.takenAt==0L && p.state=="pending"
         }}
         if(filtered.isEmpty()) {
+            val providers=if(platformFilter=="all") listOf("taobao","pinduoduo") else listOf(platformFilter)
+            val syncing=providers.any{phases[it]=="syncing"}
+            val confirmedEmpty=providers.all{phases[it]=="empty"}
             val empty=box(list);space(empty,12)
-            empty.addView(label(if(filter=="pending") "还没有待取包裹" else if(filter=="picked")"取完的包裹会收在这里" else "暂无运输中的包裹",18f,true))
-            space(empty,8)
-            empty.addView(label(if(phases.values.any {it=="syncing"})"正在同步，请稍候…" else "列表显示已成功读取的内容，未同步的包裹不会计入数量。",12f).apply{setTextColor(muted)})
+            val title=if(syncing) "正在查询包裹" else if(filter=="picked") "暂无已取记录" else if(confirmedEmpty && filter=="pending") "暂无待取包裹" else "尚未读取到包裹"
+            empty.addView(label(title,18f,true));space(empty,8)
+            empty.addView(label(when {
+                syncing->"正在同步，请稍候…"
+                confirmedEmpty->"官方页面显示暂无待取包裹，身份码仍可正常使用。"
+                else->"身份码可单独使用。当前未确认包裹列表，请稍后刷新。"
+            },12f).apply{setTextColor(muted)})
             space(empty,12)
         }
         filtered.sortedByDescending {it.syncedAt}.groupBy {it.station.ifBlank{"驿站待核对"}}.forEach {(station,parcels)->
@@ -219,7 +226,7 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
     private fun pauseWorkers() {
         workers.values.forEach { it.pause() }
         phases.keys.toList().forEach { p ->
-            if(phases[p]=="syncing") phases[p]=if(store.ledger.updated.containsKey(p)) "partial" else "login"
+            if(phases[p]=="syncing") phases[p]=if(store.ledger.updated.containsKey(p)) "partial" else "idle"
         }
     }
     private fun syncAll(){if(mode!="list")return;listOf("taobao","pinduoduo").forEach{sync(it)}}
@@ -257,6 +264,8 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
     override fun onVerified(worker:ParcelPageWorker) {
         if(closed || clearing || !foreground)return
         preferences.edit().putBoolean("connected_${worker.provider}",true).apply()
+        store.ledger.bind(worker.provider,worker.accountScope());store.save()
+        if(phases[worker.provider] !in listOf("partial","empty")) phases[worker.provider]="connected"
         if(mode=="auth" && selected==worker.provider){mode="list";hideWorkers();content.setBackgroundColor(surface);renderList();toast("已连接，正在读取取件信息");listOf("taobao","pinduoduo").filter{it!=worker.provider && preferences.getBoolean("connected_$it",false)}.forEach{sync(it)}}
     }
     override fun onIssue(worker:ParcelPageWorker,issue:String) {
@@ -315,6 +324,12 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
         next(0)
     }
     private fun openOfficial(p:String){try{val t=ParcelShortcutContract.target(p,setOf("provider"));startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(t.uri)).setPackage(t.packageName))}catch(_:Exception){toast("请先安装${name(p)} App")}}
+    private fun finishAuthentication() {
+        // Completion always exits the login presentation; the subsequent query validates the session.
+        val provider=selected
+        back()
+        if(foreground && mode=="list") sync(provider)
+    }
     private fun back(){if(mode=="list"){finish();return};pauseWorkers();clearIdentity();mode="list";hideWorkers();content.setBackgroundColor(surface);renderList()}
     @Deprecated("Legacy Android back dispatch") override fun onBackPressed(){back()}
     override fun onResume(){super.onResume();foreground=true;if(!::store.isInitialized)return;if(mode=="auth")workers[selected]?.continueAuthentication() else if(mode=="identity")showIdentity(selected) else syncAll()}

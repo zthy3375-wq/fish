@@ -41,12 +41,14 @@ class ParcelPageWorker(
     private var lastResult = ""
     private var successful = false
     private var redirected = false
+    private var verified = false
+    private var loadedAt = 0L
     var authenticating = false
         private set
     var identity = false
         private set
     private fun asset(name: String) = activity.assets.open("parcel/$name").bufferedReader().use { it.readText() }
-    private fun target() = if (identity) ParcelWebPolicy.entry(provider) else if (provider == "taobao") ParcelWebPolicy.TAOBAO_PARCELS else ParcelWebPolicy.PDD_ENTRY
+    private fun target() = if (identity || authenticating) ParcelWebPolicy.entry(provider) else if (provider == "taobao") ParcelWebPolicy.TAOBAO_PARCELS else ParcelWebPolicy.PDD_ENTRY
     init {
         web.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true
@@ -75,9 +77,9 @@ class ParcelPageWorker(
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = !ParcelWebPolicy.allows(provider, request.url.toString())
             override fun shouldOverrideUrlLoading(view: WebView, url: String) = !ParcelWebPolicy.allows(provider, url)
             override fun onPageStarted(view: WebView, url: String, icon: Bitmap?) {
-                document++
+                document++; loadedAt = System.currentTimeMillis()
                 if (!ParcelWebPolicy.allows(provider, url)) { view.stopLoading(); return }
-                if (running) schedule(350)
+                if (running) schedule(100)
             }
             override fun onPageFinished(view: WebView, url: String) {
                 if (!running || !ParcelWebPolicy.allows(provider, url)) return
@@ -86,7 +88,7 @@ class ParcelPageWorker(
                     redirected = true; view.loadUrl(target()); return
                 }
                 view.evaluateJavascript(collector, null)
-                schedule(400)
+                schedule(100)
             }
             override fun onReceivedSslError(view: WebView, h: SslErrorHandler, error: SslError) { h.cancel(); issue("network") }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) { if (request.isForMainFrame) issue("network") }
@@ -97,9 +99,14 @@ class ParcelPageWorker(
     fun start(auth: Boolean = false, showIdentity: Boolean = false) {
         if (destroyed) return
         pause(); generation++; identity = showIdentity; authenticating = auth
-        nativeQueried = false; successful = false; redirected = false; lastResult = ""
-        running = true; deadline = System.currentTimeMillis() + if (auth) 180_000 else 40_000
-        web.onResume(); web.loadUrl(target()); schedule(700)
+        nativeQueried = false; successful = false; redirected = false; verified = false; lastResult = ""
+        running = true; deadline = System.currentTimeMillis() + if (auth) 180_000 else if (showIdentity) 25_000 else 18_000
+        web.onResume()
+        // Reuse only a very recent official identity document; never persist or reuse a bitmap.
+        if (showIdentity && ParcelWebPolicy.isEntry(provider, web.url) && System.currentTimeMillis() - loadedAt < 10_000) {
+            web.evaluateJavascript("if(window.HytIdentity) HytIdentity.image='';", null)
+        } else web.loadUrl(target())
+        schedule(100)
     }
     fun continueAuthentication() {
         if (destroyed) return
@@ -130,7 +137,7 @@ class ParcelPageWorker(
             if (batch.phase in setOf("partial", "empty")) {
                 successful = true
                 if (lastResult != raw) { lastResult = raw; listener.onBatch(this, batch, accountScope()) }
-                if (authenticating) { authenticating = false; deadline = System.currentTimeMillis() + 15_000; listener.onVerified(this) }
+                confirmSession()
                 if (!identity) {
                     // Keep the source attached for late network/DOM results, without showing it to the user.
                     if (!nativeQueried && provider == "taobao") nativeQuery(ticket, page)
@@ -140,10 +147,16 @@ class ParcelPageWorker(
             captureIdentity(ticket, page) { ready ->
                 if (!running || generation != ticket || document != page) return@captureIdentity
                 if (ready && !identity && provider == "taobao") { web.loadUrl(ParcelWebPolicy.TAOBAO_PARCELS); schedule(700); return@captureIdentity }
-                if (!nativeQueried && provider == "taobao" && batch.phase != "login") nativeQuery(ticket, page)
-                schedule(900)
+                if (!identity && !authenticating && !nativeQueried && provider == "taobao") nativeQuery(ticket, page)
+                schedule(if (identity || authenticating) 200 else 900)
             }
         }
+    }
+    private fun confirmSession() {
+        if (verified) return
+        verified = true
+        if (authenticating) { authenticating = false; deadline = System.currentTimeMillis() + 18_000 }
+        listener.onVerified(this)
     }
     private fun captureIdentity(ticket: Int, page: Int, done: (Boolean) -> Unit) {
         web.evaluateJavascript(identityScript) { raw ->
@@ -155,7 +168,7 @@ class ParcelPageWorker(
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                 require(bounds.outWidth in 1..2048 && bounds.outHeight in 1..2048 && bounds.outWidth.toLong() * bounds.outHeight <= 2_000_000)
-                if (authenticating) { authenticating = false; listener.onVerified(this) }
+                confirmSession()
                 if (identity) {
                     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: throw IllegalArgumentException()
                     running = false; handler.removeCallbacks(poll); listener.onIdentity(this, bitmap)
