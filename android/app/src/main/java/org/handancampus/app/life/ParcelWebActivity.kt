@@ -5,6 +5,8 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -21,7 +23,7 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 
-/** Official pages have no Capacitor/Java bridge. Codes stay in the document, never in logs or IPC. */
+/** No page-callable bridge. A fixed read-only script returns bounded pickup fields into this process. */
 class ParcelWebActivity : Activity() {
     private lateinit var frame: FrameLayout
     private lateinit var status: TextView
@@ -35,8 +37,14 @@ class ParcelWebActivity : Activity() {
     private val passedLogin = mutableSetOf<WebView>()
     private val returnedOnce = mutableSetOf<WebView>()
     private val tabs = mutableMapOf<String, Button>()
+    private val readSession = ParcelReadSession()
+    private val snapshots get() = readSession.snapshots
+    private var overview = false
+    private val reading = mutableSetOf<WebView>()
+    private lateinit var allTab: Button
     private var selected = "taobao"
     private var popup: WebView? = null
+    private var codeDialog: AlertDialog? = null
     private var closed = false
     private var foreground = false
     private var clearing = false
@@ -68,13 +76,15 @@ class ParcelWebActivity : Activity() {
         top.addView(button("关闭", true) { finish() }, LinearLayout.LayoutParams(dp(62), dp(48)))
         root.addView(top)
         val platforms = LinearLayout(this).apply { setPadding(dp(12), 0, dp(12), 0) }
+        allTab = button("全部待取") { showOverview() }
+        platforms.addView(allTab, LinearLayout.LayoutParams(0, dp(46), 1f))
         listOf("taobao" to "淘宝", "pinduoduo" to "拼多多").forEach { (id, name) ->
             val b = button(name) { select(id) }; tabs[id] = b
             platforms.addView(b, LinearLayout.LayoutParams(0, dp(46), 1f))
         }
         root.addView(platforms)
         val actions = LinearLayout(this)
-        actions.addView(button("刷新") { refresh() }, LinearLayout.LayoutParams(0, dp(44), 1f))
+        actions.addView(button("刷新") { if (overview) readOverview() else refresh() }, LinearLayout.LayoutParams(0, dp(44), 1f))
         actions.addView(button("官方 App") { openOfficial() }, LinearLayout.LayoutParams(0, dp(44), 1f))
         actions.addView(button("更多") { menu() }, LinearLayout.LayoutParams(0, dp(44), 1f))
         root.addView(actions)
@@ -113,9 +123,11 @@ class ParcelWebActivity : Activity() {
     }
     private fun select(provider: String) {
         if (!usable || clearing || closed) return
+        overview = false
         closePopup()
         browsers[selected]?.let { it.onPause(); it.evaluateJavascript("if(window.HandyPddLayout)HandyPddLayout.setActive(false)", null) }
         selected = provider
+        allTab.alpha = .55f
         tabs.forEach { (id, b) -> b.alpha = if (id == selected) 1f else .55f }
         try {
             val web = browsers[provider] ?: createBrowser(provider).also {
@@ -155,7 +167,7 @@ class ParcelWebActivity : Activity() {
         web.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(message: ConsoleMessage?) = true // Never log account/page/code contents.
             override fun onProgressChanged(view: WebView, value: Int) {
-                if (active(view)) { progress.progress = value; progress.visibility = if (value == 100 || failed.contains(view)) View.GONE else View.VISIBLE }
+                if (active(view) && !overview) { progress.progress = value; progress.visibility = if (value == 100 || failed.contains(view)) View.GONE else View.VISIBLE }
             }
             override fun onPermissionRequest(request: PermissionRequest) { request.deny() }
             override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback) { callback.invoke(origin, false, false) }
@@ -183,11 +195,13 @@ class ParcelWebActivity : Activity() {
                 if (isPopup && url == "about:blank") return
                 if (!ParcelWebPolicy.allows(provider, url)) { view.stopLoading(); if (active(view)) tell("该地址暂不支持，请使用官方 App。"); return }
                 generations[view] = (generations[view] ?: 0) + 1
+                invalidate(provider)
                 projected.remove(view); failed.remove(view)
                 if (active(view)) tell("正在载入官方网页 · ${ParcelWebPolicy.host(url)}")
             }
             override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
                 if (owned(view)) {
+                    invalidate(provider)
                     if (provider == "pinduoduo" && Uri.parse(url).path == "/login.html") passedLogin.add(view)
                     inspect(view, provider, generations[view] ?: 0, 0)
                 }
@@ -222,10 +236,13 @@ class ParcelWebActivity : Activity() {
 
     private fun pageFailed(view: WebView) {
         failed.add(view)
+        browsers.entries.firstOrNull { it.value === view }?.key?.let { invalidate(it); snapshots[it] = ParcelReadResult("unrecognized", emptyList()) }
+        if (overview) renderOverview()
         if (active(view)) { progress.visibility = View.GONE; tell("官方页面暂不可用，可点“刷新”重试，或使用“官方 App”。") }
     }
     private fun inspect(view: WebView, provider: String, epoch: Int, attempt: Int) {
-        if (!active(view) || !foreground || generations[view] != epoch || failed.contains(view) || rawPages.contains(view) || projected.contains(view)) return
+        if (!active(view) || !foreground || overview || generations[view] != epoch || failed.contains(view)) return
+        if (rawPages.contains(view) || projected.contains(view)) { readPending(view, provider); return }
         if (!ParcelWebPolicy.isEntry(provider, view.url)) return
         val probe = if (provider == "taobao") asset("official-identity.js") + "\n" + asset("login-ready.js")
             else assets.open("parcel/pdd-ready.js").bufferedReader().use { it.readText() }
@@ -249,7 +266,10 @@ class ParcelWebActivity : Activity() {
                         if (active(view)) {
                             if (provider == "taobao" && applied != "true") {
                                 projected.remove(view); tell("官方页面仍在更新，请完成验证后刷新。")
-                            } else tell("官方取件信息 · ${if (provider == "pinduoduo") "上方刷新会重新载入当前平台。" else "可刷新卡片；登录验证请在官方页面完成。"}")
+                            } else {
+                                tell("官方取件信息 · 点“全部待取”集中查看已读取的取件码。")
+                                readPending(view, provider)
+                            }
                         }
                     }
                 } catch (_: Exception) { projected.remove(view); tell("整理页面暂不可用，可在“更多”查看官方原始页面。") }
@@ -260,6 +280,7 @@ class ParcelWebActivity : Activity() {
     }
     private fun refresh() {
         if (!usable) return
+        invalidate(selected)
         closePopup()
         val web = browsers[selected] ?: run { select(selected); return }
         failed.remove(web)
@@ -272,6 +293,7 @@ class ParcelWebActivity : Activity() {
     }
     private fun raw(identity: Boolean) {
         if (!usable) return
+        if (overview) select(selected)
         closePopup()
         val web = browsers[selected] ?: return
         rawPages.add(web); projected.remove(web)
@@ -294,6 +316,7 @@ class ParcelWebActivity : Activity() {
         if (!usable || clearing) return
         if (!preferences.edit().putBoolean("reset_pending", true).commit()) { usable = false; tell("无法记录清理状态，请关闭后重试。"); return }
         clearing = true
+        invalidateAll()
         popup?.let { dispose(it) }; popup = null
         browsers.values.toList().forEach { dispose(it) }; browsers.clear(); frame.removeAllViews()
         handler.removeCallbacksAndMessages(null)
@@ -320,6 +343,7 @@ class ParcelWebActivity : Activity() {
         browsers[selected]?.let { attach(it) }
     }
     private fun dispose(view: WebView) {
+        reading.remove(view)
         generations.remove(view); rawPages.remove(view); projected.remove(view); failed.remove(view)
         passedLogin.remove(view); returnedOnce.remove(view)
         (view.parent as? android.view.ViewGroup)?.removeView(view)
@@ -328,6 +352,7 @@ class ParcelWebActivity : Activity() {
     @Suppress("DEPRECATION")
     private fun back() {
         if (clearing) { finish(); return }
+        if (overview) { select(selected); return }
         val current = popup ?: browsers[selected]
         if (current != null && ParcelWebPolicy.isEntry(selected, current.url) && projected.contains(current)) {
             current.evaluateJavascript("(function(){return !!(window.HandyPddLayout && HandyPddLayout.back());})()") {
@@ -340,19 +365,120 @@ class ParcelWebActivity : Activity() {
     override fun onSaveInstanceState(out: Bundle) { out.putString("provider", selected); super.onSaveInstanceState(out) }
     override fun onResume() {
         super.onResume(); foreground = true
-        (popup ?: browsers[selected])?.let { it.onResume(); inspect(it, selected, generations[it] ?: 0, 0) }
+        if (overview) readOverview()
+        else (popup ?: browsers[selected])?.let { it.onResume(); inspect(it, selected, generations[it] ?: 0, 0) }
     }
     override fun onPause() {
         foreground = false; handler.removeCallbacksAndMessages(null)
+        codeDialog?.dismiss(); codeDialog = null
+        invalidateAll()
+        if (overview) renderOverview()
         browsers.values.forEach { it.onPause() }; popup?.onPause()
         if (usable) CookieManager.getInstance().flush()
         super.onPause()
     }
     override fun onDestroy() {
         closed = true; handler.removeCallbacksAndMessages(null)
+        invalidateAll()
         popup?.let { dispose(it) }; popup = null
         browsers.values.toList().forEach { dispose(it) }; browsers.clear()
         super.onDestroy()
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    private fun invalidate(provider: String) {
+        readSession.invalidate(provider)
+        reading.clear()
+    }
+    private fun invalidateAll() {
+        readSession.clear()
+        reading.clear()
+    }
+    private fun readPending(view: WebView, provider: String, done: (() -> Unit)? = null) {
+        if (!foreground || !owned(view) || view === popup || !reading.add(view)) { done?.invoke(); return }
+        val epoch = generations[view]
+        val ticket = readSession.generation
+        if (failed.contains(view) || !ParcelWebPolicy.allows(provider, view.url)) {
+            reading.remove(view); snapshots.remove(provider); done?.invoke(); return
+        }
+        val script = assets.open("parcel/read-pending.js").bufferedReader().use { it.readText() }
+        view.evaluateJavascript(script) { result ->
+            if (!foreground || !owned(view) || failed.contains(view) || epoch != generations[view] || ticket != readSession.generation) return@evaluateJavascript
+            reading.remove(view)
+            readSession.accept(provider, ticket, result)
+            if (overview) renderOverview()
+            done?.invoke()
+        }
+    }
+    private fun showOverview() {
+        if (!usable || clearing) return
+        closePopup()
+        overview = true
+        allTab.alpha = 1f
+        tabs.values.forEach { it.alpha = .55f }
+        browsers.values.forEach { it.onPause() }
+        readOverview()
+    }
+    private fun readOverview() {
+        // Inspect already-open documents only. No hidden login, polling or parallel HTTP sync.
+        if (!overview || !foreground) return
+        invalidateAll()
+        renderOverview()
+        browsers.forEach { (provider, web) -> readPending(web, provider) }
+        tell("读取本次打开的官方页面 · 需要更新包裹时，进入对应平台点刷新。")
+    }
+    private fun renderOverview() {
+        if (!overview || closed || clearing) return
+        val scroll = ScrollView(this)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(24)) }
+        scroll.addView(list)
+        val count = snapshots.values.sumOf { it.items.size }
+        list.addView(label("已读取 $count 条取件码", 23f, true))
+        list.addView(label("仅汇总已打开页面中的可识别取件码，可能有遗漏或重复。身份条码请进入对应平台查看。", 12f))
+        listOf("taobao", "pinduoduo").forEach { provider ->
+            val name = if (provider == "taobao") "淘宝" else "拼多多"
+            val result = snapshots[provider]
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(16).toFloat() }
+            }
+            val params = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) }
+            list.addView(box, params)
+            box.addView(label(name, 17f, true))
+            val phase = when (result?.phase) {
+                "partial" -> "已读取 ${result.items.size} 条 · 请与官方页面核对"
+                "empty" -> "官方页面显示暂无待取包裹"
+                "login" -> "请先完成官方登录或验证"
+                "unrecognized" -> "暂未识别出取件码，请查看官方页面"
+                "loading" -> "页面仍在加载，稍后可重新读取"
+                else -> if (browsers.containsKey(provider)) "尚未读取，请查看平台页面" else "尚未打开，请先登录并查看取件页面"
+            }
+            box.addView(label(phase, 12f))
+            result?.items?.groupBy { it.station }?.forEach { (station, parcels) ->
+                box.addView(label(station, 14f, true).apply { setPadding(0, dp(12), 0, dp(2)) })
+                parcels.forEach { parcel ->
+                    box.addView(label(parcel.code, 28f, true).apply {
+                        setTextColor(purple); typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        setPadding(0, dp(4), 0, dp(6)); contentDescription = "取件码 ${parcel.code}，点击放大"
+                        setOnClickListener {
+                            if (foreground) {
+                                codeDialog?.dismiss()
+                                codeDialog = AlertDialog.Builder(this@ParcelWebActivity).setTitle("$name · $station")
+                                .setView(label(parcel.code, 36f, true).apply { gravity = 17; setPadding(dp(14), dp(24), dp(14), dp(24)) })
+                                .setPositiveButton("知道了", null).show()
+                            }
+                        }
+                    })
+                }
+            }
+            box.addView(button("进入${name}取件页") { select(provider) }, LinearLayout.LayoutParams(-1, dp(46)))
+        }
+        frame.removeAllViews(); frame.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        progress.visibility = View.GONE
+    }
+    private fun label(value: String, size: Float, bold: Boolean = false) = TextView(this).apply {
+        text = value; textSize = size; setTextColor(Color.rgb(56, 45, 73)); setLineSpacing(dp(3).toFloat(), 1f)
+        if (bold) setTypeface(typeface, Typeface.BOLD)
+        setPadding(0, dp(3), 0, dp(3))
+    }
 }
