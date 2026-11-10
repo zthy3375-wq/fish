@@ -38,3 +38,5 @@ test('bounded pre-release versions from existing test APKs are accepted',()=>{as
 test('coalescing preserves different days and the highest version independently',()=>{
  const a={body,tokenHash:hash(token),receivedAt:now},b={...a,body:{...body,version:'1.2.0',versionCode:133,features:{water:2}}};const [r]=mergeEvents([a,b]);assert.equal(r.versionCode,138);assert.equal(r.features.parcel,1);assert.equal(r.features.water,2);
 });
+
+test('published version 1.2 is accepted without admitting arbitrary dotted values',()=>{assert.equal(validate('record',{...body,version:'1.2',versionCode:133},token,now),200);assert.equal(validate('record',{...body,version:'1.2.3.4'},token,now),400)});

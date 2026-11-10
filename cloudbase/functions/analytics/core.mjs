@@ -9,7 +9,7 @@ export function validate(action,b,token,now=Date.now()){
  const allowed=action==='record'?['id','day','version','versionCode','features']:['id'];
  if(Object.keys(b).some(k=>!allowed.includes(k)))return 400;
  if(action==='record'){
-  if(![day(now),day(now-86400000)].includes(b.day)||!/^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[A-Za-z0-9][A-Za-z0-9.-]{0,39})?$/.test(b.version||'')||!Number.isInteger(b.versionCode)||b.versionCode<102||b.versionCode>2147483647)return 400;
+  if(![day(now),day(now-86400000)].includes(b.day)||!/^\d{1,4}\.\d{1,4}(?:\.\d{1,4})?(?:-[A-Za-z0-9][A-Za-z0-9.-]{0,39})?$/.test(b.version||'')||!Number.isInteger(b.versionCode)||b.versionCode<102||b.versionCode>2147483647)return 400;
   if(!b.features||Array.isArray(b.features)||typeof b.features!=='object'||Object.entries(b.features).some(([k,v])=>!features.includes(k)||!Number.isInteger(v)||v<0||v>1000))return 400;
  }
  return 200;

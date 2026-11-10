@@ -34,10 +34,11 @@ const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-ana
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/analytics/scf_bootstrap',0o755);
 async function call(base,path,body,token){const r=await fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{'X-Hyt-Token':token}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(250000)});const text=await r.text();let data;try{data=JSON.parse(text)}catch{throw Error('Non-JSON service response: '+r.status)}return {status:r.status,data}}
 async function smoke(base){
- const ready=await call(base,'/health');if(ready.status!==200)throw Error('Canary readiness: '+ready.status+' '+(ready.data.cause||ready.data.error));
+ let ready;for(let i=0;i<12;i++){ready=await call(base,'/health');if(ready.status===200&&ready.data.revision==='hourly-v3')break;await new Promise(r=>setTimeout(r,5000))}if(ready.status!==200||ready.data.revision!=='hourly-v3')throw Error('New revision not ready');
  const id=randomUUID(),token=randomBytes(32).toString('hex');
  try{
   const enrollment=await call(base,'/api/metrics/enroll',{id},token);if(enrollment.status!==200)throw Error('Enrollment failed: '+enrollment.status+' '+enrollment.data.error);
+  const stable=await call(base,'/api/metrics/record',{id,day:day(),version:'1.2',versionCode:133,features:{parcel:1}},token);if(stable.status!==200||!stable.data.queued)throw Error('Stable 1.2 report rejected');
   const recorded=await call(base,'/api/metrics/record',{id,day:day(),version:'1.2.1-test.5',versionCode:138,features:{parcel:2}},token);
   if(recorded.status!==200||!recorded.data.queued)throw Error('Durable queue acceptance failed');
   const flush=await fetch(base+'/internal/flush',{method:'POST',headers:{'X-Hyt-Batch-Token':batchToken},signal:AbortSignal.timeout(250000)});if(!flush.ok)throw Error('Aggregation failed: '+flush.status);
@@ -46,10 +47,10 @@ async function smoke(base){
  }finally{const r=await call(base,'/api/metrics/delete',{id},token);if(r.status!==200){const cleanup=await outbox.delete({id},hash(token),'smoke-cleanup');if(cleanup.status!==200)throw Error('Smoke record cleanup failed')}}
 }
 const codeOnlyResume=true;
-if(codeOnlyResume){const diff=spawnSync('git',['diff','093c45fe43d2814aa02dd094c08d3e144c41334f','--','cloudbase/functions/analytics','cloudbase/functions/analytics-timer'],{encoding:'utf8'});if(diff.status!==0||diff.stdout.trim())throw Error('Canary-verified code changed; full verification required')}
+
 let productionTouched=false;
 try{
- if(!codeOnlyResume)cli(['fn','deploy','hyt-analytics-canary','--httpFn','--dir','cloudbase/functions/analytics','--force','--json']);
+ cli(['fn','code','update','hyt-analytics-canary','--dir','cloudbase/functions/analytics','--yes','--json']);
  await smoke(origin+'/hyt-analytics-canary');
  // Timer is deployed first; the old service rejects its private route until cutover.
  if(!codeOnlyResume){cli(['fn','deploy','hyt-analytics-hourly','--dir','cloudbase/functions/analytics-timer','--force','--json']);cli(['fn','trigger','create','hyt-analytics-hourly']);}
