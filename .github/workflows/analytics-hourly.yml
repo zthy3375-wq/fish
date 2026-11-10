@@ -1,0 +1,41 @@
+name: Analytics hourly aggregation
+on:
+  push:
+    branches: [fix/analytics-hourly]
+    paths: ['cloudbase/**', 'scripts/cloudbase/deploy-analytics-hourly.mjs', '.github/workflows/analytics-hourly.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hyt-analytics-hourly-deploy
+  cancel-in-progress: false
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test-only
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test cloudbase/tests/*.verify.mjs
+      - run: node cloudbase/tests/outbox-postgres.mjs
+        env:
+          TEST_DATABASE_URL: postgres://postgres:test-only@localhost:5432/postgres
+      - run: npm install --prefix cloudbase/functions/analytics --omit=dev --ignore-scripts
+      - run: npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
+      - name: Deploy verified hourly analytics
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          TCB_SITE: domestic
+          CI: 'true'
+        run: node scripts/cloudbase/deploy-analytics-hourly.mjs
