@@ -41,6 +41,12 @@ export async function checkParcelShortcuts(page, assert, {width, output}) {
   assert(await page.locator('.floating-nav button').count() === 4, `${width}: parcel feature preserves the four navigation tabs`);
   assert(await page.evaluate(() => history.length) === historyLength, `${width}: parcel launch adds no browser-history entry`);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: parcel card has no horizontal overflow`);
+  for (const [name, provider] of [['淘宝取件页面', 'taobao'], ['拼多多取件页面', 'pinduoduo']]) {
+    await shortcuts.getByRole('button', {name, exact:true}).click();
+    await shortcuts.getByRole('status').filter({hasText:'请在官方网页登录'}).waitFor();
+    assert(await page.evaluate(id => JSON.stringify(window.__parcelCalls.at(-1)) === JSON.stringify({method:'openEmbedded',args:{provider:id}}), provider), `${width}: ${provider} embedded request contains provider only`);
+    assert(await shortcuts.getByRole('button',{name,exact:true}).isEnabled(), `${width}: embedded window acceptance leaves retry available`);
+  }
   await shortcuts.scrollIntoViewIfNeeded();
   await page.screenshot({path: path.join(output, `parcel-shortcuts-${width}.png`), animations: 'disabled'});
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();

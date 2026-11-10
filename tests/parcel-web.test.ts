@@ -47,3 +47,19 @@ describe('Taobao login presentation is retained until actual code is ready', () 
     dom.window.close();
   });
 });
+
+describe('PDD must have actual display content before projecting', () => {
+  it('keeps skeletons and visible login fields, and accepts an explicit empty list', () => {
+    const dom = new JSDOM('<main id="__next"><div class="identification-code-container"><div class="package-none-container">加载中…</div></div></main>', {url:'https://m.pinduoduo.net/mdkd/package',runScripts:'outside-only'});
+    const probe = readFileSync('android/app/src/main/assets/parcel/pdd-ready.js','utf8');
+    expect(dom.window.eval(probe)).toBe(false);
+    dom.window.document.querySelector('.package-none-container')!.textContent = '暂无待取包裹';
+    expect(dom.window.eval(probe)).toBe(true);
+    const input = dom.window.document.createElement('input'); input.type = 'tel';
+    input.getClientRects = (() => [{}]) as unknown as typeof input.getClientRects;
+    dom.window.document.body.append(input);
+    expect(dom.window.eval(probe)).toBe(false);
+    input.remove(); dom.reconfigure({url:'https://m.pinduoduo.net/login.html'});
+    expect(dom.window.eval(probe)).toBe(false); dom.window.close();
+  });
+});

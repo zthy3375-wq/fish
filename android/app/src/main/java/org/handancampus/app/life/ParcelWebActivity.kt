@@ -61,11 +61,11 @@ class ParcelWebActivity : Activity() {
             }
         }
         val top = LinearLayout(this)
-        top.addView(button("返回") { back() }, LinearLayout.LayoutParams(dp(62), dp(48)))
+        top.addView(button("返回", true) { back() }, LinearLayout.LayoutParams(dp(62), dp(48)))
         top.addView(TextView(this).apply {
             text = "取快递"; textSize = 19f; setTextColor(Color.rgb(40, 31, 56)); gravity = 17
         }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        top.addView(button("关闭") { finish() }, LinearLayout.LayoutParams(dp(62), dp(48)))
+        top.addView(button("关闭", true) { finish() }, LinearLayout.LayoutParams(dp(62), dp(48)))
         root.addView(top)
         val platforms = LinearLayout(this).apply { setPadding(dp(12), 0, dp(12), 0) }
         listOf("taobao" to "淘宝", "pinduoduo" to "拼多多").forEach { (id, name) ->
@@ -98,10 +98,10 @@ class ParcelWebActivity : Activity() {
         if (preferences.getBoolean("reset_pending", false)) clearProfile() else select(selected)
     }
 
-    private fun button(label: String, action: () -> Unit) = Button(this).apply {
+    private fun button(label: String, allowDuringClear: Boolean = false, action: () -> Unit) = Button(this).apply {
         text = label; textSize = 13f; isAllCaps = false; minWidth = 0
         setTextColor(purple); setPadding(dp(3), 0, dp(3), 0)
-        setOnClickListener { if (!closed && !isFinishing && !clearing) action() }
+        setOnClickListener { if (!closed && !isFinishing && (!clearing || allowDuringClear)) action() }
     }
     private fun tell(message: String) { if (!closed) status.text = message }
     private fun active(view: WebView) = !closed && !clearing && (browsers[selected] === view || popup === view)
@@ -228,7 +228,7 @@ class ParcelWebActivity : Activity() {
         if (!active(view) || !foreground || generations[view] != epoch || failed.contains(view) || rawPages.contains(view) || projected.contains(view)) return
         if (!ParcelWebPolicy.isEntry(provider, view.url)) return
         val probe = if (provider == "taobao") asset("official-identity.js") + "\n" + asset("login-ready.js")
-            else "(function(){return !!document.querySelector('[class*=identification-code-container],[class*=package-list-wrapper],[class*=package-none-container]') && !document.querySelector('input[type=password],input[type=tel]');})()"
+            else assets.open("parcel/pdd-ready.js").bufferedReader().use { it.readText() }
         view.evaluateJavascript(probe) { result ->
             if (!active(view) || !foreground || generations[view] != epoch || failed.contains(view) || rawPages.contains(view) || projected.contains(view)) return@evaluateJavascript
             if (result == "true") {
