@@ -1,8 +1,5 @@
 package org.handancampus.app.life
 
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -17,7 +14,7 @@ class ParcelShortcutsPlugin : Plugin() {
 
     @PluginMethod fun open(call: PluginCall) {
         val target = try {
-            ParcelShortcutContract.target(call.getString("provider"), call.data.keys().asSequence().toSet())
+            ParcelShortcutContract.target(call.getString("provider"), call.data.keys().asSequence().toSet(), call.getString("mode"))
         } catch (_: Exception) {
             call.reject("只支持淘宝或拼多多出库码入口", "INVALID_PROVIDER")
             return
@@ -34,24 +31,10 @@ class ParcelShortcutsPlugin : Plugin() {
         }
         currentActivity.runOnUiThread {
             try {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target.uri))
-                    .addCategory(Intent.CATEGORY_BROWSABLE)
-                    .setPackage(target.packageName)
-                val manager = currentActivity.packageManager
+                val launcher = ParcelAndroidLauncher(currentActivity)
                 val host = object : ParcelLaunchHost {
                     override fun isActive() = !destroyed && !currentActivity.isFinishing && !currentActivity.isDestroyed
-                    @Suppress("DEPRECATION")
-                    override fun isInstalled(target: ParcelShortcutTarget): Boolean = try {
-                        manager.getApplicationInfo(target.packageName, 0)
-                        true
-                    } catch (_: PackageManager.NameNotFoundException) { false }
-                    @Suppress("DEPRECATION")
-                    override fun canOpen(target: ParcelShortcutTarget): Boolean {
-                        val info = manager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
-                        return info != null && info.packageName == target.packageName && info.exported &&
-                            info.enabled && info.applicationInfo.enabled
-                    }
-                    override fun open(target: ParcelShortcutTarget) { currentActivity.startActivity(intent) }
+                    override fun open(target: ParcelShortcutTarget, route: ParcelLaunchRoute) = launcher.open(target, route)
                 }
                 resolve(call, target, ParcelShortcutContract.launch(target, host))
             } catch (_: Exception) {

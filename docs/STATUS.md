@@ -1,3 +1,17 @@
+# 1.2.2-test.2 · 接水修复延续与出库码跳转兼容（仅测试，未推送）
+
+用户反馈鸿蒙手机已安装淘宝/拼多多，入口却提示“未检测到淘宝 App”。接续 test.1 / 139（1e2fba0），完整保留接水恢复改动；本次版本 140 / 1.2.2-test.2。未合入此前快递列表/账号抓取试验。
+
+旧实现先 getApplicationInfo 再 resolveActivity，任一不可见便直接返回，实际没有尝试跳转。按 Android 官方可见性说明改为实际分发、捕获 ActivityNotFoundException；不再把包名查询不可见等同未安装。默认尝试固定官方 App 出库码路由，失败回退官方 App 首页，首页打开单独提示，不声称已进入身份码页。可见性受限且 SDK>=33 时使用 getLaunchIntentSenderForPackage；不增加广泛包查询权限。
+
+每次尝试后显示“没有跳转？系统兼容打开淘宝/拼多多”，用户主动点击后将固定官方链接交给系统选择应用，适配可能存在的原生鸿蒙应用与 APK 兼容环境边界。拼多多 Scheme 无处理程序时仅打开 https://mobile.yangkeduo.com/，淘宝使用原有官方 HTTPS 身份码链接；明确提示可能进入官方网页。默认点击不自动进入浏览器；单次成功分发即停止，不在切回后自动重试。仍无真实目标页/取件完成回调，不能把系统接收当成鸿蒙原生 App 已打开。
+
+参数仅 provider 和可选 app/system 枚举，固定路由不允许从 JS 覆盖。保留生命周期取消、重复点击合并和失败后重试；权限拒绝不自动尝试其他路径。未新增 WebView、账号读取、登录缓存或身份码抓取。此为 Android APK 的跳转兼容修正，不是原生 HarmonyOS HAP；这台手机的鸿蒙版本、兼容运行环境及平台是否支持该链接仍需覆盖安装实测。
+
+参考：[Android 包可见性与直接启动](https://developer.android.com/training/package-visibility/use-cases)、[API33 可见性无关的首页启动](https://developer.android.com/reference/android/content/pm/PackageManager#getLaunchIntentSenderForPackage(java.lang.String))、[HarmonyOS 应用链接机制](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/app-startup-overview)。路由事实沿用 docs/V082-PARCEL-SHORTCUTS.md 的既有来源；不猜测鸿蒙包名或私有跨环境桥接协议。
+
+前端、原生 Android 编译、实际 Intent 分发回归和交付签名结果待本轮补充；没有这台鸿蒙真机，不宣称设备兼容已验收。仅测试交付，不推送。
+
 # 1.2.2-test.1 · 接水旧记录恢复（仅测试，未推送）
 
 按用户要求从已发布 1.2 / 133（b46ac3e）新建 fix/water-recovery；快递试验保留原分支，未合入。测试版本 139 允许覆盖此前快递测试包，沿用正式包名和原签名。

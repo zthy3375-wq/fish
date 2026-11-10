@@ -15,9 +15,15 @@ export async function checkParcelShortcuts(page, assert, {width, output}) {
   await shortcuts.getByRole('status').filter({hasText: '已请求打开淘宝'}).waitFor();
   assert(await shortcuts.getByRole('status').innerText() === '已请求打开淘宝，请在官方 App 内查看身份码。返回本应用不代表已出库。', `${width}: parcel launch does not claim verification or pickup success`);
   assert(await page.evaluate(() => JSON.stringify(window.__parcelCalls[0]) === JSON.stringify({method: 'open', args: {provider: 'taobao'}})), `${width}: parcel native call contains provider only`);
+  await page.evaluate(() => {window.__parcelStatus='system_opened'});
+  await shortcuts.getByRole('button',{name:'没有跳转？系统兼容打开淘宝',exact:true}).click();
+  await shortcuts.getByRole('status').filter({hasText:'已交给系统打开淘宝链接'}).waitFor();
+  assert(await page.evaluate(()=>JSON.stringify(window.__parcelCalls.at(-1).args)===JSON.stringify({provider:'taobao',mode:'system'})),`${width}: compatibility retry passes only a fixed mode and provider`);
+  assert(await shortcuts.innerText().then(t=>t.includes('可能进入官方网页')&&t.includes('当前未确认进入身份码页面')),`${width}: compatibility retry explains system routing without claiming code-page success`);
+  await page.evaluate(()=>{window.__parcelStatus='opened'});
   const storageAfter = await page.evaluate(() => ({school: localStorage.getItem('handan.academic.cache.v050'), personal: localStorage.getItem('handan.personal.tasks.v2')}));
   assert(JSON.stringify(storageAfter) === JSON.stringify(storageBefore), `${width}: parcel shortcut does not mutate school or personal caches`);
-  for (const [status, text] of [['not_installed', '未检测到拼多多 App'], ['unavailable', '暂时无法打开拼多多出库码'], ['cancelled', '已取消打开拼多多']]) {
+  for (const [status, text] of [['not_installed', '未检测到拼多多的安卓版本'], ['unavailable', '暂时无法打开拼多多出库码'], ['cancelled', '已取消打开拼多多']]) {
     await page.evaluate(value => { window.__parcelStatus = value }, status);
     await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).click();
     await shortcuts.getByRole('status').filter({hasText: text}).waitFor();
