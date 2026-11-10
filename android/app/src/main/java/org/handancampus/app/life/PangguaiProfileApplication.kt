@@ -7,6 +7,7 @@ import android.content.Context
 class PangguaiProfileApplication : Application() {
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
+        ParcelWebProfile.configure(base)
         PangguaiProfileSession.configureDataDirectory(base)
     }
 }

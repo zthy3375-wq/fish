@@ -3,7 +3,10 @@ import {Capacitor, registerPlugin} from '@capacitor/core';
 export type ParcelProvider = 'taobao' | 'pinduoduo';
 export type ParcelLaunchStatus = 'opened' | 'not_installed' | 'unavailable' | 'cancelled' | 'unsupported';
 export interface ParcelLaunchResult {provider: ParcelProvider; status: ParcelLaunchStatus}
-interface ParcelShortcutsPlugin {open(options: {provider: ParcelProvider}): Promise<unknown>}
+interface ParcelShortcutsPlugin {
+  open(options: {provider: ParcelProvider}): Promise<unknown>;
+  openEmbedded(options: {provider: ParcelProvider}): Promise<unknown>;
+}
 const native = registerPlugin<ParcelShortcutsPlugin>('ParcelShortcuts');
 export const parcelProviders = [
   {id: 'taobao', name: '淘宝', label: '淘宝出库码'},
@@ -11,6 +14,15 @@ export const parcelProviders = [
 ] as const;
 
 export const parcelShortcutsSupported = () => Capacitor.getPlatform() === 'android' && Capacitor.isPluginAvailable('ParcelShortcuts');
+
+export async function openEmbeddedParcel(provider: ParcelProvider): Promise<boolean> {
+  if (!['taobao', 'pinduoduo'].includes(provider) || !parcelShortcutsSupported()) return false;
+  try {
+    const result = await native.openEmbedded({provider});
+    return !!result && typeof result === 'object' && 'provider' in result && result.provider === provider &&
+      'status' in result && result.status === 'opened';
+  } catch { return false }
+}
 
 export async function openParcelShortcut(provider: ParcelProvider): Promise<ParcelLaunchResult> {
   if (provider !== 'taobao' && provider !== 'pinduoduo') throw new Error('INVALID_PROVIDER');
