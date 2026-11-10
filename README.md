@@ -74,3 +74,5 @@ npm run android:apk
 原创代码采用 [MIT](LICENSE)。上游研究与历史设计记录见 [文档导航](docs/README.md)。第一版范围为首页、课表、教务和个人设置；社区、二手交易、商家与失物招领尚未开发。
 
 请勿向 Issue、日志、截图或 PR 提交密码、Cookie、令牌及未脱敏学籍信息。查看 [安全说明](SECURITY.md) 与 [贡献指南](CONTRIBUTING.md)。
+
+统计节流改造：普通上报可靠暂存、小时汇总与后台快照。上线状态与成本边界见 [统计小时汇总](docs/ANALYTICS-HOURLY.md)。
