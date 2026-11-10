@@ -34,15 +34,16 @@ const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-ana
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/analytics/scf_bootstrap',0o755);
 async function call(base,path,body,token){const r=await fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{'X-Hyt-Token':token}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(250000)});const text=await r.text();let data;try{data=JSON.parse(text)}catch{throw Error('Non-JSON service response: '+r.status)}return {status:r.status,data}}
 async function smoke(base){
+ const ready=await call(base,'/health');if(ready.status!==200)throw Error('Canary readiness: '+ready.status+' '+(ready.data.cause||ready.data.error));
  const id=randomUUID(),token=randomBytes(32).toString('hex');
  try{
-  if((await call(base,'/api/metrics/enroll',{id},token)).status!==200)throw Error('Enrollment failed');
+  const enrollment=await call(base,'/api/metrics/enroll',{id},token);if(enrollment.status!==200)throw Error('Enrollment failed: '+enrollment.status+' '+enrollment.data.error);
   const recorded=await call(base,'/api/metrics/record',{id,day:day(),version:'1.2.1-test.5',versionCode:138,features:{parcel:2}},token);
   if(recorded.status!==200||!recorded.data.queued)throw Error('Durable queue acceptance failed');
   const flush=await fetch(base+'/internal/flush',{method:'POST',headers:{'X-Hyt-Batch-Token':batchToken},signal:AbortSignal.timeout(250000)});if(!flush.ok)throw Error('Aggregation failed: '+flush.status);
   const rows=await sql('SELECT features FROM public.hyt_daily WHERE device=$1::uuid',[id]);if(rows[0]?.features?.parcel!==2)throw Error('Aggregated counter mismatch');
   if((await call(base,'/stats')).status!==403)throw Error('Statistics exposed');
- }finally{const r=await call(base,'/api/metrics/delete',{id},token);if(r.status!==200)throw Error('Smoke record cleanup failed')}
+ }finally{const r=await call(base,'/api/metrics/delete',{id},token);if(r.status!==200){const cleanup=await outbox.delete({id},hash(token),'smoke-cleanup');if(cleanup.status!==200)throw Error('Smoke record cleanup failed')}}
 }
 let productionTouched=false;
 try{
