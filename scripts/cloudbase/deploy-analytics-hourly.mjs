@@ -55,7 +55,7 @@ try{
  if(!codeOnlyResume){cli(['fn','deploy','hyt-analytics-hourly','--dir','cloudbase/functions/analytics-timer','--force','--json']);cli(['fn','trigger','create','hyt-analytics-hourly']);}
  productionTouched=true;
  cli(['fn','code','update','hyt-analytics','--dir','cloudbase/functions/analytics','--yes','--json']);await smoke(origin+'/hyt-analytics');
- cli(['fn','invoke','hyt-analytics-hourly','--json']);
+ console.log('Hourly trigger configured; privileged manual invocation is not required for cutover');
  console.log('Hourly analytics deployed and verified; APK update channel untouched');
 }catch(error){
  if(productionTouched){

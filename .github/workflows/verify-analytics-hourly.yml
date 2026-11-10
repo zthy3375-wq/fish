@@ -8,6 +8,8 @@ permissions:
   contents: read
 jobs:
   verify:
+    # Manual SCF Invoke is not granted to the deployment credential.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
