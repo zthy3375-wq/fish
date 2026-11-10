@@ -225,6 +225,7 @@ class ParcelWebActivity : Activity() {
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 if (view === popup) closePopup() else {
+                    browsers.entries.firstOrNull { it.value === view }?.key?.let { invalidate(it) }
                     browsers.entries.removeAll { it.value === view }; dispose(view)
                     if (!closed) tell("网页已关闭，请切换平台重新打开。")
                 }
@@ -461,7 +462,7 @@ class ParcelWebActivity : Activity() {
                         setTextColor(purple); typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                         setPadding(0, dp(4), 0, dp(6)); contentDescription = "取件码 ${parcel.code}，点击放大"
                         setOnClickListener {
-                            if (foreground) {
+                            if (this@ParcelWebActivity.foreground) {
                                 codeDialog?.dismiss()
                                 codeDialog = AlertDialog.Builder(this@ParcelWebActivity).setTitle("$name · $station")
                                 .setView(label(parcel.code, 36f, true).apply { gravity = 17; setPadding(dp(14), dp(24), dp(14), dp(24)) })
