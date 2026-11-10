@@ -216,12 +216,18 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
         val w=worker(p) ?: return
         phases[p]="syncing";w.start();renderList()
     }
+    private fun pauseWorkers() {
+        workers.values.forEach { it.pause() }
+        phases.keys.toList().forEach { p ->
+            if(phases[p]=="syncing") phases[p]=if(store.ledger.updated.containsKey(p)) "partial" else "login"
+        }
+    }
     private fun syncAll(){if(mode!="list")return;listOf("taobao","pinduoduo").forEach{sync(it)}}
     private fun authenticate(p:String) {
         val w=worker(p) ?: return
         // Explicit reconnection starts a fresh account cache scope before any new response can arrive.
         store.clear(p);preferences.edit().putBoolean("connected_$p",false).apply()
-        workers.values.forEach{it.pause()};selected=p;mode="auth";phases[p]="syncing"
+        pauseWorkers();selected=p;mode="auth";phases[p]="syncing"
         headerTitle.text="连接${name(p)}";headerAction.text="完成"
         content.removeAllViews();content.setBackgroundColor(Color.WHITE)
         content.addView(label("请在官方页面登录，成功后自动返回",12f).apply{setPadding(dp(18),dp(10),dp(18),dp(10));setTextColor(muted)})
@@ -233,7 +239,7 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
     private fun hideWorkers(){workers.values.forEach{w->(w.web.parent as? android.view.ViewGroup)?.removeView(w.web);workerLayer.addView(w.web,FrameLayout.LayoutParams(-1,-1))}}
     private fun showIdentity(p:String) {
         val w=worker(p) ?: return
-        workers.values.forEach{it.pause()};selected=p;mode="identity";clearIdentity();hideWorkers()
+        pauseWorkers();selected=p;mode="identity";clearIdentity();hideWorkers()
         headerTitle.text="${name(p)}身份码";headerAction.text="刷新";content.removeAllViews();content.setBackgroundColor(surface)
         val body=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(24),dp(24),dp(24),dp(24))}
         content.addView(body,LinearLayout.LayoutParams(-1,-1))
@@ -251,7 +257,7 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
     override fun onVerified(worker:ParcelPageWorker) {
         if(closed || clearing || !foreground)return
         preferences.edit().putBoolean("connected_${worker.provider}",true).apply()
-        if(mode=="auth" && selected==worker.provider){mode="list";hideWorkers();content.setBackgroundColor(surface);renderList();toast("已连接，正在读取取件信息")}
+        if(mode=="auth" && selected==worker.provider){mode="list";hideWorkers();content.setBackgroundColor(surface);renderList();toast("已连接，正在读取取件信息");listOf("taobao","pinduoduo").filter{it!=worker.provider && preferences.getBoolean("connected_$it",false)}.forEach{sync(it)}}
     }
     override fun onIssue(worker:ParcelPageWorker,issue:String) {
         if(closed || clearing)return
@@ -309,9 +315,9 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
         next(0)
     }
     private fun openOfficial(p:String){try{val t=ParcelShortcutContract.target(p,setOf("provider"));startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(t.uri)).setPackage(t.packageName))}catch(_:Exception){toast("请先安装${name(p)} App")}}
-    private fun back(){if(mode=="list"){finish();return};workers.values.forEach{it.pause()};clearIdentity();mode="list";hideWorkers();content.setBackgroundColor(surface);renderList()}
+    private fun back(){if(mode=="list"){finish();return};pauseWorkers();clearIdentity();mode="list";hideWorkers();content.setBackgroundColor(surface);renderList()}
     @Deprecated("Legacy Android back dispatch") override fun onBackPressed(){back()}
     override fun onResume(){super.onResume();foreground=true;if(!::store.isInitialized)return;if(mode=="auth")workers[selected]?.continueAuthentication() else if(mode=="identity")showIdentity(selected) else syncAll()}
-    override fun onPause(){foreground=false;dialog?.dismiss();dialog=null;workers.values.forEach{it.pause()};if(mode=="identity")clearIdentity();if(usable)CookieManager.getInstance().flush();super.onPause()}
+    override fun onPause(){foreground=false;dialog?.dismiss();dialog=null;pauseWorkers();if(mode=="identity")clearIdentity();if(usable)CookieManager.getInstance().flush();super.onPause()}
     override fun onDestroy(){closed=true;handler.removeCallbacksAndMessages(null);workers.values.toList().forEach{it.destroy()};workers.clear();identityBitmap?.recycle();super.onDestroy()}
 }

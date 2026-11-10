@@ -39,7 +39,11 @@ class ParcelOverviewLayoutTest {
         assertTrue(code.width<=360);assertEquals(0,code.layout.getEllipsisCount(0));assertTrue(code.height>=48)
         val bitmap=Bitmap.createBitmap(360,760,Bitmap.Config.ARGB_8888);root.draw(Canvas(bitmap))
         java.io.File(System.getProperty("java.io.tmpdir"),"hyt-parcel-native-360.png").outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)}
+        @Suppress("UNCHECKED_CAST")
+        val phases=ParcelWebActivity::class.java.getDeclaredField("phases").apply{isAccessible=true}.get(activity) as MutableMap<String,String>
+        phases["taobao"]="syncing"
         controller.pause();assertEquals(2,store.ledger.items.size)
+        assertEquals("partial",phases["taobao"])
         assertTrue(views(root).filterIsInstance<TextView>().any{it.text.toString()=="01-02-003"})
         controller.stop().destroy()
     }
