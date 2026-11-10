@@ -35,6 +35,9 @@ class ParcelPageWorker(
     private var generation = 0
     private var document = 0
     private var running = false
+    val isBusy get() = running
+    private var changedAt = 0L
+    private var nativePending = false
     private var destroyed = false
     private var deadline = 0L
     private var nativeQueried = false
@@ -99,7 +102,7 @@ class ParcelPageWorker(
     fun start(auth: Boolean = false, showIdentity: Boolean = false) {
         if (destroyed) return
         pause(); generation++; identity = showIdentity; authenticating = auth
-        nativeQueried = false; successful = false; redirected = false; verified = false; lastResult = ""
+        nativePending = false; changedAt = 0L; nativeQueried = false; successful = false; redirected = false; verified = false; lastResult = ""
         running = true; deadline = System.currentTimeMillis() + if (auth) 180_000 else if (showIdentity) 25_000 else 40_000
         web.onResume()
         // Reuse only a very recent official identity document; never persist or reuse a bitmap.
@@ -117,7 +120,7 @@ class ParcelPageWorker(
     private val poll = Runnable { read() }
     private fun issue(reason: String) {
         if (!running || destroyed) return
-        running = false; handler.removeCallbacks(poll); request?.cancel(true)
+        pause(); web.stopLoading()
         listener.onIssue(this, reason)
     }
     private fun read() {
@@ -136,18 +139,22 @@ class ParcelPageWorker(
             }
             if (batch.phase in setOf("partial", "empty")) {
                 successful = true
-                if (lastResult != raw) { lastResult = raw; listener.onBatch(this, batch, accountScope()) }
+                if (lastResult != raw) { lastResult = raw; changedAt = System.currentTimeMillis(); listener.onBatch(this, batch, accountScope()) }
                 confirmSession()
                 if (!identity) {
-                    // Keep the source attached for late network/DOM results, without showing it to the user.
-                    if (!nativeQueried && provider == "taobao") nativeQuery(ticket, page)
-                    schedule(1300); return@evaluateJavascript
+                    // A recognised list needs no duplicate native request; allow a short quiet window for late items.
+                    if (!nativePending && System.currentTimeMillis() - changedAt >= 1500) { pause(); web.stopLoading(); return@evaluateJavascript }
+                    schedule(500); return@evaluateJavascript
                 }
+            }
+            // Never inspect identity images while querying parcels: the school page can contain one too.
+            if (!identity && !authenticating) {
+                if (!nativeQueried && provider == "taobao") nativeQuery(ticket, page)
+                schedule(900); return@evaluateJavascript
             }
             captureIdentity(ticket, page) { ready ->
                 if (!running || generation != ticket || document != page) return@captureIdentity
                 if (ready && !identity && provider == "taobao") { web.loadUrl(ParcelWebPolicy.TAOBAO_PARCELS); schedule(700); return@captureIdentity }
-                if (!identity && !authenticating && !nativeQueried && provider == "taobao") nativeQuery(ticket, page)
                 schedule(if (identity || authenticating) 200 else 900)
             }
         }
@@ -180,18 +187,28 @@ class ParcelPageWorker(
     private fun nativeQuery(ticket: Int, page: Int) {
         val cookies = CookieManager.getInstance().getCookie(ParcelTaobaoQuery.ORIGIN).orEmpty()
         if (!cookies.contains("_m_h5_tk=")) return
-        nativeQueried = true
+        nativeQueried = true; nativePending = true
         val ua = web.settings.userAgentString
         request = executor.submit {
-            val result = try { ParcelTaobaoQuery.query(cookies, ua) } catch (_: Exception) { null }
-            handler.post {
-                if (result == null || !running || destroyed || ticket != generation || page != document) return@post
-                result.cookies.forEach { CookieManager.getInstance().setCookie(ParcelTaobaoQuery.ORIGIN, it) }
-                result.bodies.forEach { body -> web.evaluateJavascript("if(window.HytParcel) HytParcel.consume(${JSONObject.quote(body)})", null) }
-                schedule(300)
+            try {
+                ParcelTaobaoQuery.query(cookies, ua) { result ->
+                    handler.post {
+                        if (!running || destroyed || ticket != generation || page != document) return@post
+                        result.cookies.forEach { CookieManager.getInstance().setCookie(ParcelTaobaoQuery.ORIGIN, it) }
+                        result.bodies.forEach { body -> web.evaluateJavascript("if(window.HytParcel) HytParcel.consume(${JSONObject.quote(body)})") { schedule(0) } }
+                    }
+                }
+            } catch (_: Exception) { /* retain any earlier pages */ }
+            finally {
+                handler.post {
+                    if (running && !destroyed && ticket == generation && page == document) {
+                        nativePending = false; deadline = minOf(deadline, System.currentTimeMillis() + 2500); schedule(0)
+                    }
+                }
             }
         }
     }
+
     fun accountScope(): String {
         val url = if (provider == "taobao") "https://m.taobao.com" else "https://m.pinduoduo.net"
         val cookie = CookieManager.getInstance().getCookie(url).orEmpty()

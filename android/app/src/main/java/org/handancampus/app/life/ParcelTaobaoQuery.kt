@@ -12,7 +12,7 @@ object ParcelTaobaoQuery {
     private const val APP_KEY = "12574478"
     const val ORIGIN = "https://h5api.m.taobao.com"
     data class Reply(val bodies: List<String>, val cookies: List<String>)
-    fun query(cookies: String, userAgent: String): Reply {
+    fun query(cookies: String, userAgent: String, openConnection: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }, onPage: (Reply) -> Unit = {}): Reply {
         if (cookies.isBlank()) return Reply(emptyList(), emptyList())
         val token = Regex("(?:^|;\\s*)_m_h5_tk=([^;]+)").find(cookies)?.groupValues?.get(1)?.substringBefore('_') ?: return Reply(emptyList(), emptyList())
         val bodies = mutableListOf<String>(); val rotated = mutableListOf<String>()
@@ -24,7 +24,7 @@ object ParcelTaobaoQuery {
             val time = System.currentTimeMillis().toString()
             val sign = MessageDigest.getInstance("MD5").digest("$token&$time&$APP_KEY&$data".toByteArray()).joinToString("") { "%02x".format(it) }
             val url = "$ORIGIN/h5/${API.lowercase()}/1.0/?jsv=2.3.18&appKey=$APP_KEY&t=$time&sign=$sign&type=originaljson&dataType=json&data=${URLEncoder.encode(data, "UTF-8") }"
-            val connection = URL(url).openConnection() as HttpURLConnection
+            val connection = openConnection(URL(url))
             try {
                 connection.connectTimeout = 8000; connection.readTimeout = 8000; connection.instanceFollowRedirects = false
                 connection.setRequestProperty("Cookie", cookies); connection.setRequestProperty("User-Agent", userAgent)
@@ -42,8 +42,10 @@ object ParcelTaobaoQuery {
                 connection.headerFields.entries.filter { it.key.equals("Set-Cookie", true) }.flatMap { it.value }.filter {
                     it.startsWith("_m_h5_tk=") || it.startsWith("_m_h5_tk_enc=")
                 }.forEach { rotated.add(it) }
-                if (!ret.contains("SUCCESS")) break
+                if (!ret.contains("SUCCESS")) { onPage(Reply(emptyList(), rotated.toList())); break }
                 bodies.add(body)
+                onPage(Reply(listOf(body), rotated.toList()))
+                rotated.clear()
             } finally { connection.disconnect() }
         }
         return Reply(bodies, rotated)

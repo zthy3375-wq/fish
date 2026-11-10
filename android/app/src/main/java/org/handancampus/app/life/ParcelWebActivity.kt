@@ -48,6 +48,8 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
     private var platformFilter = "all"
     private var mode = "list"
     private var foreground = false
+    private var initialSyncStarted = false
+    private val lastSyncStarted = mutableMapOf<String, Long>()
     private var closed = false
     private var usable = false
     private var clearing = false
@@ -221,6 +223,9 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
     private fun sync(p:String) {
         if(!foreground || clearing)return
         val w=worker(p) ?: return
+        val now=android.os.SystemClock.elapsedRealtime()
+        if(w.isBusy || lastSyncStarted[p]?.let{now-it<10_000}==true)return
+        lastSyncStarted[p]=now
         phases[p]="syncing";w.start();renderList()
     }
     private fun pauseWorkers() {
@@ -294,7 +299,13 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
         body.addView(action("刷新身份码"){showIdentity(selected)})
         window.attributes=window.attributes.apply{screenBrightness=1f}
         // Conservative presentation refresh, not a claim about the platform's actual expiry time.
-        handler.postDelayed({if(foreground && mode=="identity")showIdentity(selected)},30_000)
+        handler.postDelayed({if(foreground && mode=="identity") {
+            clearIdentity()
+            val refresh=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER}
+            content.addView(refresh,LinearLayout.LayoutParams(-1,-1))
+            refresh.addView(label("请刷新身份码后出示",18f,true));space(refresh,16)
+            refresh.addView(action("刷新身份码",true){showIdentity(selected)})
+        }},30_000)
     }
     private fun clearIdentity(){handler.removeCallbacksAndMessages(null);content.removeAllViews();identityBitmap?.recycle();identityBitmap=null;window.attributes=window.attributes.apply{screenBrightness=originalBrightness}}
     private fun enlarge(parcel:NativeParcel) {
@@ -328,11 +339,12 @@ class ParcelWebActivity : Activity(), ParcelPageWorker.Listener {
         // Completion always exits the login presentation; the subsequent query validates the session.
         val provider=selected
         back()
+        lastSyncStarted.remove(provider)
         if(foreground && mode=="list") sync(provider)
     }
     private fun back(){if(mode=="list"){finish();return};pauseWorkers();clearIdentity();mode="list";hideWorkers();content.setBackgroundColor(surface);renderList()}
     @Deprecated("Legacy Android back dispatch") override fun onBackPressed(){back()}
-    override fun onResume(){super.onResume();foreground=true;if(!::store.isInitialized)return;if(mode=="auth")workers[selected]?.continueAuthentication() else if(mode=="identity")showIdentity(selected) else syncAll()}
+    override fun onResume(){super.onResume();foreground=true;if(!::store.isInitialized)return;if(mode=="auth")workers[selected]?.continueAuthentication() else if(mode=="identity")showIdentity(selected) else if(!initialSyncStarted){initialSyncStarted=true;syncAll()} else renderList()}
     override fun onPause(){foreground=false;dialog?.dismiss();dialog=null;pauseWorkers();if(mode=="identity")clearIdentity();if(usable)CookieManager.getInstance().flush();super.onPause()}
     override fun onDestroy(){closed=true;handler.removeCallbacksAndMessages(null);workers.values.toList().forEach{it.destroy()};workers.clear();identityBitmap?.recycle();super.onDestroy()}
 }
