@@ -100,7 +100,7 @@ class ParcelPageWorker(
         if (destroyed) return
         pause(); generation++; identity = showIdentity; authenticating = auth
         nativeQueried = false; successful = false; redirected = false; verified = false; lastResult = ""
-        running = true; deadline = System.currentTimeMillis() + if (auth) 180_000 else if (showIdentity) 25_000 else 18_000
+        running = true; deadline = System.currentTimeMillis() + if (auth) 180_000 else if (showIdentity) 25_000 else 40_000
         web.onResume()
         // Reuse only a very recent official identity document; never persist or reuse a bitmap.
         if (showIdentity && ParcelWebPolicy.isEntry(provider, web.url) && System.currentTimeMillis() - loadedAt < 10_000) {
@@ -155,7 +155,7 @@ class ParcelPageWorker(
     private fun confirmSession() {
         if (verified) return
         verified = true
-        if (authenticating) { authenticating = false; deadline = System.currentTimeMillis() + 18_000 }
+        if (authenticating) { authenticating = false; deadline = System.currentTimeMillis() + 40_000 }
         listener.onVerified(this)
     }
     private fun captureIdentity(ticket: Int, page: Int, done: (Boolean) -> Unit) {
