@@ -19,7 +19,7 @@ const redact=s=>sensitive.reduce((v,k)=>v.replaceAll(k,'[redacted]'),s);
 process.on('uncaughtException',error=>{console.error('Deployment stopped:',redact(String(error.code||error.message).slice(0,300)));process.exit(1)});
 process.on('unhandledRejection',error=>{console.error('Deployment stopped:',redact(String(error?.code||error?.message||'request_failed').slice(0,300)));process.exit(1)});
 const cliEnv={...process.env,CLOUDBASE_API_KEY:'',TENCENTCLOUD_SECRETID:c.TmpSecretId,TENCENTCLOUD_SECRETKEY:c.TmpSecretKey,TENCENTCLOUD_SESSIONTOKEN:c.Token};
-function cli(args){const r=spawnSync('tcb',[...args,'-e',envId,'-r',region],{env:cliEnv,encoding:'utf8',timeout:300000,maxBuffer:4*1024*1024});console.log(redact((r.stdout||'')+(r.stderr||'')));if(r.status!==0)throw Error('CloudBase command failed: '+args.slice(0,2).join(' '))}
+function cli(args){const r=spawnSync('tcb',[...args,'-e',envId,'-r',region],{env:cliEnv,encoding:'utf8',timeout:600000,maxBuffer:4*1024*1024});console.log(redact((r.stdout||'')+(r.stderr||'')));if(r.status!==0)throw Error('CloudBase command failed: '+args.slice(0,2).join(' '))}
 const store=await createStore(),outbox=new Outbox(store,sql);
 // Check private, durable object storage before changing the running service.
 const probeKey=PREFIX+'probe/'+randomUUID()+'.json';await store.put(probeKey,{probe:true},true);if(!(await store.get(probeKey))?.probe)throw Error('Object roundtrip failed');
@@ -45,13 +45,17 @@ async function smoke(base){
   if((await call(base,'/stats')).status!==403)throw Error('Statistics exposed');
  }finally{const r=await call(base,'/api/metrics/delete',{id},token);if(r.status!==200){const cleanup=await outbox.delete({id},hash(token),'smoke-cleanup');if(cleanup.status!==200)throw Error('Smoke record cleanup failed')}}
 }
+const codeOnlyResume=true;
+if(codeOnlyResume){const diff=spawnSync('git',['diff','093c45fe43d2814aa02dd094c08d3e144c41334f','--','cloudbase/functions/analytics','cloudbase/functions/analytics-timer'],{encoding:'utf8'});if(diff.status!==0||diff.stdout.trim())throw Error('Canary-verified code changed; full verification required')}
 let productionTouched=false;
 try{
- cli(['fn','deploy','hyt-analytics-canary','--httpFn','--dir','cloudbase/functions/analytics','--force','--json']);await smoke(origin+'/hyt-analytics-canary');
+ if(!codeOnlyResume)cli(['fn','deploy','hyt-analytics-canary','--httpFn','--dir','cloudbase/functions/analytics','--force','--json']);
+ await smoke(origin+'/hyt-analytics-canary');
  // Timer is deployed first; the old service rejects its private route until cutover.
- cli(['fn','deploy','hyt-analytics-hourly','--dir','cloudbase/functions/analytics-timer','--force','--json']);cli(['fn','trigger','create','hyt-analytics-hourly']);
+ if(!codeOnlyResume){cli(['fn','deploy','hyt-analytics-hourly','--dir','cloudbase/functions/analytics-timer','--force','--json']);cli(['fn','trigger','create','hyt-analytics-hourly']);}
  productionTouched=true;
- cli(['fn','deploy','hyt-analytics','--httpFn','--dir','cloudbase/functions/analytics','--force','--json']);await smoke(origin+'/hyt-analytics');
+ cli(['fn','code','update','hyt-analytics','--dir','cloudbase/functions/analytics','--yes','--json']);await smoke(origin+'/hyt-analytics');
+ cli(['fn','invoke','hyt-analytics-hourly','--json']);
  console.log('Hourly analytics deployed and verified; APK update channel untouched');
 }catch(error){
  if(productionTouched){
