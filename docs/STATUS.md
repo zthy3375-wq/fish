@@ -1,6 +1,6 @@
 # 1.2.2-test.2 · 接水修复延续与出库码跳转兼容（仅测试，未推送）
 
-用户反馈鸿蒙手机已安装淘宝/拼多多，入口却提示“未检测到淘宝 App”。接续 test.1 / 139（1e2fba0），完整保留接水恢复改动；本次版本 140 / 1.2.2-test.2。未合入此前快递列表/账号抓取试验。
+用户反馈鸿蒙手机无法跳转淘宝/拼多多，入口提示“未检测到淘宝 App”。接续 test.1 / 139（1e2fba0），完整保留接水恢复改动；本次版本 140 / 1.2.2-test.2。未合入此前快递列表/账号抓取试验。
 
 旧实现先 getApplicationInfo 再 resolveActivity，任一不可见便直接返回，实际没有尝试跳转。按 Android 官方可见性说明改为实际分发、捕获 ActivityNotFoundException；不再把包名查询不可见等同未安装。默认尝试固定官方 App 出库码路由，失败回退官方 App 首页，首页打开单独提示，不声称已进入身份码页。可见性受限且 SDK>=33 时使用 getLaunchIntentSenderForPackage；不增加广泛包查询权限。
 
@@ -10,7 +10,9 @@
 
 参考：[Android 包可见性与直接启动](https://developer.android.com/training/package-visibility/use-cases)、[API33 可见性无关的首页启动](https://developer.android.com/reference/android/content/pm/PackageManager#getLaunchIntentSenderForPackage(java.lang.String))、[HarmonyOS 应用链接机制](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/app-startup-overview)。路由事实沿用 docs/V082-PARCEL-SHORTCUTS.md 的既有来源；不猜测鸿蒙包名或私有跨环境桥接协议。
 
-前端、原生 Android 编译、实际 Intent 分发回归和交付签名结果待本轮补充；没有这台鸿蒙真机，不宣称设备兼容已验收。仅测试交付，不推送。
+431 项前端测试、TypeScript、生产构建及 560 项合成页面检查通过。GitHub Quality checks 42817044874、Android test APK 42817044723 均成功；Android Debug/Release 单元测试与构建通过，包含 12 项路由契约和 5 项 Robolectric 生产适配器回归。生产 Intent 的固定目标、直接启动不依赖包查询、系统链接不绑定安卓包、无处理程序及权限异常处理已作合成验证；这些不等于问题鸿蒙设备的真实跳转验收。
+
+构建源码 e3a4dd2f6071bcdcc4693e91005fdb668201024e，测试合并 1eae1a6eb7b3f097e1233190b51b52147f987835 的源码树一致。交付 Hanyuantong-v1.2.2-test.2-HarmonyFix.apk，12,426,271 字节，SHA-256 `8dade355a13f32b15a96bdadb799c1db334d69db98075de7ed605fe0a66c352d`。原签名 v1/v2/v3 验签退出码 0，证书 SHA-256 `4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9`；包名/140、非 debug、全部前端资源逐字节和 4 字节/16KB 对齐检查通过，确认包含接水及新的跳转适配器编译类，不含实验 ParcelWebActivity。原签名可覆盖安装，真实问题手机待验收，未推送或更改在线更新元数据。
 
 # 1.2.2-test.1 · 接水旧记录恢复（仅测试，未推送）
 
