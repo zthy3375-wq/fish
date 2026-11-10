@@ -16,6 +16,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
 /** Official page execution is a data source behind the native UI; it is shown only for authentication. */
+@Suppress("DEPRECATION")
 class ParcelPageWorker(
     private val activity: Activity, val provider: String, private val listener: Listener
 ) {
@@ -46,7 +47,6 @@ class ParcelPageWorker(
         private set
     private fun asset(name: String) = activity.assets.open("parcel/$name").bufferedReader().use { it.readText() }
     private fun target() = if (identity) ParcelWebPolicy.entry(provider) else if (provider == "taobao") ParcelWebPolicy.TAOBAO_PARCELS else ParcelWebPolicy.PDD_ENTRY
-    @Suppress("DEPRECATION")
     init {
         web.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true
