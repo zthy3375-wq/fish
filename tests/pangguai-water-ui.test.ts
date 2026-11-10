@@ -49,3 +49,13 @@ it('physical confirmation with absent device session does not claim device idle 
  pangguai.value.water={id:'old',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'closed_unknown',orderNo:'old-order',remoteEnd:false,updatedAt:Date.now(),endBasis:'physical_confirmed',error:'WATER_BILL_UNKNOWN'};
  await settle();expect(button('接水').disabled).toBe(false);expect(root.textContent).toContain('平台未返回设备会话');expect(root.textContent).not.toContain('设备已空闲');expect(root.textContent).not.toContain('本次实付');
 });
+
+it('failed manual recovery keeps recovery controls and pauses timer queries until successful explicit check',async()=>{
+ pangguai.value.water={id:'old',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'using',orderNo:'old-order',startedAt:Date.now()-21_000_000,remoteEnd:true,updatedAt:Date.now(),error:'WATER_OWNERSHIP'};
+ vi.mocked(confirmPhysicalWaterEnd).mockImplementationOnce(async()=>{pangguai.value.water!.error='NETWORK';return undefined});
+ await settle();button('已在机身结算，恢复扫码').click();await settle();button('确认已停止，核对设备').click();await settle();
+ expect(button('已在机身结算，恢复扫码')).toBeDefined();expect(root.textContent).toContain('接水状态待核对');expect(root.querySelector('.elapsed')).toBeNull();
+ await vi.advanceTimersByTimeAsync(30_000);expect(pollWater).not.toHaveBeenCalled();
+ vi.mocked(pollWater).mockImplementationOnce(async()=>{pangguai.value.water!.error=undefined;return {...pangguai.value}});
+ button('查询状态').click();await settle();expect(button('结束接水并结算')).toBeDefined();expect(root.querySelector('.elapsed')).not.toBeNull();
+});

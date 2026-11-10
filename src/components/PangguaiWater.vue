@@ -6,22 +6,22 @@ import {pangguai,pgBusy,prepareWater,startWater,pollWater,endWater,confirmPhysic
 import {pgAmount,pangguaiError,waterPhase,type PangguaiDevice,type WaterQuote} from '../services/pangguai-client';
 const props=defineProps<{device?:PangguaiDevice}>();defineEmits<{close:[]}>();
 const selection=ref(''),quote=ref<WaterQuote>(),localBusy=ref(false),starting=ref(false),clock=ref(Date.now()),panel=ref<HTMLElement>(),confirmPanel=ref<HTMLElement>(),devicePanel=ref<HTMLElement>();
-const recovering=ref(false);
+const recovering=ref(false),recoveryPending=ref(false);
 const session=computed(()=>pangguai.value.water),terminal=computed(()=>['settled','ended_zero','closed_unknown'].includes(session.value?.phase??''));
 const activeSession=computed(()=>!!session.value&&!terminal.value),blocked=computed(()=>localBusy.value||pgBusy.value||pangguai.value.expired),expired=computed(()=>!!quote.value&&clock.value>quote.value.expiresAt);
-const needsRecovery=computed(()=>activeSession.value&&(!session.value?.orderNo||['WATER_OWNERSHIP','WATER_UNKNOWN','WATER_STILL_ACTIVE'].includes(session.value?.error??'')||session.value?.phase==='starting'));
+const needsRecovery=computed(()=>activeSession.value&&(recoveryPending.value||!session.value?.orderNo||['WATER_OWNERSHIP','WATER_UNKNOWN','WATER_STILL_ACTIVE'].includes(session.value?.error??'')||session.value?.phase==='starting'));
 let disposed=false,active=true,awaitingSetup=false,setupAway=false,lastPoll=0,failures=0,timer:ReturnType<typeof setInterval>|undefined,listener:PluginListenerHandle|undefined;
-watch(()=>session.value?.id,()=>{failures=0;lastPoll=0;recovering.value=false});
+watch(()=>session.value?.id,()=>{failures=0;lastPoll=0;recovering.value=false;recoveryPending.value=false});
 watch(()=>props.device,async d=>{selection.value=d?.skus.length===1&&d.skus[0]?.available?d.skus[0].id:'';quote.value=undefined;if(d){await nextTick();devicePanel.value?.scrollIntoView?.({block:'nearest'})}},{immediate:true});
 function updated(value:number){return new Date(value).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Shanghai'})}
 const elapsed=computed(()=>{if(!session.value?.startedAt)return '';const sec=Math.max(0,Math.floor(((session.value.endedAt??clock.value)-session.value.startedAt)/1000));return `${Math.floor(sec/60)}分${String(sec%60).padStart(2,'0')}秒`});
 async function preview(){if(blocked.value||!selection.value)return;localBusy.value=true;quote.value=undefined;try{const result=await prepareWater(selection.value);if(!disposed&&result){quote.value=result;await nextTick();confirmPanel.value?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false}}
 async function begin(){const q=quote.value;if(!q||blocked.value||expired.value||!q.canStart)return;localBusy.value=true;starting.value=true;quote.value=undefined;try{await startWater(q.id);await nextTick();panel.value?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}finally{localBusy.value=false;starting.value=false;lastPoll=Date.now()}}
-async function refresh(){if(blocked.value)return;lastPoll=Date.now();const result=await pollWater();failures=result?0:failures+1}
+async function refresh(){if(blocked.value)return;lastPoll=Date.now();const result=await pollWater();failures=result?0:failures+1;if(result?.water&&!result.water.error)recoveryPending.value=false}
 async function finish(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;try{await endWater(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
-async function physical(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;recovering.value=false;try{await confirmPhysicalWaterEnd(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
+async function physical(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;recovering.value=false;recoveryPending.value=true;try{await confirmPhysicalWaterEnd(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
 async function setup(){if(blocked.value)return;awaitingSetup=true;setupAway=false;const result=await openWaterPaymentSetup();if(!result?.opened)awaitingSetup=false}
-function tick(){clock.value=Date.now();if(disposed||!active||blocked.value)return;if(awaitingSetup&&setupAway){awaitingSetup=false;void preview();return}if(activeSession.value&&session.value?.orderNo&&!recovering.value&&!['WATER_OWNERSHIP','WATER_STILL_ACTIVE'].includes(session.value.error??'')&&failures<3&&Date.now()-lastPoll>=3000)void refresh()}
+function tick(){clock.value=Date.now();if(disposed||!active||blocked.value)return;if(awaitingSetup&&setupAway){awaitingSetup=false;void preview();return}if(activeSession.value&&session.value?.orderNo&&!recovering.value&&!recoveryPending.value&&!['WATER_OWNERSHIP','WATER_STILL_ACTIVE'].includes(session.value.error??'')&&failures<3&&Date.now()-lastPoll>=3000)void refresh()}
 onMounted(async()=>{timer=setInterval(tick,1000);try{const h=await App.addListener('appStateChange',({isActive})=>{active=isActive;if(!isActive&&awaitingSetup)setupAway=true;if(isActive){failures=0;tick()}});if(disposed)void h.remove();else listener=h}catch{};tick()});
 onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
 </script>
@@ -29,7 +29,7 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
  <div class="water-flow">
  <section v-if="session&&!terminal" ref="panel" class="water-progress" aria-label="当前接水记录">
   <div class="heading"><span>{{session.deviceName}} · {{session.outlet}}</span><button class="text-button" :disabled="blocked" @click="refresh">查询状态</button></div>
-  <h3 aria-live="polite">{{['WATER_OWNERSHIP','WATER_STILL_ACTIVE'].includes(session.error??'')?'接水状态待核对':waterPhase(session.phase)}}</h3>
+  <h3 aria-live="polite">{{(recoveryPending||['WATER_OWNERSHIP','WATER_STILL_ACTIVE'].includes(session.error??''))?'接水状态待核对':waterPhase(session.phase)}}</h3>
   <p v-if="elapsed&&!needsRecovery" class="elapsed">{{elapsed}} <small>本地参考计时</small></p>
   <p v-if="session.phase==='starting'">正在核对本次用水，请查看机身提示。尚未确认启动时不要重复扫码开水。</p>
   <template v-if="['using','ending'].includes(session.phase)&&!needsRecovery">
