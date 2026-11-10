@@ -90,7 +90,11 @@
   }
   Node.prototype.appendChild = function (node) { watchScript(node); return oldAppend.apply(this, arguments); };
   Node.prototype.insertBefore = function (node) { watchScript(node); return oldInsert.apply(this, arguments); };
-  function visible(el) { return !!(el && el.getClientRects().length && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden'); }
+  function visible(el) {
+    if (!el || !el.getClientRects().length) return false;
+    for (var p = el; p && p.nodeType === 1; p = p.parentElement) { var s = getComputedStyle(p); if (p.hidden || s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return false; }
+    return true;
+  }
   function authPhase() {
     if (/captcha|punish|verify/.test(location.pathname)) return 'verify';
     if (/login|passport/.test(location.hostname + location.pathname)) return 'login';
@@ -111,7 +115,7 @@
         if (c && !Array.from(records.values()).some(function(r){return r.code === c && r.station === station;})) put({id:'shelf:'+station+':'+c, code:c, station:station, tracking:'', courier:'', title:'', state:'pending', evidence:'官方待取列表'});
       });
     });
-    explicitEmpty = Array.from(document.querySelectorAll('[class*="package-none-container"],[class*="empty--"],[class*="emptyTip--"]')).some(function (e) { return /暂无待取|没有待取|无待取包裹|暂无包裹/.test(clean(e.textContent)); });
+    explicitEmpty = Array.from(document.querySelectorAll('[class*="package-none-container"],[class*="empty--"],[class*="emptyTip--"]')).some(function (e) { return visible(e) && /暂无待取|没有待取|无待取包裹|暂无包裹/.test(clean(e.textContent)); });
     if (provider === 'pinduoduo' && window.rawData && window.rawData.data) { visited = 0; parseNode(window.rawData.data, '', 0); }
   }
   window.HytParcel = {

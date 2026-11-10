@@ -30,7 +30,7 @@ class ParcelPageWorker(
     private val handler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private var request: Future<*>? = null
-    private val collector = asset("native/collector.js")
+    private val collector = (if (provider == "pinduoduo") asset("handycode/pdd-same-origin.js") + "\n" else "") + asset("native/collector.js")
     private val identityScript = asset("native/identity.js")
     private var generation = 0
     private var document = 0

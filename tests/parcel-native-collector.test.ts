@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 const script=readFileSync('android/app/src/main/assets/parcel/native/collector.js','utf8');
 const doms:JSDOM[]=[];
 function fixture(html='',url='https://m.pinduoduo.net/mdkd/package'){
- const dom=new JSDOM(html,{url,runScripts:'outside-only'});doms.push(dom);dom.window.eval(script);
+ const dom=new JSDOM(html,{url,runScripts:'outside-only'});doms.push(dom);dom.window.HTMLElement.prototype.getClientRects=(()=>[{}]) as any;dom.window.eval(script);
  return {dom,api:(dom.window as any).HytParcel};
 }
 afterEach(()=>doms.splice(0).forEach(d=>d.window.close()));
@@ -35,6 +35,10 @@ describe('native parcel collector',()=>{
  it('distinguishes an explicit empty list from an unrecognised page',()=>{
   expect(fixture('<div>Loading</div>').api.read().phase).toBe('loading');
   expect(fixture('<div class="package-none-container">暂无待取包裹</div>').api.read().phase).toBe('empty');
+ });
+ it('does not treat hidden empty placeholders as successful authentication',()=>{
+  const {api}=fixture('<div style="display:none"><div class="package-none-container">暂无待取包裹</div></div>');
+  expect(api.read().phase).toBe('loading');
  });
  it('reads narrowly scoped DOM fields without projecting any page',()=>{
   const {api}=fixture('<div class="package-list-wrapper"><section class="package-list-picking"><span class="station-name">合成驿站</span><span class="package-code-value">D-0034</span></section></div><span>取件码 99999</span>');
