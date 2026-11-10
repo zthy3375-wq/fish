@@ -47,6 +47,12 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity android:name=".life.ParcelWebActivity" android:process=":parcel_web"
+            android:exported="false" android:launchMode="singleTop"
+            android:enableOnBackInvokedCallback="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

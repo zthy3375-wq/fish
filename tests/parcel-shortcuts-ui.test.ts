@@ -4,26 +4,44 @@ import {createApp, h, nextTick} from 'vue';
 import ParcelShortcuts from '../src/components/ParcelShortcuts.vue';
 import type {ParcelLaunchResult} from '../src/services/parcel-shortcuts';
 
-const bridge = vi.hoisted(() => ({supported: true, open: vi.fn()}));
+const bridge = vi.hoisted(() => ({supported: true, open: vi.fn(), embedded: vi.fn()}));
 vi.mock('../src/services/parcel-shortcuts', async original => ({
   ...await original<typeof import('../src/services/parcel-shortcuts')>(),
   parcelShortcutsSupported: () => bridge.supported,
   openParcelShortcut: bridge.open,
+  openEmbeddedParcel: bridge.embedded,
 }));
 let root: HTMLElement, app: ReturnType<typeof createApp> | undefined;
 async function settle() { await Promise.resolve(); await Promise.resolve(); await nextTick() }
 function mount() { app = createApp({render: () => h(ParcelShortcuts)}); app.mount(root) }
 function button(name: string) { return [...root.querySelectorAll('button')].find(b => b.textContent?.includes(name))! }
-beforeEach(() => { bridge.supported = true; bridge.open.mockReset(); root = document.createElement('div'); document.body.append(root) });
+beforeEach(() => { bridge.supported = true; bridge.open.mockReset(); bridge.embedded.mockReset(); root = document.createElement('div'); document.body.append(root) });
 afterEach(() => { app?.unmount(); app = undefined; root.remove() });
 
 it('offers two clearly labelled official-app shortcuts without a code or account form', () => {
   mount();
   expect(button('淘宝出库码')).toBeTruthy(); expect(button('拼多多出库码')).toBeTruthy();
-  expect(root.textContent).toContain('官方 App 快捷入口');
-  expect(root.textContent).toContain('不读取、保存或生成出库身份码');
+  expect(root.textContent).toContain('应用内查看');
+  expect(root.textContent).toContain('仅在本机展示');
   expect(root.querySelector('input,canvas,img,iframe')).toBeNull();
   expect(bridge.open).not.toHaveBeenCalled();
+});
+it('opens embedded pages deliberately and fences late callbacks', async () => {
+  let finish!: (value: boolean) => void;
+  bridge.embedded.mockReturnValue(new Promise<boolean>(resolve => { finish = resolve })); mount();
+  button('淘宝取件页面').click(); button('淘宝取件页面').click(); await nextTick();
+  expect(bridge.embedded).toHaveBeenCalledExactlyOnceWith('taobao');
+  expect(button('拼多多取件页面').disabled).toBe(true);
+  app!.unmount(); app = undefined; mount(); finish(true); await settle();
+  expect(root.querySelector('[role=status]')).toBeNull();
+});
+it('does not describe opening a window as a successful login or data sync', async () => {
+  bridge.embedded.mockResolvedValue(true); mount(); button('拼多多取件页面').click(); await settle();
+  expect(root.textContent).toContain('请在官方网页登录');
+  expect(root.textContent).not.toMatch(/登录成功|同步成功|已连接账号/);
+  bridge.embedded.mockResolvedValue(false); button('拼多多取件页面').click(); await settle();
+  expect(root.textContent).toContain('暂时无法打开应用内页面');
+  expect(button('淘宝取件页面').disabled).toBe(false);
 });
 it('disables web previews instead of silently navigating to a provider URL', () => {
   bridge.supported = false; mount();

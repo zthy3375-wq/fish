@@ -1,13 +1,31 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {openParcelShortcut, parcelLaunchMessage, parcelShortcutsSupported, type ParcelProvider} from '../src/services/parcel-shortcuts';
+import {openEmbeddedParcel, openParcelShortcut, parcelLaunchMessage, parcelShortcutsSupported, type ParcelProvider} from '../src/services/parcel-shortcuts';
 
-const bridge = vi.hoisted(() => ({open: vi.fn(), platform: 'android', available: true}));
+const bridge = vi.hoisted(() => ({open: vi.fn(), embedded: vi.fn(), platform: 'android', available: true}));
 vi.mock('@capacitor/core', () => ({
   Capacitor: {getPlatform: () => bridge.platform, isPluginAvailable: () => bridge.available},
-  registerPlugin: () => ({open: bridge.open}),
+  registerPlugin: () => ({open: bridge.open, openEmbedded: bridge.embedded}),
 }));
-beforeEach(() => { bridge.open.mockReset(); bridge.platform = 'android'; bridge.available = true });
+beforeEach(() => { bridge.open.mockReset(); bridge.embedded.mockReset(); bridge.platform = 'android'; bridge.available = true });
+
+describe('embedded parcel bridge', () => {
+  it('only passes a fixed provider and checks the reply provider', async () => {
+    bridge.embedded.mockResolvedValue({provider:'taobao',status:'opened'});
+    expect(await openEmbeddedParcel('taobao')).toBe(true);
+    expect(bridge.embedded).toHaveBeenCalledExactlyOnceWith({provider:'taobao'});
+    expect(await openEmbeddedParcel('pinduoduo')).toBe(false);
+    bridge.embedded.mockResolvedValue({provider:'taobao',status:'logged_in'});
+    expect(await openEmbeddedParcel('taobao')).toBe(false);
+  });
+  it('contains native failures and never opens embedded pages outside Android', async () => {
+    bridge.embedded.mockRejectedValue(new Error('private'));
+    expect(await openEmbeddedParcel('taobao')).toBe(false);
+    bridge.embedded.mockClear(); bridge.platform = 'web';
+    expect(await openEmbeddedParcel('taobao')).toBe(false);
+    expect(bridge.embedded).not.toHaveBeenCalled();
+  });
+});
 
 describe('parcel shortcut bridge', () => {
   it.each(['taobao', 'pinduoduo'] as const)('sends only the fixed %s provider, not a URI or identity', async provider => {

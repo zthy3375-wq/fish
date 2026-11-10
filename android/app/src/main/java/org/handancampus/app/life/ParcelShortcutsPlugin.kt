@@ -15,6 +15,23 @@ class ParcelShortcutsPlugin : Plugin() {
     private val busy = AtomicBoolean(false)
     @Volatile private var destroyed = false
 
+    @PluginMethod fun openEmbedded(call: PluginCall) {
+        val provider = try {
+            require(call.data.keys().asSequence().toSet() == setOf("provider"))
+            ParcelWebPolicy.provider(call.getString("provider"))
+        } catch (_: Exception) { call.reject("请选择淘宝或拼多多", "INVALID_PROVIDER"); return }
+        val host = activity
+        if (destroyed || host == null) { call.reject("页面已关闭", "CANCELLED"); return }
+        host.runOnUiThread {
+            if (destroyed || host.isFinishing || host.isDestroyed) {
+                call.reject("页面已关闭", "CANCELLED")
+            } else try {
+                host.startActivity(Intent(host, ParcelWebActivity::class.java).putExtra("provider", provider))
+                call.resolve(JSObject().put("provider", provider).put("status", "opened"))
+            } catch (_: Exception) { call.reject("暂时无法打开取件页面", "UNAVAILABLE") }
+        }
+    }
+
     @PluginMethod fun open(call: PluginCall) {
         val target = try {
             ParcelShortcutContract.target(call.getString("provider"), call.data.keys().asSequence().toSet())

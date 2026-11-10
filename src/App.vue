@@ -763,7 +763,7 @@ onUnmounted(() => {
               : modal === 'quzhi-wallet' ? '趣智校园钱包'
               : modal === 'pangguai-wallet' ? '胖乖生活钱包'
               : modal === 'campus-map' ? '校园平面图'
-              : modal === 'parcel' ? '快递出库码'
+              : modal === 'parcel' ? '我的快递'
               : modal === 'course-widget' ? '桌面课表'
               : '校园助手设置'
           "
