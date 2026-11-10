@@ -13,6 +13,12 @@
   }
   function login(doc) {
     if (window.HandyCodeOfficialIdentity && HandyCodeOfficialIdentity.loginVisible(doc)) return true;
+    if (Array.from(doc.querySelectorAll('iframe')).some(function (frame) {
+      var rect = frame.getBoundingClientRect(), view = doc.defaultView;
+      if (!visible(frame) || rect.width <= 0 || rect.height <= 0 || rect.right <= 0 || rect.bottom <= 0 ||
+          rect.left >= view.innerWidth || rect.top >= view.innerHeight) return false;
+      try { return /login|captcha|verify|passport/i.test(new URL(frame.src, doc.URL).href); } catch (_) { return false; }
+    })) return true;
     return Array.from(doc.querySelectorAll('input,textarea,[contenteditable="true"]')).some(function (node) {
       return !/^(hidden|checkbox|radio|button|submit|reset)$/.test(node.type || '') && visible(node) && node.getClientRects().length;
     });

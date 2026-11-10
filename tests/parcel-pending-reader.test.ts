@@ -62,4 +62,10 @@ describe('read-only pending parcel adapter', () => {
     expect(read('<div class="identity--fixture"><span class="code--fixture">123456789</span></div>', tb)).toMatchObject({phase: 'loading', items: []});
     expect(read('<main id="handycode-merged"><div id="parcels-content" aria-busy="true">旧取件码 1-2-3</div><iframe id="parcels-source"></iframe></main>', tb)).toMatchObject({phase: 'loading', items: []});
   });
+  it('keeps verification iframes ahead of an old pending list', () => {
+    const dom = new JSDOM(group(['01-002']) + '<iframe src="https://m.pinduoduo.net/captcha.html"></iframe>', {url: pdd, runScripts: 'outside-only'});
+    dom.window.document.querySelector('iframe')!.getBoundingClientRect = (() => ({width: 300, height: 400, right: 300, bottom: 400, left: 0, top: 0})) as typeof Element.prototype.getBoundingClientRect;
+    expect(dom.window.eval(script)).toMatchObject({phase: 'login', items: []});
+    dom.window.close();
+  });
 });

@@ -389,17 +389,18 @@ class ParcelWebActivity : Activity() {
     private fun invalidate(provider: String) {
         readSession.invalidate(provider)
         reading.clear()
+        if (overview) renderOverview()
     }
     private fun invalidateAll() {
         readSession.clear()
         reading.clear()
     }
-    private fun readPending(view: WebView, provider: String, done: (() -> Unit)? = null) {
-        if (!foreground || !owned(view) || view === popup || !reading.add(view)) { done?.invoke(); return }
+    private fun readPending(view: WebView, provider: String) {
+        if (!foreground || !owned(view) || view === popup || !reading.add(view)) return
         val epoch = generations[view]
         val ticket = readSession.generation
         if (failed.contains(view) || !ParcelWebPolicy.allows(provider, view.url)) {
-            reading.remove(view); snapshots.remove(provider); done?.invoke(); return
+            reading.remove(view); snapshots.remove(provider); return
         }
         val script = assets.open("parcel/read-pending.js").bufferedReader().use { it.readText() }
         view.evaluateJavascript(script) { result ->
@@ -407,7 +408,6 @@ class ParcelWebActivity : Activity() {
             reading.remove(view)
             readSession.accept(provider, ticket, result)
             if (overview) renderOverview()
-            done?.invoke()
         }
     }
     private fun showOverview() {
