@@ -97,4 +97,95 @@ final class PersonalBackupTests: XCTestCase {
         XCTAssertThrowsError(try PersonalBackup.decode(JSONSerialization.data(withJSONObject: root)))
     }
 
+    func testNativeBackupRetainsAllFractionalDateFieldsExactly() throws {
+        let instant = Date(timeIntervalSinceReferenceDate: 816091200.1234567)
+        var task = TaskRules.makeTask(title: "保留精度", now: instant)
+        task.plannedAt = instant.addingTimeInterval(60.0000004)
+        task.deadline = instant.addingTimeInterval(3600.0000008)
+        task.completed = true; task.completedAt = instant.addingTimeInterval(0.0003)
+        task.updatedAt = instant.addingTimeInterval(0.0007)
+        task.snoozedUntil = instant.addingTimeInterval(600.000001)
+        task.reminders = [TaskReminder(anchor: .absolute, at: instant.addingTimeInterval(120.000002))]
+        task = try TaskRules.validated(task)
+        let backup = PersonalBackup(courses: [], tasks: [task], semesterStart: instant)
+        let data = try backup.encode()
+        let restored = try PersonalBackup.decode(data)
+        XCTAssertEqual(restored.tasks, [task])
+        XCTAssertEqual(restored.semesterStart, instant)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNotNil(json["semesterStart"] as? String, "Keep the existing ISO-string schema, not numeric/object dates")
+        XCTAssertEqual(restored.tasks[0].createdAt, task.createdAt)
+        XCTAssertNotEqual(restored.tasks[0].createdAt, restored.tasks[0].updatedAt)
+    }
+
+    func testTimestampCodecPreservesImportedMillisSubmillisAndReferenceEpoch() throws {
+        for stamp in ["2026-11-11T08:00:00.123Z", "2026-11-11T16:00:00.123+08:00", "2026-11-11T08:00:00.123456789Z"] {
+            let date = try BackupValue.timestamp(stamp)
+            XCTAssertEqual(try BackupValue.timestamp(BackupValue.timestampString(date)), date)
+        }
+        XCTAssertEqual(try BackupValue.timestamp("2026-11-11T08:00:00.123Z"), try BackupValue.timestamp("2026-11-11T16:00:00.123+08:00"))
+        let instants = [
+            Date(timeIntervalSinceReferenceDate: 0.12345678901234567),
+            Date(timeIntervalSinceReferenceDate: -0.12345678901234567),
+            Date(timeIntervalSinceReferenceDate: 816091200.1234567),
+            // Existing versions may already hold the representable result of a Unix-epoch conversion.
+            Date(timeIntervalSince1970: 1794384000.1234567),
+            Date(timeIntervalSince1970: -2208988800), Date(timeIntervalSince1970: 7289654400)
+        ]
+        for instant in instants {
+            let restored = try PersonalBackup.decode(PersonalBackup(courses: [], tasks: [], semesterStart: instant).encode())
+            XCTAssertEqual(restored.semesterStart, instant)
+        }
+        for invalid in ["2026-02-30T08:00:00.123Z", "2026-11-11T08:00:00.123Ztail", "2026-11-11T08:00:00.123e2Z", "2026-11-11T08:00:00." + String(repeating: "1", count: 26) + "Z"] {
+            XCTAssertThrowsError(try BackupValue.timestamp(invalid))
+        }
+    }
+
+    private func fractionalRepeatPair() throws -> [CampusTask] {
+        let now = try BackupValue.timestamp("2026-11-11T08:00:00.1234567Z")
+        var parent = TaskRules.makeTask(title: "精确重复任务", now: now.addingTimeInterval(-3600))
+        parent.plannedAt = try BackupValue.localDate("2026-11-11T09:00")
+        parent.deadline = try BackupValue.localDate("2026-11-11T18:00")
+        parent.repeatRule = TaskRepeatRule(kind: .daily)
+        parent.steps = [TaskStep(title: "保留步骤")]
+        parent.reminders = [TaskReminder(anchor: .deadline, minutes: 10)]
+        return try TaskRules.settingCompleted([parent], id: parent.id, completed: true, now: now)
+    }
+
+    private func nativeRoundTrip(_ tasks: [CampusTask]) throws -> [CampusTask] {
+        try PersonalBackup.decode(PersonalBackup(courses: [], tasks: tasks, semesterStart: sample().semesterStart).encode()).tasks
+    }
+    private func androidRoundTrip(_ tasks: [CampusTask]) throws -> [CampusTask] {
+        guard case .androidTasks(let imported) = try PersonalBackupImport.parse(AndroidTaskImportPlan.export(tasks: tasks)) else {
+            throw BackupCompatibilityFailure("测试格式无效")
+        }
+        return imported.tasks
+    }
+
+    func testUntouchedRepeatUndoSurvivesNativeAndAndroidRoundTrips() throws {
+        let pair = try fractionalRepeatPair()
+        let routes = [try nativeRoundTrip(pair), try androidRoundTrip(pair), try nativeRoundTrip(androidRoundTrip(pair))]
+        for restored in routes {
+            XCTAssertEqual(restored[0].completedAt, pair[0].completedAt)
+            XCTAssertEqual(restored[1].createdAt, pair[1].createdAt)
+            XCTAssertEqual(restored[1].updatedAt, pair[1].updatedAt)
+            let undone = try TaskRules.settingCompleted(restored, id: pair[0].id, completed: false, now: pair[1].createdAt.addingTimeInterval(60))
+            XCTAssertEqual(undone.count, 1); XCTAssertFalse(undone[0].completed)
+        }
+    }
+
+    func testSubmillisecondEditCannotBecomeUntouchedAfterEitherRoundTrip() throws {
+        var pair = try fractionalRepeatPair()
+        pair[1].updatedAt = pair[1].createdAt.addingTimeInterval(0.0003)
+        XCTAssertNotEqual(pair[1].updatedAt, pair[1].createdAt)
+        XCTAssertThrowsError(try TaskRules.settingCompleted(pair, id: pair[0].id, completed: false))
+        let routes = [try nativeRoundTrip(pair), try androidRoundTrip(pair), try nativeRoundTrip(androidRoundTrip(pair))]
+        for restored in routes {
+            XCTAssertEqual(restored[1].createdAt, pair[1].createdAt)
+            XCTAssertEqual(restored[1].updatedAt, pair[1].updatedAt)
+            XCTAssertNotEqual(restored[1].updatedAt, restored[1].createdAt)
+            XCTAssertThrowsError(try TaskRules.settingCompleted(restored, id: pair[0].id, completed: false))
+        }
+    }
+
 }

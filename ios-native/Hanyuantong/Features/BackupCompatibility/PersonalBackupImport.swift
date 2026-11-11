@@ -137,16 +137,34 @@ enum BackupValue {
     }
     static func timestamp(_ value: Any?) throws -> Date {
         let text = try string(value, max: 64, required: true)
-        guard text.range(of: #"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9](?:\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])\z"#, options: .regularExpression) != nil else {
+        guard text.range(of: #"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9](?:\.[0-9]{1,25})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])\z"#, options: .regularExpression) != nil else {
             throw BackupCompatibilityFailure("备份时间戳必须为完整的 ISO 8601 时间。")
         }
-        _ = try day(String(text.prefix(10)))
+        // Keep native v1's complete 1900...2201 instant range, rather than narrowing it to task-plan dates.
+        let dateText = String(text.prefix(10)), calendar = ScheduleMath.calendar
+        guard let year = Int(dateText.prefix(4)), let month = Int(dateText.dropFirst(5).prefix(2)), let day = Int(dateText.suffix(2)),
+              let calendarDate = calendar.date(from: DateComponents(year: year, month: month, day: day)),
+              dayString(calendarDate) == dateText else { throw BackupCompatibilityFailure("备份时间戳日期无效。") }
         _ = try clock(String(text.dropFirst(11).prefix(5)))
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var date = formatter.date(from: text)
-        if date == nil { formatter.formatOptions = [.withInternetDateTime]; date = formatter.date(from: text) }
-        guard let date, (-2208988800...7258118400).contains(date.timeIntervalSince1970) else {
+        var wholeText = text, fraction = Decimal.zero
+        if let dot = text.firstIndex(of: ".") {
+            let start = text.index(after: dot)
+            let digits = text[start...].prefix { $0 >= "0" && $0 <= "9" }
+            let zoneStart = text.index(start, offsetBy: digits.count)
+            wholeText = String(text[..<dot]) + String(text[zoneStart...])
+            guard let parsed = Decimal(string: "0." + String(digits), locale: Locale(identifier: "en_US_POSIX")) else {
+                throw BackupCompatibilityFailure("备份时间戳的小数秒无效。")
+            }
+            fraction = parsed
+        }
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime]
+        guard let whole = formatter.date(from: wholeText) else { throw BackupCompatibilityFailure("备份时间戳无效。") }
+        // Foundation's fractional formatter rounds to milliseconds. Decimal addition in the Date
+        // reference epoch avoids that rounding and avoids losing another bit by adding the Unix offset.
+        let reference = Decimal(Int64(whole.timeIntervalSinceReferenceDate)) + fraction
+        guard let seconds = Double(NSDecimalNumber(decimal: reference).stringValue) else { throw BackupCompatibilityFailure("备份时间戳无效。") }
+        let date = Date(timeIntervalSinceReferenceDate: seconds)
+        guard (-2208988800...7289654400).contains(date.timeIntervalSince1970) else {
             throw BackupCompatibilityFailure("备份时间戳必须为有效 ISO 8601 时间。")
         }
         return date
@@ -159,8 +177,17 @@ enum BackupValue {
     static func dayString(_ value: Date) -> String { dateFormatter("yyyy-MM-dd").string(from: value) }
     static func localString(_ value: Date) -> String { dateFormatter("yyyy-MM-dd'T'HH:mm").string(from: value) }
     static func timestampString(_ value: Date) -> String {
-        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: value)
+        let seconds = value.timeIntervalSinceReferenceDate
+        guard seconds.isFinite, abs(seconds) < 10_000_000_000,
+              let reference = Decimal(string: String(seconds), locale: Locale(identifier: "en_US_POSIX")) else { return "" }
+        let whole = seconds.rounded(.down)
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime]
+        let base = formatter.string(from: Date(timeIntervalSinceReferenceDate: whole))
+        let fraction = reference - Decimal(Int64(whole))
+        if fraction == .zero { return base }
+        let decimalText = NSDecimalNumber(decimal: fraction).stringValue
+        guard decimalText.hasPrefix("0."), decimalText.count <= 27, base.hasSuffix("Z") else { return "" }
+        return String(base.dropLast()) + String(decimalText.dropFirst()) + "Z"
     }
     private static func dateFormatter(_ format: String) -> DateFormatter {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")

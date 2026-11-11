@@ -60,7 +60,14 @@ struct PersonalBackup: Codable {
     func encode() throws -> Data {
         try validate()
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        // Keep the existing ISO-string schema, including old whole-second values, but do not let
+        // Foundation's built-in strategy erase imported milliseconds or native submillisecond edits.
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            let text = BackupValue.timestampString(date)
+            guard try BackupValue.timestamp(text) == date else { throw Failure.invalid }
+            var container = encoder.singleValueContainer()
+            try container.encode(text)
+        }
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(self)
         guard data.count <= Self.maximumBytes else { throw Failure.tooLarge }
@@ -83,7 +90,9 @@ struct PersonalBackup: Codable {
                   tasks.allSatisfy({ Set($0.keys).isSubset(of: taskKeys) && strictTaskFields($0) }) else { throw Failure.unsupported }
             if let schedule = root["personalSchedule"], !(schedule is NSNull) { _ = try AndroidScheduleState.parse(schedule) }
             let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
+            decoder.dateDecodingStrategy = .custom { decoder in
+                try BackupValue.timestamp(decoder.singleValueContainer().decode(String.self))
+            }
             let backup = try decoder.decode(Self.self, from: data)
             try backup.validate()
             return backup
