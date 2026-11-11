@@ -83,7 +83,7 @@ struct LearningCenterView: View {
             if store.needsCleanup {
                 Button("重试清理学习通数据", role: .destructive) { store.logout() }.buttonStyle(.bordered)
             } else if store.needsLogin {
-                Button(store.cache.issues["connection"] == "VERIFY" ? "完成验证并继续" : store.connected ? "重新连接学习通" : "连接学习通") { store.login() }.buttonStyle(.borderedProminent).disabled(store.blocked)
+                Button(store.cache.issues["connection"] == "VERIFY" ? "完成验证并继续" : store.connected ? "重新连接学习通" : "连接学习通") { store.login() }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(store.blocked)
             }
             if store.connected {
                 HStack {

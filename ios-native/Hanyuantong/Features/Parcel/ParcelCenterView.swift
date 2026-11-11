@@ -73,7 +73,7 @@ struct ParcelCenterView: View {
                     Text(value.item.station.isEmpty ? "驿站待核对" : value.item.station)
                     Text(value.item.code).font(.system(size: 58, weight: .bold, design: .monospaced)).minimumScaleFactor(0.5).lineLimit(2)
                     Text("读取于 \(CampusTheme.date(value.item.observedAt, format: "MM-dd HH:mm"))\n历史码可能失效，请与官方页核对。").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Button("复制取件码") { copy(value.item.code) }.buttonStyle(.borderedProminent)
+                    Button("复制取件码") { copy(value.item.code) }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary)
                 }.padding(24).privacySensitive().navigationTitle("取件码").navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { enlarged = nil } } }
             }
@@ -118,7 +118,7 @@ private struct ParcelOfficialPage: View {
                 else { Spacer(); ProgressView(); Spacer() }
                 Button { session.readCurrent() } label: {
                     Label(session.isReading ? "正在读取…" : "读取当前页取件码", systemImage: "tray.and.arrow.down").frame(maxWidth: .infinity)
-                }.buttonStyle(.borderedProminent).padding().disabled(!session.canRead || session.isLoading || session.isReading)
+                }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).padding().disabled(!session.canRead || session.isLoading || session.isReading)
             }
             .privacySensitive().navigationTitle(session.provider.title + "官方页面").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回") { close() } } }

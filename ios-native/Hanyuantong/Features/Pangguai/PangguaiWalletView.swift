@@ -34,7 +34,7 @@ struct PangguaiWalletView: View {
                         Image(systemName: "wallet.pass").font(.largeTitle).foregroundStyle(CampusTheme.primary)
                         Text("连接你的胖乖钱包").font(.headline)
                         Text("短信登录后，余额直接显示在这里。").font(.subheadline).foregroundStyle(CampusTheme.muted)
-                        Button("连接胖乖生活") { loginPresented = true }.buttonStyle(.borderedProminent).disabled(store.busy)
+                        Button("连接胖乖生活") { loginPresented = true }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(store.busy)
                     }.frame(maxWidth: .infinity).campusCard()
                 }
                 Button { confirmation = .official(nil) } label: { Label("打开支付宝胖乖生活", systemImage: "arrow.up.right.square") }.buttonStyle(.bordered)
@@ -79,13 +79,13 @@ struct PangguaiWalletView: View {
         }
         if store.expired {
             notice("登录已失效，下方保留上次结果。")
-            Button("重新连接") { loginPresented = true }.buttonStyle(.borderedProminent)
+            Button("重新连接") { loginPresented = true }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary)
         }
         VStack(alignment: .leading, spacing: 10) {
             Text("直饮水余额").font(.subheadline).foregroundStyle(CampusTheme.muted)
             Text(PangguaiWalletMath.waterAmount(waterMerchant?.balance).map { "¥" + $0 } ?? "暂未获取").font(.system(size: 38, weight: .semibold)).privacySensitive()
             Text("查询于 " + updated(store.snapshot.ticketsUpdatedAt)).font(.caption).foregroundStyle(CampusTheme.muted)
-            Button { scannerPresented = true } label: { Label("扫码识别设备", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).disabled(blocked)
+            Button { scannerPresented = true } label: { Label("扫码识别设备", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked)
         }.campusCard()
         if store.snapshot.issues["tickets"] != nil { notice("直饮水余额未更新，保留上次结果。") }
         if let water = store.snapshot.water { waterSession(water) }
@@ -147,7 +147,7 @@ struct PangguaiWalletView: View {
                 }.buttonStyle(.plain).disabled(blocked || !sku.available)
             }
             if ["00", "04"].contains(d.category), d.isBluetooth == "0" {
-                Button(d.category == "04" ? "核对接水费用":"查看洗衣费用") { Task { if d.category == "04" { await store.prepareWater(skuID: selection) } else { await store.quoteLaundry(skuID: selection) } } }.buttonStyle(.borderedProminent).disabled(blocked || selection.isEmpty)
+                Button(d.category == "04" ? "核对接水费用":"查看洗衣费用") { Task { if d.category == "04" { await store.prepareWater(skuID: selection) } else { await store.quoteLaundry(skuID: selection) } } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || selection.isEmpty)
                 Text(d.category == "04" ? "请核对热水／常温水出水口，并先放好杯子。":"请放好衣物、关紧机门，费用以确认页为准。").font(.caption).foregroundStyle(CampusTheme.muted)
             } else { notice("此类设备仅支持识别，请按机身和官方端提示使用。") }
         }.campusCard()
@@ -164,7 +164,7 @@ struct PangguaiWalletView: View {
                 }.disabled(!channel.available || blocked).buttonStyle(.plain)
             }
             Text("确认后将创建或支付这台设备的当前订单。付款和启动分别查询；退款、取消以平台规则及返回结果为准。").font(.caption).foregroundStyle(CampusTheme.muted)
-            Button("确认支付 ¥\(PangguaiProtocol.amount(q.amount)) 并洗衣") { Task { await store.startLaundry(confirmedQuoteID: q.id, method: method) } }.buttonStyle(.borderedProminent).disabled(blocked || q.expiresAt < Date() || !q.channels.contains(where: { $0.id == method && $0.available }))
+            Button("确认支付 ¥\(PangguaiProtocol.amount(q.amount)) 并洗衣") { Task { await store.startLaundry(confirmedQuoteID: q.id, method: method) } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || q.expiresAt < Date() || !q.channels.contains(where: { $0.id == method && $0.available }))
             if q.expiresAt < Date() { notice(PGFailure.quoteExpired.message) }
         }.campusCard()
     }
@@ -178,7 +178,7 @@ struct PangguaiWalletView: View {
             Text("胖乖账户 \(store.maskedPhone)。确认后启动本次用水，结束后按实际使用量计费。已开通的免密付款以官方签约为准；本次不使用广告优惠。").font(.subheadline)
             notice(q.remoteEnd ? "支持在此结束接水；若设备未停止，请立即按机身「结算」。":"接完请按机身「结算」，应用会查询状态和账单。")
             if !q.canStart { notice(q.reason) }
-            Button("确认开始接水") { Task { await store.startWater(confirmedQuoteID: q.id) } }.buttonStyle(.borderedProminent).disabled(blocked || !q.canStart || q.expiresAt < Date())
+            Button("确认开始接水") { Task { await store.startWater(confirmedQuoteID: q.id) } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || !q.canStart || q.expiresAt < Date())
             if q.expiresAt < Date() { notice(PGFailure.quoteExpired.message) }
         }.campusCard()
     }
@@ -204,7 +204,7 @@ struct PangguaiWalletView: View {
             Text(s.title).font(.title3.bold())
             if s.phase == "settled" { Text("本次实付 ¥" + PangguaiProtocol.amount(s.amount)).font(.title2) }
             if ["using", "ending"].contains(s.phase) {
-                if s.remoteEnd && !s.endSent { Button("结束接水") { confirmation = .endWater(s.id) }.buttonStyle(.borderedProminent).disabled(blocked) }
+                if s.remoteEnd && !s.endSent { Button("结束接水") { confirmation = .endWater(s.id) }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked) }
                 notice(s.endSent ? "已请求结束，尚待设备确认；仍在出水请立即按机身「结算」。":"接完请按机身「结算」。暂停请使用机身按钮。")
             }
             if s.phase == "starting" { notice("尚未确认启动，不要重复扫码开水。请查看机身状态。") }
@@ -223,7 +223,7 @@ struct PangguaiWalletView: View {
             Text(q.deviceName + " · 账户 " + store.maskedPhone)
             Text("¥" + PangguaiProtocol.amount(q.amount)).font(.largeTitle.bold())
             Text("付款方式：" + q.paymentName + "。本次一次性结算，不会再次开水。")
-            Button("确认结算 ¥" + PangguaiProtocol.amount(q.amount)) { Task { await store.settleWater(confirmedQuoteID: q.id) } }.buttonStyle(.borderedProminent).disabled(blocked || q.expiresAt < Date())
+            Button("确认结算 ¥" + PangguaiProtocol.amount(q.amount)) { Task { await store.settleWater(confirmedQuoteID: q.id) } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || q.expiresAt < Date())
             Button("取消") { store.settlementQuote = nil }.disabled(store.busy)
         }.campusCard()
     }

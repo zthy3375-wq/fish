@@ -61,7 +61,7 @@ struct QuzhiWalletView: View {
             Text("连接已有趣智账户，直接查余额和账单。充值可前往支付宝中的趣智充值页。")
                 .font(.subheadline).foregroundStyle(CampusTheme.muted).multilineTextAlignment(.center)
             Button("连接趣智校园") { store.concealBathCode(); showLogin = true }
-                .buttonStyle(.borderedProminent).disabled(store.busy)
+                .buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(store.busy)
             Text("手机号、密码或验证码仅在原生登录窗口填写。会话加密留在本机，不保存密码或验证码。")
                 .font(.caption).foregroundStyle(CampusTheme.muted)
         }.frame(maxWidth: .infinity).campusCard()
@@ -90,7 +90,7 @@ struct QuzhiWalletView: View {
             Text(store.busy ? "正在更新…" : "查询于 " + timestamp(store.snapshot.walletUpdatedAt))
                 .font(.caption).foregroundStyle(CampusTheme.muted)
             Button { showRecharge = true } label: { Label("充值 · 支付宝", systemImage: "arrow.up.right").frame(maxWidth: .infinity) }
-                .buttonStyle(.borderedProminent).disabled(store.busy || !store.valid)
+                .buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(store.busy || !store.valid)
         }.campusCard()
         if let issue = store.snapshot.issues["wallet"] { notice("余额未更新：" + issue.localizedDescription) }
         if let issue = store.snapshot.issues["school"] { notice("学校信息未更新：" + issue.localizedDescription) }

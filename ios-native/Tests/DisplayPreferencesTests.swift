@@ -266,6 +266,28 @@ final class DisplayPreferencesTests: XCTestCase {
         XCTAssertEqual(CampusLayoutMetrics.cardPadding(compact: true, accessibilitySize: true), 16)
     }
 
+    func testPrimaryButtonForegroundHasReadableContrastInEveryAppearance() {
+        func luminance(_ color: UIColor, traits: UITraitCollection) -> Double {
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+            XCTAssertTrue(color.resolvedColor(with: traits).getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+            XCTAssertEqual(alpha, 1, accuracy: 0.001)
+            func linear(_ channel: CGFloat) -> Double {
+                let value = Double(channel)
+                return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        }
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for contrast in [UIAccessibilityContrast.normal, .high] {
+                let traits = UITraitCollection(traitsFrom: [UITraitCollection(userInterfaceStyle: style), UITraitCollection(accessibilityContrast: contrast)])
+                let foreground = luminance(UIColor(CampusTheme.onPrimary), traits: traits)
+                let background = luminance(UIColor(CampusTheme.primary), traits: traits)
+                let ratio = (max(foreground, background) + 0.05) / (min(foreground, background) + 0.05)
+                XCTAssertGreaterThanOrEqual(ratio, 4.5, "Primary button contrast must remain readable in \(style.rawValue)/\(contrast.rawValue)")
+            }
+        }
+    }
+
     private func assertColor(_ color: UIColor, hex: UInt32, style: UIUserInterfaceStyle, contrast: UIAccessibilityContrast = .normal, file: StaticString = #filePath, line: UInt = #line) {
         let traits = UITraitCollection(traitsFrom: [UITraitCollection(userInterfaceStyle: style), UITraitCollection(accessibilityContrast: contrast)])
         let resolved = color.resolvedColor(with: traits)
