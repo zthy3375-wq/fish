@@ -2,7 +2,7 @@ import { computed, ref } from 'vue';
 import { chaoxingClient, chaoxingSupported } from '../services/chaoxing-client';
 import { LearningSyncEngine } from '../services/learning-sync-engine';
 import { learningStore } from '../services/learning-store';
-import { emptyLearning, projectLearning, learningPlan, type LearningCache } from '../domain/learning';
+import { applyLearningResponse, emptyLearning, projectLearning, learningPlan, type LearningCache } from '../domain/learning';
 import type { CampusTask } from '../domain/agenda';
 export const learningCache = ref(emptyLearning()), learningReady = ref(false), learningBusy = ref(false), learningError = ref('');
 export const learningOpening=ref(false);
@@ -62,6 +62,28 @@ export async function openLearningPortal() { if (learningBusy.value)
 catch {
     learningError.value = '官方页面未打开，请稍后重试';
 } }
+export async function openLearningCourse(key: string) {
+    if (learningBusy.value || learningOpening.value) return;
+    const account = learningCache.value.accountKey;
+    if (!learningCache.value.courses.some(c => `${c.courseId}/${c.classId}` === key)) return;
+    try {
+        learningOpening.value = true;
+        const result = await chaoxingClient.openCourse({ key });
+        if ('session' in result) {
+            const cache = await learningStore.change(current => current.accountKey === account ? applyLearningResponse(current, result) : current);
+            publish(cache);
+            learningError.value = result.code === 'COURSE_MISSING' ? '官方列表中未找到这门课程，请更新课程列表后重试' : '官方课程尚未打开，请检查连接状态后重试';
+            return;
+        }
+        if (!result.closed || learningCache.value.accountKey !== account) return;
+    } catch {
+        learningError.value = '官方课程未打开，已有作业保留，请稍后重试';
+        return;
+    } finally {
+        learningOpening.value = false;
+    }
+    await syncLearning({ force: true, courseKeys: [key] });
+}
 export function learningIssue() { const issues = learningCache.value.issues; return learningError.value || (learningCache.value.session === 'expired' ? '学习通登录已过期，请重新连接' : issues.connection === 'COURSE_SELECTION' ? '请选择需要同步的课程' : issues.connection === 'RATE_LIMIT' ? '学习通请求较频繁，稍后再刷新' : issues.connection === 'VERIFY' ? '扫描已暂停，请完成官方验证码后继续；已读取作业保留'  : issues.connection ? `学习通尚未更新（${issues.connection}），保留已有任务` : Object.keys(issues).length ? '部分课程或模块尚未更新，保留已有数据' : ''); }
 
 export function pauseLearning(){engine.pauseSync()}

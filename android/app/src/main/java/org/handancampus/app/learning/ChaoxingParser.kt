@@ -30,20 +30,35 @@ object ChaoxingParser {
         Regex("已截止|已过期|已关闭|已结束").containsMatchIn(raw) -> "closed"
         else -> "unknown"
     }
-    fun hidden(html:String,id:String):String = Jsoup.parse(html).getElementById(id)?.attr("value") ?: ""
-    fun menu(html:String,base:String):String? {
+    fun hidden(html:String,id:String):String {
+        val doc=Jsoup.parse(html)
+        return doc.select("input").firstOrNull { it.id()==id||it.attr("name")==id }?.attr("value").orEmpty()
+    }
+    /** Decode only an explicitly supplied URL; preserve percent escapes in absolute URLs. */
+    private fun suppliedUrl(raw:String,base:String):String? {
+        val value=raw.trim()
+        val decoded=if(value.startsWith("https://")||value.startsWith("/")||value.startsWith("?"))value
+            else try { URLDecoder.decode(value.replace("+","%2B"),"UTF-8") } catch(_:Exception){value}
+        return ChaoxingPolicy.absolute(decoded,base)
+    }
+    fun menu(html:String,base:String,course:LearningCourse?=null):String? {
         val doc=Jsoup.parse(html,base)
         for(a in doc.select("a[data],a[href]"))if(a.text().contains("作业")) {
-            val raw=if(a.attr("data").isNotBlank())a.attr("data") else a.attr("href")
-            val target=ChaoxingPolicy.absolute(raw,base)
-            if(target!=null&&ChaoxingPolicy.safeRead(target)&&java.net.URI(target).path.contains("work",true))return target
+            for(raw in listOf(a.attr("data"),a.attr("href"))) {
+                val target=suppliedUrl(raw,base)
+                if(target!=null&&ChaoxingPolicy.workList(target)&&ChaoxingPolicy.sameCourse(target,course))return target
+            }
         }
         return null
     }
     /** A supplied list iframe is a read target, never a guessed endpoint. */
-    fun workFrame(html:String,base:String):String? = Jsoup.parse(html,base).select("iframe[src]").asSequence()
-        .mapNotNull { ChaoxingPolicy.absolute(it.attr("src"),base) }
-        .firstOrNull { it!=base&&ChaoxingPolicy.safeRead(it)&&java.net.URI(it).path.lowercase() in listOf("/mooc2/work/list","/mooc-ans/mooc2/work/list","/work/getallwork","/mooc-ans/work/getallwork") }
+    fun workFrame(html:String,base:String,course:LearningCourse?=null):String? = Jsoup.parse(html,base).select("iframe[src],frame[src]").asSequence()
+        .mapNotNull { suppliedUrl(it.attr("src"),base) }
+        .firstOrNull { it!=base&&ChaoxingPolicy.workList(it)&&ChaoxingPolicy.sameCourse(it,course) }
+    fun courseFrames(html:String,base:String,course:LearningCourse):List<String> = Jsoup.parse(html,base).select("iframe[src],frame[src]").asSequence()
+        .mapNotNull { suppliedUrl(it.attr("src"),base) }
+        .filter { it!=base&&ChaoxingPolicy.safeRead(it)&&ChaoxingPolicy.sameCourse(it,course)&&java.net.URI(it).path.lowercase() in listOf("/visit/stucoursemiddle","/mooc-ans/visit/stucoursemiddle","/mycourse/studentcourse","/mooc-ans/mycourse/studentcourse","/mooc2-ans/mycourse/studentcourse") }
+        .distinct().take(3).toList()
     fun courses(html:String,base:String):List<LearningCourse> {
         val doc=Jsoup.parse(html,base);val out=linkedMapOf<String,LearningCourse>()
         for(el in doc.select("[courseid],a[href*=stucoursemiddle]")) {
@@ -73,7 +88,7 @@ object ChaoxingParser {
             val explicit=row.select(".status,.work-status,.workStatus,.task-status,.pt5,.time,em,span").map { it.text().trim() }.filter { status(it)!="unknown" && it.length<=100 && !it.contains("截止时间") && !it.contains("开始时间") }
             val aria=label.drop(1).joinToString(";").trim()
             val statusText=(row.selectFirst(".status,.work-status,.workStatus,.task-status")?.text()?.takeIf { status(it)!="unknown" } ?: aria.takeIf { status(it)!="unknown" } ?: explicit.firstOrNull() ?: "提交状态未知").take(100)
-            if((url!=null&&!ChaoxingPolicy.safeRead(url))||!listOf(cid,clazz,wid).all(ChaoxingPolicy::numeric)||title.isBlank()){rejected++;continue}
+            if((url!=null&&!ChaoxingPolicy.safeRead(url))||!listOf(cid,clazz,wid).all(ChaoxingPolicy::numeric)||title.isBlank()||course!=null&&(cid!=course.courseId||clazz!=course.classId)){rejected++;continue}
             val rawTime=row.select(".time,.pt5,.remaining,.fl span").joinToString("\n") { it.text() }.ifBlank { row.text() }.take(1000)
             val name=course?.name ?: row.selectFirst(".courseName,.course-name")?.text().orEmpty()
             val item=LearningRecord("$cid/$clazz/$kind/$wid",cid,clazz,wid,kind,title.take(200),name.take(200),status(statusText),statusText.take(100),deadline(rawTime),null,rawTime,"",url.orEmpty())
@@ -83,7 +98,7 @@ object ChaoxingParser {
         val visible=doc.clone();visible.select("script,style,template,[hidden],[style*=display:none],[style*=display: none]").remove()
         val text=visible.text()+" "+visible.select("img[alt]").joinToString(" "){it.attr("alt")}
         val emptyText=Regex("(?:暂无|没有|还没有|尚无)(?:相关|任何|发布的|布置的)?作业|(?:老师|教师)(?:还未|尚未|未)发布作业|暂无任务").containsMatchIn(text)
-        val blocked=Regex("请.*登录|验证码|访问过于频繁|加载失败|系统异常").containsMatchIn(text)
+        val blocked=Regex("请.*登录|验证码|访问过于频繁|加载失败|系统异常").containsMatchIn(text)||ChaoxingWorkNavigator.accessDenied(html)
         val zeroList=total(html)==0&&visible.select(".bottomList,.task-list").isNotEmpty()
         val empty=rows.isEmpty()&&!blocked&&(emptyText||zeroList)
         val recognized=out.isNotEmpty()||empty

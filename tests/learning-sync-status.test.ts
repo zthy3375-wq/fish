@@ -11,4 +11,6 @@ it('offers actionable recovery without exposing unknown error strings',()=>{
  expect(learningCourseStatus({status:'error',count:0,code:'VERIFY'})).toContain('验证码');
  expect(learningCourseStatus({status:'error',count:0,code:'HTTP_403'})).toContain('HTTP 403');
  expect(learningCourseStatus({status:'error',count:0,code:'secret-token=abc'})).not.toContain('abc');
+ expect(learningCourseStatus({status:'error',count:0,code:'WORK_ACCESS'})).toContain('官方页面拒绝访问');
+ expect(learningCourseStatus({status:'error',count:0,code:'COURSE_MISSING'})).toContain('更新课程列表');
 });

@@ -21,7 +21,7 @@ try{
   await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','openCourse','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
     if(plugin==='CourseWidget'){if(method==='publish'){(window.__widgetSnapshots??=[]).push(JSON.parse(args.snapshot));return {}}if(method==='target'){const date=window.__widgetTarget||'';window.__widgetTarget='';return {date}}if(method==='status')return {supported:true,ids:window.__widgetIds||[]};if(method==='openHome'){window.__widgetHomeCalls=(window.__widgetHomeCalls||0)+1;return {}}if(method==='pin'){window.__widgetPinCalls=(window.__widgetPinCalls||0)+1;return {requested:true,baselineIds:[...(window.__widgetIds||[])]}}}
@@ -75,7 +75,9 @@ try{
     if(plugin==='LocalNotifications'&&method==='getPending')return {notifications:[]};
     if(plugin==='ChaoxingClient'){
      window.__learningCalls.push(method);
+     if(method==='syncAll')(window.__learningSyncArgs??=[]).push(args);
      if(method==='logout')return {session:'disconnected'};
+     if(method==='openCourse'){window.__learningCourseOpened=args.key;return {closed:true}};
      if(method==='openItem'){window.__learningOpened=args.id;window.__learningSubmitted=true;return {closed:true}};
      if(window.__learningFailure)throw Error('network');if(window.__learningExpired)return {session:'expired',code:'AUTH'};
      const data=JSON.parse(JSON.stringify(window.__learningFixture));
@@ -317,6 +319,16 @@ try{
   await page.getByRole('button',{name:/^关注并读取 /}).first().click();
   await page.getByRole('button',{name:/^取消关注 /}).first().waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).selectedCourses.includes('12/34')),`${width}: following saves immediately`);
+  await page.evaluate(()=>{window.__learningSavedFixture=JSON.parse(JSON.stringify(window.__learningFixture));window.__learningFixture.items=[];window.__learningFixture.courseResults=[{key:'12/34',status:'error',code:'WORK_ACCESS'}]});
+  await page.getByRole('button',{name:/^更新 /}).first().click();
+  await page.locator('.lc-course-reason>summary').first().waitFor();
+  await page.locator('.lc-course-reason>summary').first().click();
+  await page.getByText(/官方页面拒绝访问/).waitFor();
+  assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).items.length)===1,`${width}: failed course read retains cached homework`);
+  await page.evaluate(()=>{window.__learningFixture=window.__learningSavedFixture});
+  await page.getByRole('button',{name:/^打开官方课程 /}).first().click();
+  await page.waitForFunction(()=>window.__learningCourseOpened==='12/34'&&window.__learningSyncArgs.at(-1).courseKeys.length===1&&window.__learningSyncArgs.at(-1).courseKeys[0]==='12/34'&&JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).courseSync['12/34'].status==='ok');
+  assert(await page.evaluate(()=>window.__learningCourseOpened)==='12/34',`${width}: recovery opens the exact official course and rereads only that course`);
   await page.getByRole('tab',{name:'作业',exact:true}).click();
   await page.locator('.learning-state.pending').waitFor();
   assert(await page.locator('.learning-management').getAttribute('open')===null,`${width}: sync controls collapse after course selection`);

@@ -76,6 +76,7 @@ export interface ChaoxingClient {
         id: string;
     }): Promise<unknown>;
     openPortal(): Promise<unknown>;
+    openCourse(options: { key: string }): Promise<LearningResponse | { closed: boolean }>;
     logout(): Promise<LearningResponse>;
 }
 export const chaoxingClient = registerPlugin<ChaoxingClient>('ChaoxingClient');
