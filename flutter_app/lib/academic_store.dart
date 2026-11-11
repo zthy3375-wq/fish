@@ -225,7 +225,7 @@ class AcademicStore extends ChangeNotifier {
         notice = '账号状态已变化，已隐藏旧课表，请重新连接';
         notifyListeners();
         try {
-          await _invalidate(null);
+          await _invalidate(_cleanupScope);
           cleanupRequired = false;
           _cleanupScope = null;
         } catch (_) {

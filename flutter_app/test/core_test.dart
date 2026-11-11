@@ -207,6 +207,8 @@ void main() {
     await reopened.restore();
     expect(reopened.timetable, isNull);
     expect(cache.values.values.join(), isNot(contains('OTHER')));
+    expect(cache.values, isEmpty,
+        reason: 'Old encrypted snapshot is removed, not orphaned');
   });
   test(
     'switch immediately clears; cancelled login never restores old account',

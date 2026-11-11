@@ -122,7 +122,11 @@ class AcademicSession(private val activity: FlutterActivity) {
                 override fun onPageFinished(v: WebView, url: String) {
                     if (call == null) return
                     if (AcademicPolicy.loginPage(url)) {
-                        if (!login || renderedResult != null) { authenticated = false; vault.clear(); finish(JSONObject().put("session", "expired")) }
+                        if (!login || renderedResult != null) {
+                            authenticated = false
+                            try { vault.clear() } catch (_: Exception) { fail("无法清除过期学校连接，请重试", "STORAGE"); return }
+                            finish(JSONObject().put("session", "expired"))
+                        }
                         return
                     }
                     if (renderedResult != null) {

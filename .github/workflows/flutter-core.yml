@@ -42,11 +42,11 @@ jobs:
         working-directory: flutter_app
       - run: ./gradlew :app:testDebugUnitTest --no-daemon
         working-directory: flutter_app/android
-      - run: flutter build apk --release --target-platform android-arm64
+      - run: flutter build apk --release --target-platform android-arm64 --split-per-abi
         working-directory: flutter_app
       - name: Verify independent application ID
         run: |
-          apk=flutter_app/build/app/outputs/flutter-apk/app-release.apk
+          apk=flutter_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           tool=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$tool" dump badging "$apk" | head -1 | tee flutter_app/build/apk-package.txt
           grep "name='org.handancampus.fluttercore'" flutter_app/build/apk-package.txt
@@ -55,7 +55,7 @@ jobs:
         with:
           name: hanyuantong-flutter-core-android-${{ github.sha }}
           path: |
-            flutter_app/build/app/outputs/flutter-apk/app-release.apk
+            flutter_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
             flutter_app/build/apk-package.txt
             flutter_app/build/apk-sha256.txt
           if-no-files-found: error
