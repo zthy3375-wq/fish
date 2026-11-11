@@ -48,7 +48,7 @@ struct PersonalBackup: Codable {
             let canonical = try personalSchedule.validated()
             let projection = try canonical.projectedCourses(semesterID: canonical.activeSemesterId)
             guard Set(projection) == Set(courses), let semester = canonical.semesters.first(where: { $0.id == canonical.activeSemesterId }),
-                  try BackupValue.dayDate(semester.weekStartDate) == semesterStart else { throw Failure.invalid }
+                  BackupValue.dayDate(semester.weekStartDate) == semesterStart else { throw Failure.invalid }
         }
         _ = try TaskRules.validatedTasks(tasks)
         for task in tasks {

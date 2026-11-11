@@ -136,7 +136,7 @@ struct TasksView: View {
     }
 }
 
-private extension Int { var clampedPriority: Int { min(3, max(0, self)) } }
+private extension Int { var clampedPriority: Int { Swift.min(3, Swift.max(0, self)) } }
 
 enum TaskPresentation {
     static func date(_ date: Date) -> String {
