@@ -23,10 +23,18 @@ object BikeCodes {
             else->throw IllegalArgumentException("QR")
         }
     }
+    fun scanner(provider:String):BikeRoute {
+        require(provider in setOf("hello","meituan"))
+        return BikeRoute(if(provider=="hello")"hellobike://hellobike.com/scan_qr" else "imeituan://www.meituan.com/scanQRCode","scanner_requested")
+    }
+    fun homePackage(provider:String,target:String):String {
+        require(provider in setOf("hello","meituan") && target in setOf("alipay","app"))
+        require(provider=="hello" || target=="app")
+        return if(target=="alipay")"com.eg.android.AlipayGphone" else if(provider=="hello")"com.jingyao.easybike" else "com.sankuai.meituan"
+    }
     fun routes(code:BikeCode,mode:String):List<BikeRoute> {
         require(mode in setOf("use","web","scanner"))
-        if(mode=="scanner")return listOf(BikeRoute(if(code.provider=="hello")
-            "hellobike://hellobike.com/scan_qr" else "imeituan://www.meituan.com/scanQRCode","scanner_requested"))
+        if(mode=="scanner")return listOf(scanner(code.provider))
         if(mode=="web"||code.provider=="meituan")return listOf(BikeRoute(code.web,"link_requested"))
         // Exact Alipay handoff from c3x.me's own live script, not a guessed unlock API.
         val query=URLEncoder.encode("qrCode="+code.raw,"UTF-8").replace("+","%20")

@@ -765,7 +765,7 @@ onUnmounted(() => {
               : modal === 'pangguai-wallet' ? '胖乖生活钱包'
               : modal === 'campus-map' ? '校园平面图'
               : modal === 'parcel' ? '快递出库码'
-              : modal === 'bike-scan' ? '扫码骑车'
+              : modal === 'bike-scan' ? '快捷用车'
               : modal === 'course-widget' ? '桌面课表'
               : '校园助手设置'
           "

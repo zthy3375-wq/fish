@@ -34,4 +34,12 @@ class BikeCodeTest {
   assertEquals(1,BikeCodes.routes(BikeCodes.parse(hello),"web").size)
   assertThrows(Exception::class.java){BikeCodes.routes(BikeCodes.parse(hello),"unlock")}
  }
+ @Test fun shortcutRoutesHaveStrictProviderAndTargetEnums(){
+  assertEquals("com.eg.android.AlipayGphone",BikeCodes.homePackage("hello","alipay"))
+  assertEquals("com.jingyao.easybike",BikeCodes.homePackage("hello","app"))
+  assertEquals("com.sankuai.meituan",BikeCodes.homePackage("meituan","app"))
+  assertThrows(Exception::class.java){BikeCodes.homePackage("meituan","alipay")}
+  assertThrows(Exception::class.java){BikeCodes.homePackage("hello","https://evil.test")}
+  assertThrows(Exception::class.java){BikeCodes.scanner("https://evil.test")}
+ }
 }

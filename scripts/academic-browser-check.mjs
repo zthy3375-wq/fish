@@ -21,10 +21,10 @@ try{
   await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={BikeScan:['scan','open','copyNumber','clear'],CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','openCourse','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={BikeScan:['scan','open','copyNumber','clear','shortcut'],CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','openCourse','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
-    if(plugin==='BikeScan'){(window.__bikeCalls??=[]).push({method,args});if(method==='scan')return {provider:window.__bikeProvider||'hello',number:window.__bikeProvider==='meituan'?'8646834293':'9150978196',ticket:'11111111-1111-4111-8111-111111111111'};if(method==='open')return {status:args.mode==='scanner'?'scanner_requested':window.__bikeProvider==='meituan'?'link_requested':'alipay_requested'};if(method==='copyNumber')return {status:'copied'};return {}}
+    if(plugin==='BikeScan'){(window.__bikeCalls??=[]).push({method,args});if(method==='scan')return {provider:window.__bikeProvider||'hello',number:window.__bikeProvider==='meituan'?'8646834293':'9150978196',ticket:'11111111-1111-4111-8111-111111111111'};if(method==='open')return {status:args.mode==='scanner'?'scanner_requested':window.__bikeProvider==='meituan'?'link_requested':'alipay_requested'};if(method==='shortcut')return {status:args.mode==='home'?'home_requested':'scanner_requested'};if(method==='copyNumber')return {status:'copied'};return {}}
     if(plugin==='CourseWidget'){if(method==='publish'){(window.__widgetSnapshots??=[]).push(JSON.parse(args.snapshot));return {}}if(method==='target'){const date=window.__widgetTarget||'';window.__widgetTarget='';return {date}}if(method==='status')return {supported:true,ids:window.__widgetIds||[]};if(method==='openHome'){window.__widgetHomeCalls=(window.__widgetHomeCalls||0)+1;return {}}if(method==='pin'){window.__widgetPinCalls=(window.__widgetPinCalls||0)+1;return {requested:true,baselineIds:[...(window.__widgetIds||[])]}}}
     if(plugin==='AppUpdate'){
      window.__updateState??={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:false,mandatory:false,checkedAt:Date.now()};
@@ -102,26 +102,29 @@ try{
   await page.getByRole('heading',{name:'邯院通',exact:true}).waitFor();
   assert(await page.locator('.floating-nav button').count()===4,`${width}: home has four navigation tabs`);
   assert(await page.locator('.home-body .school-connection').count()===0,`${width}: disconnected home keeps school account in profile`);
-  await page.getByRole('button',{name:/扫码骑车/}).click();
-  await page.getByRole('dialog',{name:'扫码骑车',exact:true}).waitFor();
+  await page.getByRole('button',{name:/骑车/}).click();
+  await page.getByRole('dialog',{name:'快捷用车',exact:true}).waitFor();
+  assert(await page.evaluate(()=>!window.__bikeCalls?.some(c=>['scan','open','shortcut'].includes(c.method))),`${width}: quick bike opens without launching a camera or app`);
+  await page.getByRole('button',{name:/哈啰扫码用车/}).click();
   await page.getByText('9150978196',{exact:true}).waitFor();
-  assert(await page.evaluate(()=>window.__bikeCalls.filter(c=>c.method==='open').length===0),`${width}: recognizing a bike never launches it automatically`);
+  assert(await page.evaluate(()=>!window.__bikeCalls.some(c=>c.method==='open')),`${width}: recognizing a bike never launches it automatically`);
   await page.getByRole('button',{name:'前往用车',exact:true}).click();
   await page.getByRole('status').filter({hasText:'已请求打开支付宝'}).waitFor();
-  assert(await page.evaluate(()=>{const a=window.__bikeCalls.find(c=>c.method==='open').args;return a.mode==='use'&&!a.url&&!a.provider&&!a.number}),`${width}: bike bridge launches only the native-scanned ticket`);
-  await page.getByRole('button',{name:'尝试打开官方扫码',exact:true}).click();
-  await page.getByRole('status').filter({hasText:'再次扫描'}).waitFor();
-  assert(!(await page.getByRole('dialog').innerText()).includes('开锁成功'),`${width}: scanner fallback does not claim an unlock`);
-  await page.screenshot({path:path.join(output,`bike-scan-${width}.png`),animations:'disabled'});
+  assert(await page.evaluate(()=>{const a=window.__bikeCalls.find(c=>c.method==='open').args;return a.mode==='use'&&!a.url&&!a.provider&&!a.number}),`${width}: bike handoff uses only native ticket`);
+  await page.getByRole('button',{name:/返回官方用车/}).click();
+  await page.getByRole('status').filter({hasText:'不会重新传入车码'}).waitFor();
+  assert(await page.evaluate(()=>{const a=window.__bikeCalls.find(c=>c.method==='shortcut').args;return a.mode==='home'&&a.target==='alipay'&&!a.ticket&&!a.number&&!a.url}),`${width}: return never resends a vehicle QR`);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await page.waitForFunction(()=>window.__bikeCalls.some(c=>c.method==='clear'));
-  await page.evaluate(()=>window.__bikeProvider='meituan');
-  await page.getByRole('button',{name:/扫码骑车/}).click();
-  await page.getByText('8646834293',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'前往用车',exact:true}).click();
-  await page.getByRole('status').filter({hasText:'可能进入官方网页或下载页'}).waitFor();
-  assert(await page.getByRole('dialog').getByText(/车码链接可能进入美团下载页/).isVisible(),`${width}: Meituan preserves an honest web fallback`);
-  assert(await page.getByRole('dialog').evaluate(e=>e.scrollWidth<=e.clientWidth),`${width}: bike sheet fits the viewport`);
+  await page.getByRole('button',{name:/骑车/}).click();
+  await page.getByRole('button',{name:/返回官方用车/}).waitFor();
+  await page.getByRole('button',{name:/美团官方扫码/}).click();
+  await page.getByRole('status').filter({hasText:'官方扫码入口'}).waitFor();
+  assert(await page.evaluate(()=>window.__bikeCalls.filter(c=>c.method==='scan').length===1),`${width}: Meituan goes to official scanner without another local scan`);
+  assert(!(await page.getByRole('dialog').innerText()).includes('开锁成功'),`${width}: dispatch does not claim unlock success`);
+  await page.screenshot({path:path.join(output,`bike-quick-${width}.png`),animations:'disabled'});
+  assert(await page.getByRole('dialog').evaluate(e=>e.scrollWidth<=e.clientWidth),`${width}: bike sheet fits viewport`);
+  await page.getByRole('button',{name:'清除入口记录',exact:true}).click();
+  assert(await page.getByRole('dialog').getByText(/官方订单不受影响/).isVisible(),`${width}: clearing local entry never claims return completion`);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
   await page.getByRole('button',{name:'暂停小鱼动画',exact:true}).click();
   assert(await page.getByRole('button',{name:'播放小鱼动画',exact:true}).getAttribute('aria-pressed')==='true',`${width}: fish can be paused`);

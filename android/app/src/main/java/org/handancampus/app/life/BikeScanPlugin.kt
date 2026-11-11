@@ -60,6 +60,25 @@ class BikeScanPlugin:Plugin() {
         val status=if(host==null)"cancelled" else BikeAndroidLauncher(host).launch(bike,mode!!)
         call.resolve(JSObject().put("status",status))
     }
+    @PluginMethod fun shortcut(call:PluginCall) {
+        val provider=call.getString("provider")
+        val mode=call.getString("mode")
+        val target=call.getString("target") ?: "app"
+        val expected=if(mode=="home")setOf("provider","mode","target") else setOf("provider","mode")
+        if(call.data.keys().asSequence().toSet()!=expected || provider !in setOf("hello","meituan") || mode !in setOf("scanner","home") || target !in setOf("alipay","app") || (provider=="meituan" && target!="app")) {
+            call.reject("打开方式无效","ARGUMENT");return
+        }
+        if(!busy.compareAndSet(false,true)){call.reject("正在处理，请稍候","BUSY");return}
+        val host=activity
+        if(host==null){busy.set(false);call.reject("已取消","CANCELLED");return}
+        host.runOnUiThread {
+            try {
+                val status=if(destroyed)"cancelled" else BikeAndroidLauncher(host).shortcut(provider!!,mode!!,target)
+                call.resolve(JSObject().put("status",status))
+            }catch(_:Exception){call.reject("暂未完成，请重试","UNAVAILABLE")}
+            finally{busy.set(false)}
+        }
+    }
     @PluginMethod fun copyNumber(call:PluginCall)=withCode(call,setOf("ticket")){bike->
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("单车编号",bike.number))
         call.resolve(JSObject().put("status","copied"))

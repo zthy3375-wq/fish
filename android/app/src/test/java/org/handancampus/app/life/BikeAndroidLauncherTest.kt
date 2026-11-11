@@ -2,6 +2,9 @@ package org.handancampus.app.life
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.ResolveInfo
+import android.content.pm.ActivityInfo
+import org.robolectric.Shadows.shadowOf
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,5 +34,25 @@ class BikeAndroidLauncherTest {
  }
  @Test fun closedHostCannotDispatchAnyVehicle(){
   val h=host();h.finish();assertEquals("cancelled",BikeAndroidLauncher(h).launch(hello,"use"));assertTrue(h.sent.isEmpty())
+ }
+ @Test fun meituanShortcutDispatchesScannerWithoutNeedingAStoredVehicle(){
+  val h=host();assertEquals("scanner_requested",BikeAndroidLauncher(h).shortcut("meituan","scanner"))
+  assertEquals("imeituan://www.meituan.com/scanQRCode",h.sent.single().dataString)
+ }
+ @Test fun returningOpensOnlyTheLauncherWithoutVehicleData(){
+  for((provider,target) in listOf("hello" to "alipay","hello" to "app","meituan" to "app")){
+   val h=host();val pkg=BikeCodes.homePackage(provider,target)
+   val info=ResolveInfo().apply{activityInfo=ActivityInfo().apply{packageName=pkg;name=pkg+".TestLauncher"}}
+   shadowOf(h.packageManager).addResolveInfoForIntent(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(pkg),info)
+   assertEquals("home_requested",BikeAndroidLauncher(h).shortcut(provider,"home",target))
+   val i=h.sent.single();assertEquals(Intent.ACTION_MAIN,i.action);assertNull(i.data);assertEquals(pkg,i.component?.packageName);assertTrue(i.extras==null||i.extras!!.isEmpty)
+  }
+ }
+ @Test fun missingHomeDoesNotFallBackToAUseOrScannerRoute(){
+  val h=host();assertEquals("unavailable",BikeAndroidLauncher(h).shortcut("hello","home","alipay"));assertTrue(h.attempted.isEmpty())
+ }
+ @Test fun scannerSecurityDenialAndClosedHomeAreControlled(){
+  val h=host();h.blocked=true;assertEquals("blocked",BikeAndroidLauncher(h).shortcut("meituan","scanner"));assertEquals(1,h.attempted.size)
+  h.finish();assertEquals("cancelled",BikeAndroidLauncher(h).shortcut("meituan","home"));assertEquals(1,h.attempted.size)
  }
 }
