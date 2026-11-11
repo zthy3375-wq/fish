@@ -176,6 +176,16 @@ struct CourseDetailView: View {
     let course: Course
     @State private var confirming = false
     var body: some View {
+        Group {
+            if let current = store.courses.first(where: { $0.id == course.id }) {
+                details(current)
+            } else {
+                CampusEmpty(title: "课程记录已更新", detail: "该课程已删除、刷新或退出账号。请返回课表重新查看。", symbol: "calendar.badge.exclamationmark")
+                    .padding(20)
+            }
+        }.navigationTitle("课程详情").navigationBarTitleDisplayMode(.inline)
+    }
+    private func details(_ course: Course) -> some View {
         List {
             Section { Text(course.name).font(.title2.weight(.semibold)).padding(.vertical, 8) }
             Section("课程信息") {
