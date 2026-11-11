@@ -35,7 +35,7 @@ abstract interface class SecureCache {
 class DeviceSecureCache implements SecureCache {
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
     iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock_this_device,
+      accessibility: KeychainAccessibility.unlocked_this_device,
     ),
   );
   @override

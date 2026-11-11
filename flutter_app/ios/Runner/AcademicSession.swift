@@ -87,7 +87,8 @@ final class AcademicSession: NSObject, WKNavigationDelegate, WKUIDelegate {
     private func validTerm(_ year: String, _ code: String) -> Bool {
         year.range(of: "^20[0-9]{2}$", options: .regularExpression) != nil && ["3", "12"].contains(code)
     }
-    private static func allowed(_ url: URL?) -> Bool {
+    // Internal only so RunnerTests can exercise the actual navigation policy.
+    static func allowed(_ url: URL?) -> Bool {
         guard let url = url else { return false }
         return url.scheme == "https" && url.host == "jwgl.hdc.edu.cn" &&
             url.user == nil && url.password == nil && (url.port == nil || url.port == 443)

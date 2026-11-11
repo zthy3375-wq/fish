@@ -40,9 +40,13 @@ jobs:
         working-directory: flutter_app
       - run: flutter build apk --debug
         working-directory: flutter_app
+      - run: ./gradlew :app:testDebugUnitTest --no-daemon
+        working-directory: flutter_app/android
+      - run: flutter build apk --release --target-platform android-arm64
+        working-directory: flutter_app
       - name: Verify independent application ID
         run: |
-          apk=flutter_app/build/app/outputs/flutter-apk/app-debug.apk
+          apk=flutter_app/build/app/outputs/flutter-apk/app-release.apk
           tool=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$tool" dump badging "$apk" | head -1 | tee flutter_app/build/apk-package.txt
           grep "name='org.handancampus.fluttercore'" flutter_app/build/apk-package.txt
@@ -51,7 +55,7 @@ jobs:
         with:
           name: hanyuantong-flutter-core-android-${{ github.sha }}
           path: |
-            flutter_app/build/app/outputs/flutter-apk/app-debug.apk
+            flutter_app/build/app/outputs/flutter-apk/app-release.apk
             flutter_app/build/apk-package.txt
             flutter_app/build/apk-sha256.txt
           if-no-files-found: error
@@ -69,6 +73,12 @@ jobs:
       - run: flutter pub get
         working-directory: flutter_app
       - run: flutter build ios --simulator --debug
+        working-directory: flutter_app
+      - name: Test native iOS URL boundaries
+        shell: bash
+        run: |
+          device=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if x["name"].startswith("iPhone")))')
+          xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner -destination "platform=iOS Simulator,id=$device" -only-testing:RunnerTests -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO
         working-directory: flutter_app
       - name: Archive simulator build (not a signed device IPA)
         run: ditto -c -k --sequesterRsrc --keepParent flutter_app/build/ios/iphonesimulator/Runner.app flutter_app/build/hanyuantong-core-ios-simulator.zip
