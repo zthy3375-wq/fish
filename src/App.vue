@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import {widgetSupported,widgetSnapshot,publishWidget,widgetTarget} from './services/course-widget';
 import CourseWidgetSetup from './components/CourseWidgetSetup.vue';
+import HomeCourseTimeline from './components/HomeCourseTimeline.vue';
+import {courseProgress} from './domain/course-progress';
 import {scheduleViews} from './composables/view-state';
 import AnalyticsSettings from './components/AnalyticsSettings.vue';
 import {initAnalytics,flushAnalytics,recordFeature,refreshAnalytics} from './composables/analytics';
@@ -276,6 +278,7 @@ const week = computed(() => currentWeek(now.value, semester.value)),
 const current = computed(() =>
   todayCourses.value.find((c) => courseState(c, now.value) === "current"),
 );
+const currentProgress=computed(()=>current.value?courseProgress(current.value,now.value):undefined);
 const next = computed(() =>
   nextOccurrence(data.value.courses, now.value, semester.value),
 );
@@ -549,7 +552,7 @@ onMounted(async () => {
   load();
   void initTasks().catch(()=>{});
   void initLearning().then(()=>syncLearning()).catch(()=>{});
-  clockTimer = setInterval(() => (now.value = campusNow()), 30000);
+  clockTimer = setInterval(() => {if(document.visibilityState!=='hidden')now.value=campusNow()}, 1000);
   media.addEventListener("change", systemChange);
   window.addEventListener("keydown", escape);
   document.addEventListener("visibilitychange", recalibrate);
@@ -622,15 +625,13 @@ onUnmounted(() => {
               <AnalyticsSettings prompt @policy="open('privacy')"/>
               <section class="home-course-panel" aria-label="课程速览">
                 <button v-if="homeFocus" class="home-next" :aria-label="'查看'+(current?'当前':'下一节')+'课程 '+homeFocus.name" @click="details(homeFocus)">
-                  <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'进行中':next?untilLabel(next.minutes):''}}</span></span>
+                  <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'还剩'+currentProgress?.remainingMinutes+'分钟':next?untilLabel(next.minutes):''}}</span></span>
                   <strong class="home-next-title">{{homeFocus.name}}</strong>
                   <span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><time>{{homeFocus.start}}–{{homeFocus.end}}</time><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span>
                 </button>
                 <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{!academicCache.connected||!schoolTerm?.data?'前往“我的”连接学校或刷新课表。':'查看课表，安排自己的校园时光。'}}</p></div>
                 <div class="home-timeline-head"><span>今日课程 · {{todayCourses.length}} 节</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
-                <div v-if="todayCourses.length" class="home-timeline" aria-label="今日课程时间线">
-                  <button v-for="c in todayCourses" :key="c.id" :class="{'is-current':courseState(c,now)==='current','is-ended':courseState(c,now)==='ended','is-next':!current&&next?.course.id===c.id}" :aria-label="`${c.name} ${c.start} ${c.room}`" @click="details(c)"><strong>{{c.name}}</strong><time>{{c.start}}</time></button>
-                </div>
+                <HomeCourseTimeline v-if="todayCourses.length" :courses="todayCourses" :now="now" @select="details"/>
               <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
               </section>
               <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
