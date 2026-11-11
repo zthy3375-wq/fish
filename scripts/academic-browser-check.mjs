@@ -505,6 +505,19 @@ try{
   await page.evaluate(()=>{window.__updateState.mandatory=false;window.__updateState.available=false});
   await forced.getByRole('button',{name:'重新检查',exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  await context.addInitScript(()=>{
+   window.__pgState={connected:true,expired:false,phone:'138****0000',water:{id:'old-water-session',deviceId:'synthetic-water',deviceName:'人工测试饮水机',phase:'using',orderNo:'old-water-order',remoteEnd:true,updatedAt:Date.now()}};
+   window.__updateState={currentVersion:'1.2',currentCode:133,stage:'idle',progress:0,error:'',available:true,mandatory:false,checkedAt:Date.now(),release:{versionCode:145,versionName:'1.2.1',sizeBytes:12426271,notes:['人工测试：手动检查应有反馈']}};
+  });
+  await page.reload();await nav('我的').click();
+  await page.getByRole('button',{name:/检查更新 当前版本/}).click();
+  const waterUpdate=page.locator('.update-dialog');await waterUpdate.waitFor();
+  assert(await waterUpdate.getByText(/检测到未结束的接水记录/).isVisible(),`${width}: stale water record explains manual update deferral`);
+  assert(await waterUpdate.getByRole('button',{name:'下载更新',exact:true}).isDisabled(),`${width}: manual update does not download during water deferral`);
+  await page.screenshot({path:path.join(output,`app-update-water-deferred-${width}.png`),animations:'disabled'});
+  await waterUpdate.getByRole('button',{name:'返回应用',exact:true}).click();
+  assert(await page.locator('.update-dialog').count()===0,`${width}: manual update can return to water handling`);
+  assert(await page.evaluate(()=>!(window.__pgCalls||[]).some(c=>['startWater','endWater'].includes(c.method))),`${width}: update check does not send water commands`);
   assert(!errors.length,`${width}: no runtime errors`);
   await page.screenshot({path:path.join(output,`records-${width}.png`),fullPage:true,animations:'disabled'});await context.close();
  }

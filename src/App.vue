@@ -5,7 +5,7 @@ import {scheduleViews} from './composables/view-state';
 import AnalyticsSettings from './components/AnalyticsSettings.vue';
 import {initAnalytics,flushAnalytics,recordFeature,refreshAnalytics} from './composables/analytics';
 import AppUpdateDialog from './components/AppUpdateDialog.vue';
-import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred} from './composables/updates';
+import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred,updateDeferredReason} from './composables/updates';
 import {initPangguai,pangguai,pgBusy} from './composables/pangguai';
 import LifeServices from './components/LifeServices.vue';
 import CampusHero from './components/CampusHero.vue';
@@ -537,6 +537,7 @@ function viewportChange() {
 watch(()=>[modal.value,agendaView.editor,pgBusy.value,pangguai.value.water?.phase] as const,()=>{
   const phase=pangguai.value.water?.phase;
   updateDeferred.value=!!modal.value||!!agendaView.editor||pgBusy.value||!!(phase&&!['settled','ended_zero','closed_unknown'].includes(phase));
+  updateDeferredReason.value=pgBusy.value?'正在处理接水或支付，请等待操作结束后再下载和安装。':phase&&!['settled','ended_zero','closed_unknown'].includes(phase)?'检测到未结束的接水记录。请先在接水页面核对状态；若已在机身结算，可使用“已在机身结算，恢复扫码”。':updateDeferred.value?'请先完成当前操作或保存编辑，再下载和安装更新。':'';
 },{immediate:true});
 watch(()=>[page.value,section.value,modal.value] as const,([p,s,m])=>{
  if(m){const feature=({'quzhi-wallet':'shower','pangguai-wallet':'wallet',parcel:'parcel','campus-map':'map'} as const)[m as 'quzhi-wallet'];if(feature)void recordFeature(feature);return;}
