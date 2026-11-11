@@ -4,6 +4,8 @@
 
 ## 当前维护入口
 
+- [扫码骑车实现与验收边界](BIKE-SCAN.md)
+- [应用内骑车接入调查、申请材料与后续方案](BIKE-IN-APP.md)
 - [胖乖官方页面模式与边界](V082-PANGGUAI-OFFICIAL.md)
 - [淘宝/拼多多出库码直达](V082-PARCEL-SHORTCUTS.md)
 - [胖乖协议、金额口径与官方来源](research/V082-PANGGUAI.md)
