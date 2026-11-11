@@ -1,0 +1,49 @@
+name: Native iOS verification
+on:
+  pull_request:
+    paths: ['ios-native/**', '.github/workflows/ios-native.yml']
+  push:
+    branches: ['feature/ios-native-*']
+    paths: ['ios-native/**', '.github/workflows/ios-native.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ios-native-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-ios:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify project and identical school query assets
+        run: |
+          python3 ios-native/Scripts/generate_project.py
+          git diff --exit-code -- ios-native/Hanyuantong.xcodeproj
+          cmp android/app/src/main/assets/handan-academic.js ios-native/Hanyuantong/Resources/handan-academic.js
+          cmp android/app/src/main/assets/handan-rendered-reader.js ios-native/Hanyuantong/Resources/handan-rendered-reader.js
+      - name: Find iPhone simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if "iPhone" in x["name"]))')
+          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+      - name: Compile and test SwiftUI app
+        run: |
+          set -o pipefail
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=NO test | tee "$RUNNER_TEMP/xcodebuild.log"
+      - name: Compile unsigned iPhone build
+        run: |
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/ios-device" CODE_SIGNING_ALLOWED=NO build
+      - name: Package simulator app
+        if: success()
+        run: ditto -c -k --keepParent "$RUNNER_TEMP/ios-build/Build/Products/Debug-iphonesimulator/Hanyuantong.app" "$RUNNER_TEMP/Hanyuantong-iOS-Simulator.zip"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-ios-verification
+          path: |
+            ${{ runner.temp }}/NativeIOS.xcresult
+            ${{ runner.temp }}/xcodebuild.log
+            ${{ runner.temp }}/Hanyuantong-iOS-Simulator.zip
+          retention-days: 14
