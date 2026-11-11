@@ -1,8 +1,18 @@
-# 邯院通仓库审查与待确认清理 · 2026-11-11
+# 邯院通仓库审查与清理记录 · 2026-11-11
 
 审查对象：`zthy3375-wq/fish`。基线为 `main@b46ac3ebd6b69677d5c5fcfc0ab10872f2f04751`，正式版本 1.2 /133。审查开始时远端有15个分支、6个未关闭PR，main跟踪366个文件。下表是该时点的快照，不包含本轮新建的文档整理分支/PR。
 
-所有者要求删除前询问。本轮只整理说明、入口和维护规则；没有删除分支或文件、关闭其他PR、合并main、重新部署服务、改动发布清单或交付新APK。
+所有者要求删除前询问。初轮审查只整理说明、入口和维护规则；随后所有者明确确认“abc都删了吧”，授权执行下方A/B/C。执行前重新核对7个远端头SHA及快递承接关系，均与本清单一致。
+
+## 已确认的执行结果
+
+| 组别 | 结果 |
+| --- | --- |
+| A | 5个已取消功能分支已从GitHub删除；原有PR继续关闭 |
+| B | PR #46、#47已关闭，parcel-center/cards两个旧分支已删除；PR #48及parcel-native保留 |
+| C | [独立清理PR #56](https://github.com/zthy3375-wq/fish/pull/56)已移除闲置组件与未使用符号，严格检查11处诊断清零；源码变更尚未合入main |
+
+删除后通过GitHub分支列表再次确认7个候选均不存在，main、归档、研究分支和PR #48–51的分支SHA保持原值。本轮没有合并main、重新部署服务、改动发布清单或交付新APK。下方“远端分支快照”保留删除前状态与完整SHA，用于追溯。
 
 ## 审查结论
 
@@ -18,7 +28,7 @@
 
 ### 3. 清理机会主要在旧分支与少量未使用符号
 
-正常`npm run check`通过。额外启用`vue-tsc --noUnusedLocals --noUnusedParameters`后，发现11处诊断，详见待确认C组；这是本轮加严分析的结果，不是现有默认CI失败。
+正常`npm run check`通过。初次额外启用`vue-tsc --noUnusedLocals --noUnusedParameters`时发现11处诊断，详见C组；这是加严分析的结果，不是现有默认CI失败。用户确认后，PR #56已清理这些诊断，严格检查退出0。
 
 从`src/main.ts`做静态导入追踪，没有发现可直接批量删除的整组业务模块。导入关系会保守保留未使用的导入，因此同时用Vue类型检查核对；`QuickAction.vue`只被App未使用地导入，可作为单独候选。`CourseCard.vue`、`academic-adapters/zhengfang-timetable.ts`及胖乖官方WebView仍有其他生产调用，须保留。
 
@@ -66,9 +76,9 @@ README曾写“没有业务后端”，但当前仓库已有腾讯云统计/更�
 | `archive/v0.3` | `830476e` | 0 | 已包含于main；保留版本锚点，暂不建议删除 |
 | `research/handan-academic-v041` | `d97732b` | 1 | PR #2早期研究，尚有独立研究提交，先保留 |
 
-## 待所有者确认的删除清单
+## 所有者已确认的删除清单
 
-### A：已取消功能的5个远端分支（建议删除）
+### A：已取消功能的5个远端分支（已删除）
 
 1. `feature/bike-quick`，当前头`2cf64bb99cfe214614bff99129ad3848f8591a1c`。
 2. `research/bike-in-app`，当前头`00c8bde701344c49ea2ee3e9b2a629dd241057a8`。
@@ -76,16 +86,16 @@ README曾写“没有业务后端”，但当前仓库已有腾讯云统计/更�
 4. `feature/free-classrooms-v060`，当前头`40a1d64d6f6f968298881b20c732ca025bfa390e`。
 5. `feature/navigation-v051`，当前头`f6f95599974e1cfb0a7e4012cd296d811f7c5710`。
 
-这些分支均未合入main；删除分支不会从当前正式版删除任何功能。它们有未合并提交，含义是放弃继续维护这些分支，不能描述成“全部已合并”。原PR讨论和本清单保留追溯；接水/鸿蒙/学习通修复另由保留的PR #51承接。**本组尚未执行。**
+这些分支均未合入main；删除分支不会从当前正式版删除任何功能。它们有未合并提交，含义是放弃继续维护这些分支，不能描述成“全部已合并”。原PR讨论和本清单保留追溯；接水/鸿蒙/学习通修复另由保留的PR #51承接。**本组已按确认执行，远端复核不存在。**
 
-### B：重复的2个旧快递分支及PR（建议关闭旧PR后删除旧分支）
+### B：重复的2个旧快递分支及PR（旧PR已关闭，旧分支已删除）
 
 - 关闭PR #46，删除`feature/parcel-center@5d00940cea488a0eee2f3acfb8d95922701880dc`。
 - 关闭PR #47，删除`feature/parcel-cards@496823780937c3b9eb2a28e459276f5c49fa92d1`。
 
-Git祖先验证：center → cards → native。保留PR #48及`feature/parcel-native`，不会丢失前两代的提交；最新试验仍暂停，不合入main。**本组尚未执行。**
+Git祖先验证：center → cards → native。保留PR #48及`feature/parcel-native`，不会丢失前两代的提交；最新试验仍暂停，不合入main。**本组已按确认执行，PR关闭且远端分支复核不存在。**
 
-### C：未使用代码（建议确认后做单独清理PR）
+### C：未使用代码（已清理，独立PR #56）
 
 | 文件 | 候选 |
 | --- | --- |
@@ -94,7 +104,9 @@ Git祖先验证：center → cards → native。保留PR #48及`feature/parcel-n
 | `tests/pangguai-water-ui.test.ts` | 未使用`pollWater`导入 |
 | `src/components/QuickAction.vue` | App导入清理后，无生产引用；删除组件文件前需明确确认 |
 
-前三行对应11处加严类型检查诊断；最后一行是额外的文件删除候选。仅移除App的`CourseCard`导入，不删除仍在`AcademicDetail.vue`使用的`CourseCard.vue`。CSS保留，暂不按选择器静态搜索批量删除。**本组尚未执行。**
+前三行对应11处加严类型检查诊断；最后一行为组件文件删除。实际清理移除5个App导入、greeting计算值与pollWater导入，4个测试回调参数改为`_url`，删除QuickAction.vue，保留全部测试用例。仅移除App的`CourseCard`导入，不删除仍在`AcademicDetail.vue`使用的`CourseCard.vue`。CSS保留，未按选择器静态搜索批量删除。**本组已在PR #56执行，尚未合入main。**
+
+C组本地验证：40个文件/421项测试、TypeScript、生产构建通过；加严未使用检查退出0，git diff --check通过。云端结果见该PR；原生源码、工作流与版本号未改动。
 
 ## 建议保留的内容
 
@@ -109,10 +121,10 @@ Git祖先验证：center → cards → native。保留PR #48及`feature/parcel-n
 
 - `npm run check`：40个测试文件、421项测试通过，TypeScript和生产构建通过。
 - `node --test cloudbase/tests/*.verify.mjs`：12项测试通过。
-- 加严未使用检查：11处现存诊断，已逐项列入C组；未改变默认CI设置。
+- 加严未使用检查：初次11处诊断，C组清理后全部消除；未改变默认CI设置。
 - 检查main中全部366个跟踪路径：没有跟踪APK、AAB、依赖目录、dist、签名文件或iOS工程；这不是完整的git历史密钥审计。
 - 静态本地Markdown目标检查：原有导航未发现缺失文件；本轮完成后再次检查修改的文档入口。
-- 本轮无产品代码或原生代码变化，不重复构建Android或声称新增真机验收。历史PR的构建结果仍归属于原PR。
+- 初轮文档PR #55不包含产品代码变化；获批后的C组产品代码清理单列于PR #56，原生代码未改，不声称新增真机验收。历史PR的构建结果仍归属于原PR。
 - 已补充README、STATUS、ROADMAP、统计说明和文档导航；明确已发布、未合入、暂停、取消四类状态，并在开发说明中记录删除前须确认。
 
 执行任何已获同意的删除前，重新获取远端分支头、核对上面的SHA与承接关系；头发生变化时重新审查，不直接沿用本清单。

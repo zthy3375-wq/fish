@@ -8,7 +8,7 @@
 
 | 工作 | 入口 |
 | --- | --- |
-| 分支、PR、删除候选与审查证据 | [2026-11-11 仓库审查](REPOSITORY-REVIEW-2026-11-11.md) |
+| 分支、PR、删除确认和执行证据 | [2026-11-11 仓库审查与清理](REPOSITORY-REVIEW-2026-11-11.md) |
 | 已发布版本和历史验收 | [STATUS](STATUS.md) · [版本记录](../CHANGELOG.md) |
 | 应用更新和测试 APK 证据 | [更新与发布](APP-UPDATES.md) · [包名/签名校验](APK-EVIDENCE.md) |
 | 匿名统计及与部署分支的差异 | [统计维护说明](ANALYTICS.md) |
