@@ -16,6 +16,7 @@ const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
 const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
 import ParcelShortcuts from './components/ParcelShortcuts.vue';
+const BikeScan=defineAsyncComponent(()=>import('./components/BikeScan.vue'));
 import LearningCenter from './components/LearningCenter.vue';
 import TaskDetail from './components/TaskDetail.vue';
 import TaskSettings from './components/TaskSettings.vue';
@@ -764,6 +765,7 @@ onUnmounted(() => {
               : modal === 'pangguai-wallet' ? '胖乖生活钱包'
               : modal === 'campus-map' ? '校园平面图'
               : modal === 'parcel' ? '快递出库码'
+              : modal === 'bike-scan' ? '扫码骑车'
               : modal === 'course-widget' ? '桌面课表'
               : '校园助手设置'
           "
@@ -780,6 +782,7 @@ onUnmounted(() => {
           <PangguaiWallet v-else-if="modal === 'pangguai-wallet'"/>
           <CampusMap v-else-if="modal === 'campus-map'"/>
           <ParcelShortcuts v-else-if="modal === 'parcel'"/>
+          <BikeScan v-else-if="modal === 'bike-scan'"/>
           <CourseWidgetSetup v-else-if="modal === 'course-widget'"/>
           <CourseEditor
             v-else-if="modal === 'course-editor'"
