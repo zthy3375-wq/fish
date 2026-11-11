@@ -31,7 +31,7 @@ jobs:
       - name: Compile and test SwiftUI app
         run: |
           set -o pipefail
-          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=NO test | tee "$RUNNER_TEMP/xcodebuild.log"
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test | tee "$RUNNER_TEMP/xcodebuild.log"
       - name: Compile unsigned iPhone build
         run: |
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/ios-device" CODE_SIGNING_ALLOWED=NO build

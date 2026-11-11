@@ -181,6 +181,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "1E1EBC91DFF117C245C2D19F";
 		};
+		"A540A3BF4AD8093D681892D4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Tests/ProtectedStorageTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"0A6261747605CEE53E63C0F4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A540A3BF4AD8093D681892D4";
+		};
 		"4DC2803DBAA900CDA2AB562C" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -193,7 +203,7 @@
 		};
 		"39FDEC1194D94212B871A28B" = {
 			"isa" = "PBXGroup";
-			"children" = ( "4B11FBE9CB17F202396A32EE", "1E1EBC91DFF117C245C2D19F", "4DC2803DBAA900CDA2AB562C" );
+			"children" = ( "4B11FBE9CB17F202396A32EE", "1E1EBC91DFF117C245C2D19F", "A540A3BF4AD8093D681892D4", "4DC2803DBAA900CDA2AB562C" );
 			"name" = "Tests";
 			"sourceTree" = "<group>";
 		};
@@ -364,7 +374,7 @@
 		"0E7116950F44F60122284721" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = 2147483647;
-			"files" = ( "6DA50D9F7BEE81962C26183F", "9039A234020AE0894D402229", "335C42F9F651537B4F93B31E" );
+			"files" = ( "6DA50D9F7BEE81962C26183F", "9039A234020AE0894D402229", "0A6261747605CEE53E63C0F4", "335C42F9F651537B4F93B31E" );
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
 		"50A15697F13BC3131B98B185" = {

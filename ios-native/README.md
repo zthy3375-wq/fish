@@ -8,10 +8,10 @@
 
 ```sh
 python3 Scripts/generate_project.py
-xcodebuild -project Hanyuantong.xcodeproj -scheme Hanyuantong -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project Hanyuantong.xcodeproj -scheme Hanyuantong -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
 
-新增 Swift 文件后重新生成工程。工程生成器只使用 Python 标准库，不需要 CocoaPods、Flutter、XcodeGen 或第三方 Swift 包。真机需要在 Xcode 选择自己的签名团队、可用 Bundle ID 与已信任设备；没有替用户配置签名、发布 IPA 或商店提交。CI 的 Simulator app 不能安装到真实 iPhone。
+新增 Swift 文件后重新生成工程。工程生成器只使用 Python 标准库，不需要 CocoaPods、Flutter、XcodeGen 或第三方 Swift 包。真机需要在 Xcode 选择自己的签名团队、可用 Bundle ID 与已信任设备；没有替用户配置签名、发布 IPA 或商店提交。CI 模拟器使用 Xcode 本机 ad-hoc 签名以保留 Keychain 运行时权限，不使用开发者证书，也不是设备分发签名。Simulator app 不能安装到真实 iPhone。
 
 ## 当前实现与边界
 

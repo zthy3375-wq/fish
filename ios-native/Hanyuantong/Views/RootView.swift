@@ -59,7 +59,10 @@ struct HomeView: View {
     }
     private var hero: some View {
         ZStack(alignment: .topLeading) {
-            Image("campus-autumn").resizable().scaledToFill().frame(height: 275).clipped().accessibilityHidden(true)
+            GeometryReader { proxy in
+                Image("campus-autumn").resizable().scaledToFill()
+                    .frame(width: proxy.size.width, height: 275).clipped()
+            }.accessibilityHidden(true)
             LinearGradient(colors: [.white.opacity(0.5), .clear, .black.opacity(0.25)], startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 8) {
                 Text("邯院通").font(.system(size: 28, weight: .bold))
