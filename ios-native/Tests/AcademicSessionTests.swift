@@ -15,6 +15,28 @@ final class AcademicSessionTests: XCTestCase {
         XCTAssertFalse(AcademicTerm(xnm: "2026", xqm: "1").isValid)
         XCTAssertFalse(AcademicTerm(xnm: "2026'", xqm: "12").isValid)
     }
+    func testPeriodsRejectZeroReversedAndOutOfRange() {
+        XCTAssertTrue(AcademicCourse.validPeriods("1-2"))
+        XCTAssertTrue(AcademicCourse.validPeriods("13"))
+        for value in ["0", "0-2", "5-2", "25", "1-25", "1-x"] {
+            XCTAssertFalse(AcademicCourse.validPeriods(value), value)
+        }
+    }
+    func testVerifiedGradeAndExamSchemaDecodes() throws {
+        let grade: [String: Any] = ["name": "测试课程", "scoreText": "优秀", "credit": 2,
+            "gpa": NSNull(), "term": "2026 秋", "kind": "必修", "courseCode": "TEST",
+            "recordId": "fixture", "year": "2026", "termCode": "3", "examType": "正常考试"]
+        let exam = ["name": "测试课程", "date": "2026-12-01", "time": "09:00-11:00", "room": "测试教室", "seat": "1"]
+        let result = try AcademicSnapshot.decode(["session": "valid", "sessionScope": scope,
+            "modules": ["grades": ["status": "ok", "data": [grade], "scope": "all"],
+                        "exams": ["status": "ok", "data": [exam]]]])
+        XCTAssertEqual(result.grades?.first?.scoreText, "优秀")
+        XCTAssertEqual(result.grades?.first?.credit, 2)
+        XCTAssertNil(result.grades?.first?.gpa)
+        XCTAssertEqual(result.exams?.first?.seat, "1")
+        XCTAssertEqual(result.gradeScope, "all")
+        XCTAssertTrue(result.moduleErrors.isEmpty)
+    }
     private let scope = "71B083B2-F34C-4A65-AE47-DAAA9574D812"
     private var term: AcademicTerm { AcademicTerm(xnm: "2026", xqm: "3") }
     private func previous() -> AcademicSnapshot {
@@ -55,4 +77,19 @@ final class AcademicSessionTests: XCTestCase {
         let value = previous()
         XCTAssertEqual(try JSONDecoder().decode(AcademicSnapshot.self, from: JSONEncoder().encode(value)), value)
     }
+    func testResolvedTermSurvivesTimetableFailure() throws {
+        let scope = UUID().uuidString
+        let payload: [String: Any] = ["session": "valid", "sessionScope": scope,
+            "resolvedTerm": ["xnm": "2026", "xqm": "3"],
+            "modules": ["timetable": ["status": "error", "code": "NETWORK"],
+                        "grades": ["status": "ok", "data": [], "scope": "all"],
+                        "exams": ["status": "ok", "data": []]]]
+        let result = try AcademicSnapshot.decode(payload)
+        XCTAssertEqual(result.term, AcademicTerm(xnm: "2026", xqm: "3"))
+        XCTAssertNil(result.courses)
+        XCTAssertEqual(result.grades, [])
+        XCTAssertEqual(result.exams, [])
+        XCTAssertEqual(result.gradeScope, "all")
+    }
+
 }

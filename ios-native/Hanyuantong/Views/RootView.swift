@@ -69,6 +69,8 @@ struct HomeView: View {
                 Spacer()
                 HStack { Text(CampusTheme.date(Date())); Spacer(); Text("第\(store.week(for: Date()))周") }.font(.caption).foregroundStyle(.white)
             }.padding(22)
+            VStack { Spacer(); HStack { Spacer(); CampusHeroFish().frame(width: 108, height: 68) } }
+                .padding(.trailing, 14).padding(.bottom, 48).allowsHitTesting(false).accessibilityHidden(true)
         }.frame(height: 275).clipShape(RoundedRectangle(cornerRadius: 22))
     }
     private func wallet(_ name: String, _ label: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
@@ -104,5 +106,42 @@ struct PendingServiceView: View {
     let detail: String
     var body: some View {
         ScrollView { CampusEmpty(title: "iPhone 版本待接入", detail: "\(detail)\n此功能尚未完成原生适配，当前不能登录、查询或支付。", symbol: "wrench.and.screwdriver").padding(20) }.background(CampusTheme.background).navigationTitle(name).navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Fixed native rendering of CampusHero.vue's original 180 × 112 fish SVG.
+/// Deliberately static: there is no continuous motion, including with Reduce Motion enabled.
+private struct CampusHeroFish: View {
+    var body: some View {
+        Canvas { context, size in
+            context.scaleBy(x: size.width / 180, y: size.height / 112)
+            let ink = Color(hex: 0x30243b)
+            let stroke = StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round)
+            var flag = Path()
+            flag.move(to: CGPoint(x: 84, y: 39)); flag.addLine(to: CGPoint(x: 91, y: 9))
+            flag.addCurve(to: CGPoint(x: 125, y: 10), control1: CGPoint(x: 103, y: 3), control2: CGPoint(x: 111, y: 17))
+            flag.addLine(to: CGPoint(x: 120, y: 32))
+            flag.addCurve(to: CGPoint(x: 88, y: 30), control1: CGPoint(x: 106, y: 40), control2: CGPoint(x: 101, y: 24))
+            context.fill(flag, with: .color(Color(hex: 0xfff9ed))); context.stroke(flag, with: .color(ink), style: stroke)
+            var body = Path()
+            body.move(to: CGPoint(x: 18, y: 66))
+            body.addCurve(to: CGPoint(x: 81, y: 39), control1: CGPoint(x: 29, y: 43), control2: CGPoint(x: 56, y: 34))
+            body.addCurve(to: CGPoint(x: 130, y: 55), control1: CGPoint(x: 105, y: 40), control2: CGPoint(x: 115, y: 51))
+            body.addCurve(to: CGPoint(x: 158, y: 46), control1: CGPoint(x: 145, y: 40), control2: CGPoint(x: 158, y: 35))
+            body.addCurve(to: CGPoint(x: 148, y: 64), control1: CGPoint(x: 158, y: 53), control2: CGPoint(x: 150, y: 61))
+            body.addCurve(to: CGPoint(x: 155, y: 84), control1: CGPoint(x: 156, y: 70), control2: CGPoint(x: 162, y: 80))
+            body.addCurve(to: CGPoint(x: 130, y: 76), control1: CGPoint(x: 148, y: 88), control2: CGPoint(x: 137, y: 78))
+            body.addCurve(to: CGPoint(x: 60, y: 93), control1: CGPoint(x: 108, y: 88), control2: CGPoint(x: 86, y: 99))
+            body.addCurve(to: CGPoint(x: 18, y: 66), control1: CGPoint(x: 40, y: 90), control2: CGPoint(x: 22, y: 81)); body.closeSubpath()
+            context.fill(body, with: .color(Color(hex: 0xfff6e9))); context.stroke(body, with: .color(ink), style: stroke)
+            context.fill(Path(ellipseIn: CGRect(x: 39.8, y: 58.8, width: 6.4, height: 6.4)), with: .color(ink))
+            var smile = Path(); smile.move(to: CGPoint(x: 63, y: 73)); smile.addQuadCurve(to: CGPoint(x: 76, y: 73), control: CGPoint(x: 70, y: 78))
+            context.stroke(smile, with: .color(ink), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            var sparks = Path()
+            sparks.move(to: CGPoint(x: 19, y: 38)); sparks.addLine(to: CGPoint(x: 11, y: 29))
+            sparks.move(to: CGPoint(x: 32, y: 30)); sparks.addLine(to: CGPoint(x: 28, y: 18))
+            sparks.move(to: CGPoint(x: 45, y: 27)); sparks.addLine(to: CGPoint(x: 47, y: 15))
+            context.stroke(sparks, with: .color(ink), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+        }
     }
 }

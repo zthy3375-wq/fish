@@ -34,6 +34,9 @@ struct ProfileView: View {
                 DatePicker("第一周周一", selection: $store.semesterStart, displayedComponents: .date)
                 Text("请与学校校历核对开学日期，教学周按北京时间计算。").font(.caption).foregroundStyle(CampusTheme.muted)
             }
+            Section("个人数据") {
+                NavigationLink { PersonalBackupView() } label: { Label("备份与恢复", systemImage: "externaldrive") }
+            }
             Section("校园服务") {
                 NavigationLink { CampusMapView() } label: { Label("校园平面图", systemImage: "map") }
                 NavigationLink { PendingServiceView(name: "学习通", detail: "课程、作业、考试与通知同步") } label: { Label("学习通", systemImage: "books.vertical") }

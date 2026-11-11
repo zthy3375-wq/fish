@@ -1,6 +1,6 @@
 # 邯院通 iPhone 原生开发版
 
-基于正式 Android 1.2.1 对应 main `780bbc8`，独立 Swift + SwiftUI 工程，最低 iOS 16，仅 iPhone。没有 Flutter、Capacitor、Vue 运行时依赖。复用现有应用图标、校园头图、平面图以及已核验的学校协议读取脚本；WebKit 只用于官方学校认证与页面查询，产品页面为原生 SwiftUI。
+基于正式 Android 1.2.1 对应 main `780bbc8`，独立 Swift + SwiftUI 工程，最低 iOS 16，仅 iPhone。没有 Flutter、Capacitor、Vue 运行时依赖。复用现有应用图标、校园头图、平面图以及已核验的学校协议读取脚本；iOS 在固定结果出口仅补充 resolvedTerm 元数据，避免课表失败时将其他学期的考试误并入缓存，不改变请求端点或参数。WebKit 只用于官方学校认证与页面查询，产品页面为原生 SwiftUI。
 
 ## 构建
 
@@ -19,8 +19,9 @@ xcodebuild -project Hanyuantong.xcodeproj -scheme Hanyuantong -destination 'plat
 - 学校官方 WKWebView 登录，现有 `syncAll` 查询和渲染页课表回退，成绩、考试、实践课、学期选择。密码只在学校官方页面输入。账号、查询、取消、超时与退出流程原生管理。
 - 登录 Cookie 保存在设备专属 Keychain，WebKit 使用非持久化数据仓库；仅允许学校 HTTPS 主机及 443 端口，不忽略 TLS 错误，不向产品 UI 提供 Cookie。
 - 学校记录与个人记录分开，以 CryptoKit AES-GCM 和设备专属 Keychain 密钥加密，排除系统备份。查询失败保留同账号同学期旧数据；账号替换、过期、退出移除学校缓存，保留个人安排。
+- 个人课程/待办支持原生 JSON 文件备份与确认恢复，原子写入后才替换个人记录；不包含学校账号或记录。当前格式与 Android 备份不互通。导出的文件为明文，由用户在系统文件面板选择保存位置。
 - 东西校区平面图、缩放和全图复位。教学周按北京时间计算，起点沿用 2026-09-14 并允许手动校准；默认13节作息沿用用户提供表，不声称学校实时校历。
-- 生活钱包/洗澡码/接水/洗衣/支付、学习通、快递跳转、CSV/XLSX/ICS 导入、备份恢复、WidgetKit、系统提醒和应用使用统计尚未完成。入口明确标注待接入，不能据此称功能齐平或正式可用。不会接入 Android 在线更新配置。
+- 生活钱包/洗澡码/接水/洗衣/支付、学习通、快递跳转、CSV/XLSX/ICS 导入、Android 备份互通、WidgetKit、系统提醒和应用使用统计尚未完成。入口明确标注待接入，不能据此称功能齐平或正式可用。不会接入 Android 在线更新配置。
 
 ## 验证原则
 

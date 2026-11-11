@@ -28,6 +28,25 @@ final class NativeSmokeTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["首页"].waitForExistence(timeout: 10))
     }
+    func testPersonalTaskPersistsAndCompletes() throws {
+        let app = XCUIApplication()
+        app.launch()
+        app.tabBars.buttons["待办"].tap()
+        app.buttons["添加待办"].tap()
+        let title = "本机持久化验证"
+        let field = app.textFields["待办内容"].exists ? app.textFields["待办内容"] : app.textViews.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText(title)
+        app.buttons["保存"].tap()
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
+        app.terminate(); app.launch()
+        app.tabBars.buttons["待办"].tap()
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
+        app.buttons["完成：" + title].tap()
+        app.buttons["已完成"].tap()
+        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
+        screenshot("05-personal-task", app)
+    }
     private func screenshot(_ name: String, _ app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways

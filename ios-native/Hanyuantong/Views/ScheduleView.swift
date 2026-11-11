@@ -58,25 +58,116 @@ struct ScheduleView: View {
         }
     }
     private var weekList: some View {
-        // Horizontal scrolling preserves readable names on smaller iPhones and at larger text sizes.
-        ScrollView(.horizontal) {
-            HStack(alignment: .top, spacing: 8) {
-                ForEach(days, id: \.self) { date in
-                    VStack(spacing: 8) {
-                        Text(CampusTheme.date(date, format: "EE M/d")).font(.caption.weight(.semibold)).padding(.vertical, 10)
-                        let courses = store.courses(on: date)
-                        if courses.isEmpty { Text("无课").font(.caption).foregroundStyle(CampusTheme.muted).padding(.vertical, 30) }
-                        ForEach(courses) { course in
-                            NavigationLink { CourseDetailView(course: course) } label: {
-                                VStack(alignment: .leading, spacing: 9) { Text(course.name).font(.subheadline.weight(.medium)); Text(course.room).font(.caption); Text("\(course.start)–\(course.end)").font(.caption2) }.frame(maxWidth: .infinity, alignment: .leading).padding(10).foregroundStyle(CampusTheme.course(course.color)).background(CampusTheme.course(course.color).opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                            }.buttonStyle(.plain)
-                        }
-                    }.frame(width: 125).frame(maxHeight: .infinity, alignment: .top)
-                }
-            }.padding(10)
-        }.background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).stroke(CampusTheme.border, lineWidth: 0.7))
+        TimetableGrid(days: days, courses: days.map { store.courses(on: $0) })
     }
     private func shift(_ amount: Int) { if let date = CampusTheme.calendar.date(byAdding: .day, value: amount, to: store.selectedDate) { store.selectedDate = date } }
+}
+
+/// A shared minute axis keeps free periods and simultaneous classes visible.
+/// Every overlapping event has its own lane; lanes never shrink below readable width.
+private struct TimetableGrid: View {
+    let days: [Date]
+    let courses: [[Course]]
+    @ScaledMetric(relativeTo: .caption) private var laneWidth: CGFloat = 112
+    @ScaledMetric(relativeTo: .caption) private var minuteHeight: CGFloat = 1.4
+    private let timeWidth: CGFloat = 54
+    private let headerHeight: CGFloat = 48
+    private var layouts: [TimetableDay] { courses.map(TimetableDay.init) }
+    private var firstMinute: Int {
+        min(480, (layouts.flatMap(\.events).map(\.start).min() ?? 480) / 60 * 60)
+    }
+    private var lastMinute: Int {
+        max(1320, ((layouts.flatMap(\.events).map(\.end).max() ?? 1320) + 59) / 60 * 60)
+    }
+    private var height: CGFloat { CGFloat(lastMinute - firstMinute) * minuteHeight }
+    private var hours: [Int] { Array(stride(from: firstMinute, through: lastMinute, by: 60)) }
+    private func dayWidth(_ layout: TimetableDay) -> CGFloat { CGFloat(layout.laneCount) * laneWidth }
+    private func y(_ minute: Int) -> CGFloat { CGFloat(minute - firstMinute) * minuteHeight }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("按上课时间排列 · 左右滑动查看整周").font(.caption).foregroundStyle(CampusTheme.muted)
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(spacing: 0) {
+                        Text("时间").font(.caption).frame(width: timeWidth, height: headerHeight)
+                        ZStack(alignment: .topLeading) {
+                            ForEach(hours, id: \.self) { minute in
+                                Text(String(format: "%02d:%02d", minute / 60, minute % 60))
+                                    .font(.caption2.monospacedDigit()).foregroundStyle(CampusTheme.muted)
+                                    .frame(width: timeWidth, alignment: .center).offset(y: y(minute))
+                            }
+                        }.frame(width: timeWidth, height: height + 20, alignment: .topLeading)
+                    }.accessibilityHidden(true)
+                    ForEach(Array(days.enumerated()), id: \.offset) { index, date in
+                        dayColumn(date, layout: layouts[index])
+                    }
+                }
+            }.background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(CampusTheme.border, lineWidth: 0.7))
+        }
+    }
+    private func dayColumn(_ date: Date, layout: TimetableDay) -> some View {
+        VStack(spacing: 0) {
+            Text(CampusTheme.date(date, format: "EE M/d"))
+                .font(.caption.weight(.semibold)).frame(width: dayWidth(layout), height: headerHeight)
+                .background(CampusTheme.calendar.isDateInToday(date) ? CampusTheme.tint : CampusTheme.background)
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(CampusTheme.border).frame(width: 0.5, height: height)
+                ForEach(hours, id: \.self) { minute in
+                    Rectangle().fill(CampusTheme.border.opacity(0.7)).frame(width: dayWidth(layout), height: 0.5).offset(y: y(minute))
+                }
+                if layout.events.isEmpty {
+                    Text("无课").font(.caption).foregroundStyle(CampusTheme.muted)
+                        .frame(width: dayWidth(layout)).padding(.top, 22)
+                }
+                ForEach(layout.events) { event in
+                    NavigationLink { CourseDetailView(course: event.course) } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(event.course.name).font(.caption.weight(.semibold)).lineLimit(3)
+                            Text(event.course.room).font(.caption2).lineLimit(2)
+                            Text("\(event.course.start)–\(event.course.end)").font(.caption2.monospacedDigit()).lineLimit(1)
+                            if !event.course.period.isEmpty { Text(event.course.period).font(.caption2).lineLimit(1) }
+                        }.padding(6).frame(width: laneWidth - 6, height: max(1, CGFloat(event.end - event.start) * minuteHeight - 3), alignment: .topLeading)
+                            .foregroundStyle(CampusTheme.course(event.course.color))
+                            .background(CampusTheme.course(event.course.color).opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
+                            .clipped().contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel("\(CampusTheme.date(date))，\(event.course.name)，\(event.course.start)至\(event.course.end)，\(event.course.room)，\(event.course.period)")
+                        .offset(x: CGFloat(event.lane) * laneWidth + 3, y: y(event.start))
+                }
+            }.frame(width: dayWidth(layout), height: height + 20, alignment: .topLeading)
+        }
+    }
+}
+
+private struct TimetableEvent: Identifiable {
+    let course: Course
+    let start: Int
+    let end: Int
+    let lane: Int
+    var id: UUID { course.id }
+}
+
+private struct TimetableDay {
+    let events: [TimetableEvent]
+    let laneCount: Int
+    init(_ courses: [Course]) {
+        var output: [TimetableEvent] = []
+        var laneEnds: [Int] = []
+        for course in courses.sorted(by: { $0.start == $1.start ? $0.end < $1.end : $0.start < $1.start }) {
+            guard let start = Self.minutes(course.start), let end = Self.minutes(course.end), end > start else { continue }
+            let lane = laneEnds.firstIndex(where: { $0 <= start }) ?? laneEnds.count
+            if lane == laneEnds.count { laneEnds.append(end) } else { laneEnds[lane] = end }
+            output.append(TimetableEvent(course: course, start: start, end: end, lane: lane))
+        }
+        events = output
+        laneCount = max(1, laneEnds.count)
+    }
+    private static func minutes(_ value: String) -> Int? {
+        let parts = value.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2, (0...23).contains(parts[0]), (0...59).contains(parts[1]) else { return nil }
+        return parts[0] * 60 + parts[1]
+    }
 }
 
 struct CourseDetailView: View {

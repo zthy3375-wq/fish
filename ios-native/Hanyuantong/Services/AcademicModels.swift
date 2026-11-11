@@ -16,6 +16,12 @@ struct AcademicCourse: Codable, Equatable, Identifiable {
     let weekday: Int
     let periods: String
     let weeks: String
+    static func validPeriods(_ value: String) -> Bool {
+        guard value.range(of: "^[0-9]{1,2}(-[0-9]{1,2})?$", options: .regularExpression) != nil else { return false }
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard let first = parts.first, let last = parts.last else { return false }
+        return (1...24).contains(first) && (first...24).contains(last)
+    }
     var id: String { [name, teacher, room, String(weekday), periods, weeks].joined(separator: "\u{1f}") }
 }
 struct AcademicPractice: Codable, Equatable, Identifiable {
@@ -126,12 +132,17 @@ struct AcademicSnapshot: Codable, Equatable {
             guard selected.isValid else { throw AcademicError(code: "TERM") }
             term = selected
         }
+        if let resolved = payload["resolvedTerm"] as? [String: String], let year = resolved["xnm"], let code = resolved["xqm"] {
+            let actual = AcademicTerm(xnm: year, xqm: code)
+            guard actual.isValid, term == nil || term == actual else { throw AcademicError(code: "TERM") }
+            term = actual
+        }
         if let timetable {
             if let term, term != timetable.term { throw AcademicError(code: "TERM") }
             term = timetable.term
             if timetable.term.isValid, timetable.kbList.count <= 500, timetable.practice.count <= 500,
                !timetable.kbList.isEmpty || !timetable.practice.isEmpty,
-               timetable.kbList.allSatisfy({ !$0.kcmc.isEmpty && !$0.zcd.isEmpty && (1...7).contains(Int($0.xqj) ?? 0) && $0.jcs.range(of: "^[0-9]{1,2}(-[0-9]{1,2})?$", options: .regularExpression) != nil }) {
+               timetable.kbList.allSatisfy({ !$0.kcmc.isEmpty && !ScheduleMath.parseRange($0.zcd, limit: 60).isEmpty && (1...7).contains(Int($0.xqj) ?? 0) && AcademicCourse.validPeriods($0.jcs) }) {
                 courses = timetable.kbList.map { AcademicCourse(name: $0.kcmc, teacher: $0.xm, room: $0.cdmc, weekday: Int($0.xqj)!, periods: $0.jcs, weeks: $0.zcd) }
                 practice = timetable.practice
             } else { errors["timetable"] = "SCHEMA"; dates.removeValue(forKey: "timetable") }

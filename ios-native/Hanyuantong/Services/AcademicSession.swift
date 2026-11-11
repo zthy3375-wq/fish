@@ -14,7 +14,13 @@ final class AcademicSession: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var screen: UIViewController?
     private var pending: ((Result<AcademicSnapshot, AcademicError>) -> Void)?
     var onSessionInvalidated: (() -> Void)?
-    var savedScope: String? { vault.restore()?.scope }
+    var savedScope: String? { try? validatedSavedScope() }
+    /// Distinguishes protected-data unavailability from an absent/expired session.
+    func validatedSavedScope() throws -> String? { try vault.restore()?.scope }
+    func updatePresenter(_ controller: UIViewController) {
+        guard pending == nil else { return }
+        presenter = controller
+    }
     private var generation = 0
     private var interactive = false
     private var started = false
@@ -46,6 +52,9 @@ final class AcademicSession: NSObject, WKNavigationDelegate, WKUIDelegate {
         guard pending == nil else { completion(.failure(AcademicError(code: "BUSY"))); return }
         if let requestedTerm, !requestedTerm.isValid {
             completion(.failure(AcademicError(code: "TERM"))); return
+        }
+        guard presenter?.viewIfLoaded?.window != nil else {
+            completion(.failure(AcademicError(code: "PRESENTATION"))); return
         }
         cleanup()
         self.interactive = interactive
@@ -120,7 +129,10 @@ final class AcademicSession: NSObject, WKNavigationDelegate, WKUIDelegate {
                     guard self.current(token) else { return }
                     web.load(URLRequest(url: Self.loginURL))
                 } else {
-                    guard let saved = self.vault.restore() else {
+                    let restored: AcademicKeychain.Session?
+                    do { restored = try self.vault.restore() }
+                    catch { self.fail("STORAGE"); return }
+                    guard let saved = restored else {
                         self.finish(["session": "expired"]); return
                     }
                     self.scope = saved.scope
@@ -140,7 +152,7 @@ final class AcademicSession: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     private func showOfficialPage(captcha: Bool) {
         guard screen == nil, let web = web, let presenter = presenter,
-              presenter.presentedViewController == nil else { fail("PRESENTATION"); return }
+              presenter.viewIfLoaded?.window != nil, presenter.presentedViewController == nil else { fail("PRESENTATION"); return }
         let page = UIViewController()
         page.view.backgroundColor = .systemBackground
         let label = UILabel()
@@ -265,7 +277,12 @@ final class AcademicSession: NSObject, WKNavigationDelegate, WKUIDelegate {
     private func execute(_ token: Int) {
         guard let data = try? JSONSerialization.data(withJSONObject: term),
               let json = String(data: data, encoding: .utf8) else { fail("TERM"); return }
-        evaluate("window.__handanResult=null;(\(script))('syncAll',\(json));void 0;", token: token) { [weak self] _, error in
+        // Preserve the verified shared query protocol. The one native adaptation adds only
+        // resolved-term metadata, including when timetable fails but grades/exams succeed.
+        let marker = "  window.__handanResult=result;"
+        guard script.components(separatedBy: marker).count == 2 else { fail("NATIVE"); return }
+        let instrumented = script.replacingOccurrences(of: marker, with: "  if(term) result.resolvedTerm=term;\n" + marker)
+        evaluate("window.__handanResult=null;(\(instrumented))('syncAll',\(json));void 0;", token: token) { [weak self] _, error in
             guard let self = self else { return }
             if error != nil { self.fail("SCHEMA") } else { self.poll(token) }
         }
@@ -436,13 +453,15 @@ private final class AcademicKeychain {
         guard status == errSecItemNotFound else { return false }
         return SecItemAdd(query.merging(attrs) { _, new in new } as CFDictionary, nil) == errSecSuccess
     }
-    func restore() -> Session? {
+    func restore() throws -> Session? {
         var request = query
         request[kSecReturnData as String] = true
         request[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
-        guard SecItemCopyMatching(request as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data, data.count <= 65536,
+        let status = SecItemCopyMatching(request as CFDictionary, &item)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw AcademicError(code: "STORAGE") }
+        guard let data = item as? Data, data.count <= 65536,
               let session = try? JSONDecoder().decode(Session.self, from: data),
               UUID(uuidString: session.scope) != nil, !session.cookies.compactMap({ $0.cookie }).isEmpty else { return nil }
         return session

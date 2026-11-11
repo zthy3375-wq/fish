@@ -10,7 +10,7 @@ final class CampusStore: ObservableObject {
     @Published private(set) var grades: [GradeRecord] = []
     @Published private(set) var exams: [ExamRecord] = []
     @Published var semesterStart = ScheduleMath.calendar.date(from: DateComponents(year: 2026, month: 9, day: 14))! {
-        didSet { persistPersonal() }
+        didSet { if !restoringBackup { persistPersonal() } }
     }
     @Published var selectedDate = Date()
     @Published private(set) var isBusy = false
@@ -27,6 +27,7 @@ final class CampusStore: ObservableObject {
     private var personalCourses: [Course] = []
     private var requestGeneration = 0
     private var loadedPersonal = false
+    private var restoringBackup = false
     private struct PersonalData: Codable {
         let version: Int
         let courses: [Course]
@@ -45,14 +46,15 @@ final class CampusStore: ObservableObject {
         } catch { message = "本机加密数据暂时无法读取。请解锁设备后重试；不会用空数据覆盖原记录。" }
     }
     func attachPresenter(_ controller: UIViewController) {
-        guard session == nil else { return }
+        if let session { session.updatePresenter(controller); return }
         let service = AcademicSession(controller: controller)
         session = service
         service.onSessionInvalidated = { [weak self] in _ = self?.clearAcademic() }
         do {
-            if let saved = try storage?.read("academic", as: AcademicSnapshot.self), saved.scope == service.savedScope {
-                snapshot = saved; isConnected = true; selectedTerm = saved.term; apply(saved)
-            } else { try storage?.remove("academic") }
+            let savedScope = try service.validatedSavedScope()
+            if let saved = try storage?.read("academic", as: AcademicSnapshot.self), saved.scope == savedScope {
+                snapshot = saved; isConnected = true; apply(saved)
+            } else if savedScope != nil { try storage?.remove("academic") }
         } catch { message = "学校离线缓存暂时无法读取，可重新连接后同步。" }
     }
     func connectSchool() { query(interactive: true) }
@@ -80,8 +82,16 @@ final class CampusStore: ObservableObject {
             self.isBusy = false
             switch result {
             case .success(let new):
+                guard new.courses != nil || new.grades != nil || new.exams != nil else {
+                    self.message = "本次各模块未能读取，已保留原来的成功记录，请重试。"
+                    return
+                }
+                if let previous = self.snapshot, previous.scope == new.scope, new.term != previous.term, new.courses == nil {
+                    self.message = "所选学期课表未能读取，仍显示原学期记录，请重试。"
+                    return
+                }
                 let merged = new.merging(previous: self.snapshot)
-                self.snapshot = merged; self.isConnected = true; self.selectedTerm = merged.term
+                self.snapshot = merged; self.isConnected = true
                 self.apply(merged)
                 do {
                     guard let storage = self.storage else { throw ProtectedStorage.Failure.unavailable }
@@ -146,6 +156,22 @@ final class CampusStore: ObservableObject {
         guard loadedPersonal else { message = "本机记录尚未安全读取，暂不能修改，请解锁设备后重新打开。"; return }
         guard personalCourses.contains(where: { $0.id == id }) else { return }
         personalCourses.removeAll { $0.id == id }; courses.removeAll { $0.id == id }; persistPersonal()
+    }
+    func makePersonalBackup() throws -> PersonalBackup {
+        guard loadedPersonal else { throw ProtectedStorage.Failure.unavailable }
+        let backup = PersonalBackup(version: 1, courses: personalCourses, tasks: tasks, semesterStart: semesterStart)
+        try backup.validate()
+        return backup
+    }
+    func restorePersonalBackup(_ backup: PersonalBackup) throws {
+        guard loadedPersonal, let storage else { throw ProtectedStorage.Failure.unavailable }
+        try backup.validate()
+        // Persist first: a failed write cannot replace the current in-memory record set.
+        try storage.write(PersonalData(version: 1, courses: backup.courses, tasks: backup.tasks, semesterStart: backup.semesterStart), name: "personal")
+        restoringBackup = true
+        personalCourses = backup.courses; tasks = backup.tasks; semesterStart = backup.semesterStart
+        courses = courses.filter { $0.source != "personal" } + personalCourses
+        restoringBackup = false
     }
     private func persistPersonal() {
         guard loadedPersonal else { return }
