@@ -47,7 +47,7 @@ flutter build ios --simulator --debug
 
 在仓库根目录：`npm ci && node --test flutter_app/test_js/adapter.test.mjs`。
 
-工具版本与最终执行结果见本次交付报告；GitHub `Flutter core verification` 工作流的Android与iOS状态必须分别核实。模拟器产物不是已签名设备IPA，不上传任何分发平台。
+工具版本与最终执行结果见[本次验证报告](FLUTTER-CORE-VERIFICATION.md)；GitHub `Flutter core verification` 工作流的Android与iOS状态必须分别核实。模拟器产物不是已签名设备IPA，不上传任何分发平台。
 
 ## 本人设备验收清单
 
