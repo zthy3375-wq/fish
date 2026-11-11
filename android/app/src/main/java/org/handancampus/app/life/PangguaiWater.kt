@@ -61,7 +61,7 @@ internal class PangguaiWater(
         if(previous!=null&&text(previous,"phase") !in terminal){
             // Reconcile a durable, previously running session before refusing a new start.
             // Unknown unlock intents still cannot be replayed.
-            val current=if(previous.has("startedAt"))poll(previous) else previous
+            val current=if(text(previous,"orderNo").isNotBlank())poll(previous) else previous
             if(text(current,"phase") !in terminal)throw PangguaiFailure("WATER_ACTIVE")
         }
         if(now()>quote.getLong("expiresAt"))throw PangguaiFailure("QUOTE_EXPIRED")
@@ -150,7 +150,7 @@ internal class PangguaiWater(
             if(text(reading,"identify")!=text(s,"orderNo")) {
                 val replaced=text(reading,"identify").isNotBlank()
                 val idle=text(reading,"status")=="5"&&text(reading,"workStatus")=="1"
-                if(s.has("startedAt")&&(replaced||idle))return closeReplaced(s,if(replaced)"order_replaced" else "device_idle")
+                if((s.has("startedAt")||text(s,"phase") in setOf("using","ending"))&&(replaced||idle))return closeReplaced(s,if(replaced)"order_replaced" else "device_idle")
                 s.put("error","WATER_OWNERSHIP").put("updatedAt",now());save(s);return s
             }
             when {
@@ -179,7 +179,8 @@ internal class PangguaiWater(
         // Never send an end command against a stale or different user's device session.
         val reading=obj(post("goods/water/sync",mapOf("skuId" to req(s,"skuId"))))
         if(text(reading,"identify")!=text(s,"orderNo")){
-            if(s.has("startedAt")&&text(reading,"identify").isNotBlank())return closeReplaced(s,"order_replaced")
+            if(text(reading,"identify").isNotBlank())return closeReplaced(s,"order_replaced")
+            if(text(reading,"status")=="5"&&text(reading,"workStatus")=="1")return closeReplaced(s,"device_idle")
             throw PangguaiFailure("WATER_OWNERSHIP")
         }
         if(text(reading,"status")!="1"||text(reading,"workStatus")!="2")throw PangguaiFailure("WATER_WAIT")
@@ -196,9 +197,19 @@ internal class PangguaiWater(
     /** Explicit recovery only after user reports using the physical settlement button. Never sends commands. */
     fun confirmPhysicalEnd(source:JSONObject):JSONObject {
         val s=JSONObject(source.toString())
-        if(text(s,"orderNo").isNotBlank())return poll(s)
-        val reading=reading(req(s,"skuId"))
-        if(reading!=null&&(text(reading,"status")!="5"||text(reading,"workStatus")!="1"))throw PangguaiFailure("WATER_WAIT")
-        s.put("phase","closed_unknown").put("updatedAt",now()).put("error","WATER_BILL_UNKNOWN");save(s);return s
+        if(text(s,"phase") in terminal)return s
+        // This route only reconciles device ownership. It must never enter poll/settle,
+        // even if the device reports our ended order with an unpaid amount.
+        try {
+            val reading=reading(req(s,"skuId"))
+            val identity=reading?.let{text(it,"identify")}.orEmpty()
+            val basis=when {
+                reading==null->"physical_confirmed"
+                identity.isNotBlank()&&text(s,"orderNo").isNotBlank()&&identity!=text(s,"orderNo")->"order_replaced"
+                text(reading,"status")=="5"&&text(reading,"workStatus")=="1"->"device_idle"
+                else->throw PangguaiFailure(if(identity.isNotBlank()&&identity==text(s,"orderNo"))"WATER_STILL_ACTIVE" else "WATER_WAIT")
+            }
+            return closeReplaced(s,basis)
+        }catch(e:Exception){s.put("error",(e as? PangguaiFailure)?.kind ?: "NETWORK").put("updatedAt",now());save(s);throw e}
     }
 }

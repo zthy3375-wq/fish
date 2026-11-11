@@ -51,7 +51,16 @@ export async function checkNativeLife(page,assert,{width,output}){
  await page.screenshot({path:path.join(output,`water-settled-${width}.png`),animations:'disabled'});
  await page.evaluate(()=>{window.__pgWaterEnded=false;window.__pgOwnershipLost=true;window.__pgState.water={...window.__pgState.water,id:'legacy-stuck-water',phase:'using',startedAt:Date.now()-21500000,endedAt:undefined,amount:undefined,endBasis:undefined,remoteEnd:true,error:'WATER_OWNERSHIP'}});
  await dialog.getByRole('button',{name:'刷新胖乖余额与记录'}).click();
+ await dialog.getByRole('heading',{name:'接水状态待核对',exact:true}).waitFor();
+ const beforeRecovery=await page.evaluate(()=>window.__pgCalls.filter(c=>['startWater','endWater'].includes(c.method)).length);
+ await dialog.getByRole('button',{name:'已在机身结算，恢复扫码',exact:true}).click();
+ await dialog.getByRole('group',{name:'确认接水已停止'}).waitFor();
+ await page.screenshot({path:path.join(output,`water-recovery-${width}.png`),animations:'disabled'});
+ assert(await page.evaluate(()=>window.__pgCalls.filter(c=>c.method==='confirmPhysicalWaterEnd').length)===0,`${width}: recovery waits for physical confirmation`);
+ await dialog.getByRole('button',{name:'确认已停止，核对设备',exact:true}).click();
  await dialog.locator('.water-progress').waitFor({state:'hidden'});
+ assert(await page.evaluate(()=>window.__pgCalls.filter(c=>c.method==='confirmPhysicalWaterEnd').length)===1,`${width}: explicit recovery calls dedicated device check`);
+ assert(await page.evaluate(()=>window.__pgCalls.filter(c=>['startWater','endWater'].includes(c.method)).length)===beforeRecovery,`${width}: recovery does not start or remotely end water`);
  assert(await dialog.getByRole('button',{name:'结束接水并结算',exact:true}).count()===0,`${width}: replaced water order has no remote end control`);
  await dialog.getByRole('button',{name:'扫码识别设备',exact:true}).click();
  const nextWater=dialog.getByRole('button',{name:'接水',exact:true});await nextWater.waitFor();

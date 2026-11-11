@@ -12,6 +12,8 @@ object ChaoxingPolicy {
     const val ALL_WORK = "https://mooc1-api.chaoxing.com/mooc-ans/mooc2/work/all-task"
     const val EXAMS = "https://mooc1-api.chaoxing.com/exam-ans/exam/test/examcode/examlist"
     const val NOTICES = "https://notice.chaoxing.com/pc/notice/getNoticeList"
+    // The work parser consumes desktop HTML, not the device-dependent mobile layout.
+    const val READ_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
     val origins = listOf("https://chaoxing.com", "https://passport2.chaoxing.com", "https://i.chaoxing.com", "https://mooc1-api.chaoxing.com", "https://mooc1.chaoxing.com", "https://mooc1-1.chaoxing.com", "https://mooc1-2.chaoxing.com", "https://mooc2-ans.chaoxing.com", "https://notice.chaoxing.com", "https://sso.chaoxing.com")
     fun allowed(url: String?): Boolean = try {
         val u = URI(url ?: "")
@@ -30,6 +32,14 @@ object ChaoxingPolicy {
         return courses.firstOrNull { it.key==key&&safeRead(it.url) }?.url ?: HOME
     }
     fun numeric(value: String) = value.matches(Regex("[0-9]{1,24}"))
+    fun workList(url:String):Boolean = allowed(url) && URI(url).path.lowercase() in listOf("/mooc2/work/list","/mooc-ans/mooc2/work/list","/work/getallwork","/mooc-ans/work/getallwork")
+    fun sameCourse(url:String,course:LearningCourse?):Boolean {
+        if(course==null)return true
+        val q=query(url)
+        return (q["courseid"]==null||q["courseid"]==course.courseId) &&
+            (q["classid"]==null||q["classid"]==course.classId) &&
+            (q["clazzid"]==null||q["clazzid"]==course.classId)
+    }
     fun safeRead(url:String):Boolean {
         if(!allowed(url))return false
         val path=URI(url).path.lowercase()

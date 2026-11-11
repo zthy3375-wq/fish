@@ -103,4 +103,76 @@ class PangguaiWaterTest {
         assertEquals("closed_unknown",h.engine.poll(running).getString("phase"));assertEquals(0,h.count("order/sync"))
     }
 
+    @Test fun legacyUsingWithoutStartTimestampReleasesReplacedOrderAndCanStartAgain(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        s.remove("startedAt");s.put("error","WATER_OWNERSHIP");h.readingPhase="idle"
+        val next=h.engine.start(device,h.engine.prepare(device,"outlet-test"),s)
+        assertEquals("using",next.getString("phase"));assertEquals(2,h.count("goods/water/unlock"))
+        assertEquals(0,h.count("order/sync"));assertEquals(0,h.count("goods/endWater"))
+    }
+    @Test fun unconfirmedStartupDoesNotAutomaticallyReleaseAgainstPreviousDeviceReading(){
+        val h=Harness();val q=h.engine.prepare(device,"outlet-test")
+        h.handler={p,_->if(p=="goods/water/unlock")JSONObject("{orderNo:'water-order'}") else h.response(p)}
+        val s=h.engine.start(device,q,null)
+        fails("WATER_ACTIVE"){h.engine.start(device,q,s)}
+        assertEquals("starting",h.saved!!.getString("phase"));assertEquals(1,h.count("goods/water/unlock"))
+    }
+    @Test fun manualRecoveryOfEndedOwnOrderOnlyReadsDeviceAndKeepsUnconfirmedBill(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        s.remove("startedAt");h.readingPhase="ended";h.calls.clear()
+        val closed=h.engine.confirmPhysicalEnd(s)
+        assertEquals("closed_unknown",closed.getString("phase"));assertEquals("device_idle",closed.getString("endBasis"))
+        assertEquals("water-order",closed.getString("orderNo"));assertFalse(closed.has("amount"))
+        assertEquals(listOf("goods/water/sync"),h.calls.map{it.first})
+        h.orderExists=true;h.paid=true
+        assertEquals("settled",h.engine.poll(closed).getString("phase"))
+        assertEquals(0,h.count("order/sync"));assertEquals(0,h.count("order/afterPay/creating"))
+    }
+    @Test fun manualRecoveryOnDifferentActiveOrderNeverControlsReplacement(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        s.remove("startedAt");s.put("phase","starting");h.identity="someone-else";h.calls.clear()
+        val closed=h.engine.confirmPhysicalEnd(s)
+        assertEquals("order_replaced",closed.getString("endBasis"));assertEquals("closed_unknown",closed.getString("phase"))
+        assertEquals(listOf("goods/water/sync"),h.calls.map{it.first})
+        fails("DEVICE_BUSY"){h.engine.start(device,h.engine.prepare(device,"outlet-test"),closed)}
+        assertEquals(0,h.count("goods/water/unlock"))
+    }
+    @Test fun manualRecoveryDoesNotClearOwnStillRunningSession(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.calls.clear()
+        fails("WATER_STILL_ACTIVE"){h.engine.confirmPhysicalEnd(s)}
+        assertEquals("using",h.saved!!.getString("phase"));assertFalse(h.saved!!.optBoolean("deviceEnded"))
+        assertEquals("WATER_STILL_ACTIVE",h.saved!!.getString("error"));assertEquals(listOf("goods/water/sync"),h.calls.map{it.first})
+    }
+    @Test fun blankBusyIdentityCannotBeManuallyReleased(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.identity="";h.calls.clear()
+        fails("WATER_WAIT"){h.engine.confirmPhysicalEnd(s)}
+        assertEquals("using",h.saved!!.getString("phase"));assertEquals(listOf("goods/water/sync"),h.calls.map{it.first})
+    }
+    @Test fun explicitPhysicalConfirmationCanArchiveAbsentSessionWithoutClaimingPaid(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        h.readingPhase="empty";h.calls.clear();val closed=h.engine.confirmPhysicalEnd(s)
+        assertEquals("physical_confirmed",closed.getString("endBasis"));assertEquals("closed_unknown",closed.getString("phase"))
+        assertEquals("WATER_BILL_UNKNOWN",closed.getString("error"));assertFalse(closed.has("amount"))
+        assertEquals(listOf("goods/water/sync"),h.calls.map{it.first})
+    }
+    @Test fun failedRecoveryPreservesSessionAndDoesNotUnlockOrCharge(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.calls.clear()
+        h.handler={_,_->throw PangguaiFailure("NETWORK")}
+        fails("NETWORK"){h.engine.confirmPhysicalEnd(s)}
+        assertEquals("using",h.saved!!.getString("phase"));assertEquals("water-order",h.saved!!.getString("orderNo"))
+        assertEquals(listOf("goods/water/sync"),h.calls.map{it.first})
+    }
+    @Test fun missingUnlockResponseNeedsPhysicalConfirmationAndIdleDevice(){
+        val h=Harness();val s=JSONObject("{id:'unknown',deviceId:'water-device',skuId:'outlet-test',phase:'starting'}")
+        h.readingPhase="using";fails("WATER_WAIT"){h.engine.confirmPhysicalEnd(s)}
+        h.readingPhase="idle";val closed=h.engine.confirmPhysicalEnd(s)
+        assertEquals("closed_unknown",closed.getString("phase"));assertEquals("device_idle",closed.getString("endBasis"))
+        assertFalse(closed.has("orderNo"));assertEquals(0,h.count("goods/water/unlock"))
+    }
+    @Test fun repeatedManualRecoveryOfClosedRecordSendsNoRequests(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null);h.readingPhase="empty"
+        val closed=h.engine.confirmPhysicalEnd(s);h.calls.clear()
+        assertEquals(closed.toString(),h.engine.confirmPhysicalEnd(closed).toString());assertTrue(h.calls.isEmpty())
+    }
+
 }

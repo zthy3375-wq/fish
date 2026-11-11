@@ -22,7 +22,6 @@ import java.util.concurrent.Executors
 import java.io.ByteArrayInputStream
 
 private class LearningFailure(val reason:String,val records:List<LearningRecord> = emptyList()):Exception(reason)
-private data class LearningPage(val url:String,val body:String)
 
 /** A separate native connector. Remote pages have no Capacitor/JavascriptInterface bridge. */
 @CapacitorPlugin(name="ChaoxingClient")
@@ -75,7 +74,7 @@ class ChaoxingPlugin:Plugin() {
             val connection=URL(url).openConnection() as HttpURLConnection
             try {
                 connection.instanceFollowRedirects=false;connection.connectTimeout=15000;connection.readTimeout=20000
-                connection.setRequestProperty("User-Agent",agent);connection.setRequestProperty("Accept","text/html,application/json;q=0.9,*/*;q=0.8")
+                connection.setRequestProperty("User-Agent",ChaoxingPolicy.READ_USER_AGENT);connection.setRequestProperty("Accept","text/html,application/json;q=0.9,*/*;q=0.8")
                 connection.setRequestProperty("Referer",if(ChaoxingPolicy.allowed(referer))referer else ChaoxingPolicy.HOME)
                 cookies.getCookie(url)?.let { connection.setRequestProperty("Cookie",it) }
                 val requestForm=post
@@ -134,18 +133,20 @@ class ChaoxingPlugin:Plugin() {
     }
     private fun courseWork(course:LearningCourse):ParsedWork {
         diagnostics.put("stage","course-entry")
-        val page=request(course.url)
+        val page=ChaoxingWorkNavigator.entry(course,{url,referer->request(url,referer=referer)},{entry->
+            diagnostics.put("workEncInputs",if(ChaoxingParser.hidden(entry.body,"workEnc").isBlank())0 else 1)
+            if(ChaoxingWorkNavigator.accessDenied(entry.body))throw LearningFailure("WORK_ACCESS")
+        }) ?: throw LearningFailure("WORK_ENC")
         diagnostics.put("stage","work-list")
-        val menu=ChaoxingParser.menu(page.body,page.url)
-        val target=menu ?: run {
-            val workEnc=ChaoxingParser.hidden(page.body,"workEnc");diagnostics.put("workEncInputs",if(workEnc.isBlank())0 else 1);if(workEnc.isBlank())throw LearningFailure("WORK_ENC")
-            val openc=ChaoxingParser.hidden(page.body,"openc");val enc=ChaoxingParser.hidden(page.body,"enc")
-            ChaoxingPolicy.params("https://mooc1.chaoxing.com/mooc2/work/list",mapOf("courseId" to course.courseId,"classId" to course.classId,"cpi" to course.cpi,"ut" to "s","openc" to openc,"enc" to workEnc,"stuenc" to enc,"isdisplaytable" to "2"))
-        }
-        var targetPage=target;val records=linkedMapOf<String,LearningRecord>();val visitedPages=mutableSetOf<String>();var recognized=false;var complete=false;var rejected=0
+        var targetPage=page.url;var previousPage=page.url;val records=linkedMapOf<String,LearningRecord>();val visitedPages=mutableSetOf<String>();var recognized=false;var complete=false;var rejected=0
         for(pageIndex in 0 until 15){
             if(!visitedPages.add(targetPage))break
-            val works=try{val shell=request(targetPage,referer=page.url);val frame=ChaoxingParser.workFrame(shell.body,shell.url);if(frame!=null)request(frame,referer=shell.url) else shell}catch(e:LearningFailure){throw LearningFailure(e.reason,records.values.toList())};val parsed=ChaoxingParser.work(works.body,works.url,course)
+            val works=try {
+                val shell=if(pageIndex==0)page else request(targetPage,referer=previousPage)
+                ChaoxingWorkNavigator.unwrap(shell,course){url,referer->request(url,referer=referer)}
+            }catch(e:LearningFailure){throw LearningFailure(e.reason,records.values.toList())}
+            if(ChaoxingWorkNavigator.accessDenied(works.body))throw LearningFailure("WORK_ACCESS",records.values.toList())
+            val parsed=ChaoxingParser.work(works.body,works.url,course)
             recognized=recognized||parsed.recognized;rejected+=parsed.rejected
             if(!parsed.recognized){val dom=Jsoup.parse(works.body);diagnostics.put("workHost",URI(works.url).host).put("workPath",URI(works.url).path).put("workContainers",dom.select(".bottomList,.task-list").size).put("workFrames",dom.select("iframe[src]").size).put("workTaskHandlers",dom.select("[onclick*=goTask]").size).put("workRows",dom.select("li").size).put("workLinks",dom.select("a.inspectTask,li[data]").size).put("workRejected",parsed.rejected);throw LearningFailure("WORK_SCHEMA",records.values.toList())}
             val added=parsed.records.count { it.id !in records };parsed.records.forEach { records[it.id]=it }
@@ -153,15 +154,15 @@ class ChaoxingPlugin:Plugin() {
             val total=ChaoxingParser.total(works.body)
             complete=rejected==0&&next==null&&(parsed.complete||total!=null&&records.size==total)
             if(next==null||added==0&&pageIndex>0)break
-            targetPage=next;Thread.sleep(900)
+            previousPage=works.url;targetPage=next;Thread.sleep(900)
         }
         return ParsedWork(records.values.toList(),recognized,complete,rejected)
     }
-    private fun sync(cursor:Int,force:Boolean,selected:Set<String>):JSONObject {
+    private fun sync(cursor:Int,force:Boolean,selected:Set<String>,includeExtras:Boolean):JSONObject {
         checkActive();if(cursor<0||cursor>200)throw LearningFailure("CURSOR");loadState();val key=account();bindAccount(key)
         val result=JSONObject().put("session","valid").put("accountKey",key);val items=JSONArray();val outcomes=JSONArray()
         val scope=selected.sorted().joinToString(",")
-        val resuming=planAccount==key&&state.optString("scanScope")==scope&&state.optInt("resumeCursor",-1)==cursor
+        val resuming=planAccount==key&&state.optString("scanScope")==scope&&state.optInt("resumeCursor",-1)==cursor&&state.optBoolean("scanExtras",true)==includeExtras
         var checkpoint=cursor
         try {
         if(cursor==0&&!resuming){
@@ -170,11 +171,11 @@ class ChaoxingPlugin:Plugin() {
             val stamps=state.optJSONObject("stamps") ?: JSONObject().also { state.put("stamps",it) }
             // The all-task feed can contain only unfinished work or its first page. Always check courses for submitted/history records.
             if(selected.isEmpty())return result.put("code","COURSE_SELECTION").put("nextCursor",JSONObject.NULL)
-            plan=ChaoxingScanPlan.select(knownCourses,selected,knownCourses.associate { it.key to stamps.optLong(it.key,0) },force,System.currentTimeMillis());planAccount=key;state.put("scanScope",scope)
+            plan=ChaoxingScanPlan.select(knownCourses,selected,knownCourses.associate { it.key to stamps.optLong(it.key,0) },force,System.currentTimeMillis());planAccount=key;state.put("scanScope",scope);state.put("scanExtras",includeExtras)
 
-        }else if(planAccount!=key||state.optString("scanScope")!=scope)throw LearningFailure("PLAN_EXPIRED")
+        }else if(planAccount!=key||state.optString("scanScope")!=scope||state.optBoolean("scanExtras",true)!=includeExtras)throw LearningFailure("PLAN_EXPIRED")
         state.remove("resumeCursor")
-        // Two courses per batch, paced reads. Publish each successful batch before continuing.
+        // One course per batch, paced reads. Publish each successful batch before continuing.
         for((offset,course) in plan.drop(cursor).take(1).withIndex()){
             checkpoint=cursor+offset
             try {val parsed=courseWork(course);parsed.records.forEach { items.put(record(it)) };val ok=parsed.complete
@@ -183,7 +184,7 @@ class ChaoxingPlugin:Plugin() {
             checkpoint++
         }
         val next=checkpoint
-        if(next>=plan.size){
+        if(includeExtras&&next>=plan.size){
             try { val page=request(ChaoxingPolicy.EXAMS);val parsed=ChaoxingParser.exams(page.body,page.url);if(!parsed.recognized)throw LearningFailure("EXAMS_SCHEMA");result.put("exams",JSONObject().put("status",if(parsed.complete)"ok" else "partial").put("items",JSONArray().apply{parsed.records.forEach { put(record(it)) }})) }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT"))throw e;result.put("exams",JSONObject().put("status","error").put("code",e.reason))}catch(_:Exception){result.put("exams",JSONObject().put("status","error").put("code","NETWORK"))}
             try { val page=request(ChaoxingPolicy.NOTICES,mapOf("type" to "0","notice_type" to "0","lastValue" to "","sort" to "0","folderUUID" to "","kw" to ""));val j=JSONObject(page.body);if(!j.optBoolean("status"))throw LearningFailure("NOTICES_SCHEMA");val list=j.optJSONObject("notices")?.optJSONArray("list") ?: throw LearningFailure("NOTICES_SCHEMA");val data=JSONArray()
                 for(i in 0 until minOf(list.length(),100)){val n=list.optJSONObject(i) ?: continue;val id=n.optString("id").ifBlank { n.optString("noticeId") };val title=n.optString("title");if(id.isBlank()||title.isBlank())continue;data.put(JSONObject().put("id",id.take(100)).put("title",title.take(200)).put("content",Jsoup.parse(n.optString("content")).text().take(6000)).put("sender",n.optString("sendName").take(100)).put("publishedText",n.optString("sendTime").ifBlank { n.optString("insertTime") }.take(100)))}
@@ -207,7 +208,7 @@ class ChaoxingPlugin:Plugin() {
         if(agent.isBlank())agent=WebSettings.getDefaultUserAgent(context)
         executor.execute {workerToken=token;diagnostics=JSONObject();try {val result=job();handler.post {if(token==generation)finish(result)}}catch(e:LearningFailure){handler.post {if(token==generation)finish(failureResult(e.reason))}}catch(_:Exception){handler.post {if(token==generation)finish(failureResult("NETWORK"))}} }
     }}
-    @PluginMethod fun syncAll(next:PluginCall)=begin(next){val keys=next.getArray("courseKeys");val selected=if(keys==null)emptySet<String>() else (0 until minOf(keys.length(),200)).map { keys.optString(it) }.filter { it.matches(Regex("[0-9]{1,24}/[0-9]{1,24}")) }.toSet();sync(next.getInt("cursor",0) ?: 0,next.getBoolean("force",false) ?: false,selected)}
+    @PluginMethod fun syncAll(next:PluginCall)=begin(next){val keys=next.getArray("courseKeys");val selected=if(keys==null)emptySet<String>() else (0 until minOf(keys.length(),200)).map { keys.optString(it) }.filter { it.matches(Regex("[0-9]{1,24}/[0-9]{1,24}")) }.toSet();sync(next.getInt("cursor",0) ?: 0,next.getBoolean("force",false) ?: false,selected,next.getBoolean("includeExtras",true) ?: true)}
     @PluginMethod fun getSessionState(next:PluginCall)=begin(next){val key=account();fetchCourses();JSONObject().put("session","valid").put("accountKey",key)}
     @PluginMethod fun login(next:PluginCall){activity.runOnUiThread {
         if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread};call=next;val token=++generation;probing=false
@@ -229,6 +230,25 @@ class ChaoxingPlugin:Plugin() {
         }catch(_:Exception){next.reject("官方页面打开失败，请重试","OPEN")}
     }}
     @PluginMethod fun openPortal(next:PluginCall){activity.runOnUiThread {if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread};call=next;++generation;showPage(ChaoxingPolicy.HOME,false)}}
+    /** Open the exact account-owned course, without passing signed URLs to Javascript. */
+    @PluginMethod fun openCourse(next:PluginCall){activity.runOnUiThread {
+        if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread}
+        val courseKey=next.getString("key").orEmpty()
+        if(!courseKey.matches(Regex("[0-9]{1,24}/[0-9]{1,24}"))){next.reject("课程标识无效","COURSE");return@runOnUiThread}
+        call=next;val token=++generation
+        executor.execute { workerToken=token
+            try {
+                loadState();val key=account()
+                if(key!=state.optString("account"))throw LearningFailure("ACCOUNT_CHANGED")
+                val course=(knownCourses+plan).firstOrNull { it.key==courseKey }
+                    ?: fetchCourses().also { knownCourses=it }.firstOrNull { it.key==courseKey }
+                    ?: throw LearningFailure("COURSE_MISSING")
+                checkActive();if(account()!=key)throw LearningFailure("ACCOUNT_CHANGED")
+                handler.post { if(token==generation)showPage(course.url,false) }
+            }catch(e:LearningFailure){handler.post {if(token==generation)finish(failureResult(e.reason))}}
+            catch(_:Exception){handler.post {if(token==generation)finish(failureResult("NETWORK"))}}
+        }
+    }}
     private fun probeLogin(token:Int) {
         if(token!=generation||call==null||probing)return
         val key=try{account()}catch(_:Exception){android.widget.Toast.makeText(context,"请先在官方页面完成登录",android.widget.Toast.LENGTH_SHORT).show();return}

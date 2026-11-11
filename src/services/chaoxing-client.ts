@@ -70,12 +70,14 @@ export interface ChaoxingClient {
         courseKeys?: string[];
         cursor: number;
         force: boolean;
+        includeExtras?: boolean;
     }): Promise<LearningResponse>;
     getSessionState(): Promise<LearningResponse>;
     openItem(options: {
         id: string;
     }): Promise<unknown>;
     openPortal(): Promise<unknown>;
+    openCourse(options: { key: string }): Promise<LearningResponse | { closed: boolean }>;
     logout(): Promise<LearningResponse>;
 }
 export const chaoxingClient = registerPlugin<ChaoxingClient>('ChaoxingClient');

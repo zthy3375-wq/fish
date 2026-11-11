@@ -20,7 +20,7 @@ it('rejects malformed IDs, impossible dates and unsupported payloads without mut
 it('personal tasks and learning tasks share filters without merging their storage identities', () => { const cx = projectLearning(populated())[0], personal = task(); const filter: TaskFilter = { view: 'due', search: '', course: '', sort: 'smart', priority: -1, group: false, source: 'chaoxing' }; expect(selectTasks([cx, personal], filter, now)).toEqual([cx]); expect(selectTasks([cx, personal], { ...filter, source: 'personal' }, now)).toEqual([personal]); expect(cx.id.startsWith('cx:')).toBe(true); });
 it('learning reminders can open or snooze but use no manual-complete action category', () => { const cx = projectLearning(populated())[0]; cx.reminders = [{ id: 'deadline', anchor: 'deadline', minutes: 30 }]; const plan = taskReminderPlan({ ...emptyTasks(), notificationsEnabled: true, tasks: [cx] }, now); expect(plan[0].actionTypeId).toBe('HANDAN_LEARNING'); expect(plan[0].extra.taskId).toBe(cx.id); });
 it('platform exams use original start/end timestamps on the shared timeline', () => { const r = response(); r.items![0] = { ...r.items![0], id: '12/34/exam/78', kind: 'exam', startAt: '2026-11-07T09:00', deadline: '2026-11-07T11:00' }; const tasks = projectLearning(applyLearningResponse(emptyLearning(), r, now)); const events = buildAgenda([], [], tasks, '2026-11-07', 1, now).events; expect(events).toHaveLength(1); expect(events[0].kind).toBe('exam'); expect(events[0].endAt! - events[0].startAt!).toBe(7200000); });
-function harness() { let value: string | null = null; const store = new LearningStore(async () => value, async (v) => { value = v; }); const client = { login: vi.fn(async () => response()), syncAll: vi.fn(async (_?: unknown) => response()), logout: vi.fn(async () => ({ session: 'disconnected' as const })), getSessionState: vi.fn(), openItem: vi.fn(), openPortal: vi.fn() }; const publish = vi.fn(); const engine = new LearningSyncEngine(client, store, publish, () => now, async () => { }); return { store, client, publish, engine, get value() { return value; } }; }
+function harness() { let value: string | null = null; const store = new LearningStore(async () => value, async (v) => { value = v; }); const client = { login: vi.fn(async () => response()), syncAll: vi.fn(async (_?: unknown) => response()), logout: vi.fn(async () => ({ session: 'disconnected' as const })), getSessionState: vi.fn(), openItem: vi.fn(), openPortal: vi.fn(), openCourse: vi.fn() }; const publish = vi.fn(); const engine = new LearningSyncEngine(client, store, publish, () => now, async () => { }); return { store, client, publish, engine, get value() { return value; } }; }
 it('one login automatically reads work, coalesces duplicate syncs and throttles repeated entry refreshes', async () => { const h = harness(); await h.engine.sync({ login: true }); expect(h.client.login).toHaveBeenCalledTimes(1); expect(h.client.syncAll).toHaveBeenCalledTimes(1); await Promise.all([h.engine.sync(), h.engine.sync()]); expect(h.client.syncAll).toHaveBeenCalledTimes(1); expect((await h.store.load()).items).toHaveLength(1); });
 it('pagination is sequential and a single course failure preserves all cached successful courses', async () => { const h = harness(); h.client.syncAll.mockResolvedValueOnce({ ...response(), nextCursor: 6, remainingCount: 1 }).mockResolvedValueOnce({ ...response(), items: [], courseResults: [{ key: '12/34', status: 'error', code: 'NETWORK' }], nextCursor: null }); await h.engine.sync({ login: true }); expect(h.client.syncAll.mock.calls.map(args => (args[0] as {
     cursor: number;
@@ -46,7 +46,7 @@ it('verification suspends after publishing partial rows and resumes from the blo
 it('scoped refresh sends only requested courses and leaves the saved selection unchanged',async()=>{
  const h=harness();await h.engine.sync({login:true});await h.store.change(c=>({...c,selectedCourses:['12/34','56/78']}));
  await h.engine.sync({force:true,courseKeys:['12/34']});
- expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,courseKeys:['12/34']});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,courseKeys:['12/34'],includeExtras:false});
  expect((await h.store.load()).selectedCourses).toEqual(['12/34','56/78']);
 });
 it('pausing saves the next course cursor and continues from that cursor',async()=>{
@@ -65,7 +65,33 @@ it('verification after a single-course retry resumes the same scope instead of e
  const h=harness();await h.engine.sync({login:true});await h.store.change(c=>({...c,selectedCourses:['12/34','56/78']}));
  h.client.syncAll.mockResolvedValueOnce({...response(),code:'VERIFY',resumeCursor:0,nextCursor:null,remainingCount:1});
  await h.engine.sync({force:true,courseKeys:['12/34']});h.client.login.mockResolvedValueOnce({...response(),resumeCursor:0,nextCursor:undefined});
- await h.engine.sync({login:true});expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({courseKeys:['12/34'],cursor:0});
+ await h.engine.sync({login:true});expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({courseKeys:['12/34'],cursor:0,includeExtras:false});
+});
+
+it('full refresh still includes exams and notices after a completed single-course retry',async()=>{
+ const h=harness();await h.engine.sync({login:true});
+ await h.engine.sync({force:true,courseKeys:['12/34']});
+ expect((await h.store.load()).activeExtras).toBe(false);
+ await h.engine.sync({force:true});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,includeExtras:true});
+});
+
+it('a paused scoped scan persists its mode across a new engine without refreshing other modules',async()=>{
+ const h=harness();await h.engine.sync({login:true});
+ h.client.syncAll.mockImplementationOnce(async()=>{h.engine.pauseSync();return {...response(),nextCursor:1,remainingCount:1}});
+ await h.engine.sync({force:true,courseKeys:['12/34','56/78']});
+ const resumed=new LearningSyncEngine(h.client,h.store,h.publish,()=>now,async()=>{});
+ await resumed.sync({force:true});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:1,courseKeys:['12/34','56/78'],includeExtras:false});
+});
+
+it('account switch during login resets the old scoped cursor and module mode',async()=>{
+ const h=harness();await h.engine.sync({login:true});
+ await h.store.change(c=>({...c,resumeCursor:2,activeCourses:['12/34'],activeExtras:false}));
+ const changed={...response(),accountKey:'bbbbbbbbbbbbbbbbbbbbbbbb',items:[]};
+ h.client.login.mockResolvedValueOnce(changed);h.client.syncAll.mockResolvedValueOnce(changed);
+ await h.engine.sync({login:true});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,courseKeys:[],includeExtras:true});
 });
 
 it('date-only planning and prepared state survive cache migration without claiming platform submission',()=>{

@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import {onBeforeUnmount, ref} from 'vue';
 import {ArrowUpRight, PackageCheck} from 'lucide-vue-next';
-import {openParcelShortcut, parcelLaunchMessage, parcelProviders, parcelShortcutsSupported, type ParcelProvider} from '../services/parcel-shortcuts';
+import {openParcelShortcut, parcelLaunchMessage, parcelProviders, parcelShortcutsSupported, type ParcelProvider, type ParcelOpenMode} from '../services/parcel-shortcuts';
 
 const supported = parcelShortcutsSupported();
 const opening = ref<ParcelProvider>();
 const message = ref('');
+const lastProvider = ref<ParcelProvider>();
 let disposed = false;
 onBeforeUnmount(() => { disposed = true });
-async function open(provider: ParcelProvider) {
+async function open(provider: ParcelProvider, mode: ParcelOpenMode = 'app') {
   if (!supported || opening.value) return;
   opening.value = provider;
+  lastProvider.value = provider;
   message.value = '';
   try {
-    const result = await openParcelShortcut(provider);
+    const result = await openParcelShortcut(provider, mode);
     if (!disposed) message.value = parcelLaunchMessage(result);
   } catch {
     if (!disposed) message.value = parcelLaunchMessage({provider, status: 'unavailable'});
@@ -32,6 +34,8 @@ async function open(provider: ParcelProvider) {
       </button>
     </div>
     <p class="parcel-note">跳转淘宝或拼多多，使用该 App 内的登录账号。本应用不读取、保存或生成出库身份码。</p>
+    <button v-if="supported && lastProvider" type="button" class="parcel-compat" :disabled="!!opening" @click="open(lastProvider, 'system')">没有跳转？系统兼容打开{{lastProvider==='taobao'?'淘宝':'拼多多'}}</button>
+    <p v-if="supported && lastProvider" class="parcel-note">兼容方式由系统选择打开的应用，部分鸿蒙环境可能进入官方网页。</p>
     <p v-if="!supported" class="parcel-status">请在 Android 客户端中使用出库码快捷入口。</p>
     <p v-if="opening || message" class="parcel-status" role="status" aria-live="polite">{{opening ? '正在请求打开官方 App…' : message}}</p>
   </section>
@@ -46,4 +50,5 @@ async function open(provider: ParcelProvider) {
 .parcel-actions button:disabled{opacity:.55}.parcel-actions button:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 .parcel-note,.parcel-status{font-size:11px;line-height:1.65;margin:10px 0 0;color:var(--color-muted);overflow-wrap:anywhere}
 .parcel-status{color:var(--color-text)}
+.parcel-compat{min-height:44px;margin-top:8px;padding:8px 0;color:var(--color-primary);font-size:12px;text-align:left}.parcel-compat:disabled{opacity:.55}
 </style>

@@ -39,7 +39,7 @@ it('coalesces repeated taps while the bridge is pending and never claims pickup 
   button('淘宝出库码').click(); button('淘宝出库码').click(); button('拼多多出库码').click();
   await nextTick();
   expect(button('拼多多出库码').disabled).toBe(true);
-  expect(bridge.open).toHaveBeenCalledExactlyOnceWith('taobao');
+  expect(bridge.open).toHaveBeenCalledExactlyOnceWith('taobao', 'app');
   finish({provider: 'taobao', status: 'opened'}); await settle();
   expect(root.textContent).toContain('已请求打开淘宝');
   expect(root.textContent).toContain('返回本应用不代表已出库');
@@ -71,4 +71,18 @@ it('does not carry a late launch reply onto a different page or remount', async 
   expect(root.querySelector('[role=status]')).toBeNull();
   expect(button('淘宝出库码').disabled).toBe(false);
   expect(bridge.open).toHaveBeenCalledTimes(1);
+});
+
+it('offers an explicit system retry even when Android accepted but did not visibly open the app',async()=>{
+ bridge.open.mockResolvedValue({provider:'taobao',status:'opened'});mount();
+ expect(root.textContent).not.toContain('没有跳转？');button('淘宝出库码').click();await settle();
+ expect(root.textContent).toContain('部分鸿蒙环境可能进入官方网页');
+ bridge.open.mockResolvedValue({provider:'taobao',status:'system_opened'});
+ button('没有跳转？系统兼容打开淘宝').click();await settle();
+ expect(bridge.open).toHaveBeenLastCalledWith('taobao','system');expect(root.textContent).toContain('当前未确认进入身份码页面');
+});
+it('home fallback does not pretend to have opened the code page',async()=>{
+ bridge.open.mockResolvedValue({provider:'pinduoduo',status:'app_opened'});mount();button('拼多多出库码').click();await settle();
+ expect(root.textContent).toContain('拼多多首页');expect(root.textContent).toContain('当前未确认进入身份码页面');
+ expect(button('没有跳转？系统兼容打开拼多多')).toBeDefined();
 });

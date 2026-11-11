@@ -34,15 +34,20 @@ export class LearningSyncEngine {
             } };
             try {
                 let cursor = options.courseKeys?0:cache.resumeCursor??0;
+                let includeExtras = options.courseKeys ? false : cache.resumeCursor !== undefined ? cache.activeExtras !== false : true;
                 if (options.login) {
+                    const priorAccount = cache.accountKey;
                     const result = await this.client.login();
                     await accept(result);
                     if (result.session !== 'valid')
                         return;
-                    if(Number.isInteger(result.resumeCursor)&&result.resumeCursor!>=0&&result.resumeCursor!<=200)cursor=result.resumeCursor!;
+                    if (priorAccount && priorAccount !== cache.accountKey) {
+                        cursor = 0;
+                        includeExtras = !options.courseKeys;
+                    } else if(Number.isInteger(result.resumeCursor)&&result.resumeCursor!>=0&&result.resumeCursor!<=200)cursor=result.resumeCursor!;
                 }
                 const scope=options.courseKeys??(cache.resumeCursor!==undefined?cache.activeCourses??cache.selectedCourses:cache.selectedCourses);
-                await this.store.change(c=>generation===this.epoch&&c.accountKey===cache.accountKey?{...c,activeCourses:scope}:c);
+                await this.store.change(c=>generation===this.epoch&&c.accountKey===cache.accountKey?{...c,activeCourses:scope,activeExtras:includeExtras}:c);
                 const seen = new Set<number>();
                 for (let batch = 0; batch < 201; batch++) {
                     if (generation !== this.epoch||this.paused)
@@ -50,7 +55,7 @@ export class LearningSyncEngine {
                     if (seen.has(cursor))
                         throw Error('学习通同步游标重复');
                     seen.add(cursor);
-                    const response = await this.client.syncAll({ courseKeys:scope, cursor, force: options.login || !!options.force });
+                    const response = await this.client.syncAll({ courseKeys:scope, cursor, force: options.login || !!options.force, includeExtras });
                     if (generation !== this.epoch)
                         return;
                     await accept(response);

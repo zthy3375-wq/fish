@@ -59,8 +59,19 @@ describe('parcel shortcut bridge', () => {
     expect(manifest).not.toContain('QUERY_ALL_PACKAGES');
     expect(readFileSync('android/app/src/main/java/org/handancampus/app/MainActivity.java', 'utf8')).toContain('registerPlugin(org.handancampus.app.life.ParcelShortcutsPlugin.class)');
     const plugin = readFileSync('android/app/src/main/java/org/handancampus/app/life/ParcelShortcutsPlugin.kt', 'utf8');
-    expect(plugin).toContain('.setPackage(target.packageName)');
-    expect(plugin).toContain('info.packageName == target.packageName');
+    const launcher = readFileSync('android/app/src/main/java/org/handancampus/app/life/ParcelAndroidLauncher.kt', 'utf8');
+    expect(launcher).toContain('intent.setPackage(target.packageName)');
+    expect(launcher).toContain('getLaunchIntentSenderForPackage');
+    expect(plugin).not.toMatch(/getApplicationInfo|resolveActivity/);
     expect(plugin).not.toMatch(/setPackage\(null\)|evaluateJavascript|loadUrl|startActivityForResult/);
   });
+});
+
+it.each(['app_opened', 'system_opened', 'web_opened'] as const)('preserves accurate %s result without claiming an identity page', async status => {
+ bridge.open.mockResolvedValue({provider:'taobao',status});
+ const result=await openParcelShortcut('taobao','system');expect(bridge.open).toHaveBeenCalledExactlyOnceWith({provider:'taobao',mode:'system'});
+ expect(result.status).toBe(status);expect(parcelLaunchMessage(result)).not.toMatch(/已出库|登录成功|取件成功/);
+});
+it('rejects unsupported compatibility modes before native dispatch',async()=>{
+ await expect(openParcelShortcut('taobao','browser' as never)).rejects.toThrow('INVALID_PROVIDER');expect(bridge.open).not.toHaveBeenCalled();
 });
