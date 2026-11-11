@@ -80,3 +80,7 @@ npm run android:apk
 原创代码采用 [MIT](LICENSE)。上游研究与历史设计记录见 [文档导航](docs/README.md)。第一版范围为首页、课表、教务和个人设置；社区、二手交易、商家与失物招领尚未开发。
 
 请勿向 Issue、日志、截图或 PR 提交密码、Cookie、令牌及未脱敏学籍信息。查看 [安全说明](SECURITY.md) 与 [贡献指南](CONTRIBUTING.md)。
+
+## Flutter迁移验证（独立开发）
+
+第一阶段工程位于 [`flutter_app/`](flutter_app/README.md)，范围为Android+iOS共用课表核心。现有Vue/Capacitor正式版继续保留，独立验证包不接正式更新通道。具体安全边界和设备验收清单见 [Flutter核心验证说明](docs/FLUTTER-CORE.md)。本分支仅开发测试，不代表已完成真实账号或iOS真机验收。
