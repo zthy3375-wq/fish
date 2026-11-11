@@ -230,6 +230,17 @@ final class QuzhiTests: XCTestCase {
         store.finishRechargeHandoff(opened: false); XCTAssertFalse(store.returnedFromRecharge)
         XCTAssertTrue(store.logout()); XCTAssertNil(store.beginRechargeHandoff())
     }
+    @MainActor func testRestoreFailureReportsStorageErrorAndClearsItOnRetry() {
+        let storage = QuzhiMemoryPersistence(prior()); storage.failRestore = true
+        let store = QuzhiStore(transport: QuzhiScriptTransport([]), persistence: storage)
+        XCTAssertFalse(store.ready); XCTAssertFalse(store.connected)
+        XCTAssertEqual(store.error, QuzhiFailure.storage.localizedDescription)
+        storage.failRestore = false
+        store.restore()
+        XCTAssertTrue(store.ready); XCTAssertTrue(store.connected)
+        XCTAssertEqual(store.error, "")
+        XCTAssertEqual(store.snapshot, prior().snapshot)
+    }
     @MainActor func testFailedLogoutClearsVisibleSecretsAndBlocksNewOperations() async {
         let storage = QuzhiMemoryPersistence(prior()); storage.failClear = true
         let transport = QuzhiScriptTransport([])
@@ -242,6 +253,81 @@ final class QuzhiTests: XCTestCase {
         let paths = await transport.paths; XCTAssertTrue(paths.isEmpty)
         storage.failClear = false
         XCTAssertTrue(store.logout()); XCTAssertFalse(store.cleanupRequired)
+    }
+    @MainActor func testVaultLogoutDeletionFailureRemainsRetryableAfterRecreation() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let service = "org.handancampus.quzhi.tests." + UUID().uuidString
+        var failuresRemaining = 1
+        let remove: (URL) throws -> Void = { file in
+            if failuresRemaining > 0 {
+                failuresRemaining -= 1
+                throw CocoaError(.fileWriteNoPermission)
+            }
+            try FileManager.default.removeItem(at: file)
+        }
+        let vault = QuzhiVault(service: service, directory: directory, removeFile: remove)
+        defer { try? vault.clear(); try? FileManager.default.removeItem(at: directory) }
+        try vault.save(prior())
+        let cache = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
+        let unrelatedNames = ["personal.sealed", "school.sealed", "pangguai.sealed", "quzhi-other-feature.sealed", "quzhi-" + String(repeating: "a", count: 64) + "-" + String(repeating: "-", count: 36) + ".sealed"]
+        let marker = Data("unrelated-feature-record".utf8)
+        for name in unrelatedNames { try marker.write(to: directory.appendingPathComponent(name)) }
+        let nested = directory.appendingPathComponent("other-feature", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: false)
+        let nestedRecord = nested.appendingPathComponent(cache.lastPathComponent)
+        try marker.write(to: nestedRecord)
+
+        XCTAssertThrowsError(try vault.clear()) { XCTAssertEqual($0 as? QuzhiFailure, .storage) }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cache.path))
+        // The first attempt revoked the session; the new vault must find the old cache without it.
+        let retry = QuzhiVault(service: service, directory: directory, removeFile: remove)
+        try retry.clear()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cache.path))
+        XCTAssertNil(try retry.restore())
+        for name in unrelatedNames { XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent(name)), marker) }
+        XCTAssertEqual(try Data(contentsOf: nestedRecord), marker)
+    }
+    @MainActor func testOldCacheCleanupFailurePreservesCommittedAccountAndRetriesOnRestore() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let service = "org.handancampus.quzhi.tests." + UUID().uuidString
+        var failuresRemaining = 1
+        let remove: (URL) throws -> Void = { file in
+            if failuresRemaining > 0 {
+                failuresRemaining -= 1
+                throw CocoaError(.fileWriteNoPermission)
+            }
+            try FileManager.default.removeItem(at: file)
+        }
+        let vault = QuzhiVault(service: service, directory: directory, removeFile: remove)
+        defer { try? vault.clear(); try? FileManager.default.removeItem(at: directory) }
+        try vault.save(prior())
+        let oldFile = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
+        var next = prior()
+        next.session = session(phone: "13900000000", user: "other")
+        next.snapshot = QuzhiSnapshot(); next.snapshot.wallet = QuzhiWallet(total: "9.99")
+        try vault.save(next)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldFile.path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path).count, 2)
+        let restored = try QuzhiVault(service: service, directory: directory, removeFile: remove).restore()
+        XCTAssertEqual(restored?.session, next.session)
+        XCTAssertEqual(restored?.snapshot, next.snapshot)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldFile.path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path).count, 1)
+    }
+    @MainActor func testCleanupRejectsMatchingSymlinkWithoutFollowingIt() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let service = "org.handancampus.quzhi.tests." + UUID().uuidString
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let target = directory.appendingPathComponent("personal.sealed")
+        let bytes = Data("synthetic-personal-record".utf8)
+        try bytes.write(to: target)
+        let link = directory.appendingPathComponent("quzhi-" + String(repeating: "a", count: 64) + "-" + UUID().uuidString + ".sealed")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let vault = QuzhiVault(service: service, directory: directory)
+        XCTAssertThrowsError(try vault.clear()) { XCTAssertEqual($0 as? QuzhiFailure, .storage) }
+        XCTAssertEqual(try Data(contentsOf: target), bytes)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: link.path))
     }
     @MainActor func testSecureVaultRoundTripAccountIsolationAndDeletion() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -269,10 +355,11 @@ final class QuzhiTests: XCTestCase {
 @MainActor private final class QuzhiMemoryPersistence: QuzhiPersistence {
     var value: QuzhiState?
     var failSave = false
+    var failRestore = false
     var failClear = false
     var saves = 0
     init(_ state: QuzhiState? = nil) { value = state }
-    func restore() throws -> QuzhiState? { value }
+    func restore() throws -> QuzhiState? { if failRestore { throw QuzhiFailure.storage }; return value }
     func save(_ state: QuzhiState) throws { if failSave { throw QuzhiFailure.storage }; value = state; saves += 1 }
     func clear() throws { if failClear { throw QuzhiFailure.storage }; value = nil }
 }

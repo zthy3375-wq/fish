@@ -48,4 +48,21 @@ final class UtilitiesTests: XCTestCase {
         XCTAssertTrue(snapshot.today(monday.addingTimeInterval(-1)).isEmpty)
     }
 
+    @MainActor func testWidgetCleanupIgnoresUnreadablePreference() {
+        var exists = true
+        let persistence = WidgetPersistence(readPreference: { throw WidgetSnapshotFile.Failure.unavailable }, savePreference: { _ in }, writeSnapshot: { _ in }, removeSnapshot: { exists = false }, reload: {})
+        let publisher = NativeWidgetPublisher(persistence: persistence)
+        XCTAssertFalse(publisher.enabled)
+        XCTAssertTrue(publisher.clearForAccountChange())
+        XCTAssertFalse(exists)
+    }
+    @MainActor func testWidgetFailedEnableRollsBackSnapshot() {
+        var exists = false
+        let persistence = WidgetPersistence(readPreference: { false }, savePreference: { _ in throw WidgetSnapshotFile.Failure.unavailable }, writeSnapshot: { _ in exists = true }, removeSnapshot: { exists = false }, reload: {})
+        let publisher = NativeWidgetPublisher(persistence: persistence)
+        publisher.change(true, courses: [], semesterStart: Date())
+        XCTAssertFalse(publisher.enabled)
+        XCTAssertFalse(exists)
+    }
+
 }

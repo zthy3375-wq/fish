@@ -2,7 +2,8 @@ import Foundation
 import Combine
 
 /// One app-owned instance should be shared by home, profile and the wallet screen.
-/// Public operations are invoked by UI actions. Initialization performs local reads only.
+/// Public operations are invoked by UI actions. Initialization restores local data and retries
+/// obsolete-cache cleanup; it never makes network requests.
 @MainActor
 final class QuzhiStore: ObservableObject {
     @Published private(set) var snapshot = QuzhiSnapshot()
@@ -41,8 +42,8 @@ final class QuzhiStore: ObservableObject {
 
     func restore() {
         guard !ready, !cleanupRequired, Self.currentOwner == owner else { return }
-        do { publish(try persistence.restore()); ready = true }
-        catch { error = QuzhiFailure.storage.localizedDescription }
+        do { publish(try persistence.restore()); ready = true; self.error = "" }
+        catch { self.error = QuzhiFailure.storage.localizedDescription }
     }
     private func publish(_ next: QuzhiState?) {
         state = next; snapshot = next?.snapshot ?? QuzhiSnapshot()
@@ -57,7 +58,7 @@ final class QuzhiStore: ObservableObject {
         try persistence.save(next)
         publish(next)
     }
-    private func execute(_ work: @escaping (Int) async throws -> Void) async -> Bool {
+    private func execute(_ work: @escaping @MainActor (Int) async throws -> Void) async -> Bool {
         guard Self.currentOwner == owner else { return false }
         if !ready { restore() }
         guard ready, !cleanupRequired, !busy else { return false }
@@ -141,7 +142,7 @@ final class QuzhiStore: ObservableObject {
             guard var next = state else { throw QuzhiFailure.auth }
             next.snapshot.issues = [:]
             let auth = next.session.auth
-            func failure(_ error: Error, part: String) throws {
+            @MainActor func failure(_ error: Error, part: String) throws {
                 try check(token)
                 if error is CancellationError { throw error }
                 let reason = QuzhiFailure.classify(error)
@@ -209,7 +210,7 @@ final class QuzhiStore: ObservableObject {
         } catch {
             // Hide all account data even if the OS refuses deletion; do not claim logout completed.
             publish(nil); ready = false; cleanupRequired = true
-            error = "趣智退出尚未完成，无法清除本机数据。请解锁设备后重试清除。"
+            self.error = "趣智退出尚未完成，无法清除本机数据。请解锁设备后重试清除。"
             return false
         }
     }

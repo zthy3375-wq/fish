@@ -1,6 +1,6 @@
 import Foundation
 import Combine
-import UserNotifications
+@preconcurrency import UserNotifications
 
 struct ReminderPreferences: Codable, Equatable {
     var courses = false

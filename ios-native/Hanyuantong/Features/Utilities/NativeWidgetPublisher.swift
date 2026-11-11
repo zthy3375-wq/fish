@@ -3,49 +3,70 @@ import Combine
 import WidgetKit
 import SwiftUI
 
+struct WidgetPersistence {
+    var readPreference: () throws -> Bool
+    var savePreference: (Bool) throws -> Void
+    var writeSnapshot: (WidgetSnapshot) throws -> Void
+    var removeSnapshot: () throws -> Void
+    var reload: () -> Void
+    static func live() throws -> WidgetPersistence {
+        let storage = try ProtectedStorage()
+        return WidgetPersistence(readPreference: { try storage.read("widget-enabled", as: Bool.self) ?? false },
+            savePreference: { try storage.write($0, name: "widget-enabled") },
+            writeSnapshot: WidgetSnapshotFile.write, removeSnapshot: WidgetSnapshotFile.remove,
+            reload: { WidgetCenter.shared.reloadTimelines(ofKind: "HanyuantongCourseWidget") })
+    }
+}
 @MainActor final class NativeWidgetPublisher: ObservableObject {
     @Published private(set) var enabled = false
     @Published private(set) var status = "课表小组件默认关闭"
     private var loaded = false
-    private var storage: ProtectedStorage?
-    init() {
+    private var persistence: WidgetPersistence?
+    init(persistence: WidgetPersistence? = nil) {
         do {
-            let storage = try ProtectedStorage(); self.storage = storage
-            enabled = try storage.read("widget-enabled", as: Bool.self) ?? false
+            let persistence = try persistence ?? WidgetPersistence.live()
+            self.persistence = persistence
+            enabled = try persistence.readPreference()
             loaded = true
         } catch { status = "小组件设置暂无法读取，原记录未覆盖。" }
     }
     func change(_ value: Bool, courses: [Course], semesterStart: Date) {
-        guard loaded, let storage else { return }
+        guard loaded, let persistence else { return }
+        let previouslyEnabled = enabled
         do {
             if value { try write(courses: courses, semesterStart: semesterStart) }
-            else { try WidgetSnapshotFile.remove() }
-            try storage.write(value, name: "widget-enabled")
+            else { try persistence.removeSnapshot(); enabled = false; persistence.reload() }
+            try persistence.savePreference(value)
             enabled = value
-            WidgetCenter.shared.reloadTimelines(ofKind: "HanyuantongCourseWidget")
+            persistence.reload()
             status = value ? "课表已提供给本 App 小组件，请从主屏幕小组件列表添加邯院通。" : "小组件课表副本已移除。"
-        } catch { status = "小组件共享容器或签名尚不可用。开发者需为 App 与 Widget 配置同一 App Group 和 Keychain Group，未写入明文替代文件。" }
+        } catch {
+            if value && !previouslyEnabled {
+                // A failed preference write must not leave an opt-in snapshot behind.
+                do { try persistence.removeSnapshot(); persistence.reload() }
+                catch { status = "小组件开启未完成，临时课表副本清理失败，请解锁后重试关闭。"; return }
+            }
+            status = value ? "小组件共享容器或签名尚不可用，或设置保存失败；未回退到明文文件。请核对 App Group 与 Keychain Group。" : "关闭设置未能持久保存，请解锁后重试。下次打开 App 时仍可能恢复旧设置。"
+        }
     }
     @discardableResult func clearForAccountChange() -> Bool {
-        guard enabled else { return true }
+        // Cleanup cannot depend on an unreadable/false preference. An old file may still exist.
         do {
-            try WidgetSnapshotFile.remove()
-            WidgetCenter.shared.reloadTimelines(ofKind: "HanyuantongCourseWidget")
+            if let persistence { try persistence.removeSnapshot(); persistence.reload() }
+            else { try WidgetSnapshotFile.remove(); WidgetCenter.shared.reloadTimelines(ofKind: "HanyuantongCourseWidget") }
             return true
-        } catch {
-            status = "旧账号的小组件副本未能清理，请解锁设备后重试退出。"
-            return false
-        }
+        } catch { status = "旧账号的小组件副本未能清理，请解锁设备后重试退出。"; return false }
     }
     func publish(courses: [Course], semesterStart: Date) {
         guard loaded, enabled else { return }
         do {
             try write(courses: courses, semesterStart: semesterStart)
-            WidgetCenter.shared.reloadTimelines(ofKind: "HanyuantongCourseWidget")
+            persistence?.reload()
         } catch { status = "小组件更新失败，可能仍显示上次缓存。请解锁后重新打开 App。" }
     }
     private func write(courses: [Course], semesterStart: Date) throws {
-        try WidgetSnapshotFile.write(WidgetSnapshot(version: 1, generatedAt: Date(), semesterStart: semesterStart,
+        guard let persistence else { throw WidgetSnapshotFile.Failure.unavailable }
+        try persistence.writeSnapshot(WidgetSnapshot(version: 1, generatedAt: Date(), semesterStart: semesterStart,
             courses: courses.map { WidgetCourse(id: $0.id.uuidString, title: $0.name, room: $0.room, day: $0.day, start: $0.start, end: $0.end, weeks: $0.weeks) }))
     }
 }
