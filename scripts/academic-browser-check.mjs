@@ -123,6 +123,26 @@ try{
   await page.locator('.home-next-meta time').waitFor();
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(output,`campus-home-connected-${width}.png`),animations:'disabled'});
+  const range=await page.locator('.course-time-caption time').allTextContents();
+  const toMinutes=t=>{const [h,m]=t.split(':').map(Number);return h*60+m};
+  const [startMinute,endMinute]=range.slice(0,2).map(toMinutes);
+  const localMidnight=Date.parse('2026-11-06T00:00:00+08:00');
+  await page.clock.setFixedTime(new Date(localMidnight+(startMinute+(endMinute-startMinute)*.25)*60000));
+  await page.waitForFunction(()=>!!document.querySelector('.home-timeline .is-current'));
+  const marker=page.locator('.home-timeline .is-current .course-time-marker').first();
+  const firstPosition=await marker.evaluate(el=>parseFloat(el.style.left));
+  assert(firstPosition>20&&firstPosition<30,`${width}: course progress uses real start/end time`);
+  assert((await page.locator('.home-countdown').innerText()).includes('还剩'),`${width}: ongoing course shows remaining minutes`);
+  await page.clock.setFixedTime(new Date(localMidnight+(startMinute+(endMinute-startMinute)*.75)*60000));
+  await page.waitForFunction(()=>parseFloat(document.querySelector('.home-timeline .is-current .course-time-marker')?.style.left||'0')>70);
+  assert((await marker.evaluate(el=>parseFloat(el.style.left)))>firstPosition,`${width}: clock tick advances the mounted progress marker`);
+  await page.screenshot({path:path.join(output,`home-course-progress-${width}.png`),animations:'disabled'});
+  await page.clock.setFixedTime(new Date(localMidnight+(endMinute+1)*60000));
+  await page.waitForFunction(()=>!document.querySelector('.home-timeline .is-current'));
+  assert(await page.locator('.home-timeline .is-ended').count()>0,`${width}: ended class is de-emphasized`);
+  assert(await page.locator('.home-timeline .is-ended.is-next').count()===0,`${width}: later occurrence never highlights today's ended class`);
+  await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
+
   assert(await page.locator('.home-course-panel .home-study-links').count()===1,`${width}: study actions share course card`);
   assert(await page.locator('.home-body>.school-connection').count()===0,`${width}: connected home hides redundant account card`);
   assert(await page.locator('.home-course-panel').evaluate(el=>{const life=document.querySelector('#home-life-title').closest('section'),tasks=document.querySelector('.today-tasks');return !!(el.compareDocumentPosition(life)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(life.compareDocumentPosition(tasks)&Node.DOCUMENT_POSITION_FOLLOWING)}),`${width}: home orders courses, services, then plans`);
