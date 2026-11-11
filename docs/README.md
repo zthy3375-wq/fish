@@ -4,6 +4,17 @@
 
 ## 当前维护入口
 
+先按模块找到实现与维护记录；下方版本研究文档继续保留原路径。
+
+| 工作 | 入口 |
+| --- | --- |
+| 分支、PR、删除候选与审查证据 | [2026-11-11 仓库审查](REPOSITORY-REVIEW-2026-11-11.md) |
+| 已发布版本和历史验收 | [STATUS](STATUS.md) · [版本记录](../CHANGELOG.md) |
+| 应用更新和测试 APK 证据 | [更新与发布](APP-UPDATES.md) · [包名/签名校验](APK-EVIDENCE.md) |
+| 匿名统计及与部署分支的差异 | [统计维护说明](ANALYTICS.md) |
+| 学习通协议与问题回归 | [协议研究](research/V070-CHAOXING.md) · [验证码续传](V072-LEARNING-FEEDBACK.md) · [当前修复 PR #51](https://github.com/zthy3375-wq/fish/pull/51) |
+| 原生饮水和洗衣 | [接水](V088-WATER.md) · [洗衣](V086-LAUNDRY.md) |
+
 - [胖乖官方页面模式与边界](V082-PANGGUAI-OFFICIAL.md)
 - [淘宝/拼多多出库码直达](V082-PARCEL-SHORTCUTS.md)
 - [胖乖协议、金额口径与官方来源](research/V082-PANGGUAI.md)

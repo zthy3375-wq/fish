@@ -8,6 +8,8 @@
 
 [应用内更新与发布](docs/APP-UPDATES.md) · [功能与验证状态](docs/STATUS.md) · [文档导航](docs/README.md) · [版本记录](CHANGELOG.md)
 
+[2026-11-11 仓库审查与待确认清理](docs/REPOSITORY-REVIEW-2026-11-11.md)：区分已发布主线、未合入修复、暂停试验及取消功能。接水/鸿蒙/学习通修复见 PR #51；统计小时汇总见 PR #49，均尚未合入 main。扫码骑车方案已取消，相关 PR #52–54 已关闭；原生快递试验继续独立。审查记录中的删除候选尚未执行。
+
 ## 当前功能
 
 | 模块 | 当前能力 | 验证范围 |
@@ -56,7 +58,7 @@ npm run android:check
 npm run android:apk
 ```
 
-以上 npm 命令会自动选择 Windows/Linux 的 Gradle Wrapper。正式签名与商店发布尚未配置；`assembleRelease` 不等于生成可直接分发的已签名正式 APK。
+以上 npm 命令会自动选择 Windows/Linux 的 Gradle Wrapper。交付 APK 在仓库外使用原正式密钥签名；Gradle 的 `assembleRelease` 产物仍是未签名包，商店发布未配置。
 
 ## 架构与数据
 
@@ -67,7 +69,7 @@ npm run android:apk
 - `android/app/src/main/assets/handan-*.js`：随 APK 编译的固定查询和页面读取脚本。
 - `src/domain/`：课程、学期、作息与时间计算；`tests/`：格式、状态、存储和边界回归。
 
-个人课表与学校缓存分开保存；查询失败或异常空响应不会清空上次成功课表。没有业务后端或分析追踪 SDK；学校正常查询仍需设备直接连接官方服务。
+个人课表与学校缓存分开保存；查询失败或异常空响应不会清空上次成功课表。学校和生活服务由设备直接连接官方服务。仓库另有 `cloudbase/` 下的可选匿名统计和更新服务；统计不接收学校或生活账号数据，未引入第三方分析 SDK。统计服务当前主线与已部署分支的差异见仓库审查记录，重新部署前须核对。
 
 ## 贡献与许可
 

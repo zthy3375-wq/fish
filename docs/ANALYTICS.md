@@ -1,5 +1,15 @@
 # 匿名使用统计
 
+## 当前维护入口（2026-11-11）
+
+Android 当前固定上报至腾讯云 `hyt-analytics/api/metrics`；本仓库的 `cloudbase/functions/analytics/` 保存服务端代码，`cloudbase/schema.sql` 保存数据库结构。当前代码中的后台入口是腾讯云 `hyt-analytics/dashboard`，管理员凭据保存在运行环境，不能写入客户端或审查报告。
+
+小时暂存与汇总修复在[PR #49](https://github.com/zthy3375-wq/fish/pull/49)及 `fix/analytics-hourly`；部署记录标记为 hourly-v3，但尚未合入 main。main 中仍是旧版即时 SQL 上报及仅接受三段版本号的校验，不能用主线旧服务覆盖该部署。首次自然定时触发与实际账单节省仍按该分支的验收记录核对；本轮仓库审查没有重新验证线上后台。分支状态见[仓库维护清单](REPOSITORY-REVIEW-2026-11-11.md)。
+
+以下保留 v1.0.2 的初始 D1/站点后台说明，作为迁移历史；其中旧地址、D1 和 ChatGPT 账号登录方式不描述当前腾讯云实现。
+
+## v1.0.2 初始方案（历史）
+
 v1.0.2 起由用户主动允许，默认不采集。后台：https://hanyuantong-updates.dewydahlia.chatgpt.site/admin ，使用站点所有者 ChatGPT 账号登录。
 
 统计口径为参与统计的安装实例，不是精确自然人数。重装、清除应用数据或多设备可能重复；拒绝参与的用户不计入。网络失败会造成漏计，不推断未上报用户。
