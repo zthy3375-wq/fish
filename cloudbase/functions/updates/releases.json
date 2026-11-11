@@ -1,5 +1,5 @@
 {
-  "latest": 133,
+  "latest": 145,
   "releases": [
     {
       "schema": 1,
@@ -91,6 +91,22 @@
         "修复部分手机整周课表重叠的问题。"
       ],
       "buildKey": "bcf1b4e913f7dc3bcca301df939bc7f1"
+    },
+    {
+      "schema": 1,
+      "versionCode": 145,
+      "versionName": "1.2.1",
+      "minSupportedVersionCode": 133,
+      "minSdk": 23,
+      "sha256": "5cf34502b748c23f616d61cb58d65929abfc60f2cd0566e303453d359bb40156",
+      "sizeBytes": 12426271,
+      "notes": [
+        "优化学习通作业读取与单课程刷新。",
+        "修复部分接水旧记录导致无法继续扫码的问题。",
+        "改善鸿蒙手机跳转淘宝、拼多多的兼容性，增加系统打开入口。",
+        "本次为可选更新，可选择稍后安装。"
+      ],
+      "buildKey": "b935712cbbb41f79217f74308251d957"
     }
   ]
 }
