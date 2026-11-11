@@ -130,11 +130,18 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(multiline.waitForExistence(timeout: 5), "Missing task editor field: " + identifier)
         return multiline
     }
-    /// Assert the actual edit control rather than a SwiftUI-internal StaticText child.
-    /// The captured UUID-based identifier also verifies the same persisted record after relaunch.
+    /// SwiftUI can put semantic metadata on the Button or on an enclosing Other element.
+    /// Match exact metadata across element types; the UUID still identifies the same record after relaunch.
     private func taskRow(_ title: String, identifier: String? = nil, in app: XCUIApplication) -> XCUIElement {
         XCTAssertTrue(app.navigationBars["我的待办"].waitForExistence(timeout: 5), "Task save/dismiss must finish before reopening")
-        let row = app.buttons[identifier ?? ("编辑待办：" + title)].firstMatch
+        let expectedLabel = "编辑待办：" + title
+        let matches: XCUIElementQuery
+        if let identifier {
+            matches = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label == %@", identifier, expectedLabel))
+        } else {
+            matches = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "task-edit-", expectedLabel))
+        }
+        let row = matches.firstMatch
         for _ in 0..<5 {
             if row.exists && row.isHittable { break }
             app.swipeUp()
@@ -145,16 +152,32 @@ final class NativeSmokeTests: XCTestCase {
             tree.name = "task-row-accessibility"; tree.lifetime = .keepAlways; add(tree)
             screenshot("task-row-missing", app)
         }
-        XCTAssertTrue(exists, "Saved task edit control must exist")
-        XCTAssertTrue(row.isHittable, "Saved task edit control must be visible")
-        XCTAssertEqual(row.label, "编辑待办：" + title, "Persisted title must be unchanged")
+        XCTAssertTrue(exists, "Saved task semantic element must exist")
+        XCTAssertEqual(matches.count, 1, "Saved task metadata must identify exactly one record")
+        XCTAssertTrue(row.isHittable, "Saved task must be visible")
+        XCTAssertEqual(row.label, expectedLabel, "Persisted title must be unchanged")
+        XCTAssertTrue(row.identifier.hasPrefix("task-edit-"))
+        XCTAssertNotNil(UUID(uuidString: String(row.identifier.dropFirst("task-edit-".count))))
+        let state = row.value as? String
+        XCTAssertTrue(state?.hasPrefix("未完成") == true || state?.hasPrefix("已完成") == true, "Task completion state must remain accessible")
         return row
     }
     @discardableResult
     private func openTask(_ title: String, identifier: String? = nil, in app: XCUIApplication) -> String {
         let row = taskRow(title, identifier: identifier, in: app)
         let persistedIdentity = row.identifier
-        row.tap()
+        let editButton: XCUIElement
+        if row.elementType == .button {
+            editButton = row
+        } else {
+            // Observed CI hierarchy: semantic Other → one Button carrying the exact task title.
+            let controls = row.descendants(matching: .button).matching(NSPredicate(format: "label == %@", title))
+            XCTAssertEqual(controls.count, 1, "Task metadata must contain exactly one matching edit button")
+            editButton = controls.firstMatch
+        }
+        XCTAssertEqual(editButton.elementType, .button)
+        XCTAssertTrue(editButton.isHittable, "The real task edit button must be tappable")
+        editButton.tap()
         XCTAssertTrue(app.navigationBars["编辑待办"].waitForExistence(timeout: 5))
         return persistedIdentity
     }

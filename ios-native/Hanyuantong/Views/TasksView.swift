@@ -115,9 +115,8 @@ struct TasksView: View {
                     if let at = task.snoozedUntil { Text("稍后提醒 " + TaskPresentation.date(at)).font(.caption2).foregroundStyle(CampusTheme.muted) }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8).contentShape(Rectangle())
             }.buttonStyle(.plain)
-                // A rich Button label is a single accessibility control, not a guaranteed StaticText subtree.
-                // Keep its persisted identity, title and state explicit for VoiceOver and UI automation.
-                .accessibilityElement(children: .ignore)
+                // Keep the native button's action/traits, with explicit persisted identity and metadata.
+                // An extra accessibilityElement wrapper hides those traits on some iOS versions.
                 .accessibilityIdentifier("task-edit-" + task.id.uuidString)
                 .accessibilityLabel("编辑待办：\(task.title)")
                 .accessibilityValue(taskAccessibilitySummary(task))

@@ -1,6 +1,6 @@
 # 邯院通 iPhone 原生开发版
 
-基于正式 Android 1.2.1 对应 main `780bbc8`，独立 Swift + SwiftUI 工程，最低 iOS 16，仅 iPhone。没有 Flutter、Capacitor、Vue 运行时依赖。复用现有应用图标、校园头图、平面图以及已核验的学校协议读取脚本；iOS 在固定结果出口仅补充 resolvedTerm 元数据，避免课表失败时将其他学期的考试误并入缓存，不改变请求端点或参数。WebKit 只用于官方学校认证与页面查询，产品页面为原生 SwiftUI。
+基于正式 Android 1.2.1 对应 main `780bbc8`，独立 Swift + SwiftUI 工程，最低 iOS 16，仅 iPhone。没有 Flutter、Capacitor、Vue 运行时依赖。复用现有应用图标、校园头图、平面图以及已核验的学校协议读取脚本；iOS 在固定结果出口仅补充 resolvedTerm 元数据，避免课表失败时将其他学期的考试误并入缓存，不改变请求端点或参数。WebKit 用于教务、学习通和快递的官方认证与页面读取；首页、课表、待办、账户与本地结果展示为原生 SwiftUI。
 
 ## 构建
 
