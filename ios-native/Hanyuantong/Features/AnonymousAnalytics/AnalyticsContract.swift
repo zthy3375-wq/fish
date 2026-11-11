@@ -83,11 +83,19 @@ struct AnalyticsState: Equatable {
 }
 
 enum AnalyticsFailure: Error { case invalid, storage, response, oversized, redirect }
-enum AnalyticsAction: String { case enroll, record, delete }
+enum AnalyticsAction: String, CaseIterable { case enroll, record, delete }
 struct AnalyticsResponse: Equatable { let status: Int; let ok: Bool }
 
 enum AnalyticsContract {
     static let endpoint = URL(string: "https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-analytics/api/metrics")!
+    /// Match complete, fixed wire URLs. Do not derive authorization from a parent URL:
+    /// Foundation may preserve a directory's trailing slash after deletingLastPathComponent().
+    static func destination(for action: AnalyticsAction) -> URL {
+        URL(string: endpoint.absoluteString + "/" + action.rawValue)!
+    }
+    static func action(for url: URL) -> AnalyticsAction? {
+        AnalyticsAction.allCases.first { url.absoluteString == destination(for: $0).absoluteString }
+    }
     static func day(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -107,7 +115,7 @@ enum AnalyticsContract {
             body["versionCode"] = build.number; body["features"] = counters.features
         }
         // Keep the production schema, which rejects additional fields, but never impersonate Android.
-        var request = URLRequest(url: endpoint.appendingPathComponent(action.rawValue), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
+        var request = URLRequest(url: destination(for: action), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
         request.httpMethod = "POST"; request.httpShouldHandleCookies = false
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(identity.token, forHTTPHeaderField: "X-Hyt-Token")

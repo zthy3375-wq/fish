@@ -76,16 +76,32 @@ enum PGImageQRReader {
         // Monochrome/inversion/softening help bright LCD codes without uploading or retaining pixels.
         let red = original.applyingFilter("CIColorMatrix", parameters: ["inputRVector":CIVector(x:1,y:0,z:0,w:0), "inputGVector":CIVector(x:1,y:0,z:0,w:0), "inputBVector":CIVector(x:1,y:0,z:0,w:0)])
         let variants = [original, red, red.applyingFilter("CIGaussianBlur", parameters:["inputRadius":0.7]).cropped(to: original.extent), original.applyingFilter("CIColorInvert")]
+        // Keep a local QR-only fallback when Vision's inference runtime is unavailable.
+        // Both decoders use the same bounded pixels and strict device-address validator.
+        let fallback = CIDetector(ofType: CIDetectorTypeQRCode, context: context,
+                                  options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
+        var observations: [String] = []
         for variant in variants {
             try Task.checkCancellation()
             guard let image = context.createCGImage(variant, from: original.extent) else { continue }
             let request = VNDetectBarcodesRequest(); request.symbologies = [.qr]
-            try VNImageRequestHandler(cgImage: image).perform([request])
-            let codes = Set((request.results ?? []).compactMap(\.payloadStringValue).filter { (try? PangguaiProtocol.deviceCode($0)) != nil })
-            guard codes.count <= 1 else { throw PGFailure.qr }
-            if let code = codes.first { return code }
+            var decoded: [String] = []
+            do {
+                try VNImageRequestHandler(cgImage: image).perform([request])
+                decoded = (request.results ?? []).compactMap(\.payloadStringValue)
+            } catch { try Task.checkCancellation() }
+            decoded += (fallback?.features(in: CIImage(cgImage: image)) ?? [])
+                .compactMap { ($0 as? CIQRCodeFeature)?.messageString }
+            observations += decoded
         }
-        throw PGFailure.qr
+        // Different color/contrast variants can reveal different device codes. Never
+        // return the first successful variant before checking the remaining variants.
+        return try uniqueDeviceCode(from: observations)
+    }
+    static func uniqueDeviceCode(from observations: [String]) throws -> String {
+        let codes = Set(observations.filter { (try? PangguaiProtocol.deviceCode($0)) != nil })
+        guard codes.count == 1, let code = codes.first else { throw PGFailure.qr }
+        return code
     }
 }
 

@@ -36,9 +36,25 @@ final class ProtectedStorageTests: XCTestCase {
         XCTAssertNotEqual(try Data(contentsOf: file), original)
         XCTAssertEqual(try ProtectedStorage(directory: directory).read("personal", as: Record.self), replacement)
         XCTAssertEqual(try file.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
-        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
-        XCTAssertEqual(attributes[.protectionKey] as? FileProtectionType, .completeUntilFirstUserAuthentication)
+        try assertFirstUnlockProtectionWhenObservable(at: file)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), ["personal.sealed"])
+    }
+
+    /// Simulator cannot validate the physical device's Data Protection classes/lock lifecycle.
+    /// Keep this separately visible as skipped in simulator CI, never as a security pass.
+    func testPhysicalDeviceProtectionBeforeAndAfterAtomicReplacement() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Physical iPhone required: Simulator does not validate device Data Protection. Real-device verification remains pending.")
+        #else
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = try ProtectedStorage(directory: directory)
+        let file = directory.appendingPathComponent("personal.sealed")
+        try storage.write(Record(title: "original"), name: "personal")
+        try assertFirstUnlockProtectionWhenObservable(at: file)
+        try storage.write(Record(title: "replacement"), name: "personal")
+        try assertFirstUnlockProtectionWhenObservable(at: file)
+        #endif
     }
 
     func testFailureBeforeCommitPreservesOriginalCiphertextAndReadableRecord() throws {
@@ -108,4 +124,25 @@ final class ProtectedStorageTests: XCTestCase {
         XCTAssertEqual(try storage.read("academic", as: Record.self), school)
     }
 
+}
+
+/// The FileManager protection attribute may be absent in Simulator even when protection
+/// was requested. Apple DTS reproduced this: https://developer.apple.com/forums/thread/780632
+/// Never tolerate a missing attribute on device or a wrong non-nil value on either target.
+/// This helper deliberately does not skip its caller's encryption/reset/isolation assertions.
+func assertFirstUnlockProtectionWhenObservable(at url: URL,
+                                               file: StaticString = #filePath, line: UInt = #line) throws {
+    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    #if targetEnvironment(simulator)
+    if attributes[.protectionKey] == nil {
+        XCTContext.runActivity(named: "Simulator omits FileManager protection metadata; physical-device validation is still required") { activity in
+            let note = XCTAttachment(string: "No device protection claim: .protectionKey is unavailable in this simulator. Encryption, backup exclusion, persistence and isolation assertions continue. See https://developer.apple.com/forums/thread/780632")
+            note.lifetime = .keepAlways
+            activity.add(note)
+        }
+        return
+    }
+    #endif
+    XCTAssertEqual(attributes[.protectionKey] as? FileProtectionType,
+                   .completeUntilFirstUserAuthentication, file: file, line: line)
 }

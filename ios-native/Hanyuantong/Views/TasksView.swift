@@ -115,6 +115,13 @@ struct TasksView: View {
                     if let at = task.snoozedUntil { Text("稍后提醒 " + TaskPresentation.date(at)).font(.caption2).foregroundStyle(CampusTheme.muted) }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8).contentShape(Rectangle())
             }.buttonStyle(.plain)
+                // A rich Button label is a single accessibility control, not a guaranteed StaticText subtree.
+                // Keep its persisted identity, title and state explicit for VoiceOver and UI automation.
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("task-edit-" + task.id.uuidString)
+                .accessibilityLabel("编辑待办：\(task.title)")
+                .accessibilityValue(taskAccessibilitySummary(task))
+                .accessibilityHint("打开并编辑个人待办")
         }
         .swipeActions(edge: .trailing) {
             Button("删除", role: .destructive) { deletion = task }
@@ -129,6 +136,22 @@ struct TasksView: View {
                 }.tint(.orange)
             }
         }
+    }
+    private func taskAccessibilitySummary(_ task: CampusTask) -> String {
+        var parts = [task.completed ? "已完成" : "未完成"]
+        if !task.course.isEmpty { parts.append(task.course) }
+        if let at = task.plannedAt { parts.append("计划 " + TaskPresentation.date(at)) }
+        else if let day = task.plannedDay { parts.append("计划 " + day + "，当天安排") }
+        else { parts.append("未安排") }
+        if let at = task.deadline { parts.append("截止 " + TaskPresentation.date(at)) }
+        if task.pinned { parts.append("已置顶") }
+        if task.priority > 0 { parts.append(TaskRules.priorities[task.priority.clampedPriority] + "优先级") }
+        if !task.steps.isEmpty { parts.append("步骤 \(task.steps.filter(\.completed).count)/\(task.steps.count)") }
+        if let rule = task.repeatRule { parts.append(rule.kind.label + "重复") }
+        if task.prepared { parts.append("准备就绪") }
+        if !task.notes.isEmpty { parts.append(task.notes) }
+        if let at = task.snoozedUntil { parts.append("稍后提醒 " + TaskPresentation.date(at)) }
+        return parts.joined(separator: "，")
     }
     private func change(_ task: CampusTask, update: (inout CampusTask) -> Void) {
         var task = task; update(&task)

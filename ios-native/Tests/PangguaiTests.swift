@@ -69,6 +69,29 @@ final class PangguaiProtocolTests: XCTestCase {
         XCTAssertEqual(try PGImageQRReader.read(data),code)
         XCTAssertThrowsError(try PGImageQRReader.read(Data("not-image".utf8)))
     }
+    func testPhotoRejectsTwoDifferentDeviceCodesInsteadOfChoosingOne() throws {
+        func qr(_ serial: String) throws -> CIImage {
+            let filter = try XCTUnwrap(CIFilter(name:"CIQRCodeGenerator"))
+            filter.setValue(Data("https://h5.qiekj.com/skip?SN=\(serial)".utf8), forKey:"inputMessage")
+            return try XCTUnwrap(filter.outputImage).transformed(by:CGAffineTransform(scaleX:8,y:8))
+        }
+        let first = try qr("12345678"), second = try qr("87654321")
+        let canvas = CGRect(x:0,y:0,width:first.extent.width + second.extent.width + 96,height:first.extent.height + 64)
+        let background = CIImage(color: CIColor(red:1,green:1,blue:1)).cropped(to:canvas)
+        let combined = first.transformed(by:CGAffineTransform(translationX:32,y:32))
+            .composited(over:second.transformed(by:CGAffineTransform(translationX:first.extent.width + 64,y:32)))
+            .composited(over:background)
+        let image = try XCTUnwrap(CIContext().createCGImage(combined, from:canvas))
+        let data = try XCTUnwrap(UIImage(cgImage:image).pngData())
+        XCTAssertThrowsError(try PGImageQRReader.read(data)) { XCTAssertEqual($0 as? PGFailure, .qr) }
+    }
+    func testPhotoCombinesAllDecoderVariantsBeforeAcceptingUniqueDevice() throws {
+        let a = "https://h5.qiekj.com/skip?SN=12345678", b = "https://h5.qiekj.com/skip?SN=87654321"
+        XCTAssertEqual(try PGImageQRReader.uniqueDeviceCode(from:[a,a]), a)
+        XCTAssertEqual(try PGImageQRReader.uniqueDeviceCode(from:["https://evil.example/?SN=12345678",a]), a)
+        XCTAssertThrowsError(try PGImageQRReader.uniqueDeviceCode(from:[a,a,b]))
+        XCTAssertThrowsError(try PGImageQRReader.uniqueDeviceCode(from:[]))
+    }
     func testStorageScopesCannotUseRawAccountPath() {
         let a = PangguaiStorage.scope("../account-a")
         XCTAssertEqual(a.count, 73)

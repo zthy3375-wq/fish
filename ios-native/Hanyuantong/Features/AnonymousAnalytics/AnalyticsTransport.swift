@@ -9,8 +9,8 @@ import Foundation
     private let protocolClasses: [AnyClass]?
     init(protocolClasses: [AnyClass]? = nil) { self.protocolClasses = protocolClasses }
     func send(_ request: URLRequest) async throws -> AnalyticsResponse {
-        guard let url = request.url, url.deletingLastPathComponent() == AnalyticsContract.endpoint,
-              AnalyticsAction(rawValue: url.lastPathComponent) != nil else { throw AnalyticsFailure.invalid }
+        guard let url = request.url, AnalyticsContract.action(for: url) != nil,
+              request.httpMethod == "POST" else { throw AnalyticsFailure.invalid }
         return try await AnalyticsBoundedRequest(protocolClasses: protocolClasses).run(request)
     }
 }
@@ -65,7 +65,7 @@ private final class AnalyticsBoundedRequest: NSObject, URLSessionDataDelegate, @
     }
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
-        guard let response = response as? HTTPURLResponse, response.url == expectedURL,
+        guard let response = response as? HTTPURLResponse, response.url?.absoluteString == expectedURL?.absoluteString,
               response.expectedContentLength <= 4096 else {
             completionHandler(.cancel); finish(.failure(AnalyticsFailure.oversized)); return
         }

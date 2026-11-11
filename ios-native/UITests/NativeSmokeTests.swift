@@ -30,6 +30,7 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["首页"].waitForExistence(timeout: 10))
     }
     func testPersonalTaskPersistsAndCompletes() throws {
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launch()
         app.tabBars.buttons["待办"].tap()
@@ -39,14 +40,19 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap(); field.typeText(title)
         app.buttons["保存"].tap()
-        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
+        let savedRow = taskRow(title, in: app)
+        let persistedIdentity = savedRow.identifier
+        XCTAssertTrue(persistedIdentity.hasPrefix("task-edit-"))
+        XCTAssertTrue((savedRow.value as? String)?.hasPrefix("未完成") == true)
         XCTAssertFalse(app.alerts["提示"].exists, "Saving must succeed before relaunch")
         app.terminate(); app.launch()
         app.tabBars.buttons["待办"].tap()
-        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
+        let restoredRow = taskRow(title, identifier: persistedIdentity, in: app)
+        XCTAssertTrue((restoredRow.value as? String)?.hasPrefix("未完成") == true)
         app.buttons["完成：" + title].tap()
         app.buttons["已完成"].tap()
-        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
+        let completedRow = taskRow(title, identifier: persistedIdentity, in: app)
+        XCTAssertTrue((completedRow.value as? String)?.hasPrefix("已完成") == true)
         screenshot("05-personal-task", app)
     }
     func testNativeServiceScreensWithoutCredentials() throws {
@@ -65,6 +71,7 @@ final class NativeSmokeTests: XCTestCase {
         }
     }
     func testPersonalTaskEditSaveDiscardAndRelaunch() throws {
+        continueAfterFailure = false
         let app = XCUIApplication()
         let title = "TaskEdit-" + String(UUID().uuidString.prefix(8))
         let savedCourse = "Synthetic Course"
@@ -77,7 +84,7 @@ final class NativeSmokeTests: XCTestCase {
         let titleField = taskEditorField("task-title-editor", in: app)
         titleField.tap(); titleField.typeText(title)
         app.buttons["保存"].tap()
-        openTask(title, in: app)
+        let persistedIdentity = openTask(title, in: app)
 
         let course = taskEditorField("task-course-editor", in: app)
         course.tap(); course.typeText(savedCourse)
@@ -109,7 +116,7 @@ final class NativeSmokeTests: XCTestCase {
         app.terminate(); app.launch()
         XCTAssertTrue(app.tabBars.buttons["待办"].waitForExistence(timeout: 10))
         app.tabBars.buttons["待办"].tap()
-        openTask(title, in: app)
+        openTask(title, identifier: persistedIdentity, in: app)
         XCTAssertEqual(taskEditorField("task-course-editor", in: app).value as? String, savedCourse)
         XCTAssertEqual(taskEditorField("task-notes-editor", in: app).value as? String, savedNotes)
         app.buttons["取消"].tap()
@@ -123,16 +130,33 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(multiline.waitForExistence(timeout: 5), "Missing task editor field: " + identifier)
         return multiline
     }
-    private func openTask(_ title: String, in app: XCUIApplication) {
+    /// Assert the actual edit control rather than a SwiftUI-internal StaticText child.
+    /// The captured UUID-based identifier also verifies the same persisted record after relaunch.
+    private func taskRow(_ title: String, identifier: String? = nil, in app: XCUIApplication) -> XCUIElement {
         XCTAssertTrue(app.navigationBars["我的待办"].waitForExistence(timeout: 5), "Task save/dismiss must finish before reopening")
-        let rowTitle = app.staticTexts[title].firstMatch
+        let row = app.buttons[identifier ?? ("编辑待办：" + title)].firstMatch
         for _ in 0..<5 {
-            if rowTitle.exists && rowTitle.isHittable { break }
+            if row.exists && row.isHittable { break }
             app.swipeUp()
         }
-        XCTAssertTrue(rowTitle.waitForExistence(timeout: 5)); XCTAssertTrue(rowTitle.isHittable)
-        rowTitle.tap()
+        let exists = row.waitForExistence(timeout: 5)
+        if !exists || !row.isHittable {
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "task-row-accessibility"; tree.lifetime = .keepAlways; add(tree)
+            screenshot("task-row-missing", app)
+        }
+        XCTAssertTrue(exists, "Saved task edit control must exist")
+        XCTAssertTrue(row.isHittable, "Saved task edit control must be visible")
+        XCTAssertEqual(row.label, "编辑待办：" + title, "Persisted title must be unchanged")
+        return row
+    }
+    @discardableResult
+    private func openTask(_ title: String, identifier: String? = nil, in app: XCUIApplication) -> String {
+        let row = taskRow(title, identifier: identifier, in: app)
+        let persistedIdentity = row.identifier
+        row.tap()
         XCTAssertTrue(app.navigationBars["编辑待办"].waitForExistence(timeout: 5))
+        return persistedIdentity
     }
     func testSemesterBackupAndDisplayScreens() throws {
         let app = XCUIApplication(); app.launch()

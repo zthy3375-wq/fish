@@ -221,7 +221,9 @@ import Security
             XCTAssertNil(body["token"]); XCTAssertNil(body["platform"])
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hyt-Token"), identity.token)
             XCTAssertEqual(request.httpMethod, "POST"); XCTAssertFalse(request.httpShouldHandleCookies)
-            XCTAssertEqual(request.url?.deletingLastPathComponent(), AnalyticsContract.endpoint)
+            XCTAssertEqual(request.url?.absoluteString, AnalyticsContract.endpoint.absoluteString + "/" + action.rawValue)
+            XCTAssertEqual(request.url, AnalyticsContract.destination(for: action))
+            XCTAssertEqual(AnalyticsContract.action(for: try XCTUnwrap(request.url)), action)
         }
     }
     func testInvalidBuildStaleDayAndUnknownCountersCannotCreateRecordRequest() {
@@ -250,6 +252,45 @@ import Security
         XCTAssertEqual(try marker.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
         try FileManager.default.removeItem(at: marker)
         XCTAssertNil(try AnalyticsKeychainStorage(service: service, installationMarker: marker).load(), "Reinstall must not restore stale Keychain consent")
+    }
+    func testAllCanonicalAnalyticsDestinationsReachSyntheticTransport() async throws {
+        let transport = AnalyticsHTTPTransport(protocolClasses: [AnalyticsURLProtocol.self])
+        for action in AnalyticsAction.allCases {
+            AnalyticsURLProtocol.reset(status: 200, data: Data("{\"ok\":true}".utf8))
+            let request = try AnalyticsContract.request(action, identity: identity, build: build,
+                                                        counters: AnalyticsCounters(day: AnalyticsContract.day(instant)), now: instant)
+            let response = try await transport.send(request)
+            XCTAssertTrue(response.ok)
+            XCTAssertEqual(AnalyticsURLProtocol.requests.map { $0.url?.absoluteString },
+                           [AnalyticsContract.endpoint.absoluteString + "/" + action.rawValue])
+        }
+    }
+    func testAnalyticsURLAllowlistRejectsCredentialBearingVariantsBeforeTransport() async throws {
+        let base = AnalyticsContract.endpoint.absoluteString
+        let host = try XCTUnwrap(AnalyticsContract.endpoint.host)
+        let rejected = [
+            base, base + "/", base + "/delete/", base + "/unknown", base + "/%64elete",
+            base + "/record/../delete", base + "//delete", base + "/delete%2F", base + "/delete?",
+            base + "/delete?target=elsewhere", base + "/delete#", base + "/delete#fragment",
+            base.replacingOccurrences(of: "https://", with: "http://") + "/delete",
+            base.replacingOccurrences(of: host, with: host + ":443") + "/delete",
+            base.replacingOccurrences(of: host, with: host + ":444") + "/delete",
+            base.replacingOccurrences(of: host, with: "name:password@" + host) + "/delete",
+            base.replacingOccurrences(of: host, with: host + ".other.invalid") + "/delete"
+        ]
+        AnalyticsURLProtocol.reset(status: 200, data: Data("{\"ok\":true}".utf8))
+        let transport = AnalyticsHTTPTransport(protocolClasses: [AnalyticsURLProtocol.self])
+        for value in rejected {
+            let url = try XCTUnwrap(URL(string: value))
+            XCTAssertNil(AnalyticsContract.action(for: url), "Unexpected URL accepted: \(value)")
+            var request = try AnalyticsContract.request(.delete, identity: identity, build: build)
+            request.url = url
+            do { _ = try await transport.send(request); XCTFail("Noncanonical destination reached transport: \(value)") } catch { }
+        }
+        var wrongMethod = try AnalyticsContract.request(.delete, identity: identity, build: build)
+        wrongMethod.httpMethod = "GET"
+        do { _ = try await transport.send(wrongMethod); XCTFail("Unexpected method reached transport") } catch { }
+        XCTAssertTrue(AnalyticsURLProtocol.requests.isEmpty, "Rejected URLs must never transmit installation credentials")
     }
     func testURLProtocolTransportIsSyntheticAndValidatesAcknowledgement() async throws {
         AnalyticsURLProtocol.reset(status: 200, data: Data("{\"ok\":true}".utf8))
