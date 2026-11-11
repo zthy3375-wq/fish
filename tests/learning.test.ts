@@ -46,7 +46,7 @@ it('verification suspends after publishing partial rows and resumes from the blo
 it('scoped refresh sends only requested courses and leaves the saved selection unchanged',async()=>{
  const h=harness();await h.engine.sync({login:true});await h.store.change(c=>({...c,selectedCourses:['12/34','56/78']}));
  await h.engine.sync({force:true,courseKeys:['12/34']});
- expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,courseKeys:['12/34']});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,courseKeys:['12/34'],includeExtras:false});
  expect((await h.store.load()).selectedCourses).toEqual(['12/34','56/78']);
 });
 it('pausing saves the next course cursor and continues from that cursor',async()=>{
@@ -65,7 +65,33 @@ it('verification after a single-course retry resumes the same scope instead of e
  const h=harness();await h.engine.sync({login:true});await h.store.change(c=>({...c,selectedCourses:['12/34','56/78']}));
  h.client.syncAll.mockResolvedValueOnce({...response(),code:'VERIFY',resumeCursor:0,nextCursor:null,remainingCount:1});
  await h.engine.sync({force:true,courseKeys:['12/34']});h.client.login.mockResolvedValueOnce({...response(),resumeCursor:0,nextCursor:undefined});
- await h.engine.sync({login:true});expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({courseKeys:['12/34'],cursor:0});
+ await h.engine.sync({login:true});expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({courseKeys:['12/34'],cursor:0,includeExtras:false});
+});
+
+it('full refresh still includes exams and notices after a completed single-course retry',async()=>{
+ const h=harness();await h.engine.sync({login:true});
+ await h.engine.sync({force:true,courseKeys:['12/34']});
+ expect((await h.store.load()).activeExtras).toBe(false);
+ await h.engine.sync({force:true});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,includeExtras:true});
+});
+
+it('a paused scoped scan persists its mode across a new engine without refreshing other modules',async()=>{
+ const h=harness();await h.engine.sync({login:true});
+ h.client.syncAll.mockImplementationOnce(async()=>{h.engine.pauseSync();return {...response(),nextCursor:1,remainingCount:1}});
+ await h.engine.sync({force:true,courseKeys:['12/34','56/78']});
+ const resumed=new LearningSyncEngine(h.client,h.store,h.publish,()=>now,async()=>{});
+ await resumed.sync({force:true});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:1,courseKeys:['12/34','56/78'],includeExtras:false});
+});
+
+it('account switch during login resets the old scoped cursor and module mode',async()=>{
+ const h=harness();await h.engine.sync({login:true});
+ await h.store.change(c=>({...c,resumeCursor:2,activeCourses:['12/34'],activeExtras:false}));
+ const changed={...response(),accountKey:'bbbbbbbbbbbbbbbbbbbbbbbb',items:[]};
+ h.client.login.mockResolvedValueOnce(changed);h.client.syncAll.mockResolvedValueOnce(changed);
+ await h.engine.sync({login:true});
+ expect(h.client.syncAll.mock.calls.at(-1)?.[0]).toMatchObject({cursor:0,courseKeys:[],includeExtras:true});
 });
 
 it('date-only planning and prepared state survive cache migration without claiming platform submission',()=>{

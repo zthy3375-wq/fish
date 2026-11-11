@@ -327,7 +327,7 @@ try{
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).items.length)===1,`${width}: failed course read retains cached homework`);
   await page.evaluate(()=>{window.__learningFixture=window.__learningSavedFixture});
   await page.getByRole('button',{name:/^打开官方课程 /}).first().click();
-  await page.waitForFunction(()=>window.__learningCourseOpened==='12/34'&&window.__learningSyncArgs.at(-1).courseKeys.length===1&&window.__learningSyncArgs.at(-1).courseKeys[0]==='12/34'&&JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).courseSync['12/34'].status==='ok');
+  await page.waitForFunction(()=>window.__learningCourseOpened==='12/34'&&window.__learningSyncArgs.at(-1).includeExtras===false&&window.__learningSyncArgs.at(-1).courseKeys.length===1&&window.__learningSyncArgs.at(-1).courseKeys[0]==='12/34'&&JSON.parse(localStorage.getItem('handan.learning.chaoxing.v1')).courseSync['12/34'].status==='ok');
   assert(await page.evaluate(()=>window.__learningCourseOpened)==='12/34',`${width}: recovery opens the exact official course and rereads only that course`);
   await page.getByRole('tab',{name:'作业',exact:true}).click();
   await page.locator('.learning-state.pending').waitFor();

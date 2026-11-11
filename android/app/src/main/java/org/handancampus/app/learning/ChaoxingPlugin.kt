@@ -158,11 +158,11 @@ class ChaoxingPlugin:Plugin() {
         }
         return ParsedWork(records.values.toList(),recognized,complete,rejected)
     }
-    private fun sync(cursor:Int,force:Boolean,selected:Set<String>):JSONObject {
+    private fun sync(cursor:Int,force:Boolean,selected:Set<String>,includeExtras:Boolean):JSONObject {
         checkActive();if(cursor<0||cursor>200)throw LearningFailure("CURSOR");loadState();val key=account();bindAccount(key)
         val result=JSONObject().put("session","valid").put("accountKey",key);val items=JSONArray();val outcomes=JSONArray()
         val scope=selected.sorted().joinToString(",")
-        val resuming=planAccount==key&&state.optString("scanScope")==scope&&state.optInt("resumeCursor",-1)==cursor
+        val resuming=planAccount==key&&state.optString("scanScope")==scope&&state.optInt("resumeCursor",-1)==cursor&&state.optBoolean("scanExtras",true)==includeExtras
         var checkpoint=cursor
         try {
         if(cursor==0&&!resuming){
@@ -171,11 +171,11 @@ class ChaoxingPlugin:Plugin() {
             val stamps=state.optJSONObject("stamps") ?: JSONObject().also { state.put("stamps",it) }
             // The all-task feed can contain only unfinished work or its first page. Always check courses for submitted/history records.
             if(selected.isEmpty())return result.put("code","COURSE_SELECTION").put("nextCursor",JSONObject.NULL)
-            plan=ChaoxingScanPlan.select(knownCourses,selected,knownCourses.associate { it.key to stamps.optLong(it.key,0) },force,System.currentTimeMillis());planAccount=key;state.put("scanScope",scope)
+            plan=ChaoxingScanPlan.select(knownCourses,selected,knownCourses.associate { it.key to stamps.optLong(it.key,0) },force,System.currentTimeMillis());planAccount=key;state.put("scanScope",scope);state.put("scanExtras",includeExtras)
 
-        }else if(planAccount!=key||state.optString("scanScope")!=scope)throw LearningFailure("PLAN_EXPIRED")
+        }else if(planAccount!=key||state.optString("scanScope")!=scope||state.optBoolean("scanExtras",true)!=includeExtras)throw LearningFailure("PLAN_EXPIRED")
         state.remove("resumeCursor")
-        // Two courses per batch, paced reads. Publish each successful batch before continuing.
+        // One course per batch, paced reads. Publish each successful batch before continuing.
         for((offset,course) in plan.drop(cursor).take(1).withIndex()){
             checkpoint=cursor+offset
             try {val parsed=courseWork(course);parsed.records.forEach { items.put(record(it)) };val ok=parsed.complete
@@ -184,7 +184,7 @@ class ChaoxingPlugin:Plugin() {
             checkpoint++
         }
         val next=checkpoint
-        if(next>=plan.size){
+        if(includeExtras&&next>=plan.size){
             try { val page=request(ChaoxingPolicy.EXAMS);val parsed=ChaoxingParser.exams(page.body,page.url);if(!parsed.recognized)throw LearningFailure("EXAMS_SCHEMA");result.put("exams",JSONObject().put("status",if(parsed.complete)"ok" else "partial").put("items",JSONArray().apply{parsed.records.forEach { put(record(it)) }})) }catch(e:LearningFailure){if(e.reason in listOf("AUTH","VERIFY","RATE_LIMIT"))throw e;result.put("exams",JSONObject().put("status","error").put("code",e.reason))}catch(_:Exception){result.put("exams",JSONObject().put("status","error").put("code","NETWORK"))}
             try { val page=request(ChaoxingPolicy.NOTICES,mapOf("type" to "0","notice_type" to "0","lastValue" to "","sort" to "0","folderUUID" to "","kw" to ""));val j=JSONObject(page.body);if(!j.optBoolean("status"))throw LearningFailure("NOTICES_SCHEMA");val list=j.optJSONObject("notices")?.optJSONArray("list") ?: throw LearningFailure("NOTICES_SCHEMA");val data=JSONArray()
                 for(i in 0 until minOf(list.length(),100)){val n=list.optJSONObject(i) ?: continue;val id=n.optString("id").ifBlank { n.optString("noticeId") };val title=n.optString("title");if(id.isBlank()||title.isBlank())continue;data.put(JSONObject().put("id",id.take(100)).put("title",title.take(200)).put("content",Jsoup.parse(n.optString("content")).text().take(6000)).put("sender",n.optString("sendName").take(100)).put("publishedText",n.optString("sendTime").ifBlank { n.optString("insertTime") }.take(100)))}
@@ -208,7 +208,7 @@ class ChaoxingPlugin:Plugin() {
         if(agent.isBlank())agent=WebSettings.getDefaultUserAgent(context)
         executor.execute {workerToken=token;diagnostics=JSONObject();try {val result=job();handler.post {if(token==generation)finish(result)}}catch(e:LearningFailure){handler.post {if(token==generation)finish(failureResult(e.reason))}}catch(_:Exception){handler.post {if(token==generation)finish(failureResult("NETWORK"))}} }
     }}
-    @PluginMethod fun syncAll(next:PluginCall)=begin(next){val keys=next.getArray("courseKeys");val selected=if(keys==null)emptySet<String>() else (0 until minOf(keys.length(),200)).map { keys.optString(it) }.filter { it.matches(Regex("[0-9]{1,24}/[0-9]{1,24}")) }.toSet();sync(next.getInt("cursor",0) ?: 0,next.getBoolean("force",false) ?: false,selected)}
+    @PluginMethod fun syncAll(next:PluginCall)=begin(next){val keys=next.getArray("courseKeys");val selected=if(keys==null)emptySet<String>() else (0 until minOf(keys.length(),200)).map { keys.optString(it) }.filter { it.matches(Regex("[0-9]{1,24}/[0-9]{1,24}")) }.toSet();sync(next.getInt("cursor",0) ?: 0,next.getBoolean("force",false) ?: false,selected,next.getBoolean("includeExtras",true) ?: true)}
     @PluginMethod fun getSessionState(next:PluginCall)=begin(next){val key=account();fetchCourses();JSONObject().put("session","valid").put("accountKey",key)}
     @PluginMethod fun login(next:PluginCall){activity.runOnUiThread {
         if(call!=null){next.reject("学习通操作正在进行","BUSY");return@runOnUiThread};call=next;val token=++generation;probing=false

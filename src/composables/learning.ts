@@ -89,5 +89,5 @@ export function learningIssue() { const issues = learningCache.value.issues; ret
 export function pauseLearning(){engine.pauseSync()}
 export async function selectLearningCourses(keys:string[]){
  if(learningBusy.value)throw Error('请等待本轮读取结束');
- const cache=await learningStore.change(c=>({...c,selectedCourses:keys.filter(k=>c.courses.some(v=>v.courseId+'/'+v.classId===k)),resumeCursor:undefined,activeCourses:undefined,remaining:0,plannedCount:0,completedCount:0}));publish(cache);
+ const cache=await learningStore.change(c=>({...c,selectedCourses:keys.filter(k=>c.courses.some(v=>v.courseId+'/'+v.classId===k)),resumeCursor:undefined,activeCourses:undefined,activeExtras:undefined,remaining:0,plannedCount:0,completedCount:0}));publish(cache);
 }

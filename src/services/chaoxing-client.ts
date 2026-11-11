@@ -70,6 +70,7 @@ export interface ChaoxingClient {
         courseKeys?: string[];
         cursor: number;
         force: boolean;
+        includeExtras?: boolean;
     }): Promise<LearningResponse>;
     getSessionState(): Promise<LearningResponse>;
     openItem(options: {

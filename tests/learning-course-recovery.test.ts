@@ -34,7 +34,7 @@ it('official course recovery retries only that course and preserves the followed
     const learning = await ui();
     await learning.openLearningCourse('12/34');
     expect(driver.open).toHaveBeenCalledExactlyOnceWith({ key: '12/34' });
-    expect(driver.sync).toHaveBeenCalledExactlyOnceWith({ courseKeys: ['12/34'], cursor: 0, force: true });
+    expect(driver.sync).toHaveBeenCalledExactlyOnceWith({ courseKeys: ['12/34'], cursor: 0, force: true, includeExtras: false });
     expect(driver.cache.selectedCourses).toEqual(['12/34', '56/78']);
 });
 
