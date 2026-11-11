@@ -1,10 +1,14 @@
-# 1.2.3-test.2 · 快捷用车（本地代码完成，Android 构建待完成）
+# 1.2.3-test.2 · 快捷用车（测试APK已交付，未向用户推送）
 
 基于00c8bde新建feature/bike-quick。哈啰仍本机识别后显式携码交给支付宝，美团直接请求官方扫码，避免两次扫码；官方目标页面与登录后带入尚未真机确认。新增上次选择、本机最近入口（12小时）、清除和无车码Launcher返回；不显示推测骑行状态或自动开锁。包名有应用市场来源，返回与扫码/用车路由分离，API33可见性回退沿用鸿蒙修复经验。无新增后端、账号抓取、线上更新配置。详见BIKE-SCAN。
 
 本地44个测试文件、456项前端测试通过；TypeScript及生产构建、Capacitor Android资源同步通过。两条样本公开GET复核均200，哈啰响应哈希不变，美团仍携完整b参数重定向下载页。页面提示已收简，备用本机识别收进“其他打开方式”。
 
-本地页面回归因环境缺少Playwright内置浏览器而未启动；改用已安装Chromium仍在启动时被环境的socket权限阻止，没有获得新版页面通过或截图证据。当前只有JRE，未配置完整JDK和Android SDK，原生新增测试及APK尚未执行/生成。测试分支git push被自动审批拒绝（将用户“不推送更新”解释为禁止推送开发分支），未用其他接口绕过；远端不存在feature/bike-quick，因此尚未创建PR或启动CI。main、发布清单和在线更新配置没有修改。以上阻塞解除前，不交付旧APK冒充本版。
+初始本地页面回归受浏览器socket权限阻止，原生环境缺少完整JDK/SDK；首次分支推送也被自动审批拒绝。用户随后明确授权上传测试分支、运行构建和交付APK。通过已连接GitHub上传相同源码树，创建草稿[PR #54](https://github.com/zthy3375-wq/fish/pull/54)，基线为research/bike-in-app，未合并main。
+
+Quality checks [42964584990](https://github.com/zthy3375-wq/fish/actions/runs/42964584990)和Android test APK [42964584988](https://github.com/zthy3375-wq/fish/actions/runs/42964584988)全部成功。44个文件/456项前端测试、TypeScript、生产构建、590项合成页面检查和Android Debug/Release单元测试及构建通过；已查看360/430宽度的新页面截图。构建源码5d5fe16a691b19b2d72517be7d1a2be0f1b4c17d与CI合并提交d63a4d05f9489a99c8c3bcb032a6713c31f0a4a8的源码树均为756b7f40232caf0593c9df4122ecec0ce7ee15e0。
+
+交付Hanyuantong-v1.2.3-test.2-QuickBike.apk，12,430,630字节，SHA-256 `1ce7bad4c311205b05fdedd3290fa88204185daaf617868b617e9bc1585f09ff`。使用原正式密钥签名，v1/v2/v3验签通过，证书SHA-256 `4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9`。官方Android SDK aapt确认org.handancampus.app、144/1.2.3-test.2、最低API23和非debug；官方zipalign的4字节/16KB检查、全部前端资源逐字节、编译类与原生快递试验隔离检查通过。原签名支持覆盖安装，真实手机车辆带入、登录续用、目标页及开锁还车仍待用户验收。发布清单、main和在线更新配置未修改；没有蒲公英发布或向用户推送更新。
 
 # 2026-11-11 · 应用内骑车可行性核对（研究交付，未推送）
 
