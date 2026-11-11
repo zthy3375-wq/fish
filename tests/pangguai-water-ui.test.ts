@@ -2,7 +2,7 @@
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {createApp,h,nextTick} from 'vue';
 import PangguaiWater from '../src/components/PangguaiWater.vue';
-import {pangguai,prepareWater,startWater,pollWater,endWater,confirmPhysicalWaterEnd,openWaterPaymentSetup} from '../src/composables/pangguai';
+import {pangguai,prepareWater,startWater,endWater,confirmPhysicalWaterEnd,openWaterPaymentSetup} from '../src/composables/pangguai';
 vi.mock('@capacitor/app',()=>({App:{addListener:vi.fn(async()=>({remove:vi.fn()}))}}));
 vi.mock('../src/composables/pangguai',async()=>{const {ref}=await import('vue');return {pangguai:ref({}),pgBusy:ref(false),prepareWater:vi.fn(),startWater:vi.fn(),pollWater:vi.fn(),endWater:vi.fn(),confirmPhysicalWaterEnd:vi.fn(),openWaterPaymentSetup:vi.fn()}});
 const device={id:'water-test',name:'测试饮水机',category:'04',operator:'测试商户',payment:'after',issue:'',skus:[{id:'outlet-test',name:'常温水',price:'1',feature:'实际用量计费',available:true}]};

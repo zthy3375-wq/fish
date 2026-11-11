@@ -54,9 +54,7 @@ import {
   Info,
   Bell,
   ChevronRight,
-  ArrowRight,
   ArrowUpRight,
-  Clock3,
   MapPin,
   CheckCheck,
   MessageSquare,
@@ -67,7 +65,6 @@ import {
   campusNow,
   currentWeek,
   dayNumber,
-  timeOf,
   nextOccurrence,
   dateLabel,
   untilLabel,
@@ -108,9 +105,7 @@ import { useNavigation, type Page } from "./composables/navigation";
 import AppHeader from "./components/AppHeader.vue";
 import FloatingNavigation from "./components/FloatingNavigation.vue";
 import SectionHeader from "./components/SectionHeader.vue";
-import QuickAction from "./components/QuickAction.vue";
 import ServiceGroup from "./components/ServiceGroup.vue";
-import CourseCard from "./components/CourseCard.vue";
 import AcademicDetail from "./components/AcademicDetail.vue";
 import EmptyState from "./components/EmptyState.vue";
 import LoadingState from "./components/LoadingState.vue";
@@ -361,13 +356,6 @@ const subtitle = computed(() =>
     : page.value === "life" ? "接水、洗衣与校园服务" : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
       ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
       : "学校账号 · 本机设置",
-);
-const greeting = computed(() =>
-  now.value.getHours() < 12
-    ? "上午好"
-    : now.value.getHours() < 18
-      ? "下午好"
-      : "晚上好",
 );
 watch(data, (d) => {
   if (modal.value === "course" && selected.value) {
