@@ -22,6 +22,9 @@ struct RootView: View {
 
 struct HomeView: View {
     @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var learning: LearningStore
+    @EnvironmentObject var quzhi: QuzhiStore
+    @EnvironmentObject var pangguai: PangguaiStore
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -40,11 +43,11 @@ struct HomeView: View {
                 Text("校园生活").font(.headline)
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
-                        NavigationLink { PendingServiceView(name: "趣智校园", detail: "洗澡余额、充值与记录") } label: { wallet("趣智校园", "洗澡余额", "洗澡 · 余额与充值", "drop", Color(hex: 0xeee5ff)) }
-                        NavigationLink { PendingServiceView(name: "胖乖生活", detail: "饮水、洗衣与扫码设备") } label: { wallet("胖乖生活", "饮水余额", "饮水 · 洗衣 · 扫码", "washer", Color(hex: 0xe4f2eb)) }
+                        NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", "洗澡 · 余额与充值", "drop", Color(hex: 0xeee5ff)) }
+                        NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", "饮水 · 洗衣 · 扫码", "washer", Color(hex: 0xe4f2eb)) }
                     }
                     HStack(spacing: 10) {
-                        NavigationLink { PendingServiceView(name: "取快递", detail: "淘宝、拼多多出库码快捷入口") } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
+                        NavigationLink { ParcelShortcutsView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
                         NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
                     }
                 }.buttonStyle(.plain)
@@ -52,7 +55,7 @@ struct HomeView: View {
                 VStack(spacing: 0) {
                     NavigationLink { AcademicRecordsView() } label: { Label("成绩与考试", systemImage: "graduationcap").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12) }
                     Divider()
-                    NavigationLink { PendingServiceView(name: "学习通", detail: "课程、作业、考试与通知同步") } label: { HStack { Label("学习通", systemImage: "books.vertical"); Spacer(); Text("待接入").font(.caption).foregroundStyle(CampusTheme.muted) }.padding(.vertical, 12) }
+                    NavigationLink { LearningCenterView(store: learning) } label: { HStack { Label("学习通", systemImage: "books.vertical"); Spacer(); Text("作业 · 考试").font(.caption).foregroundStyle(CampusTheme.muted) }.padding(.vertical, 12) }
                 }.campusCard()
             }.padding(20).frame(maxWidth: 680)
         }.background(CampusTheme.background).toolbar(.hidden, for: .navigationBar)
@@ -80,9 +83,13 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label(name, systemImage: icon).font(.subheadline.weight(.semibold))
             Text(label).font(.caption).foregroundStyle(CampusTheme.muted)
-            Text("待接入").font(.title2.bold())
+            Text(walletBalance(name)).font(.title2.bold())
             Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(14).background(color, in: RoundedRectangle(cornerRadius: 20))
+    }
+    private func walletBalance(_ name: String) -> String {
+        if name == "趣智校园" { return quzhi.expired ? "登录已过期" : quzhi.connected ? quzhi.balanceText : "未连接" }
+        return pangguai.expired ? "登录已过期" : pangguai.connected ? (pangguai.snapshot.balance.map { "¥" + $0 } ?? "未读取") : "未连接"
     }
     private func utility(_ title: String, _ detail: String, _ icon: String) -> some View {
         HStack { Image(systemName: icon).foregroundStyle(CampusTheme.primary); VStack(alignment: .leading, spacing: 4) { Text(title).font(.subheadline.weight(.semibold)); Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted) } }.frame(maxWidth: .infinity, alignment: .leading).padding(12).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))

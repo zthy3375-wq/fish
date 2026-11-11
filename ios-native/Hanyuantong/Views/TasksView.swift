@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TasksView: View {
     @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var learning: LearningStore
     @State private var filter = 0
     @State private var adding = false
     @State private var deletion: CampusTask?
@@ -10,6 +11,7 @@ struct TasksView: View {
     }
     var body: some View {
         List {
+            Section { NavigationLink { LearningCenterView(store: learning) } label: { Label("学习通作业、考试与通知", systemImage: "books.vertical") } }
             Section { Picker("待办筛选", selection: $filter) { Text("未完成").tag(0); Text("已完成").tag(1); Text("全部").tag(2) }.pickerStyle(.segmented) }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())
             if visible.isEmpty {
                 CampusEmpty(title: filter == 1 ? "还没有已完成的待办" : "暂无待办", detail: "把要做的事记下来，一件一件完成。", symbol: "checklist").listRowBackground(Color.clear).listRowInsets(EdgeInsets())
@@ -47,7 +49,7 @@ struct TaskEditorView: View {
                     if title.trimmingCharacters(in: .whitespacesAndNewlines).count > 200 { Text("请将待办内容控制在200字以内").font(.caption).foregroundStyle(.red) }
                 }
                 Section("计划时间") { DatePicker("日期与时间", selection: $date) }
-                Section { Text("待办保存在本机。本版本尚未接入系统通知提醒。").font(.caption).foregroundStyle(CampusTheme.muted) }
+                Section { Text("待办保存在本机。可在“我的 → 系统提醒”中开启个人待办通知，iOS 可能因权限或专注模式延迟送达。").font(.caption).foregroundStyle(CampusTheme.muted) }
             }.navigationTitle("添加待办").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }

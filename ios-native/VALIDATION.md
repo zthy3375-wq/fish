@@ -15,3 +15,11 @@ Baseline: Android main 780bbc85c0b70e8d9273129eca666d7141e21e42, production 1.2.
 - Android verification reached the Gradle wrapper but could not download Gradle 8.11.1 (`Network is unreachable`). Android compilation was not completed in this environment. The generated order-only Capacitor changes from that check were reverted; existing Android source and build configuration remain unchanged.
 - Physical iPhone and real school login are untested. No production signing, IPA distribution, TestFlight or App Store submission.
 - Full Android feature parity is not complete; see README's explicit remaining functionality list.
+
+## Second-stage implementation (validation pending)
+
+Learning, Quzhi, Pangguai, CSV/XLSX/ICS import, notifications, fixed parcel/help destinations and WidgetKit source are integrated after the successful core milestone. These additions are not covered by run 43002345881. Each new source revision requires fresh simulator tests and unsigned iPhone compilation. No live SMS, credentials, payments or device operations were used during development.
+
+The app and widget use separate default Keychain groups; only the widget snapshot key is explicitly shared. Shared snapshots are AES-GCM encrypted and excluded from backup. App Group and shared Keychain provisioning require the owner's Apple development setup for physical-device acceptance. Reminder delivery, widget gallery/rendering and third-party app handoff remain physical-device checks.
+
+Apple implementation references: [local notification scheduling](https://developer.apple.com/documentation/UserNotifications/scheduling-a-notification-locally-from-your-app), [WidgetKit timeline data sharing](https://developer.apple.com/documentation/widgetkit/timelineprovider), and [required-reason API manifest](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api). The system-uptime use is only a local SMS cooldown interval; no uptime data is transmitted.

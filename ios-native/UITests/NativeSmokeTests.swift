@@ -49,6 +49,21 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
         screenshot("05-personal-task", app)
     }
+    func testNativeServiceScreensWithoutCredentials() throws {
+        let app = XCUIApplication()
+        app.launch()
+        app.tabBars.buttons["我的"].tap()
+        for (identifier, title, shot) in [("open-quzhi", "趣智校园", "06-quzhi"), ("open-pangguai", "胖乖生活", "07-pangguai"), ("open-learning", "学习通", "08-learning")] {
+            let entry = app.buttons[identifier]
+            for _ in 0..<5 { if entry.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(entry.waitForExistence(timeout: 5))
+            entry.tap()
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+            screenshot(shot, app)
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
+        }
+    }
     private func screenshot(_ name: String, _ app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways

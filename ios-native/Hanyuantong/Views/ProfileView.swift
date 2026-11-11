@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var learning: LearningStore
+    @EnvironmentObject var quzhi: QuzhiStore
+    @EnvironmentObject var pangguai: PangguaiStore
     @State private var disconnecting = false
     var body: some View {
         List {
@@ -35,16 +38,23 @@ struct ProfileView: View {
                 Text("请与学校校历核对开学日期，教学周按北京时间计算。").font(.caption).foregroundStyle(CampusTheme.muted)
             }
             Section("个人数据") {
+                NavigationLink { CourseImportView(semesterStart: store.semesterStart, existing: store.courses.filter { $0.source == "personal" }, onReplace: store.replacePersonalCourses, onImport: store.importPersonalCourses) } label: { Label("导入课程文件", systemImage: "doc.badge.plus") }.accessibilityIdentifier("open-course-import")
                 NavigationLink { PersonalBackupView() } label: { Label("备份与恢复", systemImage: "externaldrive") }
+                NavigationLink { NativeReminderSettingsView(reminders: store.reminders) } label: { Label("系统提醒", systemImage: "bell.badge") }
+                NavigationLink { NativeWidgetSettingsView(publisher: store.widget) } label: { Label("课表小组件", systemImage: "rectangle.grid.1x2") }
             }
             Section("校园服务") {
+                NavigationLink { QuzhiWalletView(store: quzhi) } label: { Label("趣智校园", systemImage: "drop") }.accessibilityIdentifier("open-quzhi")
+                NavigationLink { PangguaiWalletView(store: pangguai) } label: { Label("胖乖生活", systemImage: "washer") }.accessibilityIdentifier("open-pangguai")
+                NavigationLink { ParcelShortcutsView() } label: { Label("取快递", systemImage: "shippingbox") }
                 NavigationLink { CampusMapView() } label: { Label("校园平面图", systemImage: "map") }
-                NavigationLink { PendingServiceView(name: "学习通", detail: "课程、作业、考试与通知同步") } label: { Label("学习通", systemImage: "books.vertical") }
+                NavigationLink { LearningCenterView(store: learning) } label: { Label("学习通", systemImage: "books.vertical") }.accessibilityIdentifier("open-learning")
             }
             Section("关于邯院通") {
                 Text("学习 · 生活 · 校园")
-                Text("iPhone 原生开发版。教务数据以学校官方系统为准；尚未适配的服务标注为“待接入”。").font(.caption).foregroundStyle(CampusTheme.muted)
+                Text("iPhone 原生开发版。教务数据以学校官方系统为准；各服务需独立登录，真实账号和设备联调尚待完成。").font(.caption).foregroundStyle(CampusTheme.muted)
                 NavigationLink("隐私与本机数据") { PrivacyView() }
+                NavigationLink("帮助与反馈") { NativeHelpView() }
             }
         }.scrollContentBackground(.hidden).background(CampusTheme.background).navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
             .confirmationDialog("断开后会移除本机教务会话及教务缓存，个人课程和待办不受影响。", isPresented: $disconnecting, titleVisibility: .visible) { Button("断开连接", role: .destructive) { store.disconnectSchool() } }
@@ -56,7 +66,7 @@ struct PrivacyView: View {
         List {
             Section("学校账号") { Text("请只在学校官方登录页面输入账号和密码。邯院通不会提供自制密码输入框。") }
             Section("本机数据") { Text("个人课程与待办保存在本机。断开教务连接会清除教务会话与教务缓存，保留个人记录。") }
-            Section("服务状态") { Text("当前为 iPhone 原生开发版，尚未完成全部 Android 功能迁移。支付、设备操作和学习通等入口在接入前不可执行。") }
+            Section("服务状态") { Text("当前为 iPhone 原生开发版，尚未完成全部 Android 功能迁移。第三方服务需由用户主动连接；付款和设备操作须核对确认，以平台实际状态为准。") }
         }.navigationTitle("隐私与本机数据").navigationBarTitleDisplayMode(.inline)
     }
 }

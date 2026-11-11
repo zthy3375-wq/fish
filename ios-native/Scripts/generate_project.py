@@ -16,12 +16,14 @@ def config_list(name, settings):
         if variant == 'Debug': values['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = 'DEBUG'
         configs.append(add(name+variant, 'XCBuildConfiguration', buildSettings=values, name=variant))
     return add(name+'configs', 'XCConfigurationList', buildConfigurations=configs, defaultConfigurationIsVisible=0, defaultConfigurationName='Release')
-app_files = sorted((ROOT/'Hanyuantong').rglob('*.swift'))
+shared_files = sorted((ROOT/'Shared').glob('*.swift'))
+app_files = sorted((ROOT/'Hanyuantong').rglob('*.swift')) + shared_files
+widget_files = sorted((ROOT/'Widget').glob('*.swift')) + shared_files
 unit_files = sorted((ROOT/'Tests').glob('*.swift'))
 ui_files = sorted((ROOT/'UITests').glob('*.swift'))
 resources = [ROOT/'Hanyuantong/Assets.xcassets'] + sorted((ROOT/'Hanyuantong/Resources').glob('*'))
 groups = []
-for title, files in [('Sources',app_files),('Tests',unit_files),('UITests',ui_files),('Resources', resources)]:
+for title, files in [('Sources',app_files),('Tests',unit_files),('UITests',ui_files),('Resources', resources),('Widget', [x for x in widget_files if x not in shared_files])]:
     entries=[]
     for file in files:
         path=file.relative_to(ROOT).as_posix()
@@ -31,20 +33,27 @@ for title, files in [('Sources',app_files),('Tests',unit_files),('UITests',ui_fi
     groups.append(add(title,'PBXGroup',children=entries,name=title,sourceTree='<group>'))
 products=[]; targets=[]
 base=dict(SWIFT_VERSION='5.0', IPHONEOS_DEPLOYMENT_TARGET='16.0', SDKROOT='iphoneos', TARGETED_DEVICE_FAMILY='1', CODE_SIGN_STYLE='Automatic', DEVELOPMENT_TEAM='', ENABLE_USER_SCRIPT_SANDBOXING='YES', CLANG_ENABLE_MODULES='YES')
-for name,files,extension,ptype in [('Hanyuantong',app_files,'app','application'),('HanyuantongTests',unit_files,'xctest','bundle.unit-test'),('HanyuantongUITests',ui_files,'xctest','bundle.ui-testing')]:
-    product=add(name+'product','PBXFileReference',explicitFileType='wrapper.application' if extension=='app' else 'wrapper.cfbundle',includeInIndex=0,path=name+'.'+extension,sourceTree='BUILT_PRODUCTS_DIR');products.append(product)
+for name,files,extension,ptype in [('Hanyuantong',app_files,'app','application'),('HanyuantongWidget',widget_files,'appex','app-extension'),('HanyuantongTests',unit_files,'xctest','bundle.unit-test'),('HanyuantongUITests',ui_files,'xctest','bundle.ui-testing')]:
+    product=add(name+'product','PBXFileReference',explicitFileType='wrapper.application' if extension=='app' else 'wrapper.app-extension' if extension=='appex' else 'wrapper.cfbundle',includeInIndex=0,path=name+'.'+extension,sourceTree='BUILT_PRODUCTS_DIR');products.append(product)
     sources=add(name+'sources','PBXSourcesBuildPhase',buildActionMask=2147483647,files=[ref('build:'+x.relative_to(ROOT).as_posix()) for x in files],runOnlyForDeploymentPostprocessing=0)
     frameworks=add(name+'frameworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[],runOnlyForDeploymentPostprocessing=0)
     resource=add(name+'resources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=[ref('build:'+x.relative_to(ROOT).as_posix()) for x in resources] if extension=='app' else [],runOnlyForDeploymentPostprocessing=0)
     settings=dict(base,PRODUCT_NAME='$(TARGET_NAME)',PRODUCT_BUNDLE_IDENTIFIER='org.handancampus.ios.native'+('' if extension=='app' else '.'+name),SUPPORTED_PLATFORMS='iphoneos iphonesimulator',ENABLE_TESTABILITY='YES',GENERATE_INFOPLIST_FILE='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks'])
-    deps=[]
-    if extension=='app':settings.update(GENERATE_INFOPLIST_FILE='NO',INFOPLIST_FILE='Hanyuantong/Info.plist',ASSETCATALOG_COMPILER_APPICON_NAME='AppIcon',ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME='',SUPPORTS_MACCATALYST='NO')
+    deps=[]; phases=[sources,frameworks,resource]
+    if extension=='app':settings.update(GENERATE_INFOPLIST_FILE='NO',INFOPLIST_FILE='Hanyuantong/Info.plist',ASSETCATALOG_COMPILER_APPICON_NAME='AppIcon',ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME='',SUPPORTS_MACCATALYST='NO',CODE_SIGN_ENTITLEMENTS='Hanyuantong/Hanyuantong.entitlements',OTHER_LDFLAGS=['$(inherited)','-lz'])
+    elif extension=='appex':
+        settings.update(GENERATE_INFOPLIST_FILE='NO',INFOPLIST_FILE='Widget/Info.plist',CODE_SIGN_ENTITLEMENTS='Widget/Widget.entitlements',APPLICATION_EXTENSION_API_ONLY='YES',SKIP_INSTALL='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks','@executable_path/../../Frameworks'])
     else:
         if name=='HanyuantongTests':settings.update(TEST_HOST='$(BUILT_PRODUCTS_DIR)/Hanyuantong.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hanyuantong',BUNDLE_LOADER='$(TEST_HOST)')
         else:settings.update(TEST_TARGET_NAME='Hanyuantong')
         proxy=add(name+'proxy','PBXContainerItemProxy',containerPortal=ref('project'),proxyType=1,remoteGlobalIDString=ref('Hanyuantongtarget'),remoteInfo='Hanyuantong')
         deps=[add(name+'dependency','PBXTargetDependency',target=ref('Hanyuantongtarget'),targetProxy=proxy)]
-    targets.append(add(name+'target','PBXNativeTarget',buildConfigurationList=config_list(name,settings),buildPhases=[sources,frameworks,resource],buildRules=[],dependencies=deps,name=name,productName=name,productReference=product,productType='com.apple.product-type.'+ptype))
+    if extension=='app':
+        proxy=add('widgetproxy','PBXContainerItemProxy',containerPortal=ref('project'),proxyType=1,remoteGlobalIDString=ref('HanyuantongWidgettarget'),remoteInfo='HanyuantongWidget')
+        deps.append(add('widgetdependency','PBXTargetDependency',target=ref('HanyuantongWidgettarget'),targetProxy=proxy))
+        embed=add('widgetembed','PBXBuildFile',fileRef=ref('HanyuantongWidgetproduct'),settings={'ATTRIBUTES':['RemoveHeadersOnCopy','CodeSignOnCopy']})
+        phases.append(add('embedextensions','PBXCopyFilesBuildPhase',buildActionMask=2147483647,dstPath='',dstSubfolderSpec=13,files=[embed],name='Embed App Extensions',runOnlyForDeploymentPostprocessing=0))
+    targets.append(add(name+'target','PBXNativeTarget',buildConfigurationList=config_list(name,settings),buildPhases=phases,buildRules=[],dependencies=deps,name=name,productName=name,productReference=product,productType='com.apple.product-type.'+ptype))
 products_group=add('Products','PBXGroup',children=products,name='Products',sourceTree='<group>')
 main=add('main','PBXGroup',children=groups+[products_group],sourceTree='<group>')
 add('project','PBXProject',attributes={'BuildIndependentTargetsInParallel':'YES','LastUpgradeCheck':'1600'},buildConfigurationList=config_list('project',dict(base,CLANG_WARN_DOCUMENTATION_COMMENTS='YES',SWIFT_STRICT_CONCURRENCY='targeted')),compatibilityVersion='Xcode 14.0',developmentRegion='zh_CN',hasScannedForEncodings=0,knownRegions=['zh_CN','en','Base'],mainGroup=main,productRefGroup=products_group,projectDirPath='',projectRoot='',targets=targets)

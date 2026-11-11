@@ -4,6 +4,8 @@ import UIKit
 
 @MainActor
 final class CampusStore: ObservableObject {
+    let reminders = NativeReminders()
+    let widget = NativeWidgetPublisher()
     @Published var selectedTab: AppTab = .home
     @Published private(set) var courses: [Course] = []
     @Published private(set) var tasks: [CampusTask] = []
@@ -43,6 +45,7 @@ final class CampusStore: ObservableObject {
             }
             courses = personalCourses
             loadedPersonal = true
+            refreshReminders()
         } catch { message = "本机加密数据暂时无法读取。请解锁设备后重试；不会用空数据覆盖原记录。" }
     }
     func attachPresenter(_ controller: UIViewController) {
@@ -106,7 +109,13 @@ final class CampusStore: ObservableObject {
     @discardableResult private func clearAcademic() -> Bool {
         snapshot = nil; isConnected = false; lastSynced = nil; selectedTerm = nil
         grades = []; exams = []; practice = []; semesters = []; courses = personalCourses
-        do { try storage?.remove("academic"); return true }
+        let widgetCleared = widget.clearForAccountChange()
+        if widgetCleared { refreshWidget() }
+        do {
+            try storage?.remove("academic")
+            if !widgetCleared { message = "学校记录已从页面移除，但小组件旧副本清理失败，请解锁后重试退出。" }
+            return widgetCleared
+        }
         catch { message = "学校数据已从当前页面移除，但本机缓存清理未完成，请重试退出。"; return false }
     }
     private func apply(_ value: AcademicSnapshot) {
@@ -126,6 +135,7 @@ final class CampusStore: ObservableObject {
         exams = (value.exams ?? []).map { ExamRecord(name: $0.name, date: $0.date, time: $0.time, room: $0.room, seat: $0.seat) }
         practice = value.practice ?? []; semesters = value.semesters
         lastSynced = value.moduleUpdatedAt["timetable"]
+        refreshWidget()
         if unmapped > 0 { message = "有 \(unmapped) 条学校课程的周次或节次暂无法展示，原始同步记录已保留，请对照官方课表。" }
     }
     func week(for date: Date) -> Int { ScheduleMath.week(on: date, start: semesterStart) }
@@ -172,12 +182,29 @@ final class CampusStore: ObservableObject {
         personalCourses = backup.courses; tasks = backup.tasks; semesterStart = backup.semesterStart
         courses = courses.filter { $0.source != "personal" } + personalCourses
         restoringBackup = false
+        refreshReminders()
+    }
+    func refreshReminders() {
+        reminders.reconcile(courses: personalCourses, tasks: tasks, semesterStart: semesterStart)
+        refreshWidget()
+    }
+    func refreshWidget() { widget.publish(courses: courses, semesterStart: semesterStart) }
+    func importPersonalCourses(_ incoming: [Course]) throws {
+        var backup = try makePersonalBackup()
+        backup.courses.append(contentsOf: incoming)
+        try restorePersonalBackup(backup)
+    }
+    func replacePersonalCourses(_ incoming: [Course]) throws {
+        var backup = try makePersonalBackup()
+        backup.courses = incoming
+        try restorePersonalBackup(backup)
     }
     private func persistPersonal() {
         guard loadedPersonal else { return }
         do {
             guard let storage else { throw ProtectedStorage.Failure.unavailable }
             try storage.write(PersonalData(version: 1, courses: personalCourses, tasks: tasks, semesterStart: semesterStart), name: "personal")
+            refreshReminders()
         } catch { message = "个人数据未能保存，请解锁设备后重试。" }
     }
 }
