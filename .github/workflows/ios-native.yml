@@ -17,6 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify project and identical school query assets
+        id: verify
         run: |
           python3 ios-native/Scripts/generate_project.py
           git diff --exit-code -- ios-native/Hanyuantong.xcodeproj
@@ -24,15 +25,37 @@ jobs:
           cmp android/app/src/main/assets/handan-rendered-reader.js ios-native/Hanyuantong/Resources/handan-rendered-reader.js
       - name: Find iPhone simulator
         run: |
-          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if "iPhone" in x["name"]))')
-          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
+          python3 - <<'PYTHON'
+          import json, os, re
+          from pathlib import Path
+          devices = json.loads(Path(os.environ['RUNNER_TEMP'], 'devices.json').read_text())['devices']
+          candidates = []
+          for runtime, rows in devices.items():
+              match = re.search(r'iOS-(\d+)-(\d+)', runtime)
+              if not match:
+                  continue
+              version = tuple(map(int, match.groups()))
+              for device in rows:
+                  if device.get('isAvailable') and 'iPhone' in device['name']:
+                      candidates.append((version, device['udid']))
+          version, device = max(candidates)
+          # WebKit bug 293831 affects <=18.3 deployment targets on 18.4/18.5 simulators.
+          # Official workaround applies to this simulator test build only; device build remains iOS16.
+          deployment = '18.4' if (18, 4) <= version < (18, 6) else '16.0'
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'DEVICE={device}\nTEST_DEPLOYMENT={deployment}\n')
+          print(f'Test runtime iOS {version}; simulator-only deployment target {deployment}')
+          PYTHON
+          DEVICE=$(python3 -c 'import os; print(next(x.strip().split("=",1)[1] for x in open(os.environ["GITHUB_ENV"]) if x.startswith("DEVICE=")))')
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
       - name: Compile and test SwiftUI app
         run: |
           set -o pipefail
-          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test | tee "$RUNNER_TEMP/xcodebuild.log"
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO test | tee "$RUNNER_TEMP/xcodebuild.log"
       - name: Compile unsigned iPhone build
+        if: ${{ !cancelled() && steps.verify.outcome == 'success' }}
         run: |
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/ios-device" CODE_SIGNING_ALLOWED=NO build
       - name: Package simulator app

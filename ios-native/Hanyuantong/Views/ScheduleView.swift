@@ -4,6 +4,7 @@ struct ScheduleView: View {
     @EnvironmentObject var store: CampusStore
     @State private var mode = 0
     @State private var adding = false
+    @State private var managingPersonalSchedule = false
     private var days: [Date] {
         let calendar = CampusTheme.calendar
         let weekday = (calendar.component(.weekday, from: store.selectedDate) + 5) % 7
@@ -17,7 +18,13 @@ struct ScheduleView: View {
                 HStack {
                     Button { shift(-7) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("上一周")
                     Spacer()
-                    VStack(spacing: 5) { Text("第\(store.week(for: store.selectedDate))周").font(.headline); Text(CampusTheme.date(store.selectedDate, format: "yyyy年M月")).font(.caption).foregroundStyle(CampusTheme.muted) }
+                    VStack(spacing: 5) {
+                        Text("\(store.isConnected ? "学校" : "个人")第\(store.week(for: store.selectedDate))周").font(.headline)
+                        Text(CampusTheme.date(store.selectedDate, format: "yyyy年M月")).font(.caption).foregroundStyle(CampusTheme.muted)
+                        if store.isConnected, store.courses.contains(where: { $0.source == "personal" }) {
+                            Text("个人第\(ScheduleMath.week(on: store.selectedDate, start: store.semesterStart))周").font(.caption).foregroundStyle(CampusTheme.muted)
+                        }
+                    }
                     Spacer()
                     Button { shift(7) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.accessibilityLabel("下一周")
                 }
@@ -47,8 +54,13 @@ struct ScheduleView: View {
         }.background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) { Button("今天") { store.selectedDate = Date() } }
-                ToolbarItem(placement: .navigationBarTrailing) { Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("添加课程") }
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button { managingPersonalSchedule = true } label: { Image(systemName: "slider.horizontal.3") }
+                        .accessibilityLabel("管理个人课表").accessibilityIdentifier("manage-personal-schedule")
+                    Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("添加课程")
+                }
             }.sheet(isPresented: $adding) { CourseEditorView() }
+            .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
     }
     private var dayList: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -198,9 +210,15 @@ struct CourseDetailView: View {
                 LabeledContent("来源", value: course.source == "personal" ? "个人课程" : "教务系统")
                 if !course.notes.isEmpty { Text(course.notes) }
             }
-            if course.source == "personal" { Section { Button("删除个人课程", role: .destructive) { confirming = true } } }
+            if course.source == "personal" { Section { Button("删除这个上课安排", role: .destructive) { confirming = true } } }
         }.navigationTitle("课程详情").navigationBarTitleDisplayMode(.inline)
-            .confirmationDialog("删除这门个人课程？", isPresented: $confirming, titleVisibility: .visible) { Button("删除课程", role: .destructive) { store.deleteCourse(course.id); dismiss() } }
+            .confirmationDialog("删除这个个人上课安排？", isPresented: $confirming, titleVisibility: .visible) {
+                Button("删除安排", role: .destructive) {
+                    store.deleteCourse(course.id)
+                    if !store.courses.contains(where: { $0.id == course.id }) { dismiss() }
+                }
+                Button("取消", role: .cancel) { }
+            } message: { Text("只删除当前安排；同一课程的其他安排及其他学期保留。若这是最后一个安排，该个人课程也会移除。") }
     }
 }
 
@@ -212,10 +230,18 @@ struct CourseEditorView: View {
     @State private var room = ""
     @State private var day = 1
     @State private var firstWeek = 1
-    @State private var lastWeek = 20
+    @State private var lastWeek = 1
+    @State private var initializedWeeks = false
+    @State private var saveError: String?
+    @State private var expectedSemesterID: String?
+    @State private var courseID = UUID()
     @State private var start = CampusTheme.calendar.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 8))!
     @State private var end = CampusTheme.calendar.date(from: DateComponents(year: 2026, month: 1, day: 1, hour: 9, minute: 40))!
-    private var valid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && end > start && firstWeek <= lastWeek }
+    private var maximumWeek: Int { max(1, store.personalWeekCount) }
+    private var valid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && end > start && firstWeek <= lastWeek
+            && firstWeek >= 1 && lastWeek <= maximumWeek
+    }
     var body: some View {
         NavigationStack {
             Form {
@@ -227,15 +253,34 @@ struct CourseEditorView: View {
                     if end <= start { Text("结束时间需晚于开始时间").font(.caption).foregroundStyle(.red) }
                 }
                 Section("教学周") {
-                    Stepper("从第 \(firstWeek) 周", value: $firstWeek, in: 1...40)
-                    Stepper("到第 \(lastWeek) 周", value: $lastWeek, in: 1...40)
+                    Stepper("从第 \(firstWeek) 周", value: $firstWeek, in: 1...maximumWeek)
+                    Stepper("到第 \(lastWeek) 周", value: $lastWeek, in: 1...maximumWeek)
                     if firstWeek > lastWeek { Text("结束周不能早于开始周").font(.caption).foregroundStyle(.red) }
                 }
+                if let saveError { Section { Text(saveError).foregroundStyle(.red).accessibilityIdentifier("course-save-error") } }
             }.navigationTitle("添加课程").navigationBarTitleDisplayMode(.inline)
+                .environment(\.timeZone, ScheduleMath.calendar.timeZone)
+                .onAppear {
+                    if !initializedWeeks {
+                        lastWeek = maximumWeek; expectedSemesterID = store.personalSchedule?.activeSemesterId; initializedWeeks = true
+                    }
+                }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("保存") { guard valid else { return }; store.addCourse(Course(name: name.trimmingCharacters(in: .whitespacesAndNewlines), teacher: teacher, room: room, day: day, start: CampusTheme.date(start, format: "HH:mm"), end: CampusTheme.date(end, format: "HH:mm"), weeks: Array(firstWeek...lastWeek))); dismiss() }.disabled(!valid) }
+                    ToolbarItem(placement: .confirmationAction) { Button("保存") { save() }.disabled(!valid) }
                 }
         }
     }
+    private func save() {
+        guard valid else { return }
+        guard expectedSemesterID == store.personalSchedule?.activeSemesterId else {
+            saveError = "当前个人学期已变化，请关闭后重新添加，避免保存到错误学期。"; return
+        }
+        do {
+            try store.saveCourse(Course(id: courseID, name: name.trimmingCharacters(in: .whitespacesAndNewlines), teacher: teacher, room: room, day: day,
+                                        start: CampusTheme.date(start, format: "HH:mm"), end: CampusTheme.date(end, format: "HH:mm"), weeks: Array(firstWeek...lastWeek)))
+            dismiss()
+        } catch { saveError = error.localizedDescription }
+    }
+
 }

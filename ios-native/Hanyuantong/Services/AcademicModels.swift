@@ -74,6 +74,18 @@ struct AcademicError: Error, LocalizedError, Equatable {
     }
 }
 
+/// Official script exposes only these four normalized, bounded profile fields.
+struct AcademicProfile: Codable, Equatable {
+    let name: String
+    let major: String
+    let className: String
+    let year: String
+    var isValid: Bool {
+        name.count <= 60 && major.count <= 150 && className.count <= 150 && year.count <= 10 &&
+        [name, major, className, year].contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+}
+
 /// Partial results preserve previous success, but never cross accounts or terms.
 /// Nil means unavailable; [] only means the server confirmed a complete empty module.
 struct AcademicSnapshot: Codable, Equatable {
@@ -86,16 +98,24 @@ struct AcademicSnapshot: Codable, Equatable {
     let semesters: [AcademicTerm]
     let moduleErrors: [String: String]
     let updatedAt: Date
+    var profile: AcademicProfile? = nil
     var periods: [AcademicPeriod]? = nil
     var gradeScope: String? = nil
     var moduleUpdatedAt: [String: Date] = [:]
 
     func merging(previous: AcademicSnapshot?) -> AcademicSnapshot {
-        guard let previous, previous.scope == scope, (term == nil || previous.term == term) else { return self }
+        guard let previous, previous.scope == scope else { return self }
+        guard term == nil || previous.term == term else {
+            var result = self
+            result.profile = profile ?? previous.profile
+            if profile == nil { result.moduleUpdatedAt["profile"] = previous.moduleUpdatedAt["profile"] }
+            return result
+        }
         var merged = AcademicSnapshot(scope: scope, term: term ?? previous.term, courses: courses ?? previous.courses,
             practice: practice ?? previous.practice, grades: grades ?? previous.grades,
             exams: exams ?? previous.exams, semesters: semesters.isEmpty ? previous.semesters : semesters,
             moduleErrors: moduleErrors, updatedAt: updatedAt)
+        merged.profile = profile ?? previous.profile
         merged.periods = periods ?? previous.periods
         merged.gradeScope = grades == nil ? previous.gradeScope : gradeScope
         merged.moduleUpdatedAt = previous.moduleUpdatedAt.merging(moduleUpdatedAt) { _, new in new }
@@ -155,9 +175,14 @@ struct AcademicSnapshot: Codable, Equatable {
         if let rows = exams, rows.count > 2000 || rows.contains(where: { $0.name.isEmpty }) {
             exams = nil; errors["exams"] = "SCHEMA"; dates.removeValue(forKey: "exams")
         }
+        var profile = read("profile", as: AcademicProfile.self)
+        if let value = profile, !value.isValid {
+            profile = nil; errors["profile"] = "SCHEMA"; dates.removeValue(forKey: "profile")
+        }
         let semesters = (read("semesters", as: [AcademicTerm].self) ?? []).filter(\.isValid)
         var snapshot = AcademicSnapshot(scope: scope, term: term, courses: courses, practice: practice,
             grades: grades, exams: exams, semesters: semesters, moduleErrors: errors, updatedAt: now)
+        snapshot.profile = profile
         snapshot.periods = courses == nil ? nil : timetable?.periods
         snapshot.gradeScope = (modules["grades"] as? [String: Any])?["scope"] as? String
         snapshot.moduleUpdatedAt = dates

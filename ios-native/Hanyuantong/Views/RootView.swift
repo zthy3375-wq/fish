@@ -1,7 +1,9 @@
 import SwiftUI
+import Combine
 
 struct RootView: View {
     @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var analytics: AnonymousAnalyticsStore
     var body: some View {
         TabView(selection: $store.selectedTab) {
             NavigationStack { HomeView() }.tabItem { Label("首页", systemImage: "house") }.tag(AppTab.home)
@@ -9,9 +11,12 @@ struct RootView: View {
             NavigationStack { TasksView() }.tabItem { Label("待办", systemImage: "checklist") }.tag(AppTab.tasks)
             NavigationStack { ProfileView() }.tabItem { Label("我的", systemImage: "person") }.tag(AppTab.profile)
         }
+        .onChange(of: store.selectedTab) { tab in
+            if tab == .schedule { analytics.recordFeature(.schedule) }
+            if tab == .tasks { analytics.recordFeature(.tasks) }
+        }
         .tint(CampusTheme.primary)
         .foregroundStyle(CampusTheme.text)
-        .preferredColorScheme(.light)
         .environment(\.calendar, CampusTheme.calendar)
         .environment(\.timeZone, CampusTheme.calendar.timeZone)
         .alert("提示", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) {
@@ -25,29 +30,35 @@ struct HomeView: View {
     @EnvironmentObject var learning: LearningStore
     @EnvironmentObject var quzhi: QuzhiStore
     @EnvironmentObject var pangguai: PangguaiStore
+    @State private var now = Date()
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 hero
+                if let focus = HomeCourseFocus.select(courses: store.courses, personalStart: store.semesterStart, schoolStart: store.schoolSemesterStart, now: now) {
+                    NavigationLink { CourseDetailView(course: focus.course) } label: { focusCard(focus) }.buttonStyle(.plain)
+                }
                 HStack {
                     Text("今日课程").font(.headline)
                     Spacer()
                     Button("查看课表 ›") { store.selectedTab = .schedule }.font(.subheadline)
                 }
-                let courses = store.courses(on: Date())
+                let courses = store.courses(on: now)
                 if courses.isEmpty {
                     CampusEmpty(title: "今天暂无课程", detail: store.isConnected ? "享受自己的校园时光" : "连接教务系统，或在课表中添加个人课程", symbol: "sun.max")
                 } else {
                     VStack(spacing: 10) { ForEach(courses) { course in NavigationLink { CourseDetailView(course: course) } label: { CourseRow(course: course) }.buttonStyle(.plain) } }
                 }
+                todayTasks
+                upcomingExams
                 Text("校园生活").font(.headline)
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
-                        NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", "洗澡 · 余额与充值", "drop", Color(hex: 0xeee5ff)) }
-                        NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", "饮水 · 洗衣 · 扫码", "washer", Color(hex: 0xe4f2eb)) }
+                        NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", "洗澡 · 余额与充值", "drop", CampusTheme.walletPurple) }
+                        NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", "饮水 · 洗衣 · 扫码", "washer", CampusTheme.walletGreen) }
                     }
                     HStack(spacing: 10) {
-                        NavigationLink { ParcelShortcutsView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
+                        NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
                         NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
                     }
                 }.buttonStyle(.plain)
@@ -59,6 +70,56 @@ struct HomeView: View {
                 }.campusCard()
             }.padding(20).frame(maxWidth: 680)
         }.background(CampusTheme.background).toolbar(.hidden, for: .navigationBar)
+            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { now = $0 }
+            .onAppear { now = Date() }
+    }
+    private func focusCard(_ focus: HomeCourseFocus) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label(focus.isCurrent(at: now) ? "正在上课" : "下一节课", systemImage: "graduationcap")
+                Spacer()
+                Text(focus.isCurrent(at: now) ? "进行中" : CampusTheme.date(focus.start, format: "M月d日 HH:mm")).font(.caption)
+            }.foregroundStyle(CampusTheme.primary)
+            Text(focus.course.name).font(.title3.weight(.semibold))
+            Text([focus.course.room.isEmpty ? "教室待定" : focus.course.room, focus.course.teacher, focus.course.start + "–" + focus.course.end].filter { !$0.isEmpty }.joined(separator: " · "))
+                .font(.caption).foregroundStyle(CampusTheme.muted)
+        }.frame(maxWidth: .infinity, alignment: .leading).campusCard()
+    }
+    @ViewBuilder private var todayTasks: some View {
+        let pending = TaskRules.select(store.tasks, filter: TaskFilter(scope: .today), now: now)
+        if !pending.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack { Text("今日待办").font(.headline); Spacer(); Button("查看全部 ›") { store.selectedTab = .tasks }.font(.subheadline) }
+                ForEach(pending.prefix(3)) { task in
+                    HStack {
+                        Image(systemName: "circle").foregroundStyle(CampusTheme.primary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(task.title).font(.subheadline)
+                            if let deadline = task.deadline { Text("截止 " + TaskPresentation.date(deadline)).font(.caption).foregroundStyle(CampusTheme.muted) }
+                        }
+                        Spacer()
+                    }.contentShape(Rectangle()).onTapGesture { store.selectedTab = .tasks }
+                }
+            }.campusCard()
+        }
+    }
+    @ViewBuilder private var upcomingExams: some View {
+        let exams = NativeExamPresentation.upcoming(store.exams, now: now)
+        if !exams.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("近期考试").font(.headline)
+                    Spacer()
+                    NavigationLink("查看全部 ›") { List { NativeExamRecordsView(exams: store.exams) }.navigationTitle("考试安排") }.font(.subheadline)
+                }
+                ForEach(exams.prefix(3)) { exam in
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack { Text(exam.name).font(.subheadline.weight(.semibold)); Spacer(); Text(NativeExamPresentation.dayLabel(exam, now: now)).font(.caption).foregroundStyle(CampusTheme.primary) }
+                        Text([exam.date, exam.time, exam.room].filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(CampusTheme.muted)
+                    }
+                }
+            }.campusCard()
+        }
     }
     private var hero: some View {
         ZStack(alignment: .topLeading) {
@@ -73,7 +134,7 @@ struct HomeView: View {
                 Spacer()
                 Text("校园里的事，\n简单一点。").font(.system(size: 24, weight: .semibold)).lineSpacing(5)
                 Spacer()
-                HStack { Text(CampusTheme.date(Date())); Spacer(); Text("第\(store.week(for: Date()))周") }.font(.caption).foregroundStyle(.white)
+                HStack { Text(CampusTheme.date(now)); Spacer(); Text("第\(store.week(for: now))周") }.font(.caption).foregroundStyle(.white)
             }.padding(22)
             VStack { Spacer(); HStack { Spacer(); CampusHeroFish().frame(width: 108, height: 68) } }
                 .padding(.trailing, 14).padding(.bottom, 48).allowsHitTesting(false).accessibilityHidden(true)

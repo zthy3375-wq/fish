@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import Security
+import Darwin
 
 /// App-local records are encrypted with a device-only Keychain key, never synced to iCloud.
 /// Academic and personal data have independent files and independent deletion lifecycles.
@@ -42,10 +43,34 @@ final class ProtectedStorage {
         let data = try JSONEncoder().encode(value)
         guard let sealed = try AES.GCM.seal(data, using: key(create: true)).combined else { throw Failure.unavailable }
         let url = directory.appendingPathComponent(name + ".sealed")
-        try sealed.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        var mutable = url
-        var values = URLResourceValues(); values.isExcludedFromBackup = true
-        try mutable.setResourceValues(values)
+        try Self.writeAtomically(sealed, to: url)
+    }
+
+    /// Prepare a new inode in the same directory; the rename is the sole commit point.
+    /// All throwing work (including metadata) happens before the destination changes.
+    /// The hook is an internal test seam to simulate failure at the last pre-commit step.
+    static func writeAtomically(_ sealed: Data, to destination: URL,
+                                beforeCommit: ((URL) throws -> Void)? = nil) throws {
+        var staged = destination.deletingLastPathComponent()
+            .appendingPathComponent(".pending-" + UUID().uuidString + ".sealed")
+        defer { try? FileManager.default.removeItem(at: staged) }
+        try sealed.write(to: staged, options: [.withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication])
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try staged.setResourceValues(values)
+        try beforeCommit?(staged)
+        // Apple rename(2): same-filesystem replacement; a failure leaves both files unchanged.
+        // No Foundation metadata or other throwing operation may follow a successful rename.
+        let status = staged.withUnsafeFileSystemRepresentation { source in
+            destination.withUnsafeFileSystemRepresentation { target -> Int32 in
+                guard let source, let target else { return EINVAL }
+                if Darwin.rename(source, target) == 0 { return 0 }
+                return errno
+            }
+        }
+        guard status == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(status))
+        }
     }
     func remove(_ name: String) throws {
         let url = directory.appendingPathComponent(name + ".sealed")

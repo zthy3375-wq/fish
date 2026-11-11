@@ -10,6 +10,7 @@ struct WidgetCourse: Codable, Identifiable {
     let start: String
     let end: String
     let weeks: [Int]
+    var semesterStart: Date? = nil
 }
 struct WidgetSnapshot: Codable {
     let version: Int
@@ -24,10 +25,12 @@ struct WidgetSnapshot: Codable {
     }
     func today(_ date: Date) -> [WidgetCourse] {
         let calendar = Self.calendar
-        let offset = calendar.dateComponents([.day], from: calendar.startOfDay(for: semesterStart), to: calendar.startOfDay(for: date)).day ?? 0
-        let week = Int(floor(Double(offset) / 7)) + 1
         let day = (calendar.component(.weekday, from: date) + 5) % 7 + 1
-        return courses.filter { $0.day == day && $0.weeks.contains(week) }.sorted { $0.start < $1.start }
+        return courses.filter { course in
+            let offset = calendar.dateComponents([.day], from: calendar.startOfDay(for: course.semesterStart ?? semesterStart), to: calendar.startOfDay(for: date)).day ?? 0
+            let week = Int(floor(Double(offset) / 7)) + 1
+            return course.day == day && course.weeks.contains(week)
+        }.sorted { $0.start < $1.start }
     }
 }
 enum WidgetSnapshotFile {

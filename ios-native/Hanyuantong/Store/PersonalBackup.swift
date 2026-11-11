@@ -1,27 +1,28 @@
 import Foundation
 
-/// Native iPhone schema v1. This is not the Android backup format.
+/// Native iPhone schema v2; v1 remains readable. Android formats use separate validated adapters.
 struct PersonalBackup: Codable {
-    static let maximumBytes = 2 * 1024 * 1024
-    static let currentVersion = 1
+    static let maximumBytes = 5 * 1024 * 1024
+    static let currentVersion = 2
     var version: Int = PersonalBackup.currentVersion
     var courses: [Course]
     var tasks: [CampusTask]
     var semesterStart: Date
+    var personalSchedule: AndroidScheduleState? = nil
 
     enum Failure: LocalizedError {
         case unsupported, tooLarge, invalid
         var errorDescription: String? {
             switch self {
-            case .unsupported: return "请选择本应用 iPhone 原生版导出的 JSON 备份（版本 1）。不支持 Android 备份。"
-            case .tooLarge: return "备份超过大小或记录数量限制（2 MB、2000 门课程、5000 条待办）。"
+            case .unsupported: return "请选择支持的 iPhone 原生版 JSON 备份（版本 1 或 2）。"
+            case .tooLarge: return "备份超过大小或记录数量限制（5 MB、2000 门课程、5000 条待办）。"
             case .invalid: return "备份内容无效，未恢复任何数据。请检查课程时间、周次、重复编号或数据来源。"
             }
         }
     }
 
     func validate() throws {
-        guard version == Self.currentVersion else { throw Failure.unsupported }
+        guard (1...Self.currentVersion).contains(version) else { throw Failure.unsupported }
         guard courses.count <= 2000, tasks.count <= 5000 else { throw Failure.tooLarge }
         guard Self.validDate(semesterStart), Set(courses.map(\.id)).count == courses.count,
               Set(tasks.map(\.id)).count == tasks.count,
@@ -42,6 +43,14 @@ struct PersonalBackup: Codable {
             default: throw Failure.invalid
             }
         }
+        if let personalSchedule {
+            guard version == 2 else { throw Failure.unsupported }
+            let canonical = try personalSchedule.validated()
+            let projection = try canonical.projectedCourses(semesterID: canonical.activeSemesterId)
+            guard Set(projection) == Set(courses), let semester = canonical.semesters.first(where: { $0.id == canonical.activeSemesterId }),
+                  try BackupValue.dayDate(semester.weekStartDate) == semesterStart else { throw Failure.invalid }
+        }
+        _ = try TaskRules.validatedTasks(tasks)
         for task in tasks {
             guard Self.validText(task.title, limit: 200, required: true),
                   Self.validText(task.notes, limit: 4000), Self.validDate(task.date) else { throw Failure.invalid }
@@ -63,14 +72,16 @@ struct PersonalBackup: Codable {
         do {
             // Reject unrecognized fields rather than silently accepting login material or another schema.
             guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  Set(root.keys) == Set(["version", "courses", "tasks", "semesterStart"]),
+                  Set(["version", "courses", "tasks", "semesterStart"]).isSubset(of: Set(root.keys)),
+                  Set(root.keys).isSubset(of: Set(["version", "courses", "tasks", "semesterStart", "personalSchedule"])),
                   let courses = root["courses"] as? [[String: Any]],
                   let tasks = root["tasks"] as? [[String: Any]] else { throw Failure.unsupported }
             guard courses.count <= 2000, tasks.count <= 5000 else { throw Failure.tooLarge }
             let courseKeys: Set<String> = ["id", "name", "teacher", "room", "day", "start", "end", "period", "weeks", "color", "startPeriod", "endPeriod", "notes", "source", "externalID"]
-            let taskKeys: Set<String> = ["id", "title", "date", "completed", "notes"]
+            let taskKeys = Set(CampusTask.CodingKeys.allCases.map(\.rawValue))
             guard courses.allSatisfy({ Set($0.keys).isSubset(of: courseKeys) }),
-                  tasks.allSatisfy({ Set($0.keys).isSubset(of: taskKeys) }) else { throw Failure.unsupported }
+                  tasks.allSatisfy({ Set($0.keys).isSubset(of: taskKeys) && strictTaskFields($0) }) else { throw Failure.unsupported }
+            if let schedule = root["personalSchedule"], !(schedule is NSNull) { _ = try AndroidScheduleState.parse(schedule) }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let backup = try decoder.decode(Self.self, from: data)
@@ -94,6 +105,18 @@ struct PersonalBackup: Codable {
             guard data.count <= maximumBytes else { throw Failure.tooLarge }
         }
         return try decode(data)
+    }
+
+    private static func strictTaskFields(_ task: [String: Any]) -> Bool {
+        for (field, keys) in [("steps", Set(TaskStep.CodingKeys.allCases.map(\.rawValue))), ("reminders", Set(TaskReminder.CodingKeys.allCases.map(\.rawValue)))] {
+            if let value = task[field], !(value is NSNull) {
+                guard let rows = value as? [[String: Any]], rows.allSatisfy({ Set($0.keys).isSubset(of: keys) }) else { return false }
+            }
+        }
+        if let value = task["repeatRule"], !(value is NSNull) {
+            guard let rule = value as? [String: Any], Set(rule.keys).isSubset(of: Set(TaskRepeatRule.CodingKeys.allCases.map(\.rawValue))) else { return false }
+        }
+        return true
     }
 
     private static func validText(_ value: String, limit: Int, required: Bool = false) -> Bool {

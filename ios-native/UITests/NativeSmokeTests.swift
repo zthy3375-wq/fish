@@ -64,6 +64,104 @@ final class NativeSmokeTests: XCTestCase {
             XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
         }
     }
+    func testPersonalTaskEditSaveDiscardAndRelaunch() throws {
+        let app = XCUIApplication()
+        let title = "TaskEdit-" + String(UUID().uuidString.prefix(8))
+        let savedCourse = "Synthetic Course"
+        let savedNotes = "Saved edit notes"
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["待办"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["待办"].tap()
+        app.buttons["添加待办"].tap()
+        XCTAssertTrue(app.navigationBars["添加待办"].waitForExistence(timeout: 5))
+        let titleField = taskEditorField("task-title-editor", in: app)
+        titleField.tap(); titleField.typeText(title)
+        app.buttons["保存"].tap()
+        openTask(title, in: app)
+
+        let course = taskEditorField("task-course-editor", in: app)
+        course.tap(); course.typeText(savedCourse)
+        let notes = taskEditorField("task-notes-editor", in: app)
+        notes.tap(); notes.typeText(savedNotes)
+        app.buttons["保存"].tap()
+        XCTAssertFalse(app.alerts["提示"].exists)
+        openTask(title, in: app)
+        XCTAssertEqual(taskEditorField("task-course-editor", in: app).value as? String, savedCourse)
+        let savedField = taskEditorField("task-notes-editor", in: app)
+        XCTAssertEqual(savedField.value as? String, savedNotes)
+
+        savedField.tap(); savedField.typeText("-unsaved")
+        let unsavedValue = try XCTUnwrap(savedField.value as? String)
+        XCTAssertNotEqual(unsavedValue, savedNotes)
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.buttons["放弃修改"].waitForExistence(timeout: 5))
+        app.buttons["继续编辑"].tap()
+        XCTAssertTrue(app.navigationBars["编辑待办"].waitForExistence(timeout: 5))
+        XCTAssertEqual(taskEditorField("task-notes-editor", in: app).value as? String, unsavedValue)
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.buttons["放弃修改"].waitForExistence(timeout: 5))
+        app.buttons["放弃修改"].tap()
+        openTask(title, in: app)
+        XCTAssertEqual(taskEditorField("task-notes-editor", in: app).value as? String, savedNotes)
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.navigationBars["我的待办"].waitForExistence(timeout: 5))
+
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.tabBars.buttons["待办"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["待办"].tap()
+        openTask(title, in: app)
+        XCTAssertEqual(taskEditorField("task-course-editor", in: app).value as? String, savedCourse)
+        XCTAssertEqual(taskEditorField("task-notes-editor", in: app).value as? String, savedNotes)
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.navigationBars["我的待办"].waitForExistence(timeout: 5))
+        screenshot("09-task-edit-persistence", app)
+    }
+    private func taskEditorField(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        let field = app.textFields[identifier]
+        if field.waitForExistence(timeout: 1) { return field }
+        let multiline = app.textViews[identifier]
+        XCTAssertTrue(multiline.waitForExistence(timeout: 5), "Missing task editor field: " + identifier)
+        return multiline
+    }
+    private func openTask(_ title: String, in app: XCUIApplication) {
+        XCTAssertTrue(app.navigationBars["我的待办"].waitForExistence(timeout: 5), "Task save/dismiss must finish before reopening")
+        let rowTitle = app.staticTexts[title].firstMatch
+        for _ in 0..<5 {
+            if rowTitle.exists && rowTitle.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(rowTitle.waitForExistence(timeout: 5)); XCTAssertTrue(rowTitle.isHittable)
+        rowTitle.tap()
+        XCTAssertTrue(app.navigationBars["编辑待办"].waitForExistence(timeout: 5))
+    }
+    func testSemesterBackupAndDisplayScreens() throws {
+        let app = XCUIApplication(); app.launch()
+        app.tabBars.buttons["我的"].tap()
+        let semesters = app.buttons["open-personal-schedule"]
+        for _ in 0..<6 { if semesters.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(semesters.waitForExistence(timeout: 5)); semesters.tap()
+        XCTAssertTrue(app.navigationBars["个人课表管理"].waitForExistence(timeout: 5))
+        screenshot("09-personal-semesters", app)
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
+        semesters.tap(); app.buttons["完成"].tap()
+        let display = app.buttons["open-display-preferences"]
+        for _ in 0..<6 { if display.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(display.waitForExistence(timeout: 5)); display.tap()
+        XCTAssertTrue(app.navigationBars["显示与本机资料"].waitForExistence(timeout: 5))
+        app.buttons["深色"].tap(); screenshot("10-dark-preferences", app)
+        app.buttons["浅色"].tap(); screenshot("11-light-preferences", app)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let backup = app.buttons["备份与恢复"]
+        for _ in 0..<6 { if backup.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(backup.waitForExistence(timeout: 5)); backup.tap()
+        XCTAssertTrue(app.buttons["exportNativePersonalBackup"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["exportAndroidScheduleBackup"].exists)
+        XCTAssertTrue(app.buttons["exportAndroidTaskBackup"].exists)
+        screenshot("12-backup-options", app)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
+    }
     private func screenshot(_ name: String, _ app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways

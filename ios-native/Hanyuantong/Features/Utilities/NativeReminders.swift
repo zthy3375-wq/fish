@@ -33,9 +33,9 @@ enum NativeReminderPlan {
             }
         }
         if preferences.tasks, (0...1440).contains(preferences.taskMinutes) {
-            let pending = tasks.filter { !$0.completed }.map { task in
-                NativeReminder(id: "handan.task.\(task.id)", date: task.date.addingTimeInterval(-Double(preferences.taskMinutes) * 60), title: "待办提醒：\(task.title)", body: "个人任务 · 请查看计划时间")
-            }.filter { $0.date > now }.sorted { $0.date < $1.date }.prefix(30)
+            let pending = TaskRules.reminderCandidates(tasks, legacyMinutes: preferences.taskMinutes, now: now, limit: 30).map {
+                NativeReminder(id: "handan.task." + $0.id, date: $0.date, title: $0.title, body: $0.body)
+            }
             result.append(contentsOf: pending)
         }
         return Array(result.sorted { $0.date == $1.date ? $0.id < $1.id : $0.date < $1.date }.prefix(60))

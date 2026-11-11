@@ -30,11 +30,11 @@ struct WidgetPersistence {
             loaded = true
         } catch { status = "小组件设置暂无法读取，原记录未覆盖。" }
     }
-    func change(_ value: Bool, courses: [Course], semesterStart: Date) {
+    func change(_ value: Bool, courses: [Course], semesterStart: Date, schoolSemesterStart: Date? = nil) {
         guard loaded, let persistence else { return }
         let previouslyEnabled = enabled
         do {
-            if value { try write(courses: courses, semesterStart: semesterStart) }
+            if value { try write(courses: courses, semesterStart: semesterStart, schoolSemesterStart: schoolSemesterStart) }
             else { try persistence.removeSnapshot(); enabled = false; persistence.reload() }
             try persistence.savePreference(value)
             enabled = value
@@ -57,17 +57,17 @@ struct WidgetPersistence {
             return true
         } catch { status = "旧账号的小组件副本未能清理，请解锁设备后重试退出。"; return false }
     }
-    func publish(courses: [Course], semesterStart: Date) {
+    func publish(courses: [Course], semesterStart: Date, schoolSemesterStart: Date? = nil) {
         guard loaded, enabled else { return }
         do {
-            try write(courses: courses, semesterStart: semesterStart)
+            try write(courses: courses, semesterStart: semesterStart, schoolSemesterStart: schoolSemesterStart)
             persistence?.reload()
         } catch { status = "小组件更新失败，可能仍显示上次缓存。请解锁后重新打开 App。" }
     }
-    private func write(courses: [Course], semesterStart: Date) throws {
+    private func write(courses: [Course], semesterStart: Date, schoolSemesterStart: Date? = nil) throws {
         guard let persistence else { throw WidgetSnapshotFile.Failure.unavailable }
         try persistence.writeSnapshot(WidgetSnapshot(version: 1, generatedAt: Date(), semesterStart: semesterStart,
-            courses: courses.map { WidgetCourse(id: $0.id.uuidString, title: $0.name, room: $0.room, day: $0.day, start: $0.start, end: $0.end, weeks: $0.weeks) }))
+            courses: courses.map { WidgetCourse(id: $0.id.uuidString, title: $0.name, room: $0.room, day: $0.day, start: $0.start, end: $0.end, weeks: $0.weeks, semesterStart: $0.source == "school" ? (schoolSemesterStart ?? semesterStart) : semesterStart) }))
     }
 }
 struct NativeWidgetSettingsView: View {
@@ -75,7 +75,7 @@ struct NativeWidgetSettingsView: View {
     @EnvironmentObject var store: CampusStore
     var body: some View {
         Form {
-            Toggle("允许小组件显示课表", isOn: Binding(get: { publisher.enabled }, set: { publisher.change($0, courses: store.courses, semesterStart: store.semesterStart) }))
+            Toggle("允许小组件显示课表", isOn: Binding(get: { publisher.enabled }, set: { publisher.change($0, courses: store.courses, semesterStart: store.semesterStart, schoolSemesterStart: store.schoolSemesterStart) }))
             Text(publisher.status)
             Text("开启后会将课程名称、地点和上课时间的加密副本提供给本 App 的小组件，不包含学校 Cookie、成绩或登录信息。小组件可能显示在主屏幕/锁屏上，请自行判断隐私需要。关闭后移除副本并请求刷新，iOS 控制实际刷新时间。").font(.footnote).foregroundStyle(.secondary)
             Text("添加方法：长按 iPhone 主屏幕空白处，选择编辑/添加小组件，搜索“邯院通”。iOS 不支持 Android 的自动固定流程。")

@@ -47,7 +47,7 @@ final class PersonalBackupTests: XCTestCase {
         XCTAssertThrowsError(try value.validate())
     }
     func testUnknownVersionAndForeignFieldsRejected() throws {
-        var value = sample(); value.version = 2
+        var value = sample(); value.version = 99
         XCTAssertThrowsError(try value.validate())
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: sample().encode()) as? [String: Any])
         object["cookies"] = "synthetic-not-a-real-cookie"
@@ -82,4 +82,19 @@ final class PersonalBackupTests: XCTestCase {
         try Data(repeating: 32, count: PersonalBackup.maximumBytes + 1).write(to: url)
         XCTAssertThrowsError(try PersonalBackup.read(from: url))
     }
+    func testReadsOriginalNativeVersionOne() throws {
+        let object: [String: Any] = ["version": 1, "courses": [], "tasks": [["id": UUID().uuidString, "title": "旧待办", "date": "2026-11-11T01:00:00Z", "completed": false, "notes": ""]], "semesterStart": "2026-09-13T16:00:00Z"]
+        let backup = try PersonalBackup.decode(JSONSerialization.data(withJSONObject: object))
+        XCTAssertTrue(backup.tasks[0].legacyReminder)
+        XCTAssertNotNil(backup.tasks[0].plannedAt)
+    }
+    func testRejectsCredentialsInsideRichTaskFields() throws {
+        var value = sample(); value.tasks[0].steps = [TaskStep(title: "小步骤")]
+        var root = try XCTUnwrap(JSONSerialization.jsonObject(with: value.encode()) as? [String: Any])
+        var tasks = try XCTUnwrap(root["tasks"] as? [[String: Any]])
+        var steps = try XCTUnwrap(tasks[0]["steps"] as? [[String: Any]])
+        steps[0]["token"] = "synthetic"; tasks[0]["steps"] = steps; root["tasks"] = tasks
+        XCTAssertThrowsError(try PersonalBackup.decode(JSONSerialization.data(withJSONObject: root)))
+    }
+
 }

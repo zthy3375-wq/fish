@@ -65,4 +65,13 @@ final class UtilitiesTests: XCTestCase {
         XCTAssertFalse(exists)
     }
 
+    func testWidgetUsesIndependentSchoolAndPersonalSemesters() {
+        let monday = date("2026-09-13T16:00:00Z")
+        let school = WidgetCourse(id: "school", title: "学校", room: "", day: 1, start: "08:00", end: "09:00", weeks: [3], semesterStart: monday)
+        let personal = WidgetCourse(id: "personal", title: "个人", room: "", day: 1, start: "10:00", end: "11:00", weeks: [1], semesterStart: monday.addingTimeInterval(14 * 86400))
+        let snapshot = WidgetSnapshot(version: 1, generatedAt: monday, semesterStart: monday.addingTimeInterval(14 * 86400), courses: [school, personal])
+        XCTAssertEqual(snapshot.today(monday.addingTimeInterval(14 * 86400)).map(\.id), ["school", "personal"])
+        XCTAssertTrue(snapshot.today(monday).isEmpty)
+    }
+
 }

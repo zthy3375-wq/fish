@@ -7,6 +7,8 @@ struct HanyuantongApp: App {
     @StateObject private var learning = LearningStore()
     @StateObject private var quzhi = QuzhiStore()
     @StateObject private var pangguai = PangguaiStore()
+    @StateObject private var analytics = AnonymousAnalyticsStore()
+    @StateObject private var displayPreferences = DisplayPreferencesStore()
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
@@ -15,10 +17,14 @@ struct HanyuantongApp: App {
                 .environmentObject(learning)
                 .environmentObject(quzhi)
                 .environmentObject(pangguai)
+                .environmentObject(analytics)
+                .environmentObject(displayPreferences)
+                .preferredColorScheme(displayPreferences.preferences.theme.colorScheme)
+                .environment(\.campusCompactLayout, displayPreferences.preferences.compact)
                 .onOpenURL { url in
                     if url.scheme == "hanyuantong", url.host == "schedule", url.user == nil, url.password == nil { store.selectedTab = .schedule }
                 }
-                .onChange(of: scenePhase) { if $0 == .active { store.refreshReminders() } }
+                .onChange(of: scenePhase) { if $0 == .active { store.refreshReminders(); analytics.flush() } }
                 .environment(\.locale, Locale(identifier: "zh_CN"))
                 .environment(\.calendar, ScheduleMath.calendar)
                 .environment(\.timeZone, TimeZone(identifier: "Asia/Shanghai")!)
