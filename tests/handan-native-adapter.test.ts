@@ -31,7 +31,7 @@ it('recognizes actual login HTML as expiry rather than a successful empty datase
  const {result}=await run(()=>'<input type="password" id="mm">');expect(result.session).toBe('expired');expect(result.modules.timetable.code).toBe('EXPIRED');
 });
 it('paginates history rather than silently returning the first grade page',async()=>{
- const {result}=await run((url,init)=>{
+ const {result}=await run((_url,init)=>{
   if(!init.body)return termHtml;
   const p=new URLSearchParams(init.body).get('queryModel.currentPage');
   return {items:[{kcmc:'人工成绩'+p,cj:'优秀',xf:'2',jd:'4',xnm:'2026',xqm:'3'}],totalPage:2};
@@ -48,7 +48,7 @@ it('hands an HTML-only timetable response to the native rendered-page reader wit
 
 it('reads the verified Handan HTML layout, ignores icon fonts and retains practice courses without JSON',async()=>{
  const html=termHtml+`<table id="kbgrid_table_0"><tr><td class="td_wrap" id="1-3"><div class="timetable_con"><span class="title"><font>人工课程★</font></span><p><span><font><span class="icon"></span></font></span><font> (3-4节)1-8周</font></p><p><span><font></font></span><font>人工教室</font></p><p><span><font></font></span><font>人工教师</font></p></div></td></tr><tr><td><div class="timetable_title">实践课程：人工实训■测试教师(共2周)/7-8周;</div></td></tr></table>`;
- const {result,fetch}=await run((url,init)=>!init.body?html:[],'timetable');
+ const {result,fetch}=await run((_url,init)=>!init.body?html:[],'timetable');
  expect(result.modules.timetable.status).toBe('ok');expect(result.modules.timetable.data.kbList[0]).toMatchObject({xm:'人工教师',cdmc:'人工教室',jcs:'3-4'});
  expect(result.modules.timetable.data.practice).toEqual([{name:'人工实训',teacher:'测试教师',weeks:'7-8周'}]);
  expect(fetch.mock.calls.filter(([u,i])=>u.includes('cxXsgrkb')&&i.body)).toHaveLength(0);
@@ -61,9 +61,9 @@ it('uses the verified school JSON endpoint after opening its distinct Index page
  expect(new URL(query[0]).pathname).toBe('/kbcx/xskbcx_cxXsgrkb.html');expect(new URLSearchParams(query[1].body).has('kclxdm')).toBe(true);
 });
 it('preserves grade identities and school retry labels without leaking arbitrary fields or converting missing credit to zero',async()=>{
- const {result}=await run((url,init)=>!init.body?termHtml:{items:[{kcmc:'人工成绩',cj:null,xf:'',jd:'',kch:'K1',cjbh:'R1',xnm:'2025',xqm:'12',ksxzmc:'补考',password:'PRIVATE'}],totalCount:1,totalPage:1},'grades');
+ const {result}=await run((_url,init)=>!init.body?termHtml:{items:[{kcmc:'人工成绩',cj:null,xf:'',jd:'',kch:'K1',cjbh:'R1',xnm:'2025',xqm:'12',ksxzmc:'补考',password:'PRIVATE'}],totalCount:1,totalPage:1},'grades');
  expect(result.modules.grades).toMatchObject({scope:'all',data:[{scoreText:'',credit:null,gpa:null,courseCode:'K1',recordId:'R1',year:'2025',termCode:'12',examType:'补考'}]});expect(JSON.stringify(result)).not.toContain('PRIVATE');
 });
 it('rejects a truncated declared grade count instead of claiming complete history',async()=>{
- const {result}=await run((url,init)=>!init.body?termHtml:{items:[{kcmc:'人工成绩',cj:'80'}],totalCount:2,totalPage:1},'grades');expect(result.modules.grades.code).toBe('SCHEMA');
+ const {result}=await run((_url,init)=>!init.body?termHtml:{items:[{kcmc:'人工成绩',cj:'80'}],totalCount:2,totalPage:1},'grades');expect(result.modules.grades.code).toBe('SCHEMA');
 });
