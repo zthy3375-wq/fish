@@ -128,7 +128,8 @@ try{
   const [startMinute,endMinute]=range.slice(0,2).map(toMinutes);
   const localMidnight=Date.parse('2026-11-06T00:00:00+08:00');
   await page.clock.setFixedTime(new Date(localMidnight+(startMinute+(endMinute-startMinute)*.25)*60000));
-  await page.waitForFunction(()=>!!document.querySelector('.home-timeline .is-current'));
+  // setFixedTime changes Date, but Vue updates on the next mounted timer tick.
+  await page.waitForFunction(()=>{const progress=parseFloat(document.querySelector('.home-timeline .is-current .course-time-marker')?.style.left||'0');return progress>20&&progress<30});
   const marker=page.locator('.home-timeline .is-current .course-time-marker').first();
   const firstPosition=await marker.evaluate(el=>parseFloat(el.style.left));
   assert(firstPosition>20&&firstPosition<30,`${width}: course progress uses real start/end time`);
