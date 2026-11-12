@@ -42,6 +42,9 @@ class PangguaiPlugin : Plugin() {
             .put("phone",if(phone.length==11)phone.take(3)+"****"+phone.takeLast(4) else "")
         PangguaiLaundry.view(state.optJSONObject("laundry"))?.let{result.put("laundry",it)}
         PangguaiWater.view(state.optJSONObject("water"))?.let{result.put("water",it)}
+        val history=JSONArray()
+        state.optJSONArray("waterHistory")?.let { rows->for(i in 0 until rows.length())PangguaiWater.view(rows.optJSONObject(i))?.let{history.put(it)} }
+        result.put("waterHistory",history)
         JSObject.fromJSONObject(result)
     }
     private fun reject(call:PluginCall,e:Exception){
@@ -108,7 +111,7 @@ class PangguaiPlugin : Plugin() {
                             if(!profile.isNull("balance"))firstSnapshot.put("walletUpdatedAt",System.currentTimeMillis())
                             val next=JSONObject().put("id",profile.getString("id")).put("phone",number).put("token",token).put("snapshot",firstSnapshot)
                             restore()
-                            if(state.optString("id")==profile.getString("id")){state.optJSONObject("laundry")?.let{next.put("laundry",it)};state.optJSONObject("water")?.let{next.put("water",it)}}
+                            if(state.optString("id")==profile.getString("id")){state.optJSONObject("laundry")?.let{next.put("laundry",it)};state.optJSONObject("water")?.let{next.put("water",it)};state.optJSONArray("waterHistory")?.let{next.put("waterHistory",it)}}
                             candidate=next
                         }
                         host.runOnUiThread {
@@ -160,7 +163,20 @@ class PangguaiPlugin : Plugin() {
     private fun water():PangguaiWater {
         val token=state.optString("token")
         if(token.isBlank()||state.optBoolean("expired"))throw PangguaiFailure("AUTH")
-        return PangguaiWater(request={p,f->api.request(p,f,token)},persist={s->save(JSONObject(state.toString()).put("water",s))},alive={owned{Unit}})
+        return PangguaiWater(request={p,f->api.request(p,f,token)},persist={s->
+            val next=JSONObject(state.toString()).put("water",s)
+            if(s.optString("phase")=="archived_unverified"){
+                val rows=next.optJSONArray("waterHistory") ?: JSONArray()
+                val existing=(0 until rows.length()).firstOrNull{rows.optJSONObject(it)?.optString("id")==s.optString("id")}
+                if(existing!=null)rows.put(existing,s) else {
+                    // Never silently discard unresolved records to make room.
+                    if(rows.length()>=100)throw PangguaiFailure("WATER_HISTORY_FULL")
+                    rows.put(s)
+                }
+                next.put("waterHistory",rows)
+            }
+            save(next)
+        },alive={owned{Unit}})
     }
     @PluginMethod fun prepareWater(call:PluginCall)=work(call){
         waterQuote=null
@@ -185,6 +201,11 @@ class PangguaiPlugin : Plugin() {
         val s=state.optJSONObject("water") ?: throw PangguaiFailure("FORMAT")
         if(call.getString("sessionId")!=s.optString("id"))throw PangguaiFailure("ORDER_MISMATCH")
         water().confirmPhysicalEnd(s);snapshot()
+    }
+    @PluginMethod fun archiveUnverifiedWater(call:PluginCall)=work(call){
+        val s=state.optJSONObject("water") ?: throw PangguaiFailure("FORMAT")
+        if(call.getString("sessionId")!=s.optString("id"))throw PangguaiFailure("ORDER_MISMATCH")
+        water().archiveUnverified(s,call.getBoolean("confirmedStopped",false)==true);waterQuote=null;snapshot()
     }
     @PluginMethod fun openWaterPaymentSetup(call:PluginCall)=work(call){
         water() // require current authenticated account; setup itself remains in official Alipay UI

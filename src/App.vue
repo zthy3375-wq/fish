@@ -536,7 +536,7 @@ function viewportChange() {
 }
 watch(()=>[modal.value,agendaView.editor,pgBusy.value,pangguai.value.water?.phase] as const,()=>{
   const phase=pangguai.value.water?.phase;
-  updateDeferred.value=!!modal.value||!!agendaView.editor||pgBusy.value||!!(phase&&!['settled','ended_zero','closed_unknown'].includes(phase));
+  updateDeferred.value=!!modal.value||!!agendaView.editor||pgBusy.value||!!(phase&&!['settled','ended_zero','closed_unknown','archived_unverified'].includes(phase));
 },{immediate:true});
 watch(()=>[page.value,section.value,modal.value] as const,([p,s,m])=>{
  if(m){const feature=({'quzhi-wallet':'shower','pangguai-wallet':'wallet',parcel:'parcel','campus-map':'map'} as const)[m as 'quzhi-wallet'];if(feature)void recordFeature(feature);return;}
