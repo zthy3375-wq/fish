@@ -4,7 +4,7 @@ import {createApp,h,nextTick} from 'vue';
 import PangguaiWater from '../src/components/PangguaiWater.vue';
 import {pangguai,prepareWater,startWater,pollWater,endWater,confirmPhysicalWaterEnd,archiveUnverifiedWater,openWaterPaymentSetup} from '../src/composables/pangguai';
 vi.mock('@capacitor/app',()=>({App:{addListener:vi.fn(async()=>({remove:vi.fn()}))}}));
-vi.mock('../src/composables/pangguai',async()=>{const {ref}=await import('vue');return {pangguai:ref({}),pgBusy:ref(false),prepareWater:vi.fn(),startWater:vi.fn(),pollWater:vi.fn(),endWater:vi.fn(),confirmPhysicalWaterEnd:vi.fn(),archiveUnverifiedWater:vi.fn(),openWaterPaymentSetup:vi.fn()}});
+vi.mock('../src/composables/pangguai',async()=>{const {ref}=await import('vue');return {pangguai:ref({}),pgBusy:ref(false),pgError:ref(''),prepareWater:vi.fn(),startWater:vi.fn(),pollWater:vi.fn(),endWater:vi.fn(),confirmPhysicalWaterEnd:vi.fn(),archiveUnverifiedWater:vi.fn(),openWaterPaymentSetup:vi.fn()}});
 const device={id:'water-test',name:'测试饮水机',category:'04',operator:'测试商户',payment:'after',issue:'',skus:[{id:'outlet-test',name:'常温水',price:'1',feature:'实际用量计费',available:true}]};
 const q={id:'quote',expiresAt:0,deviceId:'water-test',deviceName:'测试饮水机',outlet:'常温水',feature:'实际用量计费',price:'1',paymentName:'支付宝免密',remoteEnd:true,canStart:true,reason:''};
 let app:ReturnType<typeof createApp>,root:HTMLElement;

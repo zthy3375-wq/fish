@@ -2,21 +2,21 @@
 import {computed,nextTick,onMounted,onUnmounted,ref,watch} from 'vue';
 import {App} from '@capacitor/app';
 import type {PluginListenerHandle} from '@capacitor/core';
-import {pangguai,pgBusy,prepareWater,startWater,pollWater,endWater,confirmPhysicalWaterEnd,archiveUnverifiedWater,openWaterPaymentSetup} from '../composables/pangguai';
+import {pangguai,pgBusy,pgError,prepareWater,startWater,pollWater,endWater,confirmPhysicalWaterEnd,archiveUnverifiedWater,openWaterPaymentSetup} from '../composables/pangguai';
 import {pgAmount,pangguaiError,waterPhase,type PangguaiDevice,type WaterQuote} from '../services/pangguai-client';
 const props=defineProps<{device?:PangguaiDevice}>();defineEmits<{close:[]}>();
-const selection=ref(''),quote=ref<WaterQuote>(),localBusy=ref(false),starting=ref(false),clock=ref(Date.now()),panel=ref<HTMLElement>(),confirmPanel=ref<HTMLElement>(),devicePanel=ref<HTMLElement>();
-const recovering=ref(false),recoveryPending=ref(false),archiving=ref(false);
+const selection=ref(''),quote=ref<WaterQuote>(),localBusy=ref(false),starting=ref(false),clock=ref(Date.now()),panel=ref<HTMLElement>(),confirmPanel=ref<HTMLElement>(),devicePanel=ref<HTMLElement>(),feedbackPanel=ref<HTMLElement>();
+const recovering=ref(false),recoveryPending=ref(false),archiving=ref(false),actionError=ref('');
 const session=computed(()=>pangguai.value.water),terminal=computed(()=>['settled','ended_zero','closed_unknown','archived_unverified'].includes(session.value?.phase??''));
 const activeSession=computed(()=>!!session.value&&!terminal.value),blocked=computed(()=>localBusy.value||pgBusy.value||pangguai.value.expired),expired=computed(()=>!!quote.value&&clock.value>quote.value.expiresAt);
 const needsRecovery=computed(()=>activeSession.value&&(recoveryPending.value||!session.value?.orderNo||['WATER_OWNERSHIP','WATER_UNKNOWN','WATER_STILL_ACTIVE','WATER_WAIT'].includes(session.value?.error??'')||session.value?.phase==='starting'));
 let disposed=false,active=true,awaitingSetup=false,setupAway=false,lastPoll=0,failures=0,timer:ReturnType<typeof setInterval>|undefined,listener:PluginListenerHandle|undefined;
 watch(()=>session.value?.id,()=>{failures=0;lastPoll=0;recovering.value=false;recoveryPending.value=false;archiving.value=false});
-watch(()=>props.device,async d=>{selection.value=d?.skus.length===1&&d.skus[0]?.available?d.skus[0].id:'';quote.value=undefined;if(d){await nextTick();devicePanel.value?.scrollIntoView?.({block:'nearest'})}},{immediate:true});
+watch(()=>props.device,async d=>{selection.value=d?.skus.length===1&&d.skus[0]?.available?d.skus[0].id:'';quote.value=undefined;actionError.value='';if(d){await nextTick();devicePanel.value?.scrollIntoView?.({block:'nearest'})}},{immediate:true});
 function updated(value:number){return new Date(value).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Shanghai'})}
 const elapsed=computed(()=>{if(!session.value?.startedAt)return '';const sec=Math.max(0,Math.floor(((session.value.endedAt??clock.value)-session.value.startedAt)/1000));return `${Math.floor(sec/60)}分${String(sec%60).padStart(2,'0')}秒`});
-async function preview(){if(blocked.value||!selection.value)return;localBusy.value=true;quote.value=undefined;try{const result=await prepareWater(selection.value);if(!disposed&&result){quote.value=result;await nextTick();confirmPanel.value?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false}}
-async function begin(){const q=quote.value;if(!q||blocked.value||expired.value||!q.canStart)return;localBusy.value=true;starting.value=true;quote.value=undefined;try{await startWater(q.id);await nextTick();panel.value?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}finally{localBusy.value=false;starting.value=false;lastPoll=Date.now()}}
+async function preview(){if(blocked.value||activeSession.value||!selection.value)return;localBusy.value=true;quote.value=undefined;actionError.value='';try{const result=await prepareWater(selection.value);if(!disposed){if(result)quote.value=result;else actionError.value=pgError.value||'接水信息未取得，请稍后重新查询。';await nextTick();(result?confirmPanel.value:feedbackPanel.value)?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false}}
+async function begin(){const q=quote.value;if(!q||blocked.value||activeSession.value||expired.value||!q.canStart)return;localBusy.value=true;starting.value=true;quote.value=undefined;actionError.value='';try{const result=await startWater(q.id);if(!disposed){if(!result)actionError.value=pgError.value||'启动结果尚未确认，请查看机身及当前接水记录，不要重复开水。';await nextTick();(feedbackPanel.value??panel.value??devicePanel.value)?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false;starting.value=false;lastPoll=Date.now()}}
 async function refresh(){if(blocked.value)return;lastPoll=Date.now();const result=await pollWater();failures=result?0:failures+1;if(result?.water&&!result.water.error)recoveryPending.value=false}
 async function finish(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;try{await endWater(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
 async function physical(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;recovering.value=false;recoveryPending.value=true;try{await confirmPhysicalWaterEnd(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
@@ -28,6 +28,8 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
 </script>
 <template>
  <div class="water-flow">
+ <p v-if="starting" class="instruction" role="status" aria-live="polite">正在请求设备启动，请留意机身提示，不要重复确认。</p>
+ <p v-if="actionError&&(!activeSession||!session?.error)" ref="feedbackPanel" class="feedback" role="alert">{{actionError}}</p>
  <section v-if="session&&!terminal" ref="panel" class="water-progress" aria-label="当前接水记录">
   <div class="heading"><span>{{session.deviceName}} · {{session.outlet}}</span><button class="text-button" :disabled="blocked" @click="refresh">查询状态</button></div>
   <h3 aria-live="polite">{{(recoveryPending||['WATER_OWNERSHIP','WATER_STILL_ACTIVE'].includes(session.error??''))?'接水状态待核对':waterPhase(session.phase)}}</h3>

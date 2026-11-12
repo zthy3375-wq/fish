@@ -72,7 +72,10 @@ internal class PangguaiWater(
         if(text(fresh,"price")!=text(quote,"price")||text(fresh,"feature")!=text(quote,"feature")||text(fresh,"outlet")!=text(quote,"outlet"))throw PangguaiFailure("PRICE_CHANGED")
         val before=reading(req(quote,"skuId"))
         if(before!=null&&text(before,"workStatus")=="2")throw PangguaiFailure("DEVICE_BUSY")
-        if(before!=null&&(text(before,"status")!="5"||text(before,"workStatus")!="1"))throw PangguaiFailure("WATER_WAIT")
+        // status=5 confirms the end of an existing order, not readiness for a new order.
+        // Fresh details/SKU/channel checks above establish availability. A nonempty sync
+        // response must explicitly say not working; missing/unknown workStatus still blocks.
+        if(before!=null&&text(before,"workStatus")!="1")throw PangguaiFailure("WATER_WAIT")
         // Explicit confirmation selects the already available payment method; it does not sign an agreement.
         post("payChannelRoute/addUserAfterPayChannel",mapOf("method" to "15"))
         val s=JSONObject().put("id",UUID.randomUUID().toString()).put("deviceId",req(device,"id")).put("skuId",req(quote,"skuId"))
