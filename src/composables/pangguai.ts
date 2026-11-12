@@ -34,5 +34,6 @@ export async function prepareWater(skuId:string){if(!pgBusy.value)void recordFea
 export async function startWater(quoteId:string){return transactionOperation(()=>pangguaiNative.startWater({quoteId}))}
 export async function pollWater(){return transactionOperation(()=>pangguaiNative.pollWater())}
 export async function endWater(sessionId:string){return transactionOperation(()=>pangguaiNative.endWater({sessionId}))}
+export async function archiveUnverifiedWater(sessionId:string){return transactionOperation(()=>pangguaiNative.archiveUnverifiedWater({sessionId,confirmedStopped:true}))}
 export async function confirmPhysicalWaterEnd(sessionId:string){return transactionOperation(()=>pangguaiNative.confirmPhysicalWaterEnd({sessionId}))}
 export async function openWaterPaymentSetup(){return operation(()=>pangguaiNative.openWaterPaymentSetup())}

@@ -2,9 +2,9 @@
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {createApp,h,nextTick} from 'vue';
 import PangguaiWater from '../src/components/PangguaiWater.vue';
-import {pangguai,prepareWater,startWater,pollWater,endWater,confirmPhysicalWaterEnd,openWaterPaymentSetup} from '../src/composables/pangguai';
+import {pangguai,prepareWater,startWater,pollWater,endWater,confirmPhysicalWaterEnd,archiveUnverifiedWater,openWaterPaymentSetup} from '../src/composables/pangguai';
 vi.mock('@capacitor/app',()=>({App:{addListener:vi.fn(async()=>({remove:vi.fn()}))}}));
-vi.mock('../src/composables/pangguai',async()=>{const {ref}=await import('vue');return {pangguai:ref({}),pgBusy:ref(false),prepareWater:vi.fn(),startWater:vi.fn(),pollWater:vi.fn(),endWater:vi.fn(),confirmPhysicalWaterEnd:vi.fn(),openWaterPaymentSetup:vi.fn()}});
+vi.mock('../src/composables/pangguai',async()=>{const {ref}=await import('vue');return {pangguai:ref({}),pgBusy:ref(false),prepareWater:vi.fn(),startWater:vi.fn(),pollWater:vi.fn(),endWater:vi.fn(),confirmPhysicalWaterEnd:vi.fn(),archiveUnverifiedWater:vi.fn(),openWaterPaymentSetup:vi.fn()}});
 const device={id:'water-test',name:'测试饮水机',category:'04',operator:'测试商户',payment:'after',issue:'',skus:[{id:'outlet-test',name:'常温水',price:'1',feature:'实际用量计费',available:true}]};
 const q={id:'quote',expiresAt:0,deviceId:'water-test',deviceName:'测试饮水机',outlet:'常温水',feature:'实际用量计费',price:'1',paymentName:'支付宝免密',remoteEnd:true,canStart:true,reason:''};
 let app:ReturnType<typeof createApp>,root:HTMLElement;
@@ -58,4 +58,26 @@ it('failed manual recovery keeps recovery controls and pauses timer queries unti
  await vi.advanceTimersByTimeAsync(30_000);expect(pollWater).not.toHaveBeenCalled();
  vi.mocked(pollWater).mockImplementationOnce(async()=>{pangguai.value.water!.error=undefined;return {...pangguai.value}});
  button('查询状态').click();await settle();expect(button('结束接水并结算')).toBeDefined();expect(root.querySelector('.elapsed')).not.toBeNull();
+});
+
+it('uncertain response exposes recovery and local archive needs separate explicit confirmation',async()=>{
+ pangguai.value.water={id:'stuck',deviceId:'old-hot',deviceName:'测试热水',outlet:'热水',feature:'',paymentName:'支付宝免密',phase:'using',orderNo:'test-old',remoteEnd:false,updatedAt:Date.now(),error:'WATER_WAIT'};
+ vi.mocked(confirmPhysicalWaterEnd).mockResolvedValue(undefined);
+ await settle();expect(button('请先处理当前接水记录').disabled).toBe(true);
+ expect(button('仍无法核对？仅移出本机记录')).toBeUndefined();
+ button('已在机身结算，恢复扫码').click();await settle();button('确认已停止，核对设备').click();await settle();
+ expect(archiveUnverifiedWater).not.toHaveBeenCalled();button('仍无法核对？仅移出本机记录').click();await settle();
+ expect(root.textContent).toContain('不会停止设备、不会结算或退款');
+ button('暂不移出').click();await settle();expect(archiveUnverifiedWater).not.toHaveBeenCalled();
+ button('仍无法核对？仅移出本机记录').click();await settle();
+ vi.mocked(archiveUnverifiedWater).mockImplementationOnce(async()=>{const record={...pangguai.value.water!,phase:'archived_unverified',archivedAt:Date.now()};pangguai.value={...pangguai.value,water:record,waterHistory:[record]};return pangguai.value});
+ button('机身已停止，仅移出记录').click();await settle();
+ expect(archiveUnverifiedWater).toHaveBeenCalledExactlyOnceWith('stuck');expect(button('接水').disabled).toBe(false);
+ expect(root.textContent).toContain('test-old');expect(root.textContent).toContain('应用未核实设备结束和费用');
+ expect(startWater).not.toHaveBeenCalled();expect(endWater).not.toHaveBeenCalled();
+});
+it('archived unresolved order remains visible after a different current session appears',async()=>{
+ const old={id:'old',deviceId:'hot',deviceName:'测试热水',outlet:'热水',feature:'',paymentName:'支付宝免密',phase:'archived_unverified',orderNo:'old-order',remoteEnd:false,updatedAt:Date.now()};
+ pangguai.value.waterHistory=[old];pangguai.value.water={...old,id:'new',phase:'using',orderNo:'new-order'};await settle();
+ expect(root.textContent).toContain('old-order');expect(root.querySelectorAll('[aria-label="待核实接水记录"]').length).toBe(1);
 });
