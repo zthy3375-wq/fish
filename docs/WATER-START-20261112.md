@@ -25,3 +25,9 @@
 协议依据为已有来源的固定提交：Mercury000/HUEL-yktwx 1bb98ea5bc87e9a217ce6b8af10c47046aa92c73 的 docs/life-devices-water.md、LifeDeviceModels.kt，以及 Inonvation/JUWPHub edf81286f26673968d4a804b6fd6bf6fc13f35ef 的 QiekjModels.kt / QiekjRepository.kt（会话结束与开水预检分别处理）。独立实现，无上游源码复制；未使用真实账号、设备码或网络控制命令作测试。
 
 仍需问题手机安装测试包，核对首次启动、旧记录后启动、机身实际出水和同订单账单；当前未声称现场已修复。
+
+## 本次构建与测试包交付
+
+本地与Quality检查43222581544通过453项前端测试、TypeScript和生产构建。Android test APK任务43222581539完整成功：Debug/Release原生测试、Debug/Release构建、平行预览包与360/390/430浏览器回归通过。构建合并提交7fe0152e21d68588c2b95cddca906c9c30e818df的树bd9d9dfafdab171dcd7a87aede9737f5c2f51fb3与应用源码8538502050a6f47ff16cd1e7f8e55fb8b9337f20完全一致。
+
+交付Hanyuantong-v1.2.3-test.1-WaterStartFix.apk，12,426,271字节，SHA-256 b68fcc2b0c54bf349bfa9c67fb6f2ab03ef167c8b369fe7e0d33286c8cd27d1b。包名org.handancampus.app、147/1.2.3-test.1、非debug、28个前端资源逐字节、4字节及原生库16KB对齐核验通过。原正式证书4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9；v1/v2/v3签名验证通过。测试包按原包名/签名制作供覆盖安装，实际安装、现场接水和同订单扣费仍待本人验收。未合并、未推送或修改线上更新清单。
