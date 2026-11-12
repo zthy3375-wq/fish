@@ -143,6 +143,7 @@ try{
   assert(await page.locator('.home-timeline .is-ended').count()>0,`${width}: ended class is de-emphasized`);
   assert(await page.locator('.home-timeline .is-ended.is-next').count()===0,`${width}: later occurrence never highlights today's ended class`);
   await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
+  await page.waitForFunction(()=>!!document.querySelector('.home-timeline .is-current'));
 
   assert(await page.locator('.home-course-panel .home-study-links').count()===1,`${width}: study actions share course card`);
   assert(await page.locator('.home-body>.school-connection').count()===0,`${width}: connected home hides redundant account card`);
@@ -156,7 +157,7 @@ try{
   assert(homeLayout.hero>=264,`${width}: campus illustration retains a generous height with status inset`);
   assert(homeLayout.walletBottom<=homeLayout.mainBottom,`${width}: both life wallets fit above navigation with status inset`);
   assert(homeLayout.timelineBottom<=homeLayout.studyTop&&!homeLayout.overflow,`${width}: today's timeline stays clear of shortcuts without page overflow`);
-  assert(await page.locator('.home-timeline button').count()===1&&await page.locator('.home-timeline time').textContent()==='11:15',`${width}: today's course name and start remain on the timeline`);
+  assert(await page.locator('.home-timeline button').count()===1&&JSON.stringify(await page.locator('.home-timeline time').allTextContents())===JSON.stringify(['11:15','15:10']),`${width}: today's course name and start remain on the timeline`);
   await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
   await page.locator('.home-timeline button').click();
   assert(await page.getByRole('dialog').getByRole('heading',{name:'大学物理',exact:true}).isVisible(),`${width}: retained home timeline opens course details`);
