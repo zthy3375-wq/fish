@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed,nextTick,onMounted,onUnmounted,ref,watch} from 'vue';
 import {App} from '@capacitor/app';
-import {updateState as state,updatesOpen,updateHint,updateActionBusy,checkUpdates,dismissUpdate,downloadUpdate,installUpdate,refreshUpdateState} from '../composables/updates';
+import {updateState as state,updatesOpen,updateHint,updateActionBusy,updateDeferred,updateDeferredReason,checkUpdates,dismissUpdate,downloadUpdate,installUpdate,refreshUpdateState} from '../composables/updates';
 const dialog=ref<HTMLElement>();
 const busy=computed(()=>updateActionBusy.value||['checking','downloading'].includes(state.value.stage));
 let timer:ReturnType<typeof setInterval>;
@@ -23,13 +23,14 @@ function key(e:KeyboardEvent){
 <p v-if="state.available&&state.release">{{state.currentVersion}} → {{state.release.versionName}} <span>· {{(state.release.sizeBytes/1048576).toFixed(1)}} MB</span></p>
 <p v-else-if="state.stage!=='checking'&&!state.error&&!updateHint">当前版本 {{state.currentVersion}}，已是最新版本</p>
 <ul v-if="state.available"><li v-for="(line,index) in state.release?.notes" :key="index">{{line}}</li></ul>
-<p v-if="state.mandatory" class="update-note">此版本已停止支持，请安装新版本。更新会保留本机数据。</p>
+<p v-if="updateDeferred" role="status" class="update-note">{{updateDeferredReason||'当前正在编辑或处理接水、支付，可以查看更新；请完成当前操作后再下载和安装。'}}</p>
+<p v-else-if="state.mandatory" class="update-note">此版本已停止支持，请安装新版本。更新会保留本机数据。</p>
 <div v-if="state.stage==='downloading'" role="status"><progress :value="state.progress" max="100" aria-label="更新下载进度"/><p>正在下载 {{state.progress}}% · 请保持应用打开</p></div>
 <p v-if="state.error" role="alert" class="update-error">{{state.error}}</p><p v-if="updateHint" role="status">{{updateHint}}</p>
-<button v-if="state.available&&state.stage==='ready'" class="primary" :disabled="busy" @click="installUpdate">安装更新</button>
-<button v-else-if="state.available" class="primary" :disabled="busy" @click="downloadUpdate">{{state.stage==='downloading'?'正在下载…':'下载更新'}}</button>
+<button v-if="state.available&&state.stage==='ready'" class="primary" :disabled="busy||updateDeferred" @click="installUpdate">安装更新</button>
+<button v-else-if="state.available" class="primary" :disabled="busy||updateDeferred" @click="downloadUpdate">{{state.stage==='downloading'?'正在下载…':'下载更新'}}</button>
 <button class="text-button" :disabled="busy" @click="checkUpdates(true)">{{state.stage==='checking'?'正在检查…':'重新检查'}}</button>
-<button v-if="!state.mandatory" class="text-button" @click="dismissUpdate">{{state.available?'稍后再说':'关闭'}}</button>
+<button v-if="!state.mandatory||updateDeferred" class="text-button" @click="dismissUpdate">{{updateDeferred?'返回应用':state.available?'稍后再说':'关闭'}}</button>
 <button v-else class="text-button" @click="App.exitApp()">退出应用</button>
 </section></div></Teleport></template>
 <style scoped>
