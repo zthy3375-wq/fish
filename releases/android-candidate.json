@@ -1,17 +1,15 @@
 {
-  "versionCode": 145,
-  "versionName": "1.2.1",
-  "minSupportedVersionCode": 133,
-  "minSdk": 23,
-  "sha256": "5cf34502b748c23f616d61cb58d65929abfc60f2cd0566e303453d359bb40156",
+  "sha256": "5de773fad7627a0e8d65d7e03947c8106818b316866dda7a84ef54bfbc2fe757",
   "sizeBytes": 12426271,
-  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.2.1-5cf34502b748.apk",
+  "versionCode": 146,
+  "versionName": "1.2.2",
+  "minSdk": 23,
+  "minSupportedVersionCode": 146,
+  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.2.2-5de773fad762.apk",
   "notes": [
-    "优化学习通作业读取与单课程刷新。",
-    "修复部分接水旧记录导致无法继续扫码的问题。",
-    "改善鸿蒙手机跳转淘宝、拼多多的兼容性，增加系统打开入口。",
-    "本次为可选更新，可选择稍后安装。"
+    "修复手动检查更新时没有反应的问题，检查结果和暂不能更新的原因会正常显示。",
+    "修复首页课程时间条不动的问题，上课期间可以看到课程进度和剩余时间。",
+    "优化胖乖接水异常恢复。确认设备已停水后，可以移出卡住的本机记录，未核对的订单仍会保留。"
   ],
-  "ready": true,
-  "buildKey": "b935712cbbb41f79217f74308251d957"
+  "ready": true
 }
