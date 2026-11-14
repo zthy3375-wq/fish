@@ -4,6 +4,7 @@ import UIKit
 @main
 struct HanyuantongApp: App {
     @StateObject private var store = CampusStore()
+    @StateObject private var treehole = TreeholeStore()
     @StateObject private var learning = LearningStore()
     @StateObject private var quzhi = QuzhiStore()
     @StateObject private var pangguai = PangguaiStore()
@@ -14,6 +15,7 @@ struct HanyuantongApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
+                .environmentObject(treehole)
                 .environmentObject(learning)
                 .environmentObject(quzhi)
                 .environmentObject(pangguai)

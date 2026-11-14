@@ -52,6 +52,7 @@ struct HomeView: View {
                 }
                 todayTasks
                 upcomingExams
+                NavigationLink { TreeholeView() } label: { HStack { Label("邯院树洞", systemImage: "bubble.left.and.bubble.right"); Spacer(); Text("聊聊校园里的那些事").font(.caption) }.campusCard() }.buttonStyle(.plain)
                 Text("校园生活").font(.headline)
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {

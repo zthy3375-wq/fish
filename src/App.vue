@@ -14,6 +14,8 @@ import CampusHero from './components/CampusHero.vue';
 import CommunityGroup from './components/CommunityGroup.vue';
 import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
+const Treehole=defineAsyncComponent(()=>import('./components/Treehole.vue'));
+const treeholeRef=ref<{requestBack:()=>boolean;refresh:()=>void}>();
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
 const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
@@ -255,7 +257,7 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
 const taskDetailRef=ref<InstanceType<typeof TaskDetail>>();
 function planLearning(task:CampusTask){taskDetailRef.value?.edit(task)}
 function editDailyTask(task?:CampusTask,day?:string){taskDetailRef.value?.edit(task,day)}
-setBeforeBack(()=>!modal.value?taskDetailRef.value?.requestBack()??false:false);
+setBeforeBack(()=>!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false);
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
   if (modal.value==='school-course-adjustment') {if(editorBusy.value)return false;if(adjustmentRef.value?.hasChanges()){adjustmentRef.value.requestCancel();return false;}}
@@ -379,14 +381,14 @@ const sectionNames: Record<string, string> = {
 const title = computed(() =>
   page.value === "home"
     ? "今天"
-    : page.value === "life" ? "校园生活" : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
+    : page.value === "community" ? "树洞" : page.value === "life" ? "校园生活" : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
       ? sectionNames[section.value]
       : "我的",
 );
 const subtitle = computed(() =>
   page.value === "home"
     ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
-    : page.value === "life" ? "接水、洗衣与校园服务" : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
+    : page.value === "community" ? "邯院通账号 · 昵称或匿名发言" : page.value === "life" ? "接水、洗衣与校园服务" : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
       ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
       : "学校账号 · 本机设置",
 );
@@ -554,8 +556,8 @@ async function recalibrate() {
 }
 watch(schedule, (s) => reconcileReminders(s));
 let pullY=0;
-function pullStart(e:TouchEvent){pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
-function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='academic'&&['overview','learning'].includes(section.value))void syncLearning({force:true});else if(page.value!=='tasks')void syncAcademic()}}
+function pullStart(e:TouchEvent){if(page.value==='community'&&window.scrollY>0){pullY=-1;return;}pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
+function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='community'){treeholeRef.value?.refresh();return;}if(page.value==='academic'&&['overview','learning'].includes(section.value))void syncLearning({force:true});else if(page.value!=='tasks')void syncAcademic()}}
 function viewportChange() {
   const v = window.visualViewport;
   document.documentElement.classList.toggle(
@@ -624,9 +626,9 @@ onUnmounted(() => {
   <div
     class="app-shell"
     :inert="updatesOpen"
-    :class="{ compact: prefs.compact, 'home-active': page === 'home', 'schedule-active':page==='schedule' }"
+    :class="{ compact: prefs.compact, 'home-active': page === 'home', 'schedule-active':page==='schedule', 'community-active':page==='community' }"
   >
-    <AppHeader v-if="page !== 'home'"
+    <AppHeader v-if="page !== 'home' && page !== 'community'"
       :inert="!!modal || agendaView.editor"
       :title="title"
       :subtitle="subtitle"
@@ -663,11 +665,13 @@ onUnmounted(() => {
               <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
               </section>
               <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
+              <button class="learning-page-link" @click="nav('community')"><MessageSquare :size="22"/><strong>邯院树洞</strong><span>聊聊校园里的那些事</span><ChevronRight :size="16"/></button>
               <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
 
 
             </div>
           </template>
+          <Treehole v-else-if="page === 'community'" ref="treeholeRef" @exit="back"/>
           <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
           <template v-else-if="page === 'academic' || page === 'schedule' || page === 'tasks'">
             <button v-if="section==='agenda'" class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通作业</strong><span>按课程查看与安排</span><ChevronRight :size="16"/></button>
@@ -707,6 +711,7 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
+            <button class="learning-page-link" @click="nav('community')"><MessageSquare :size="20"/><strong>邯院通账号与树洞</strong><span>昵称、发帖与匿名交流</span><ChevronRight :size="16"/></button>
             <SectionHeader title="账号与教务"/><section class="profile-accounts"><SchoolConnection collapsible /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
             </section>
             <div class="profile-academics"><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/></div>
@@ -760,7 +765,7 @@ onUnmounted(() => {
           </footer>
         </div>
     </main>
-    <div class="navigation-dock" :inert="!!modal || agendaView.editor" :class="{ 'nav-suspended': !!modal }">
+    <div v-if="page!=='community'" class="navigation-dock" :inert="!!modal || agendaView.editor" :class="{ 'nav-suspended': !!modal }">
       <FloatingNavigation :page="page" @navigate="nav" />
     </div>
     <Transition name="toast"
@@ -1029,13 +1034,14 @@ onUnmounted(() => {
             ><ShieldCheck :size="27" />
             <h2>使用说明与隐私政策</h2>
             <p>邯院通是免费的独立学生项目，提供课表、待办和校园生活服务。学校与生活服务数据以对应平台为准；付款前请核对设备、账户与金额。请勿分享账号密码、验证码或登录凭证。</p>
+            <p>树洞使用独立邯院通账号。服务端保存登录账号、公开昵称、密码加密摘要、帖子、评论、互动及举报记录；教务账号和课表不传给社区。匿名发言向其他用户隐藏账号与昵称，后台保留关联用于处理举报。同一帖子内的匿名代号一致，不同帖子使用不同代号。可在树洞账号设置修改昵称、退出或注销。注销会删除作者内容、移除登录状态，并保留必要的去身份举报处理记录。</p>
             <AnalyticsSettings/>
             <p>匿名使用统计需你主动允许。开启后上报随机安装标识、应用版本、北京时间日期和预定义功能的累计操作次数，用于统计活跃设备与改善体验；不上传学号、密码、课程内容、余额、订单或设备硬件标识。每日汇总统计近90天，过期明细随后续上报清理，匿名设备记录用于累计统计。可在“我的 → 隐私政策”关闭统计或删除已上报记录。为防滥用，服务端短期保留每日加盐后的网络地址摘要，不保存原始地址到统计数据库。</p>
             <p>
               学校密码只在官方页面输入。Android 原生模块使用系统密钥库加密保存学校会话，供本人数据查询复用。退出学校账号后清除会话与学校缓存。
             </p>
             <p>
-              昵称、专业、主题和偏好保存在本机。个人课表通过
+              本机个人资料中的昵称、专业、主题和偏好保存在本机。个人课表通过
               IndexedDB（Web）或原生设备存储保存，导入文件仅在本机解析，不会上传服务器。学校数据保存在本机缓存，个人课表与备份独立保留。
             </p>
             <p>趣智校园使用本人账户连接。密码与验证码仅用于本次认证，不保存；会话、余额与账单由 Android 系统密钥库加密保存，退出趣智账户后清除。充值跳转支付宝官方小程序，付款前请核对学校和账户。</p>

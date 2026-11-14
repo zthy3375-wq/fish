@@ -23,43 +23,65 @@ jobs:
           git diff --exit-code -- ios-native/Hanyuantong.xcodeproj
           cmp android/app/src/main/assets/handan-academic.js ios-native/Hanyuantong/Resources/handan-academic.js
           cmp android/app/src/main/assets/handan-rendered-reader.js ios-native/Hanyuantong/Resources/handan-rendered-reader.js
-      - name: Find iPhone simulator
+      - name: Select SDK-matched iPhone simulator
+        timeout-minutes: 5
         run: |
           xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
           python3 - <<'PYTHON'
-          import json, os, re
+          import json, os, re, subprocess
           from pathlib import Path
           devices = json.loads(Path(os.environ['RUNNER_TEMP'], 'devices.json').read_text())['devices']
+          sdk = tuple(map(int, subprocess.check_output(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'], text=True).strip().split('.')[:2]))
           candidates = []
           for runtime, rows in devices.items():
               match = re.search(r'iOS-(\d+)-(\d+)', runtime)
               if not match:
                   continue
               version = tuple(map(int, match.groups()))
+              if not (16, 0) <= version <= sdk:
+                  continue
               for device in rows:
                   if device.get('isAvailable') and 'iPhone' in device['name']:
                       candidates.append((version, device['udid']))
+          if not candidates:
+              raise SystemExit(f'No available iPhone runtime at or below selected SDK {sdk}')
           version, device = max(candidates)
           # WebKit bug 293831 affects <=18.3 deployment targets on 18.4/18.5 simulators.
           # Official workaround applies to this simulator test build only; device build remains iOS16.
           deployment = '18.4' if (18, 4) <= version < (18, 6) else '16.0'
           with open(os.environ['GITHUB_ENV'], 'a') as env:
               env.write(f'DEVICE={device}\nTEST_DEPLOYMENT={deployment}\n')
-          print(f'Test runtime iOS {version}; simulator-only deployment target {deployment}')
+          print(f'Selected SDK {sdk}; test runtime iOS {version}; simulator-only deployment target {deployment}')
           PYTHON
-          DEVICE=$(python3 -c 'import os; print(next(x.strip().split("=",1)[1] for x in open(os.environ["GITHUB_ENV"]) if x.startswith("DEVICE=")))')
-          xcrun simctl boot "$DEVICE" || true
-          xcrun simctl bootstatus "$DEVICE" -b
-      - name: Focused task UI regression
+      - name: Compile simulator app and tests before boot
+        timeout-minutes: 8
         run: |
           set -o pipefail
-          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/FocusedTasks.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test | tee "$RUNNER_TEMP/focused-task-tests.log"
-      - name: Remaining full regression suite
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" build-for-testing | tee "$RUNNER_TEMP/ios-compile.log"
+      - name: Boot selected iPhone simulator
+        timeout-minutes: 5
+        run: |
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+      - name: Native unit regression
+        timeout-minutes: 8
+        run: |
+          set -o pipefail
+          # Keep the app-hosted unit bundle separate from UI tests: installing both
+          # in one test invocation can race the simulator app launch (run 43612196671).
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeUnits.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongTests test-without-building | tee "$RUNNER_TEMP/native-unit-tests.log"
+      - name: Focused task UI regression
+        timeout-minutes: 8
+        run: |
+          set -o pipefail
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/FocusedTasks.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/focused-task-tests.log"
+      - name: Remaining UI regression
+        timeout-minutes: 8
         run: |
           set -o pipefail
           # The two task flows already passed above against these exact build products.
-          # Run all unit cases and every other UI flow once, rather than repeating them.
-          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test | tee "$RUNNER_TEMP/xcodebuild.log"
+          # Unit tests ran in their own invocation; exercise every other UI flow once.
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/xcodebuild.log"
       - name: Compile unsigned iPhone build
         if: ${{ !cancelled() && steps.verify.outcome == 'success' }}
         run: |
@@ -70,6 +92,9 @@ jobs:
       - name: Export simulator screenshots
         if: always()
         run: |
+          if [ -d "$RUNNER_TEMP/NativeUnits.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/NativeUnits.xcresult" --output-path "$RUNNER_TEMP/unit-screenshots"
+          fi
           if [ -d "$RUNNER_TEMP/FocusedTasks.xcresult" ]; then
             xcrun xcresulttool export attachments --path "$RUNNER_TEMP/FocusedTasks.xcresult" --output-path "$RUNNER_TEMP/task-screenshots"
           fi
@@ -81,6 +106,10 @@ jobs:
         with:
           name: native-ios-verification
           path: |
+            ${{ runner.temp }}/ios-compile.log
+            ${{ runner.temp }}/NativeUnits.xcresult
+            ${{ runner.temp }}/native-unit-tests.log
+            ${{ runner.temp }}/unit-screenshots
             ${{ runner.temp }}/FocusedTasks.xcresult
             ${{ runner.temp }}/focused-task-tests.log
             ${{ runner.temp }}/task-screenshots

@@ -1,0 +1,30 @@
+name: Treehole private test service
+on:
+  push:
+    branches: [feature/treehole-accounts-20261114]
+    paths: [cloudbase/community-test-deploy.json]
+permissions:
+  contents: read
+concurrency:
+  group: treehole-private-service
+  cancel-in-progress: false
+jobs:
+  private-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check:community
+      - name: Install CloudBase CLI
+        run: npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
+      - name: Deploy isolated invite-only treehole backend
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          CI: 'true'
+          TCB_SITE: domestic
+        run: node scripts/cloudbase/deploy-community.mjs

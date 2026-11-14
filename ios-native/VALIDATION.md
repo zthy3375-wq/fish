@@ -1,3 +1,7 @@
+## 树洞开发分支（2026-11-14）
+
+新增独立邯院通账号、Keychain 会话、SwiftUI 树洞、昵称/匿名帖子和评论、举报管理。新增 4 项原生会话边界/匿名模型测试；当前代码的 Xcode 模拟器 App/测试目标编译已在 CI 43611619469 通过；该次混用 Xcode 16.4 SDK 与 iOS 26.2 模拟器，回归阶段被后续提交取消，不计为测试通过。CI 现在选择不高于当前 SDK 的模拟器并统一测试构建目标，[43612196671](https://github.com/zthy3375-wq/fish/actions/runs/43612196671) 已通过全部 5 项 UI 测试、模拟器编译和未签名 iPhone Release 编译。单元测试宿主启动被模拟器拒绝（应用正在安装/卸载），未执行单元用例，整体运行失败；不记为 XCTest 全通过。CI 将单元与 UI bundle 拆为顺序调用，使用同一份 build-for-testing 产物运行 test-without-building，修复安装竞争并减少重复构建；新回归 [43614199439](https://github.com/zthy3375-wq/fish/actions/runs/43614199439) 的 `Native unit regression` 已通过，包含新增树洞和调课用例；其余完整流水线仍在执行。该次源码 `30e227b` 与上一轮 `5c17abf` 之间仅改动工作流和文档，应用及测试源码完全相同。上述记录是两次运行的分项证据，不代表其中某次工作流已整体成功。已人工查看 43612196671 的首页与个人页截图，树洞入口、文字和安全区域显示正常。腾讯云邀请码内测服务已部署，已通过公网 HTTP 双账号检查；这不替代 iPhone 真机网络或 TestFlight 验收。
+
 # 2026-11-14 按周调课（云端验证受阻）
 
 新增学校课程按周调整、恢复原安排、时间冲突确认、账号/学期隔离与离线保存；10 项新增 XCTest 包含编辑页合成渲染截图测试，尚未执行。[macOS CI 43561594650](https://github.com/zthy3375-wq/fish/actions/runs/43561594650) 在 runner 启动前被 GitHub 账号付款/消费上限限制阻止。本轮 iOS 编译、XCTest、截图和模拟器包均未完成；下面已通过的两端优化记录不覆盖本次调课功能。Android 已改用 Linux 本地构建并通过验证，但不替代 Swift 原生验证；iOS 需可用的 Mac 或 macOS 云端构建服务，详见 [调课验收](../docs/COURSE-ADJUSTMENTS.md)及[免费构建途径](../docs/LOCAL-BUILD.md)。
