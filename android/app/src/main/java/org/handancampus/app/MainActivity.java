@@ -16,6 +16,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(org.handancampus.app.update.AppUpdatePlugin.class);
         registerPlugin(org.handancampus.app.analytics.AnalyticsPlugin.class);
         registerPlugin(org.handancampus.app.community.CommunityGroupPlugin.class);
+        registerPlugin(org.handancampus.app.community.TreeholePlugin.class);
         registerPlugin(org.handancampus.app.feedback.FeedbackSharePlugin.class);
         registerPlugin(org.handancampus.app.widget.CourseWidgetPlugin.class);
         super.onCreate(savedInstanceState);

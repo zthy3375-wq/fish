@@ -14,6 +14,8 @@ import CampusHero from './components/CampusHero.vue';
 import CommunityGroup from './components/CommunityGroup.vue';
 import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
+const Treehole=defineAsyncComponent(()=>import('./components/Treehole.vue'));
+const treeholeRef=ref<{requestBack:()=>boolean}>();
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
 const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
@@ -255,7 +257,7 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
 const taskDetailRef=ref<InstanceType<typeof TaskDetail>>();
 function planLearning(task:CampusTask){taskDetailRef.value?.edit(task)}
 function editDailyTask(task?:CampusTask,day?:string){taskDetailRef.value?.edit(task,day)}
-setBeforeBack(()=>!modal.value?taskDetailRef.value?.requestBack()??false:false);
+setBeforeBack(()=>!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false);
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
   if (modal.value==='school-course-adjustment') {if(editorBusy.value)return false;if(adjustmentRef.value?.hasChanges()){adjustmentRef.value.requestCancel();return false;}}
@@ -379,14 +381,14 @@ const sectionNames: Record<string, string> = {
 const title = computed(() =>
   page.value === "home"
     ? "今天"
-    : page.value === "life" ? "校园生活" : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
+    : page.value === "community" ? "树洞" : page.value === "life" ? "校园生活" : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
       ? sectionNames[section.value]
       : "我的",
 );
 const subtitle = computed(() =>
   page.value === "home"
     ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
-    : page.value === "life" ? "接水、洗衣与校园服务" : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
+    : page.value === "community" ? "邯院通账号 · 昵称或匿名发言" : page.value === "life" ? "接水、洗衣与校园服务" : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
       ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
       : "学校账号 · 本机设置",
 );
@@ -630,7 +632,7 @@ onUnmounted(() => {
       :inert="!!modal || agendaView.editor"
       :title="title"
       :subtitle="subtitle"
-      :back="page === 'academic' && section !== 'overview'"
+      :back="page==='community'||(page === 'academic' && section !== 'overview')"
       :add="page==='schedule'"
       :unread="!read && prefs.notifications"
       @back="back"
@@ -662,12 +664,14 @@ onUnmounted(() => {
                 <HomeCourseTimeline v-if="todayCourses.length" :courses="todayCourses" :now="now" @select="details"/>
               <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
               </section>
+              <button class="learning-page-link" @click="nav('community')"><MessageSquare :size="22"/><strong>邯院树洞</strong><span>聊聊校园里的那些事</span><ChevronRight :size="16"/></button>
               <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
               <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
 
 
             </div>
           </template>
+          <Treehole v-else-if="page === 'community'" ref="treeholeRef"/>
           <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
           <template v-else-if="page === 'academic' || page === 'schedule' || page === 'tasks'">
             <button v-if="section==='agenda'" class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通作业</strong><span>按课程查看与安排</span><ChevronRight :size="16"/></button>
@@ -707,6 +711,7 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
+            <button class="learning-page-link" @click="nav('community')"><MessageSquare :size="20"/><strong>邯院通账号与树洞</strong><span>昵称、发帖与匿名交流</span><ChevronRight :size="16"/></button>
             <SectionHeader title="账号与教务"/><section class="profile-accounts"><SchoolConnection collapsible /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
             </section>
             <div class="profile-academics"><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/></div>
@@ -760,7 +765,7 @@ onUnmounted(() => {
           </footer>
         </div>
     </main>
-    <div class="navigation-dock" :inert="!!modal || agendaView.editor" :class="{ 'nav-suspended': !!modal }">
+    <div v-if="page!=='community'" class="navigation-dock" :inert="!!modal || agendaView.editor" :class="{ 'nav-suspended': !!modal }">
       <FloatingNavigation :page="page" @navigate="nav" />
     </div>
     <Transition name="toast"

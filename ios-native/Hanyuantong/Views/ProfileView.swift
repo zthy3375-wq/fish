@@ -16,6 +16,9 @@ struct ProfileView: View {
                                         academicMajor: store.academicProfile?.major, academicClass: store.academicProfile?.className)
                     .padding(.vertical, 12)
             }
+            Section("邯院通账号") {
+                NavigationLink { TreeholeView() } label: { Label("账号与树洞 · 昵称与匿名交流", systemImage: "bubble.left.and.bubble.right") }
+            }
             Section("教务系统") {
                 if store.isBusy { Button("取消本次查询", role: .cancel) { store.cancelSchool() } }
                 if !store.semesters.isEmpty {

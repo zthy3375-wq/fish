@@ -1,3 +1,7 @@
+## 树洞开发分支（2026-11-14）
+
+新增独立邯院通账号、Keychain 会话、SwiftUI 树洞、昵称/匿名帖子和评论、举报管理。新增原生会话边界测试，等待当前 PR 的 Xcode 编译与测试结果。社区服务尚未部署，不能视为真实账号、真机网络或 TestFlight 验收。
+
 # 2026-11-14 按周调课（云端验证受阻）
 
 新增学校课程按周调整、恢复原安排、时间冲突确认、账号/学期隔离与离线保存；10 项新增 XCTest 包含编辑页合成渲染截图测试，尚未执行。[macOS CI 43561594650](https://github.com/zthy3375-wq/fish/actions/runs/43561594650) 在 runner 启动前被 GitHub 账号付款/消费上限限制阻止。本轮 iOS 编译、XCTest、截图和模拟器包均未完成；下面已通过的两端优化记录不覆盖本次调课功能。Android 已改用 Linux 本地构建并通过验证，但不替代 Swift 原生验证；iOS 需可用的 Mac 或 macOS 云端构建服务，详见 [调课验收](../docs/COURSE-ADJUSTMENTS.md)及[免费构建途径](../docs/LOCAL-BUILD.md)。

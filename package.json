@@ -1,6 +1,6 @@
 {
   "name": "handan-campus",
-  "version": "1.2.4",
+  "version": "1.3.0-test.1",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -10,12 +10,14 @@
     "test": "vitest run",
     "cap:sync": "npm run build && cap sync android",
     "android:add": "cap add android",
-    "check": "npm test && npm run check:shared && npm run build",
+    "check": "npm test && npm run check:shared && npm run check:community && npm run build",
     "test:watch": "vitest",
     "android:check": "npm run build && cap sync android && node scripts/android.mjs check",
     "android:apk": "npm run build && cap sync android && node scripts/android.mjs apk",
     "test:ui": "npm run build && node scripts/academic-browser-check.mjs",
-    "check:shared": "node ios-native/Scripts/check_protocol.mjs && node ios-native/Scripts/check_learning_parser.mjs && node ios-native/Scripts/parcel_reader_check.mjs"
+    "check:shared": "node ios-native/Scripts/check_protocol.mjs && node ios-native/Scripts/check_learning_parser.mjs && node ios-native/Scripts/parcel_reader_check.mjs",
+    "check:community": "node --test cloudbase/tests/community.verify.mjs",
+    "test:treehole": "npm run build && node scripts/treehole-browser-check.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^7.0.0",
+    "@electric-sql/pglite": "0.5.16",
     "@playwright/test": "^1.56.1",
     "@types/jsdom": "^21.1.7",
     "@types/leaflet": "^1.9.21",
