@@ -4,6 +4,8 @@
 
 ## 当前维护入口
 
+- [树洞账号、匿名规则与内测验证](TREEHOLE.md)
+
 - [两端整理与验收清单](ANDROID-IOS-REVIEW-20261114.md)
 - [苹果工程与构建](../ios-native/README.md)
 
