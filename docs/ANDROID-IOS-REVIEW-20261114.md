@@ -20,10 +20,18 @@
 | 苹果首页上课中没有真实进度 | 实际起止时间计算进度与剩余分钟，前台每秒更新，后台停止时钟任务 | 进度边界 XCTest、模拟器构建 |
 | 根文档平台与版本相互矛盾 | 重写项目入口、更新维护规则与文档导航，旧验证记录明确标为历史 | 文档核对 |
 
+## 构建环境和依赖整理
+
+- 真实 CI 暴露 `ubuntu-latest` 升至 Ubuntu 26.04，而锁定的 Playwright 1.56.1 不支持该系统；Android 与质量检查固定为 Ubuntu 24.04，避免浮动环境破坏可重复构建。
+- 升级 Vitest 5.1.0、vue-tsc 3.3.14，Node 最低版本明确为 22.12。升级后 459 项测试、共享解析检查和构建重新验证。
+- `npm audit` 从 8 项（2 critical / 6 moderate）降至 2 moderate，0 high / critical；新增 CI 高危依赖检查。
+- 剩余两项为同一上游 `ExcelJS → uuid` 依赖链（[GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)）。公告涉及 v3/v5/v6 API 的外部缓冲区参数；已检查 ExcelJS 4.4.0 只调用不带参数的 v4。保留审计待办，不使用 npm 建议的 ExcelJS 大版本降级，也不声称审计零风险。
+- Vitest 升级依据：[官方迁移说明](https://vitest.dev/guide/migration/)。业务依赖和文件导入流程保持兼容。
+
 ## 本轮验证
 
 - 优化前基线：453 项前端测试、TypeScript 与生产构建通过。
-- 优化后：459 项前端测试、TypeScript 与生产构建通过。
+- 优化后：459 项前端测试、TypeScript 与生产构建通过；新增 6 项在旧代码上全部失败，修复后通过。共享协议 5 个场景、学习通解析 34 个、快递 DOM 解析 39 个、APK 证据校验 26 项通过。
 - 两端共享脚本及 iOS 页面解析检查、浏览器回归、Android 原生编译、iOS 模拟器/设备编译：本轮执行结果待补充，不能用历史记录替代。
 
 ## 尚需真实验收
