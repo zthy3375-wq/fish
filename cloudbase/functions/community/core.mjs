@@ -76,10 +76,10 @@ export function createCommunity({db,registrationEnabled=false,inviteHash='',rate
    sessionToken=secret();tokenHash=digest(sessionToken);
   }else{
    if(typeof bearer!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(bearer))fail('session_expired',401);
-   tokenHash=digest(bearer);await rate('session:'+tokenHash,180,60);
+   tokenHash=digest(bearer);
    if(['password.change','account.delete'].includes(action)){
-    await rate('reauth:'+tokenHash,8,900);
     const s=await call('session',{},tokenHash);
+    await rate('reauth:'+s.user.id,8,900);
     if(!await verifyPassword(password(input.password),s.passwordHash))fail('invalid_credentials',401);
     b.proof=s.passwordHash;
     if(action==='password.change'){b.passwordHash=await hashPassword(password(input.newPassword));recoveryCode=secret();b.recoveryHash=digest(recoveryCode);}

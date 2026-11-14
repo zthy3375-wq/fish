@@ -34,8 +34,13 @@ console.log('Community schema installed with direct-client access denied');
 const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-community',type:'HTTP',runtime:'Nodejs20.19',timeout:30,memorySize:256,installDependency:false,public:true,gatewayPath:'/hyt-community',envVariables:{CLOUDBASE_ENV_ID:envId,CLOUDBASE_APIKEY:key,COMMUNITY_REGISTRATION:'open',COMMUNITY_INVITE_HASH:activation.inviteHash,COMMUNITY_RATE_SALT:rateSalt}}]};
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/community/scf_bootstrap',0o755);
 try{cli(['fn','deploy','hyt-community','--httpFn','--dir','cloudbase/functions/community','--force','--json']);}finally{unlinkSync('cloudbaserc.json');}
-const configuration=await fetch(base+'/v1/config',{signal:AbortSignal.timeout(30000)}).then(async r=>({ok:r.ok,value:await r.json()}));
-if(!configuration.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite)throw Error('Invite gate did not activate');
+let configuration;
+for(let attempt=0;attempt<12;attempt++){
+ try{configuration=await fetch(base+'/v1/config',{signal:AbortSignal.timeout(10000)}).then(async r=>({ok:r.ok,value:await r.json()}));}catch{configuration=null;}
+ if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite)break;
+ await new Promise(resolve=>setTimeout(resolve,2500));
+}
+if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite)throw Error('Invite gate did not activate');
 const http=async(action,body={},token='')=>{const r=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});return {status:r.status,body:await r.json()};};
 if((await http('posts.list')).status!==401)throw Error('Anonymous read access unexpectedly enabled');
 if((await http('credentials',{username:'test'})).status!==404)throw Error('Internal endpoint was exposed');

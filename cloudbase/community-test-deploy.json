@@ -2,5 +2,6 @@
   "mode": "private-treehole-test",
   "service": "hyt-community",
   "registration": "invite",
-  "inviteHash": "e2844a98e3f527918dae0f31e8d393dc13092886d73c7a51dedccddc9afa5992"
+  "inviteHash": "e2844a98e3f527918dae0f31e8d393dc13092886d73c7a51dedccddc9afa5992",
+  "revision": 2
 }

@@ -120,3 +120,16 @@ actor TreeholeService {
         }
     }
 }
+
+// UTC API timestamps are displayed in campus time; cursor strings remain unmodified.
+enum TreeholePresentation {
+    static func date(_ value: String) -> String {
+        let reader = ISO8601DateFormatter(); reader.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var parsed = reader.date(from: value)
+        if parsed == nil { reader.formatOptions = [.withInternetDateTime]; parsed = reader.date(from: value) }
+        guard let parsed else { return "时间未知" }
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai"); formatter.dateFormat = "M月d日 HH:mm"
+        return formatter.string(from: parsed)
+    }
+}

@@ -55,7 +55,7 @@ struct TreeholeView: View {
         .background(CampusTheme.background).navigationTitle("树洞").navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(tree.busy || screen != "feed")
         .toolbar { if screen != "feed" { ToolbarItem(placement: .navigationBarLeading) { Button("返回") { back() }.disabled(tree.busy) } } }
-        .task { if !tree.ready { tree.enter() } }
+        .task { tree.enter() }
         .onChange(of: tree.user?.id) { identity in if identity == nil { auth = "login" }; bodyText = ""; replyText = ""; password = ""; newPassword = ""; replyTo = nil; screen = "feed" }
         .sheet(isPresented: Binding(get: { tree.recovery != nil }, set: { if !$0 { tree.recovery = nil } })) {
             VStack(alignment: .leading, spacing: 20) {
@@ -173,7 +173,7 @@ struct TreeholeView: View {
     private func author(_ author: TreeholeAuthor, date: String) -> some View {
         HStack(spacing: 9) {
             Image(systemName: author.anonymous ? "leaf.circle.fill" : "person.crop.circle.fill").font(.title2).foregroundStyle(author.anonymous ? Color.green : CampusTheme.primary)
-            VStack(alignment: .leading, spacing: 3) { Text(author.name + (author.mine ? " · 我" : "")).font(.subheadline.weight(.semibold)); Text(String(date.prefix(16)).replacingOccurrences(of: "T", with: " ")).font(.caption2).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 3) { Text(author.name + (author.mine ? " · 我" : "")).font(.subheadline.weight(.semibold)); Text(TreeholePresentation.date(date)).font(.caption2).foregroundStyle(.secondary) }
         }
     }
     private func actions(_ post: TreeholePost) -> some View {
