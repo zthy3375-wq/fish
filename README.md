@@ -7,11 +7,11 @@
 | 项目 | 状态 |
 | --- | --- |
 | Android 线上版本 | 1.2.4 / 150，已发布强制更新；最低支持版本 150 |
-| 本分支 Android | 1.2.4 / 150，包含按周调课、接水与同步修复，原签名覆盖安装 |
+| 本分支 Android | 1.3.0-test.1 / 151，新增树洞邀请码内测，原签名覆盖安装；正式更新仍为 1.2.4 |
 | iPhone | `ios-native/` 原生 Swift/SwiftUI，最低 iOS 16；模拟器与未签名构建验证，不等于真机可安装 |
-| 开发分支 | main 集成当前发布版本；后续开发使用独立分支 |
+| 开发分支 | `feature/treehole-accounts-20261114`；草稿 PR #67，未合入 main |
 
-[1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
+[树洞开发与验证](docs/TREEHOLE.md) · [1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
 
 ## 功能与架构
 
@@ -21,12 +21,13 @@
 | 教务 | 官方登录、课表、成绩、考试、离线缓存 | 对应原生实现；真实账号与设备待验收 |
 | 学习通 | 官方登录、按课程读取、验证码恢复 | 原生读取与本机计划；真实完整性待验收 |
 | 校园生活 | 趣智、胖乖、扫码与订单状态 | 原生钱包与扫码；支付 SDK、签约和蓝牙走官方入口 |
+| 树洞内测 | 独立账号、昵称/匿名发帖、评论、点赞收藏、举报屏蔽 | 原生对应实现；完整 CI 和真机验收状态见验证记录 |
 | 个人安排 | 多学期课表、待办、备份、提醒、小组件 | 课表、待办、兼容备份、通知与 WidgetKit；真机能力配置待验收 |
 | 快递与地图 | 官方 App 出库入口、离线校园平面图 | 官方页面与原生取件展示试验、校园平面图；真实取件待验收 |
 
 学校缓存和个人数据独立。登录密码在官方页面输入，原生会话不暴露给界面。读取失败保留同账号、同学期的成功记录。考试按学期隔离，成绩历史独立于课表学期。不会通过查询状态自动创建新订单或重复启动设备。
 
-当前 Android 架构继续维护，iPhone 使用 Swift，Flutter 验证分支停止开发。社区功能尚未实现。正式 Android 包名 `org.handancampus.app`，覆盖升级必须使用原签名。
+当前 Android 架构继续维护，iPhone 使用 Swift，Flutter 验证分支停止开发。本分支已实现独立邯院通账号与文字树洞，支持昵称或匿名、评论、举报及后台管理；仅邀请码内测。正式 Android 包名 `org.handancampus.app`，覆盖升级必须使用原签名。
 
 ## 开发与验证
 
