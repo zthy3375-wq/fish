@@ -30,15 +30,15 @@ function save(){try{if(!weeks.value.length)throw Error('请至少选择一个上
       <p class="muted">只调整你的课表，重新同步后保留。可随时恢复学校安排。退出或重新连接学校账号会清除本机调课记录。</p>
       <section class="editor-basic">
         <h3>生效周次</h3>
-        <label class="form-label">调整范围<select v-model="range"><option value="one">仅某一周</option><option value="future">从某周起</option><option value="all">全部上课周</option><option value="custom">自选周次</option></select></label>
-        <label v-if="range==='one'||range==='future'" class="form-label">{{range==='one'?'生效周':'起始周'}}<select v-model.number="week"><option v-for="w in source.weeks" :key="w" :value="w">第 {{w}} 周</option></select></label>
+        <label class="form-label">调整范围<select v-model="range" aria-label="调整范围"><option value="one">仅某一周</option><option value="future">从某周起</option><option value="all">全部上课周</option><option value="custom">自选周次</option></select></label>
+        <label v-if="range==='one'||range==='future'" class="form-label">{{range==='one'?'生效周':'起始周'}}<select v-model.number="week" :aria-label="range==='one'?'生效周':'起始周'"><option v-for="w in source.weeks" :key="w" :value="w">第 {{w}} 周</option></select></label>
         <div v-if="range==='custom'" class="adjustment-weeks" aria-label="自选教学周"><button v-for="w in source.weeks" :key="w" type="button" :aria-pressed="custom.includes(w)" :class="{chosen:custom.includes(w)}" @click="toggle(w)">{{w}}</button></div>
         <p class="muted">第 {{weeks.join('、')||'—'}} 周 · 共 {{weeks.length}} 次</p>
       </section>
       <section class="editor-basic"><h3>新的上课安排</h3>
-        <label class="form-label">星期<select v-model.number="draft.day"><option v-for="(d,i) in ['一','二','三','四','五','六','日']" :key="i" :value="i+1">星期{{d}}</option></select></label>
-        <label class="form-label">时间方式<select v-model="draft.timeMode" @change="syncTime"><option value="period">按节次</option><option value="custom">自定义时间</option></select></label>
-        <div v-if="draft.timeMode==='period'" class="form-grid"><label class="form-label">开始节次<select v-model.number="draft.startPeriod" @change="syncTime"><option v-for="s in table.slots" :key="s.number" :value="s.number">第 {{s.number}} 节 · {{s.start}}</option></select></label><label class="form-label">结束节次<select v-model.number="draft.endPeriod" @change="syncTime"><option v-for="s in table.slots.filter(s=>s.number>=(draft.startPeriod??1))" :key="s.number" :value="s.number">第 {{s.number}} 节 · {{s.end}}</option></select></label></div>
+        <label class="form-label">星期<select v-model.number="draft.day" aria-label="星期"><option v-for="(d,i) in ['一','二','三','四','五','六','日']" :key="i" :value="i+1">星期{{d}}</option></select></label>
+        <label class="form-label">时间方式<select v-model="draft.timeMode" aria-label="时间方式" @change="syncTime"><option value="period">按节次</option><option value="custom">自定义时间</option></select></label>
+        <div v-if="draft.timeMode==='period'" class="form-grid"><label class="form-label">开始节次<select v-model.number="draft.startPeriod" aria-label="开始节次" @change="syncTime"><option v-for="s in table.slots" :key="s.number" :value="s.number">第 {{s.number}} 节 · {{s.start}}</option></select></label><label class="form-label">结束节次<select v-model.number="draft.endPeriod" aria-label="结束节次" @change="syncTime"><option v-for="s in table.slots.filter(s=>s.number>=(draft.startPeriod??1))" :key="s.number" :value="s.number">第 {{s.number}} 节 · {{s.end}}</option></select></label></div>
         <div v-else class="form-grid"><label class="form-label">开始时间<input v-model="draft.start" type="time" required/></label><label class="form-label">结束时间<input v-model="draft.end" type="time" required/></label></div>
         <label class="form-label">上课教室<input v-model="draft.room" maxlength="150" placeholder="例如：实验楼 305"/></label>
       </section>
