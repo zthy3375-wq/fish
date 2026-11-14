@@ -2,7 +2,7 @@
 
 ## Start here
 
-Read README.md and docs/STATUS.md. main is the integration baseline. Use a short-lived feature/fix/chore branch and a small PR; do not resurrect closed research or diagnostic branches. Respect the user's current authorization for merges and cleanup. Do not deploy a website or publish a store build unless requested.
+Read README.md and docs/STATUS.md. main is the integration target. While release or cross-platform integration PRs remain open, consult STATUS for the latest verified test baseline; do not silently replace newer fixes with an older main snapshot. Use a short-lived feature/fix/chore branch and a small PR; do not resurrect closed research or diagnostic branches. Respect the user's current authorization for merges and cleanup. Do not deploy a website or publish a store build unless requested.
 
 ## Commands
 
