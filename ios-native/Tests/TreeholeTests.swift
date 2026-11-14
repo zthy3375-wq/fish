@@ -57,4 +57,14 @@ final class TreeholeTests: XCTestCase {
         let encoded = String(data: try JSONEncoder().encode(post), encoding: .utf8)!
         XCTAssertFalse(encoded.contains("username")); XCTAssertFalse(encoded.contains("authorId"))
     }
+    func testTimestampBoundariesAndCampusTime() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-15T01:00:00Z"))
+        XCTAssertEqual(TreeholePresentation.date("2026-11-15T00:59:01Z", now: now), "刚刚")
+        XCTAssertEqual(TreeholePresentation.date("2026-11-15T00:59:00Z", now: now), "1 分钟前")
+        XCTAssertEqual(TreeholePresentation.date("2026-11-15T00:00:00.000Z", now: now), "1 小时前")
+        XCTAssertEqual(TreeholePresentation.date("2026-11-14T01:00:00Z", now: now), "11月14日 09:00")
+        XCTAssertEqual(TreeholePresentation.date("2026-11-15T02:00:00Z", now: now), "11月15日 10:00")
+        XCTAssertEqual(TreeholePresentation.date("invalid", now: now), "时间未知")
+    }
+
 }

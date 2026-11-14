@@ -15,7 +15,7 @@ import CommunityGroup from './components/CommunityGroup.vue';
 import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
 const Treehole=defineAsyncComponent(()=>import('./components/Treehole.vue'));
-const treeholeRef=ref<{requestBack:()=>boolean}>();
+const treeholeRef=ref<{requestBack:()=>boolean;refresh:()=>void}>();
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
 const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
@@ -556,8 +556,8 @@ async function recalibrate() {
 }
 watch(schedule, (s) => reconcileReminders(s));
 let pullY=0;
-function pullStart(e:TouchEvent){pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
-function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='academic'&&['overview','learning'].includes(section.value))void syncLearning({force:true});else if(page.value!=='tasks')void syncAcademic()}}
+function pullStart(e:TouchEvent){if(page.value==='community'&&window.scrollY>0){pullY=-1;return;}pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
+function pullEnd(e:TouchEvent){if(pullY>=0&&e.changedTouches[0].clientY-pullY>100){if(page.value==='community'){treeholeRef.value?.refresh();return;}if(page.value==='academic'&&['overview','learning'].includes(section.value))void syncLearning({force:true});else if(page.value!=='tasks')void syncAcademic()}}
 function viewportChange() {
   const v = window.visualViewport;
   document.documentElement.classList.toggle(
@@ -626,13 +626,13 @@ onUnmounted(() => {
   <div
     class="app-shell"
     :inert="updatesOpen"
-    :class="{ compact: prefs.compact, 'home-active': page === 'home', 'schedule-active':page==='schedule' }"
+    :class="{ compact: prefs.compact, 'home-active': page === 'home', 'schedule-active':page==='schedule', 'community-active':page==='community' }"
   >
-    <AppHeader v-if="page !== 'home'"
+    <AppHeader v-if="page !== 'home' && page !== 'community'"
       :inert="!!modal || agendaView.editor"
       :title="title"
       :subtitle="subtitle"
-      :back="page==='community'||(page === 'academic' && section !== 'overview')"
+      :back="page === 'academic' && section !== 'overview'"
       :add="page==='schedule'"
       :unread="!read && prefs.notifications"
       @back="back"
@@ -671,7 +671,7 @@ onUnmounted(() => {
 
             </div>
           </template>
-          <Treehole v-else-if="page === 'community'" ref="treeholeRef"/>
+          <Treehole v-else-if="page === 'community'" ref="treeholeRef" @exit="back"/>
           <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
           <template v-else-if="page === 'academic' || page === 'schedule' || page === 'tasks'">
             <button v-if="section==='agenda'" class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通作业</strong><span>按课程查看与安排</span><ChevronRight :size="16"/></button>
