@@ -4,7 +4,9 @@
 
 前一阶段本地 481 项前端测试（含 6 项编辑器 DOM 交互与 3 项学校缓存保存流程）、78 项共享解析检查通过。本轮补齐免费本地构建环境，修复调课选择框无障碍名称，重新通过 6 项编辑器 DOM 回归、类型检查和生产构建；360/390/430 三种屏宽的 629 项浏览器检查，以及 Android Debug/Release 各 182 项原生测试全部通过，普通 Debug 与未签名 Release 均已构建。验证使用合成输入，学校登录、扫码接水等真机流程仍待实测。
 
-[PR #64](https://github.com/zthy3375-wq/fish/pull/64) 保留全部代码，已交付可与正式版并行安装的 `1.2.3-test.3 / 149` 独立预览 APK（需要重新登录，非正式覆盖升级签名）。GitHub Actions 仍受额度/预算限制，本轮没有启用付费；iOS 调课编译与模拟器验证仍需 Mac 或可用的 macOS 构建服务。详见[调课验收](COURSE-ADJUSTMENTS.md)及[本地构建方法](LOCAL-BUILD.md)。仅测试，未合并或发布。
+[PR #64](https://github.com/zthy3375-wq/fish/pull/64) 保留全部代码。按用户“做成覆盖的”要求，已用原正式签名交付 `Hanyuantong-v1.2.3-test.3-CourseAdjust.apk`：包名 `org.handancampus.app`，版本 `1.2.3-test.3 / 149`，非 debug；原证书、v1/v2/v3 签名、版本递增、4 字节/16 KB ZIP 对齐与 28 个网页资源逐字节核验通过，满足覆盖正式版 1.2.2 / 146 的包身份条件，无需先卸载。12,430,367 bytes，SHA-256 `08c16d62184f52b4e5cf630444472892d09c738dd0e8144c1c15ed2426ca9e50`。尚未进行真实手机覆盖安装与升级后数据检查；此前独立预览包仍是另一个应用。
+
+本轮本地构建及原签名交付没有启用付费；此前 GitHub Actions 因额度/预算受阻，iOS 调课编译与模拟器验证仍需 Mac 或可用的 macOS 构建服务。详见[调课验收](COURSE-ADJUSTMENTS.md)及[本地构建方法](LOCAL-BUILD.md)。仅测试，未合并 main、未上传蒲公英、未改线上更新服务。
 
 ---
 
