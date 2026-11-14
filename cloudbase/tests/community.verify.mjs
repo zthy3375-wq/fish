@@ -133,3 +133,9 @@ test('deletion removes authored content and password change invalidates other de
  await assert.rejects(execute('posts.get',{postId:p.id},alice),{code:'not_found'});
  const stored=(await pg.query('SELECT body,deleted_at FROM public.hyt_comments WHERE post_id=$1',[p.id])).rows[0];assert.equal(stored.body,'已删除');assert(stored.deleted_at);
 });
+
+test('well-formed but invalid tokens do not allocate persistent rate records',async()=>{
+ const before=(await pg.query('SELECT count(*)::int AS n FROM public.hyt_community_rate')).rows[0].n;
+ await assert.rejects(api.execute('posts.list',{},'z'.repeat(43),'invalid-token-test'),{code:'session_expired'});
+ assert.equal((await pg.query('SELECT count(*)::int AS n FROM public.hyt_community_rate')).rows[0].n,before);
+});

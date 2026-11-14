@@ -23,7 +23,13 @@ jobs:
           git diff --exit-code -- ios-native/Hanyuantong.xcodeproj
           cmp android/app/src/main/assets/handan-academic.js ios-native/Hanyuantong/Resources/handan-academic.js
           cmp android/app/src/main/assets/handan-rendered-reader.js ios-native/Hanyuantong/Resources/handan-rendered-reader.js
+      - name: Compile simulator app and tests before boot
+        timeout-minutes: 8
+        run: |
+          set -o pipefail
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build-for-testing | tee "$RUNNER_TEMP/ios-compile.log"
       - name: Find iPhone simulator
+        timeout-minutes: 5
         run: |
           xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
           python3 - <<'PYTHON'
@@ -51,6 +57,7 @@ jobs:
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
       - name: Focused task UI regression
+        timeout-minutes: 8
         run: |
           set -o pipefail
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/FocusedTasks.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test | tee "$RUNNER_TEMP/focused-task-tests.log"
@@ -81,6 +88,7 @@ jobs:
         with:
           name: native-ios-verification
           path: |
+            ${{ runner.temp }}/ios-compile.log
             ${{ runner.temp }}/FocusedTasks.xcresult
             ${{ runner.temp }}/focused-task-tests.log
             ${{ runner.temp }}/task-screenshots

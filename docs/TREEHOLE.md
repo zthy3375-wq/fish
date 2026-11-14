@@ -14,7 +14,7 @@
 
 账号密码使用随机盐 scrypt；数据库保存会话 token 和恢复码的 SHA-256 摘要。Android Keystore / iOS Keychain 保存 token，前端 JS 不接触 token。学校教务账号、姓名与学号不自动成为社区身份，也不传给社区服务。注册默认关闭，可用服务器邀请码开放内测。恢复码重设密码会使原登录失效，修改密码会使其他设备退出。注销会删除作者内容并移除会话；举报处理审计保留去身份账号记录。
 
-后端目录 `cloudbase/functions/community`，独立 HTTP 函数计划路径 `/hyt-community/v1/`，SQL 在 `cloudbase/community-schema.sql`。社区表与现有教务/统计表隔离，客户端数据库角色禁读写。现阶段尚未向腾讯云部署，也没有开放线上注册。当前移动端遇到服务未就绪会显示连接失败，不提供假成功。
+后端目录 `cloudbase/functions/community`，独立 HTTP 函数计划路径 `/hyt-community/v1/`，SQL 在 `cloudbase/community-schema.sql`。社区表与现有教务/统计表隔离，客户端数据库角色禁读写。已部署到现有腾讯云环境，注册通过独立内测邀请码开放。线上双账号注册、发帖、匿名投影、楼主评论、越权删除和账号注销检查通过。邀请码不写入仓库或安装包。正式更新渠道仍为 1.2.4 /150。
 
 ## 本地验证
 
@@ -24,4 +24,15 @@
 - Android `testDebugUnitTest testReleaseUnitTest assembleRelease`：原生会话边界和编译。
 - iOS 新增 TreeholeTests；由 PR 上的 macOS CI 编译和执行。
 
-验证结果将随实际完成更新。上线前仍需部署服务、绑定运营管理员账号及真机联网验收。正式推送保持单独授权。
+本轮已验证：
+
+- Web 46 个测试文件 /481 个单测通过；TypeScript 与生产构建通过。
+- PostgreSQL 社区测试 14 项通过，包含微秒时间戳分页、屏蔽匿名关联保护、注销、密码撤销与禁言。
+- 社区 UI 实际本地后端联调 21 项通过（360/390/430 宽度）。既有 UI 回归 629 项通过。
+- Android Debug/Release 各 187 项原生测试及 Release 编译通过。
+- 云端工作流 `43610407136` 成功；额外公网 HTTP 双账号匿名与所有权检查通过，测试账号已注销。
+- iOS 当前代码编译/回归执行中，结果见 CI；尚无真机和 TestFlight 验收。
+
+APK `Hanyuantong-v1.3.0-test.1-Treehole.apk`：12,442,830 字节；SHA-256 `e47c1355add9dc79dd9310a7a53ab487646e627f767b83a322d4246f644f9551`。包名 `org.handancampus.app`，版本号 151，原正式签名 SHA-256 `4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9`。非调试包，30 个 Web 文件与构建产物逐字节一致，可覆盖安装正式版 1.2.4。安装与真机网络流程仍需用户实际试用。
+
+内测先保持邀请码限制，运营账号需在所有者注册后单独授予 moderator；没有“第一个注册即管理员”的入口。当前为文字社区，不含图片或私信。公开推广前还需完成运营管理员绑定、实际网络限频校准及两端真机验收。正式推送保持单独授权。
