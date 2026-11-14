@@ -17,14 +17,18 @@
 
 ## 本轮验证
 
-- 本地前端 481 项测试、78 项共享解析检查、TypeScript 与生产构建通过。
+- 前一阶段本地前端 481 项测试、78 项共享解析检查通过；本轮补全构建环境后，重新通过编辑器 6 项 DOM 测试、TypeScript 与生产构建。
 - 新增 10 项调课领域测试、3 项缓存竞争/账号/存储回归、6 项 Vue 编辑器 DOM 交互、3 项实际学校缓存与持久化流程测试。DOM 测试不替代真实浏览器布局检查。
-- 新增三种屏宽页面流程：课程直达、单周保存、其他周保留、刷新/重开、未保存返回、冲突确认、未来周范围、恢复原安排及小组件投影。
+- 本轮本地 Chromium 完成 360/390/430 三种屏宽的 629 项页面检查，全部通过。包含课程直达、单周保存、其他周保留、刷新/重开、未保存返回、冲突确认、未来周范围、恢复原安排及小组件投影；检查使用合成响应。
+- 浏览器首次执行发现嵌套选择框会把选项文本计入无障碍名称，已为调课选择框设置与可见标签一致的名称，再完整复测通过。
+- Android 本地 Debug/Release 各 182 项原生单元测试通过（每种配置 0 失败、0 跳过），普通 Debug APK 与未签名 Release APK 构建通过。初次环境尝试缺少完整 JDK、测试依赖下载代理未传入子 JVM，以及一次 Maven 下载失败，均在补全环境后重新验证通过；没有删除测试或关闭 HTTPS 校验。
+- 独立预览包 `Hanyuantong-v1.2.3-test.3-CourseAdjust-Preview.apk` 已构建并交付：14,603,370 bytes，SHA-256 `9f023f968647b13107585825b6c93d2834b3ec30bfc52075f60f9d4613313a13`。包名 `org.handancampus.app.preview`，版本 149 / 1.2.3-test.3，minSdk 23；测试签名验证、4 字节/16 KB ZIP 对齐和 28 个网页构建资源逐字节比对通过。测试证书 SHA-256 为 `e900d425e75000136ca1e3fea80ffe88258abde9e104cbb53a2ac33d907cf6f8`，不是正式签名。
+- 预览包与正式版并行安装、数据独立，需要重新登录。未做真实手机安装、学校账号、现场扫码接水或支付验证；未签名 Release 不作为可安装交付。
 - 新增 10 项 iOS XCTest：按周移动/恢复、官方变化暂停、跨学期/账号合并、非法输入、时间冲突、稳定标识、自定义时间、加密存储重开/失败、原生编辑页渲染。
 - 云端验证 **未启动**：[Quality 43561594515](https://github.com/zthy3375-wq/fish/actions/runs/43561594515)、[Android 43561594590](https://github.com/zthy3375-wq/fish/actions/runs/43561594590)、[iOS 43561594650](https://github.com/zthy3375-wq/fish/actions/runs/43561594650) 均在 runner 执行前结束，未运行测试或生成新安装包。
-- GitHub 构建页面的明确提示为：近期账号付款失败，或消费上限需要提高（`The job was not started because recent account payments have failed or your spending limit needs to be increased`）。没有修改付款方式、消费上限或仓库私有性，也没有反复重跑。
-- 本地环境没有 Xcode/Android SDK，前一轮本地 Chromium 也受环境限制。本轮真实浏览器三种屏宽流程、Android 原生打包、iOS XCTest/截图/设备编译仍待恢复 Actions 后执行。
-- 应用源提交为 `c5b7e2e54f5e7a553418aa1ee456bd120eef8a29`；后续仅追加测试与本验收文档，不改变应用源码。此前 PR #63 的通过记录不覆盖此次调课功能。
+- GitHub 构建页面的明确提示为：近期账号付款失败，或消费上限需要提高（`The job was not started because recent account payments have failed or your spending limit needs to be increased`）。按用户要求重试 Quality 一次仍被限制，随后改为本地验证；没有修改付款方式、消费上限或仓库私有性。
+- 当前 Linux 环境已补齐 SDK、完整 JDK 和 Chromium，本轮 Android 与浏览器验证不依赖 GitHub Actions。环境没有 Xcode，本次调课的 iOS XCTest/截图/设备编译仍需可用的 Mac 或 macOS 云端环境。
+- 初始应用源提交为 `c5b7e2e54f5e7a553418aa1ee456bd120eef8a29`。本轮标签修复及验证对应远端 `7d39a643acc172fcc7ee504b85ab20ec102969cd`、本地 `70545ba330bc88716001e87252c4771d5671db26`，二者完整源码树均为 `74813ac8781d9a222ad1e0a58b9bbc98c7b778e0`。此前 PR #63 的 iOS 通过记录不覆盖此次调课功能。
 
 ## 开发与发布
 
