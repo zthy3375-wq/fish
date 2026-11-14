@@ -2,11 +2,22 @@ import SwiftUI
 
 struct TreeholeView: View {
     @EnvironmentObject var tree: TreeholeStore
-    @State private var screen = "feed", auth = "login"
-    @State private var username = "", password = "", nickname = "", invitation = "", recoveryInput = "", newPassword = ""
-    @State private var agreed = false, anonymous = false, replyAnonymous = false
-    @State private var bodyText = "", replyText = "", reportReason = ""
-    @State private var postRequest = UUID().uuidString, commentRequest = UUID().uuidString
+    @State private var screen = "feed"
+    @State private var auth = "login"
+    @State private var username = ""
+    @State private var password = ""
+    @State private var nickname = ""
+    @State private var invitation = ""
+    @State private var recoveryInput = ""
+    @State private var newPassword = ""
+    @State private var agreed = false
+    @State private var anonymous = false
+    @State private var replyAnonymous = false
+    @State private var bodyText = ""
+    @State private var replyText = ""
+    @State private var reportReason = ""
+    @State private var postRequest = UUID().uuidString
+    @State private var commentRequest = UUID().uuidString
     @State private var replyTo: TreeholeComment?
     @State private var reportTarget: TreeholeTarget?
     @State private var confirmation: TreeholeConfirmation?
@@ -45,7 +56,7 @@ struct TreeholeView: View {
         .navigationBarBackButtonHidden(tree.busy || screen != "feed")
         .toolbar { if screen != "feed" { ToolbarItem(placement: .navigationBarLeading) { Button("返回") { back() }.disabled(tree.busy) } } }
         .task { if !tree.ready { tree.enter() } }
-        .onChange(of: tree.user?.id) { _ in bodyText = ""; replyText = ""; password = ""; newPassword = ""; replyTo = nil; screen = "feed" }
+        .onChange(of: tree.user?.id) { identity in if identity == nil { auth = "login" }; bodyText = ""; replyText = ""; password = ""; newPassword = ""; replyTo = nil; screen = "feed" }
         .sheet(isPresented: Binding(get: { tree.recovery != nil }, set: { if !$0 { tree.recovery = nil } })) {
             VStack(alignment: .leading, spacing: 20) {
                 Label("保存你的账号恢复码", systemImage: "checkmark.shield").font(.title2.bold())

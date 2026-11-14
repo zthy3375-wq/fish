@@ -133,7 +133,8 @@ private struct LegacyPersonalCalendarView: View {
 struct PrivacyView: View {
     var body: some View {
         List {
-            Section("学校账号") { Text("请只在学校官方登录页面输入账号和密码。邯院通不会提供自制密码输入框。") }
+            Section("学校账号") { Text("请只在学校官方登录页面输入账号和密码。学校登录不会使用自制密码输入框。") }
+            Section("树洞与邯院通账号") { Text(TreeholeView.rules) }
             Section("本机数据") { Text("个人课程与待办保存在本机。断开教务连接会清除教务会话与教务缓存，保留个人记录。") }
             Section("服务状态") { Text("当前为 iPhone 原生开发版，尚未完成全部 Android 功能迁移。第三方服务需由用户主动连接；付款和设备操作须核对确认，以平台实际状态为准。") }
         }.navigationTitle("隐私与本机数据").navigationBarTitleDisplayMode(.inline)

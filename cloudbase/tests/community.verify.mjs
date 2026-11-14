@@ -106,3 +106,30 @@ test('HTTP boundary accepts JSON only, rejects arbitrary actions and never retur
   const b=await r.json();assert.equal(b.user.username,'alice_test');assert(!JSON.stringify(b).includes('password'));assert.equal(r.headers.get('cache-control'),'no-store');
  }finally{await new Promise(r=>server.close(r));}
 });
+test('pagination retains PostgreSQL microseconds and has no omissions on close timestamps',async()=>{
+ const u=await execute('register',{username:'paging_test',nickname:'分页测试',password:pass,agreed:true});
+ for(let i=0;i<25;i++)await pg.query("INSERT INTO public.hyt_posts(author_id,body,anonymous,request_id,created_at) VALUES($1,$2,false,$3,'2026-01-01 00:00:00.123456+00'::timestamptz + ($4::int * interval '1 microsecond'))",[u.user.id,'分页 '+i,randomUUID(),i]);
+ const first=await execute('posts.list',{scope:'mine'},u);assert.equal(first.posts.length,20);assert(first.next);
+ const next=await execute('posts.list',{scope:'mine',...first.next},u);assert.equal(next.posts.length,5);assert.equal(next.next,null);
+ assert.equal(new Set([...first.posts,...next.posts].map(p=>p.id)).size,25);
+});
+test('mute blocks publishing but preserves deletion; clearing blocks is account scoped',async()=>{
+ const u=await execute('register',{username:'muted_test',nickname:'禁言测试',password:pass,agreed:true});
+ const p=(await post('本人可删除',false,u)).post;
+ await pg.query("UPDATE public.hyt_members SET banned_until=now()+interval '1 hour' WHERE id=$1",[u.user.id]);
+ await assert.rejects(post('禁言后发布',true,u),{code:'account_muted'});
+ await execute('posts.delete',{postId:p.id},u);
+ await execute('blocks.clear',{},bob);
+ assert.equal((await pg.query('SELECT count(*)::int AS n FROM public.hyt_blocks WHERE member_id=$1',[bob.user.id])).rows[0].n,0);
+ assert.equal((await pg.query('SELECT count(*)::int AS n FROM public.hyt_hidden_threads WHERE member_id=$1',[bob.user.id])).rows[0].n,0);
+});
+test('deletion removes authored content and password change invalidates other devices',async()=>{
+ const u=await execute('register',{username:'delete_test',nickname:'注销测试',password:pass,agreed:true});
+ const other=await execute('login',{username:'delete_test',password:pass});
+ const p=(await post('注销后消失',true,u)).post;await comment(p.id,'作者评论',true,u);
+ const changed=await execute('password.change',{password:pass,newPassword:'changed-test-password'},u);assert(changed.recoveryCode);
+ await assert.rejects(execute('me',{},other),{code:'session_expired'});
+ await execute('account.delete',{password:'changed-test-password'},u);
+ await assert.rejects(execute('posts.get',{postId:p.id},alice),{code:'not_found'});
+ const stored=(await pg.query('SELECT body,deleted_at FROM public.hyt_comments WHERE post_id=$1',[p.id])).rows[0];assert.equal(stored.body,'已删除');assert(stored.deleted_at);
+});

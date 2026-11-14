@@ -7,10 +7,16 @@ import Combine
     @Published var current: TreeholePost?
     @Published var comments: [TreeholeComment] = []
     @Published var reports: [TreeholeReport] = []
-    @Published var busy = false, ready = false, registration = false, requiresInvite = false
-    @Published var message: String?, recovery: String?
-    @Published var scope = "all", query = ""
-    @Published var feedNext: [String: String]?, commentNext: [String: String]?
+    @Published var busy = false
+    @Published var ready = false
+    @Published var registration = false
+    @Published var requiresInvite = false
+    @Published var message: String?
+    @Published var recovery: String?
+    @Published var scope = "all"
+    @Published var query = ""
+    @Published var feedNext: [String: String]?
+    @Published var commentNext: [String: String]?
     let api: TreeholeService
     init(api: TreeholeService = TreeholeService()) { self.api = api }
     func perform(_ work: @escaping @MainActor () async throws -> Void) {

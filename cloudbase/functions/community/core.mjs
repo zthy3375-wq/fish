@@ -1,7 +1,9 @@
-import {randomBytes,createHash,scrypt,timingSafeEqual} from 'node:crypto';
+import {randomBytes,createHash,createHmac,scrypt,timingSafeEqual} from 'node:crypto';
 import {promisify} from 'node:util';
 
 const derive=promisify(scrypt);
+let activeKDF=0;
+async function deriveBounded(value,salt){if(activeKDF>=2)throw new CommunityError(429,'too_many_requests');activeKDF++;try{return await derive(value,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024});}finally{activeKDF--;}}
 export const digest=value=>createHash('sha256').update(value).digest('hex');
 const secret=()=>randomBytes(32).toString('base64url');
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -13,10 +15,10 @@ function id(value,optional=false){if(optional&&(value===null||value===undefined)
 function boolean(value){if(typeof value!=='boolean')fail();return value;}
 function username(value){const v=text(value,4,24).toLowerCase();if(!/^[a-z][a-z0-9_]{3,23}$/.test(v))fail('invalid_username');return v;}
 function time(value){if(typeof value!=='string'||value.length>40||!Number.isFinite(Date.parse(value)))fail();return value;}
-export async function hashPassword(value){const salt=randomBytes(16).toString('hex');const key=await derive(value,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024});return `scrypt-v1$${salt}$${Buffer.from(key).toString('hex')}`;}
+export async function hashPassword(value){const salt=randomBytes(16).toString('hex');const key=await deriveBounded(value,salt);return `scrypt-v1$${salt}$${Buffer.from(key).toString('hex')}`;}
 export async function verifyPassword(value,stored){
  const parts=String(stored||'').split('$');const valid=parts.length===3&&parts[0]==='scrypt-v1'&&/^[a-f0-9]{32}$/.test(parts[1])&&/^[a-f0-9]{128}$/.test(parts[2]);
- const key=await derive(value,valid?parts[1]:'00000000000000000000000000000000',64,{N:32768,r:8,p:1,maxmem:64*1024*1024});
+ const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
 export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve']);
@@ -44,9 +46,9 @@ function sanitize(action,b){
  return out;
 }
 /** db is a server-only RPC adapter; client-controlled proof, ids and roles are discarded. */
-export function createCommunity({db,registrationEnabled=false,inviteHash=''}){
+export function createCommunity({db,registrationEnabled=false,inviteHash='',rateSalt=randomBytes(32).toString('hex')}){
  async function call(action,payload={},token=''){const r=await db(action,payload,token);if(!r||!Number.isInteger(r.status))throw Error('database_response');if(r.status>=400)fail(r.error||'temporarily_unavailable',r.status);return r;}
- const rate=(key,limit,seconds)=>call('rate',{key:digest(key),limit,seconds});
+ const rate=(key,limit,seconds)=>call('rate',{key:createHmac('sha256',rateSalt).update(new Date().toISOString().slice(0,10)+':'+key).digest('hex'),limit,seconds});
  async function execute(action,input={},bearer='',peer='unknown'){
   if(!clientActions.has(action))fail('not_found',404);
   const b=sanitize(action,input);let tokenHash='';let sessionToken;let recoveryCode;

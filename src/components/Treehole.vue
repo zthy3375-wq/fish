@@ -22,7 +22,7 @@ async function run(work:()=>Promise<void>){
  try{await work();}catch(e){if(alive){error.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'){clearAccount();}}}
  finally{if(alive)busy.value=false;}
 }
-function clearAccount(){user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
+function clearAccount(){auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
 async function feed(more=false){const r=await api('posts.list',{scope:scope.value,query:query.value,...(more?feedNext.value:{})});if(!alive)return;posts.value=more?[...posts.value,...r.posts||[]]:r.posts||[];feedNext.value=r.next||null;}
 async function initialize(){await run(async()=>{
  const config=await api('config');if(!alive)return;registration.value=!!config.registrationEnabled;inviteRequired.value=!!config.requiresInvite;
