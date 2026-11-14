@@ -17,12 +17,15 @@
 
 ## 本轮验证
 
-- 本地前端 472 项测试、78 项共享解析检查、TypeScript 与生产构建通过。
-- 新增 10 项调课领域测试与 3 项缓存竞争/账号/存储回归。
+- 本地前端 481 项测试、78 项共享解析检查、TypeScript 与生产构建通过。
+- 新增 10 项调课领域测试、3 项缓存竞争/账号/存储回归、6 项 Vue 编辑器 DOM 交互、3 项实际学校缓存与持久化流程测试。DOM 测试不替代真实浏览器布局检查。
 - 新增三种屏宽页面流程：课程直达、单周保存、其他周保留、刷新/重开、未保存返回、冲突确认、未来周范围、恢复原安排及小组件投影。
 - 新增 10 项 iOS XCTest：按周移动/恢复、官方变化暂停、跨学期/账号合并、非法输入、时间冲突、稳定标识、自定义时间、加密存储重开/失败、原生编辑页渲染。
-- Android 和 macOS CI 结果待补充；不把本地前端通过写成 iPhone 或真机验收。
+- 云端验证 **未启动**：[Quality 43561594515](https://github.com/zthy3375-wq/fish/actions/runs/43561594515)、[Android 43561594590](https://github.com/zthy3375-wq/fish/actions/runs/43561594590)、[iOS 43561594650](https://github.com/zthy3375-wq/fish/actions/runs/43561594650) 均在 runner 执行前结束，未运行测试或生成新安装包。
+- GitHub 构建页面的明确提示为：近期账号付款失败，或消费上限需要提高（`The job was not started because recent account payments have failed or your spending limit needs to be increased`）。没有修改付款方式、消费上限或仓库私有性，也没有反复重跑。
+- 本地环境没有 Xcode/Android SDK，前一轮本地 Chromium 也受环境限制。本轮真实浏览器三种屏宽流程、Android 原生打包、iOS XCTest/截图/设备编译仍待恢复 Actions 后执行。
+- 应用源提交为 `c5b7e2e54f5e7a553418aa1ee456bd120eef8a29`；后续仅追加测试与本验收文档，不改变应用源码。此前 PR #63 的通过记录不覆盖此次调课功能。
 
 ## 开发与发布
 
-基于 `improve/android-ios-20261114` 的 `abf7456`，独立分支 `feat/course-reschedule-20261114`。Android 1.2.3-test.3 / 149，仅测试。未合并 main、未上传蒲公英、未改线上更新服务，未创建分发签名 IPA。
+基于 `improve/android-ios-20261114` 的 `abf7456`，独立分支 `feat/course-reschedule-20261114`，草稿 [PR #64](https://github.com/zthy3375-wq/fish/pull/64) 以 PR #63 的优化分支为基线。Android 1.2.3-test.3 / 149，仅测试。未合并 main、未上传蒲公英、未改线上更新服务，未创建分发签名 IPA。
