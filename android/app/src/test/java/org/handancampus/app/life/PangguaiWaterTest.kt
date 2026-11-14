@@ -6,6 +6,48 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PangguaiWaterTest {
+    @Test fun availableOutletDoesNotRequireAPreviousOrderEndStatusBeforeStarting(){
+        for(status in listOf<String?>(null,"1","0","5")){
+            val h=Harness()
+            h.handler={p,_->if(p=="goods/water/sync"&&h.readingPhase=="idle"){
+                JSONObject().put("workStatus",1).apply{if(status!=null)put("status",status)}
+            }else h.response(p)}
+            val result=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+            assertEquals("using",result.getString("phase"));assertEquals(1,h.count("goods/water/unlock"))
+        }
+    }
+    @Test fun nonWorkingPreflightAfterArchiveStillRequiresFreshAvailabilityAndNeverReplaysOldOrder(){
+        val h=Harness();val old=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        val archived=h.engine.archiveUnverified(old,true);h.readingPhase="idle"
+        h.handler={p,_->if(p=="goods/water/sync"&&h.readingPhase=="idle")JSONObject("{workStatus:1}")else h.response(p)}
+        val result=h.engine.start(device,h.engine.prepare(device,"outlet-test"),archived)
+        assertEquals("using",result.getString("phase"));assertEquals(2,h.count("goods/water/unlock"))
+        assertEquals(0,h.count("goods/endWater"));assertEquals(0,h.count("order/sync"))
+    }
+    @Test fun localArchiveRequiresExplicitObservationAndNeverSendsCommands(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        h.calls.clear();fails("WATER_CONFIRM_REQUIRED"){h.engine.archiveUnverified(s,false)}
+        assertEquals("using",h.saved!!.getString("phase"))
+        val result=h.engine.archiveUnverified(s,true)
+        assertEquals("archived_unverified",result.getString("phase"));assertEquals("water-order",result.getString("orderNo"))
+        assertFalse(result.optBoolean("deviceEnded"));assertFalse(result.optBoolean("billConfirmed"));assertFalse(result.has("endedAt"))
+        assertTrue(h.calls.isEmpty());h.engine.poll(result);h.engine.end(result);assertTrue(h.calls.isEmpty())
+    }
+    @Test fun localArchiveDoesNotBypassFreshDeviceBusyCheck(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        val archived=h.engine.archiveUnverified(s,true);val quote=h.engine.prepare(device,"outlet-test")
+        fails("DEVICE_BUSY"){h.engine.start(device,quote,archived)}
+        assertEquals(1,h.count("goods/water/unlock"))
+        h.readingPhase="idle";h.engine.start(device,h.engine.prepare(device,"outlet-test"),archived)
+        assertEquals(2,h.count("goods/water/unlock"))
+    }
+    @Test fun incompleteDeviceResponseCannotUnlockAfterLocalArchive(){
+        val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
+        val archived=h.engine.archiveUnverified(s,true);val quote=h.engine.prepare(device,"outlet-test")
+        h.handler={p,_->if(p=="goods/water/sync")JSONObject() else h.response(p)}
+        fails("WATER_WAIT"){h.engine.start(device,quote,archived)}
+        assertEquals(1,h.count("goods/water/unlock"));assertEquals(1,h.count("payChannelRoute/addUserAfterPayChannel"))
+    }
     private val device=JSONObject("{id:'water-device',category:'04',routeShopId:'42'}")
     private class Harness {
         var saved:JSONObject?=null;var readingPhase="idle";var finish=true;var channel=true;var amount:Any=1

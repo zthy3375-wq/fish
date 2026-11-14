@@ -2,24 +2,25 @@
 import {computed,nextTick,onMounted,onUnmounted,ref,watch} from 'vue';
 import {App} from '@capacitor/app';
 import type {PluginListenerHandle} from '@capacitor/core';
-import {pangguai,pgBusy,prepareWater,startWater,pollWater,endWater,confirmPhysicalWaterEnd,openWaterPaymentSetup} from '../composables/pangguai';
+import {pangguai,pgBusy,pgError,prepareWater,startWater,pollWater,endWater,confirmPhysicalWaterEnd,archiveUnverifiedWater,openWaterPaymentSetup} from '../composables/pangguai';
 import {pgAmount,pangguaiError,waterPhase,type PangguaiDevice,type WaterQuote} from '../services/pangguai-client';
 const props=defineProps<{device?:PangguaiDevice}>();defineEmits<{close:[]}>();
-const selection=ref(''),quote=ref<WaterQuote>(),localBusy=ref(false),starting=ref(false),clock=ref(Date.now()),panel=ref<HTMLElement>(),confirmPanel=ref<HTMLElement>(),devicePanel=ref<HTMLElement>();
-const recovering=ref(false),recoveryPending=ref(false);
-const session=computed(()=>pangguai.value.water),terminal=computed(()=>['settled','ended_zero','closed_unknown'].includes(session.value?.phase??''));
+const selection=ref(''),quote=ref<WaterQuote>(),localBusy=ref(false),starting=ref(false),clock=ref(Date.now()),panel=ref<HTMLElement>(),confirmPanel=ref<HTMLElement>(),devicePanel=ref<HTMLElement>(),feedbackPanel=ref<HTMLElement>();
+const recovering=ref(false),recoveryPending=ref(false),archiving=ref(false),actionError=ref('');
+const session=computed(()=>pangguai.value.water),terminal=computed(()=>['settled','ended_zero','closed_unknown','archived_unverified'].includes(session.value?.phase??''));
 const activeSession=computed(()=>!!session.value&&!terminal.value),blocked=computed(()=>localBusy.value||pgBusy.value||pangguai.value.expired),expired=computed(()=>!!quote.value&&clock.value>quote.value.expiresAt);
-const needsRecovery=computed(()=>activeSession.value&&(recoveryPending.value||!session.value?.orderNo||['WATER_OWNERSHIP','WATER_UNKNOWN','WATER_STILL_ACTIVE'].includes(session.value?.error??'')||session.value?.phase==='starting'));
+const needsRecovery=computed(()=>activeSession.value&&(recoveryPending.value||!session.value?.orderNo||['WATER_OWNERSHIP','WATER_UNKNOWN','WATER_STILL_ACTIVE','WATER_WAIT'].includes(session.value?.error??'')||session.value?.phase==='starting'));
 let disposed=false,active=true,awaitingSetup=false,setupAway=false,lastPoll=0,failures=0,timer:ReturnType<typeof setInterval>|undefined,listener:PluginListenerHandle|undefined;
-watch(()=>session.value?.id,()=>{failures=0;lastPoll=0;recovering.value=false;recoveryPending.value=false});
-watch(()=>props.device,async d=>{selection.value=d?.skus.length===1&&d.skus[0]?.available?d.skus[0].id:'';quote.value=undefined;if(d){await nextTick();devicePanel.value?.scrollIntoView?.({block:'nearest'})}},{immediate:true});
+watch(()=>session.value?.id,()=>{failures=0;lastPoll=0;recovering.value=false;recoveryPending.value=false;archiving.value=false});
+watch(()=>props.device,async d=>{selection.value=d?.skus.length===1&&d.skus[0]?.available?d.skus[0].id:'';quote.value=undefined;actionError.value='';if(d){await nextTick();devicePanel.value?.scrollIntoView?.({block:'nearest'})}},{immediate:true});
 function updated(value:number){return new Date(value).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Shanghai'})}
 const elapsed=computed(()=>{if(!session.value?.startedAt)return '';const sec=Math.max(0,Math.floor(((session.value.endedAt??clock.value)-session.value.startedAt)/1000));return `${Math.floor(sec/60)}分${String(sec%60).padStart(2,'0')}秒`});
-async function preview(){if(blocked.value||!selection.value)return;localBusy.value=true;quote.value=undefined;try{const result=await prepareWater(selection.value);if(!disposed&&result){quote.value=result;await nextTick();confirmPanel.value?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false}}
-async function begin(){const q=quote.value;if(!q||blocked.value||expired.value||!q.canStart)return;localBusy.value=true;starting.value=true;quote.value=undefined;try{await startWater(q.id);await nextTick();panel.value?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}finally{localBusy.value=false;starting.value=false;lastPoll=Date.now()}}
+async function preview(){if(blocked.value||activeSession.value||!selection.value)return;localBusy.value=true;quote.value=undefined;actionError.value='';try{const result=await prepareWater(selection.value);if(!disposed){if(result)quote.value=result;else actionError.value=pgError.value||'接水信息未取得，请稍后重新查询。';await nextTick();(result?confirmPanel.value:feedbackPanel.value)?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false}}
+async function begin(){const q=quote.value;if(!q||blocked.value||activeSession.value||expired.value||!q.canStart)return;localBusy.value=true;starting.value=true;quote.value=undefined;actionError.value='';try{const result=await startWater(q.id);if(!disposed){if(!result)actionError.value=pgError.value||'启动结果尚未确认，请查看机身及当前接水记录，不要重复开水。';await nextTick();(feedbackPanel.value??panel.value??devicePanel.value)?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false;starting.value=false;lastPoll=Date.now()}}
 async function refresh(){if(blocked.value)return;lastPoll=Date.now();const result=await pollWater();failures=result?0:failures+1;if(result?.water&&!result.water.error)recoveryPending.value=false}
 async function finish(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;try{await endWater(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
 async function physical(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;recovering.value=false;recoveryPending.value=true;try{await confirmPhysicalWaterEnd(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
+async function archive(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;try{await archiveUnverifiedWater(s.id)}finally{localBusy.value=false;archiving.value=false;lastPoll=Date.now()}}
 async function setup(){if(blocked.value)return;awaitingSetup=true;setupAway=false;const result=await openWaterPaymentSetup();if(!result?.opened)awaitingSetup=false}
 function tick(){clock.value=Date.now();if(disposed||!active||blocked.value)return;if(awaitingSetup&&setupAway){awaitingSetup=false;void preview();return}if(activeSession.value&&session.value?.orderNo&&!recovering.value&&!recoveryPending.value&&!['WATER_OWNERSHIP','WATER_STILL_ACTIVE'].includes(session.value.error??'')&&failures<3&&Date.now()-lastPoll>=3000)void refresh()}
 onMounted(async()=>{timer=setInterval(tick,1000);try{const h=await App.addListener('appStateChange',({isActive})=>{active=isActive;if(!isActive&&awaitingSetup)setupAway=true;if(isActive){failures=0;tick()}});if(disposed)void h.remove();else listener=h}catch{};tick()});
@@ -27,6 +28,8 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
 </script>
 <template>
  <div class="water-flow">
+ <p v-if="starting" class="instruction" role="status" aria-live="polite">正在请求设备启动，请留意机身提示，不要重复确认。</p>
+ <p v-if="actionError&&(!activeSession||!session?.error)" ref="feedbackPanel" class="feedback" role="alert">{{actionError}}</p>
  <section v-if="session&&!terminal" ref="panel" class="water-progress" aria-label="当前接水记录">
   <div class="heading"><span>{{session.deviceName}} · {{session.outlet}}</span><button class="text-button" :disabled="blocked" @click="refresh">查询状态</button></div>
   <h3 aria-live="polite">{{(recoveryPending||['WATER_OWNERSHIP','WATER_STILL_ACTIVE'].includes(session.error??''))?'接水状态待核对':waterPhase(session.phase)}}</h3>
@@ -46,6 +49,11 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
   <div v-if="needsRecovery&&recovering" class="instruction" role="group" aria-label="确认接水已停止">
    <p>请先按机身「结算」，确认本次接水已经停止。核对后移出旧接水记录，账单仍保留待查。</p>
    <div class="actions"><button class="secondary" :disabled="blocked" @click="recovering=false">取消</button><button class="primary" :disabled="blocked" @click="physical">确认已停止，核对设备</button></div>
+  </div>
+  <button v-if="needsRecovery&&recoveryPending&&!archiving" class="text-button" :disabled="blocked" @click="archiving=true">仍无法核对？仅移出本机记录</button>
+  <div v-if="needsRecovery&&archiving" class="instruction" role="group" aria-label="仅移出本机记录">
+   <p>只有亲眼确认机身已停止出水后才可继续。此操作不会停止设备、不会结算或退款，也不代表账单已完成。旧订单会保留待核实；下次接水仍需重新核对并确认。</p>
+   <div class="actions"><button class="secondary" :disabled="blocked" @click="archiving=false">暂不移出</button><button class="primary" :disabled="blocked" @click="archive">机身已停止，仅移出记录</button></div>
   </div>
   <p class="muted">{{session.paymentName}} · 查询于 {{updated(session.updatedAt)}}</p>
   <details v-if="session.orderNo"><summary>本次订单</summary><p>{{session.orderNo}}</p></details>
@@ -68,7 +76,7 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
   <p v-if="expired" class="feedback">确认信息已过期，请取消后重新查询。</p>
   <button class="primary full" :disabled="blocked||expired||!quote.canStart" @click="begin">确认开始接水</button>
  </section>
- <details v-if="session&&terminal" :key="session.id" class="water-history" aria-label="上次接水记录">
+ <details v-if="session&&terminal&&session.phase!=='archived_unverified'" :key="session.id" class="water-history" aria-label="上次接水记录">
   <summary><span><strong>{{waterPhase(session.phase)}}</strong><small>{{session.deviceName}} · {{session.outlet}}</small></span><b v-if="session.phase==='settled'">¥{{pgAmount(session.amount)}}</b><span class="history-toggle">详情</span></summary>
   <div class="history-body">
    <p v-if="elapsed">{{elapsed}} · 本地参考计时</p>
@@ -79,6 +87,10 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
    <p v-if="session.orderNo">订单 {{session.orderNo}}</p>
    <button class="text-button" :disabled="blocked" @click="refresh">查询状态</button>
   </div>
+ </details>
+ <details v-for="record in pangguai.waterHistory??[]" :key="record.id" class="water-history" aria-label="待核实接水记录">
+  <summary><span><strong>已移出本机记录，待核实</strong><small>{{record.deviceName}} · {{record.outlet}}</small></span><span class="history-toggle">详情</span></summary>
+  <div class="history-body"><p>你已确认机身停止。应用未核实设备结束和费用；此操作没有停止设备或结算。请在最近消费或胖乖官方端核对账单。</p><p v-if="record.orderNo">订单 {{record.orderNo}}</p><p>移出于 {{new Date(record.archivedAt??record.updatedAt).toLocaleString('zh-CN')}}</p></div>
  </details>
  </div>
 </template>

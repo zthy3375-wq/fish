@@ -6,7 +6,7 @@ export interface SchoolGrade {name:string;scoreText:string;credit:number|null;gp
 export interface SchoolExam {name:string;date:string;time:string;room:string;seat:string}
 export interface SchoolTimetable {periods?:{number:number;start:string;end:string}[];term:SchoolTerm;kbList:unknown[];practice:{name:string;teacher:string;weeks:string}[];endpoint:string;method:string}
 export interface ModuleResult {status:'ok'|'error';httpStatus?:number;stage?:'page'|'query';data?:unknown;updatedAt?:string;code?:string;scope?:'all'|'term'}
-export interface NativeAcademicResult {session:SessionState;modules?:Record<string,ModuleResult>}
+export interface NativeAcademicResult {session:SessionState;resolvedTerm?:SchoolTerm;modules?:Record<string,ModuleResult>}
 export interface HandanAcademicClient {
  login():Promise<NativeAcademicResult>; getSessionState():Promise<NativeAcademicResult>;
  getProfile():Promise<NativeAcademicResult>;getSemesters():Promise<NativeAcademicResult>;

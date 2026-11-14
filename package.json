@@ -1,6 +1,6 @@
 {
   "name": "handan-campus",
-  "version": "1.2.1",
+  "version": "1.2.4",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -10,11 +10,12 @@
     "test": "vitest run",
     "cap:sync": "npm run build && cap sync android",
     "android:add": "cap add android",
-    "check": "npm test && npm run build",
+    "check": "npm test && npm run check:shared && npm run build",
     "test:watch": "vitest",
     "android:check": "npm run build && cap sync android && node scripts/android.mjs check",
     "android:apk": "npm run build && cap sync android && node scripts/android.mjs apk",
-    "test:ui": "npm run build && node scripts/academic-browser-check.mjs"
+    "test:ui": "npm run build && node scripts/academic-browser-check.mjs",
+    "check:shared": "node ios-native/Scripts/check_protocol.mjs && node ios-native/Scripts/check_learning_parser.mjs && node ios-native/Scripts/parcel_reader_check.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
@@ -44,7 +45,10 @@
     "jsdom": "^26.1.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
-    "vitest": "^3.0.0",
-    "vue-tsc": "^2.2.0"
+    "vitest": "5.1.0",
+    "vue-tsc": "3.3.14"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

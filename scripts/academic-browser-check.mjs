@@ -6,6 +6,7 @@ import {chromium} from 'playwright';
 import {checkParcelShortcuts} from './parcel-browser-check.mjs';
 import {checkNativeLife} from './native-life-browser-check.mjs';
 import {checkWeekGrid} from './week-grid-browser-check.mjs';
+import {checkCourseAdjustment} from './course-adjustment-browser-check.mjs';
 import {checkProfile} from './profile-browser-check.mjs';
 const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,{recursive:true});
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.webp':'image/webp'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
@@ -123,6 +124,28 @@ try{
   await page.locator('.home-next-meta time').waitFor();
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(output,`campus-home-connected-${width}.png`),animations:'disabled'});
+  const range=await page.locator('.course-time-caption time').allTextContents();
+  const toMinutes=t=>{const [h,m]=t.split(':').map(Number);return h*60+m};
+  const [startMinute,endMinute]=range.slice(0,2).map(toMinutes);
+  const localMidnight=Date.parse('2026-11-06T00:00:00+08:00');
+  await page.clock.setFixedTime(new Date(localMidnight+(startMinute+(endMinute-startMinute)*.25)*60000));
+  // setFixedTime changes Date, but Vue updates on the next mounted timer tick.
+  await page.waitForFunction(()=>{const progress=parseFloat(document.querySelector('.home-timeline .is-current .course-time-marker')?.style.left||'0');return progress>20&&progress<30});
+  const marker=page.locator('.home-timeline .is-current .course-time-marker').first();
+  const firstPosition=await marker.evaluate(el=>parseFloat(el.style.left));
+  assert(firstPosition>20&&firstPosition<30,`${width}: course progress uses real start/end time`);
+  assert((await page.locator('.home-countdown').innerText()).includes('还剩'),`${width}: ongoing course shows remaining minutes`);
+  await page.clock.setFixedTime(new Date(localMidnight+(startMinute+(endMinute-startMinute)*.75)*60000));
+  await page.waitForFunction(()=>parseFloat(document.querySelector('.home-timeline .is-current .course-time-marker')?.style.left||'0')>70);
+  assert((await marker.evaluate(el=>parseFloat(el.style.left)))>firstPosition,`${width}: clock tick advances the mounted progress marker`);
+  await page.screenshot({path:path.join(output,`home-course-progress-${width}.png`),animations:'disabled'});
+  await page.clock.setFixedTime(new Date(localMidnight+(endMinute+1)*60000));
+  await page.waitForFunction(()=>!document.querySelector('.home-timeline .is-current'));
+  assert(await page.locator('.home-timeline .is-ended').count()>0,`${width}: ended class is de-emphasized`);
+  assert(await page.locator('.home-timeline .is-ended.is-next').count()===0,`${width}: later occurrence never highlights today's ended class`);
+  await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
+  await page.waitForFunction(()=>!!document.querySelector('.home-timeline .is-current'));
+
   assert(await page.locator('.home-course-panel .home-study-links').count()===1,`${width}: study actions share course card`);
   assert(await page.locator('.home-body>.school-connection').count()===0,`${width}: connected home hides redundant account card`);
   assert(await page.locator('.home-course-panel').evaluate(el=>{const life=document.querySelector('#home-life-title').closest('section'),tasks=document.querySelector('.today-tasks');return !!(el.compareDocumentPosition(life)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(life.compareDocumentPosition(tasks)&Node.DOCUMENT_POSITION_FOLLOWING)}),`${width}: home orders courses, services, then plans`);
@@ -135,7 +158,7 @@ try{
   assert(homeLayout.hero>=264,`${width}: campus illustration retains a generous height with status inset`);
   assert(homeLayout.walletBottom<=homeLayout.mainBottom,`${width}: both life wallets fit above navigation with status inset`);
   assert(homeLayout.timelineBottom<=homeLayout.studyTop&&!homeLayout.overflow,`${width}: today's timeline stays clear of shortcuts without page overflow`);
-  assert(await page.locator('.home-timeline button').count()===1&&await page.locator('.home-timeline time').textContent()==='11:15',`${width}: today's course name and start remain on the timeline`);
+  assert(await page.locator('.home-timeline button').count()===1&&JSON.stringify(await page.locator('.home-timeline .course-time-caption time').allTextContents())===JSON.stringify(['11:15','15:10']),`${width}: today's course name and start remain on the timeline`);
   await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
   await page.locator('.home-timeline button').click();
   assert(await page.getByRole('dialog').getByRole('heading',{name:'大学物理',exact:true}).isVisible(),`${width}: retained home timeline opens course details`);
@@ -183,6 +206,7 @@ try{
   await page.getByLabel('跳转教学周',{exact:true}).selectOption('9');
   await page.screenshot({path:path.join(output,`navigation-schedule-${width}.png`),animations:'disabled'});
   await checkWeekGrid(page,assert,{width,output});
+  await checkCourseAdjustment(page,assert,{width,output});
   await page.getByRole('button',{name:'添加个人事项',exact:true}).click();
   await page.locator('.course-editor-page').waitFor();
   await page.goBack();
@@ -505,6 +529,19 @@ try{
   await page.evaluate(()=>{window.__updateState.mandatory=false;window.__updateState.available=false});
   await forced.getByRole('button',{name:'重新检查',exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  await context.addInitScript(()=>{
+   window.__pgState={connected:true,expired:false,phone:'138****0000',water:{id:'old-water-session',deviceId:'synthetic-water',deviceName:'人工测试饮水机',phase:'using',orderNo:'old-water-order',remoteEnd:true,updatedAt:Date.now()}};
+   window.__updateState={currentVersion:'1.2',currentCode:133,stage:'idle',progress:0,error:'',available:true,mandatory:false,checkedAt:Date.now(),release:{versionCode:145,versionName:'1.2.1',sizeBytes:12426271,notes:['人工测试：手动检查应有反馈']}};
+  });
+  await page.reload();await nav('我的').click();
+  await page.getByRole('button',{name:/检查更新 当前版本/}).click();
+  const waterUpdate=page.locator('.update-dialog');await waterUpdate.waitFor();
+  assert(await waterUpdate.getByText(/检测到未结束的接水记录/).isVisible(),`${width}: stale water record explains manual update deferral`);
+  assert(await waterUpdate.getByRole('button',{name:'下载更新',exact:true}).isDisabled(),`${width}: manual update does not download during water deferral`);
+  await page.screenshot({path:path.join(output,`app-update-water-deferred-${width}.png`),animations:'disabled'});
+  await waterUpdate.getByRole('button',{name:'返回应用',exact:true}).click();
+  assert(await page.locator('.update-dialog').count()===0,`${width}: manual update can return to water handling`);
+  assert(await page.evaluate(()=>!(window.__pgCalls||[]).some(c=>['startWater','endWater'].includes(c.method))),`${width}: update check does not send water commands`);
   assert(!errors.length,`${width}: no runtime errors`);
   await page.screenshot({path:path.join(output,`records-${width}.png`),fullPage:true,animations:'disabled'});await context.close();
  }

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import {widgetSupported,widgetSnapshot,publishWidget,widgetTarget} from './services/course-widget';
 import CourseWidgetSetup from './components/CourseWidgetSetup.vue';
+import HomeCourseTimeline from './components/HomeCourseTimeline.vue';
+import {courseProgress} from './domain/course-progress';
 import {scheduleViews} from './composables/view-state';
 import AnalyticsSettings from './components/AnalyticsSettings.vue';
 import {initAnalytics,flushAnalytics,recordFeature,refreshAnalytics} from './composables/analytics';
 import AppUpdateDialog from './components/AppUpdateDialog.vue';
-import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred} from './composables/updates';
+import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred,updateDeferredReason} from './composables/updates';
 import {initPangguai,pangguai,pgBusy} from './composables/pangguai';
 import LifeServices from './components/LifeServices.vue';
 import CampusHero from './components/CampusHero.vue';
@@ -78,6 +80,8 @@ import {
 import {initWeekCalibration,calibratedSemester} from "./composables/week-calibration";
 import ScheduleManager from "./components/ScheduleManager.vue";
 import CourseEditor from "./components/CourseEditor.vue";
+import SchoolCourseAdjustment from './components/SchoolCourseAdjustment.vue';
+import {schoolCourseKey,type CourseTimeChange} from './domain/school-course-adjustments';
 import { isSchoolPageSemester } from "./services/legacy-school-semester";
 import { upsertCourse } from "./services/course-management";
 import {
@@ -95,7 +99,7 @@ import {
   type ManagedCourse,
 } from "./domain/schedule";
 import { reconcileReminders } from "./services/reminders";
-import {academicCache,schoolTerm,initAcademic,autoSyncAcademic,syncAcademic} from './composables/handan-academic';
+import {academicCache,schoolTerm,schoolCourses,originalSchoolCourses,pausedCourseAdjustments,saveSchoolCourseAdjustment,restoreSchoolCourseAdjustment,initAcademic,autoSyncAcademic,syncAcademic} from './composables/handan-academic';
 import SchoolConnection from './components/SchoolConnection.vue';
 import SchoolAcademicRecords from './components/SchoolAcademicRecords.vue';
 import {
@@ -146,7 +150,7 @@ const data = computed<AcademicData>(() => {
    const t=schedule.value.semesters.find(t=>t.id===c.semesterId);
    return !isSchoolPageSemester(c.semesterId)&&t?.academicYear===cached.semester.academicYear&&t?.season===cached.semester.season;
  }) : schedule.value.courses;
- return {source:cached?'official':'personal',courses:cached?[...flatten(cached.courses,cached.semester.id,cached.table),...personal.flatMap(c=>flatten([c],c.semesterId,cached.table))]:flatten(personal,schedule.value.activeSemesterId,localTable.value),grades:[],exams:academicCache.value.exams.data??[]};
+ return {source:cached?'official':'personal',courses:cached?[...schoolCourses.value,...personal.flatMap(c=>flatten([c],c.semesterId,cached.table))]:flatten(personal,schedule.value.activeSemesterId,localTable.value),grades:[],exams:academicCache.value.exams.data??[]};
 });
 let widgetQueue:Promise<unknown>=Promise.resolve();
 watch(()=>!loading.value&&!error.value?widgetSnapshot(semester.value,data.value.courses,!!schoolTerm.value?.data||schedule.value.mode==='personal'||data.value.courses.length>0):null,()=>{
@@ -177,6 +181,27 @@ const editorRef = ref<InstanceType<typeof CourseEditor>>(),
   deleteIntent = ref(""),
   detailError = ref(""),
   conflictCourses = ref<Course[]>([]);
+const adjustmentRef=ref<InstanceType<typeof SchoolCourseAdjustment>>(),adjustmentSource=ref<Course>(),adjustmentCurrent=ref<Course>(),adjustmentWeek=ref(1),adjustmentScope=ref(''),adjustmentTerm=ref('');
+const selectedIsSchool=computed(()=>!!selected.value?.adjustmentSourceKey);
+const selectedHasAdjustments=computed(()=>!!selected.value?.adjustmentSourceKey&&(academicCache.value.courseAdjustments??[]).some(a=>a.term===academicCache.value.selectedTerm&&a.sourceKey===selected.value!.adjustmentSourceKey));
+function adjustSchoolCourse(){
+ const c=selected.value,original=originalSchoolCourses.value.find(x=>schoolCourseKey(x)===c?.adjustmentSourceKey);
+ if(!c||!original||!academicCache.value.localScope||!academicCache.value.selectedTerm){notify('学校课表已更新，请重新打开');return}
+ adjustmentSource.value=JSON.parse(JSON.stringify(original));adjustmentCurrent.value=JSON.parse(JSON.stringify(c));
+ adjustmentScope.value=academicCache.value.localScope;adjustmentTerm.value=academicCache.value.selectedTerm;editorError.value='';open('school-course-adjustment');
+}
+async function saveAdjustment(weeks:number[],change:CourseTimeChange,allow:boolean){
+ if(!adjustmentSource.value||editorBusy.value)return;
+ editorBusy.value=true;editorError.value='';
+ try{await saveSchoolCourseAdjustment(adjustmentScope.value,adjustmentTerm.value,schoolCourseKey(adjustmentSource.value),weeks,change,allow);close();notify('调课已保存，首页、课表与日程已同步')}
+ catch(e){editorError.value=(e as Error).message}finally{editorBusy.value=false}
+}
+async function restoreAdjustment(){
+ const c=selected.value;if(!c?.adjustmentSourceKey||editorBusy.value)return;
+ editorBusy.value=true;detailError.value='';
+ try{await restoreSchoolCourseAdjustment(academicCache.value.localScope!,academicCache.value.selectedTerm!,c.adjustmentSourceKey);close();notify('已恢复这项课程的学校安排')}
+ catch(e){detailError.value=(e as Error).message}finally{editorBusy.value=false}
+}
 async function createCourse(preset?: CellPreset) {
   if (schoolTerm.value?.data) {
     const school=schoolTerm.value.data;
@@ -233,6 +258,7 @@ function editDailyTask(task?:CampusTask,day?:string){taskDetailRef.value?.edit(t
 setBeforeBack(()=>!modal.value?taskDetailRef.value?.requestBack()??false:false);
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
+  if (modal.value==='school-course-adjustment') {if(editorBusy.value)return false;if(adjustmentRef.value?.hasChanges()){adjustmentRef.value.requestCancel();return false;}}
   if (modal.value==='course-editor'&&editorRef.value?.hasChanges()) {
     editorRef.value.requestCancel();
     return false;
@@ -240,6 +266,7 @@ setOverlayCloseGuard(() => {
   return true;
 });
 function requestClose() {
+  if(modal.value==='school-course-adjustment'){adjustmentRef.value?.requestCancel();return;}
   if (modal.value === "course"&&deleteIntent.value) deleteIntent.value="";
   else if (modal.value === "course-editor") editorRef.value?.requestCancel();
   else close();
@@ -276,6 +303,7 @@ const week = computed(() => currentWeek(now.value, semester.value)),
 const current = computed(() =>
   todayCourses.value.find((c) => courseState(c, now.value) === "current"),
 );
+const currentProgress=computed(()=>current.value?courseProgress(current.value,now.value):undefined);
 const next = computed(() =>
   nextOccurrence(data.value.courses, now.value, semester.value),
 );
@@ -386,7 +414,8 @@ function nav(p: Page) { move(p, p === "schedule" ? "schedule" : "overview"); }
 const content=ref<HTMLElement>();
 const scrollPositions=new Map<string,number>();
 watch(()=>`${page.value}/${section.value}`,async(key,oldKey)=>{scrollPositions.set(oldKey,content.value?.scrollTop??0);await nextTick();content.value?.scrollTo({top:scrollPositions.get(key)??0,behavior:'instant'})});
-function details(c: Course) {
+function details(c: Course, occurrenceWeek?:number) {
+  adjustmentWeek.value=occurrenceWeek??c.occurrenceWeek??(page.value==='schedule'?(scheduleViews[semester.value.id]?.week??week.value):currentWeek(c===next.value?.course?next.value.date:now.value,semester.value));
   selected.value = c;
   deleteIntent.value = "";
   detailError.value = "";
@@ -536,7 +565,8 @@ function viewportChange() {
 }
 watch(()=>[modal.value,agendaView.editor,pgBusy.value,pangguai.value.water?.phase] as const,()=>{
   const phase=pangguai.value.water?.phase;
-  updateDeferred.value=!!modal.value||!!agendaView.editor||pgBusy.value||!!(phase&&!['settled','ended_zero','closed_unknown'].includes(phase));
+  updateDeferred.value=!!modal.value||!!agendaView.editor||pgBusy.value||!!(phase&&!['settled','ended_zero','closed_unknown','archived_unverified'].includes(phase));
+  updateDeferredReason.value=pgBusy.value?'正在处理接水或支付，请等待操作结束后再下载和安装。':phase&&!['settled','ended_zero','closed_unknown','archived_unverified'].includes(phase)?'检测到未结束的接水记录。请先在接水页面核对状态；若已在机身结算，可使用“已在机身结算，恢复扫码”。':updateDeferred.value?'请先完成当前操作或保存编辑，再下载和安装更新。':'';
 },{immediate:true});
 watch(()=>[page.value,section.value,modal.value] as const,([p,s,m])=>{
  if(m){const feature=({'quzhi-wallet':'shower','pangguai-wallet':'wallet',parcel:'parcel','campus-map':'map'} as const)[m as 'quzhi-wallet'];if(feature)void recordFeature(feature);return;}
@@ -549,7 +579,7 @@ onMounted(async () => {
   load();
   void initTasks().catch(()=>{});
   void initLearning().then(()=>syncLearning()).catch(()=>{});
-  clockTimer = setInterval(() => (now.value = campusNow()), 30000);
+  clockTimer = setInterval(() => {if(document.visibilityState!=='hidden')now.value=campusNow()}, 1000);
   media.addEventListener("change", systemChange);
   window.addEventListener("keydown", escape);
   document.addEventListener("visibilitychange", recalibrate);
@@ -565,7 +595,7 @@ onMounted(async () => {
   if (Capacitor.getPlatform() === "android") {
     const h = await NativeApp.addListener("backButton", () => {
       if (updatesOpen.value) dismissUpdate();
-      else if (modal.value === "course-editor") requestClose();
+      else if (["course-editor","school-course-adjustment"].includes(modal.value)) requestClose();
       else if (canBack()) back();
       else NativeApp.exitApp();
     });
@@ -616,21 +646,20 @@ onUnmounted(() => {
         <button class="primary" @click="load">重试</button>
       </div>
       <div v-else class="page-content">
+          <p v-if="pausedCourseAdjustments && (page==='schedule'||page==='home')" class="task-hint" role="status">学校原安排已变化，{{pausedCourseAdjustments}} 条按周调课记录已暂停，请按新课表重新核对。</p>
           <template v-if="page === 'home'">
             <CampusHero :date="`${dateLabel(now)} · 周${weekdays[dayNumber(now)-1]}`" :week="week>=1&&week<=semester.weekCount?`第 ${week} 教学周`:'学期外'" :unread="!read&&prefs.notifications" :obscured="!!modal||updatesOpen||agendaView.editor" @notifications="open('notifications')"/>
             <div class="home-body">
               <AnalyticsSettings prompt @policy="open('privacy')"/>
               <section class="home-course-panel" aria-label="课程速览">
                 <button v-if="homeFocus" class="home-next" :aria-label="'查看'+(current?'当前':'下一节')+'课程 '+homeFocus.name" @click="details(homeFocus)">
-                  <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'进行中':next?untilLabel(next.minutes):''}}</span></span>
+                  <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'还剩'+currentProgress?.remainingMinutes+'分钟':next?untilLabel(next.minutes):''}}</span></span>
                   <strong class="home-next-title">{{homeFocus.name}}</strong>
                   <span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><time>{{homeFocus.start}}–{{homeFocus.end}}</time><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span>
                 </button>
                 <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{!academicCache.connected||!schoolTerm?.data?'前往“我的”连接学校或刷新课表。':'查看课表，安排自己的校园时光。'}}</p></div>
                 <div class="home-timeline-head"><span>今日课程 · {{todayCourses.length}} 节</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
-                <div v-if="todayCourses.length" class="home-timeline" aria-label="今日课程时间线">
-                  <button v-for="c in todayCourses" :key="c.id" :class="{'is-current':courseState(c,now)==='current','is-ended':courseState(c,now)==='ended','is-next':!current&&next?.course.id===c.id}" :aria-label="`${c.name} ${c.start} ${c.room}`" @click="details(c)"><strong>{{c.name}}</strong><time>{{c.start}}</time></button>
-                </div>
+                <HomeCourseTimeline v-if="todayCourses.length" :courses="todayCourses" :now="now" @select="details"/>
               <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
               </section>
               <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
@@ -744,7 +773,7 @@ onUnmounted(() => {
         v-if="modal"
         class="overlay-scrim"
         :class="{
-          editorOpen: modal === 'course-editor',
+          editorOpen: ['course-editor','school-course-adjustment'].includes(modal),
         }"
         @click.self="requestClose"
         @keydown.tab="trapFocus"
@@ -753,7 +782,7 @@ onUnmounted(() => {
           data-overlay
           class="overlay-surface"
           :class="{
-            'editor-fullscreen': modal === 'course-editor',
+            'editor-fullscreen': ['course-editor','school-course-adjustment'].includes(modal),
           }"
           role="dialog"
           aria-modal="true"
@@ -781,6 +810,9 @@ onUnmounted(() => {
           <CampusMap v-else-if="modal === 'campus-map'"/>
           <ParcelShortcuts v-else-if="modal === 'parcel'"/>
           <CourseWidgetSetup v-else-if="modal === 'course-widget'"/>
+          <SchoolCourseAdjustment v-else-if="modal === 'school-course-adjustment' && adjustmentSource && adjustmentCurrent"
+            ref="adjustmentRef" :source="adjustmentSource" :current="adjustmentCurrent" :week="adjustmentWeek" :table="table"
+            :saving="editorBusy" :save-error="editorError" @save="saveAdjustment" @cancel="close"/>
           <CourseEditor
             v-else-if="modal === 'course-editor'"
             ref="editorRef"
@@ -826,7 +858,7 @@ onUnmounted(() => {
             <h2 class="course-detail-title">{{ selected.name }}</h2>
             <p class="muted">
               课程详情 ·
-              {{selected.courseId?.startsWith('school-') ? '学校课程 · 只读' : '个人事项'}}
+              {{selectedIsSchool ? (selected.locallyAdjusted?'学校课程 · 已在本机调课':'学校课程 · 可在本机调课') : '个人事项'}}
             </p>
             <dl>
               <dt>时间</dt>
@@ -867,7 +899,12 @@ onUnmounted(() => {
               <dt v-if="selected.notes">备注</dt>
               <dd v-if="selected.notes">{{ selected.notes }}</dd>
             </dl>
-            <div v-if="selected.courseId && !selected.courseId.startsWith('school-')" class="course-detail-actions">
+            <div v-if="selectedIsSchool" class="course-detail-actions">
+              <button class="primary full" @click="adjustSchoolCourse">调整时间/地点</button>
+              <button v-if="selectedHasAdjustments" class="text-button" :disabled="editorBusy" @click="deleteIntent='restore'">恢复学校安排</button>
+              <div v-if="deleteIntent==='restore'" class="confirmation"><p>恢复这项上课安排所有周次的学校时间和地点？其他课程保留。</p><p v-if="detailError" role="alert">{{detailError}}</p><button class="secondary full" :disabled="editorBusy" @click="restoreAdjustment">确认恢复</button><button class="text-button" :disabled="editorBusy" @click="deleteIntent=''">取消</button></div>
+            </div>
+            <div v-else-if="selected.courseId && !selected.courseId.startsWith('school-')" class="course-detail-actions">
               <button
                 class="primary full"
                 @click="openEditor(selected.courseId)"

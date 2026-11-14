@@ -1,3 +1,4 @@
+import {validateSchoolAdjustments,type SchoolCourseAdjustment} from '../domain/school-course-adjustments';
 import {normalizeGrade} from '../domain/grade-analysis';
 import {uid,validateCourse,validateSemester,validateTimeTable, type Semester,type ManagedCourse,type TimeTable} from '../domain/schedule';
 import {handanTimeTable} from '../domain/handan-time-table';
@@ -6,9 +7,11 @@ import type {HandanAcademicClient,NativeAcademicResult,SchoolTerm,SchoolProfile,
 export interface CachedModule<T> {data:T|null;updatedAt:string|null;error:string|null;scope?:'all'|'term'|'unknown'}
 export interface SchoolTermCache {term:SchoolTerm;semester:Semester;table:TimeTable;courses:ManagedCourse[];practice:SchoolTimetable['practice']}
 export interface AcademicCache {
+ localScope?:string;courseAdjustments?:SchoolCourseAdjustment[];
  version:1;connected:boolean;session:SessionState;selectedTerm:string|null;lastError:string|null;
  terms:Record<string,CachedModule<SchoolTermCache>>;semesters:CachedModule<SchoolTerm[]>;
  profile:CachedModule<SchoolProfile>;grades:CachedModule<SchoolGrade[]>;exams:CachedModule<SchoolExam[]>;
+ examsByTerm?:Record<string,CachedModule<SchoolExam[]>>;
 }
 export const emptyModule=<T>():CachedModule<T>=>({data:null,updatedAt:null,error:null});
 export const emptyAcademicCache=():AcademicCache=>({version:1,connected:false,session:'disconnected',selectedTerm:null,lastError:null,terms:{},semesters:emptyModule(),profile:emptyModule(),grades:emptyModule(),exams:emptyModule()});
@@ -40,14 +43,20 @@ function normalizeTimetable(value:unknown,calendar:Semester[],previous?:SchoolTe
  return {term:t.term,semester,table,courses,practice};
 }
 function validateArray<T>(raw:unknown,validate:(r:any)=>boolean):T[]{if(!Array.isArray(raw)||raw.length>2000||raw.some(r=>!r||!validate(r)))throw Error('SCHEMA');return raw as T[]}
-export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicResult,calendar:Semester[]):AcademicCache {
+export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicResult,calendar:Semester[],requestedTerm?:SchoolTerm):AcademicCache {
  const next=structuredClone(cache);next.session=result.session;next.lastError=result.modules?.timetable?null:cache.lastError;
- if(result.session==='valid')next.connected=true;
+ next.examsByTerm??={};
+ // Migrate the existing snapshot once; future responses always carry a verified term.
+ if(cache.selectedTerm&&!next.examsByTerm[cache.selectedTerm]&&cache.exams.data!==null)next.examsByTerm[cache.selectedTerm]=structuredClone(cache.exams);
+ let examKey:string|undefined;
+ try {const term=result.resolvedTerm??(result.modules?.timetable?.data as SchoolTimetable|undefined)?.term??requestedTerm;if(term)examKey=termKey(validTerm(term))}catch{/* Unknown scope must not replace an exam snapshot. */}
+ if(result.session==='valid'){next.connected=true;next.localScope??=uid();}
  for(const [name,module] of Object.entries(result.modules||{})){
   let target:CachedModule<any>|undefined;
   if(name==='timetable'){
    const raw=module.data as SchoolTimetable|undefined;
-   const key=raw?.term?termKey(validTerm(raw.term)):next.selectedTerm;
+   let key=next.selectedTerm;
+   try{if(raw?.term)key=termKey(validTerm(raw.term))}catch{next.lastError=schoolError('TERM');continue;}
    if(!key){next.lastError=module.code==='HTTP'?`学校${module.stage==='page'?'课表页面':'数据查询'}请求返回 HTTP ${module.httpStatus??'错误'}，尚未取得课程`:schoolError(module.code);continue;}
    target=next.terms[key]??=emptyModule<SchoolTermCache>();
    if(module.status==='ok'){
@@ -72,6 +81,10 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
   }
   if(!['profile','semesters','grades','exams'].includes(name))continue;
   target=next[name as 'profile'];
+  if(name==='exams'){
+   if(!examKey){const error='未能确认考试所属学期，保留上次记录';next.exams.error=error;if(next.selectedTerm&&next.examsByTerm[next.selectedTerm])next.examsByTerm[next.selectedTerm].error=error;continue;}
+   target=next.examsByTerm[examKey]??=emptyModule<SchoolExam[]>();
+  }
   if(module.status!=='ok'){target.error=schoolError(module.code);continue}
   try{
    let data:unknown=module.data;
@@ -92,17 +105,41 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
    target.data=data;target.updatedAt=new Date().toISOString();target.error=null;
   }catch(e){target.error=(e as Error).message==='EMPTY'?'学校返回空成绩，保留上次记录':(e as Error).message==='GRADE_SCOPE'?'仅收到单学期成绩，保留历年缓存':schoolError('SCHEMA')}
  }
+ if(next.selectedTerm){
+  const scoped=next.examsByTerm[next.selectedTerm];
+  if(scoped)next.exams=structuredClone(scoped);
+  else if(next.selectedTerm!==cache.selectedTerm)next.exams={...emptyModule<SchoolExam[]>(),error:'当前学期考试尚未更新'};
+ }
  return next;
 }
 export function validateAcademicCache(raw:unknown):AcademicCache {
  const c=raw as AcademicCache;if(!c||c.version!==1||!c.terms||typeof c.connected!=='boolean'||Object.keys(c.terms).length>100)throw Error('学校缓存无法识别');
  for(const v of Object.values(c.terms)){if(v.data){validTerm(v.data.term);validateSemester(v.data.semester);validateTimeTable(v.data.table);if(!Array.isArray(v.data.courses)||v.data.courses.length>500)throw Error('学校缓存无法识别')}}
+ if(c.connected)c.localScope??=uid();
+ if(c.courseAdjustments)c.courseAdjustments=validateSchoolAdjustments(c.courseAdjustments);
  return c;
 }
 export class AcademicSyncEngine {
  private running:Promise<void>|null=null;private generation=0;
+ private writes:Promise<void>=Promise.resolve();private loggingOut:Promise<void>|null=null;
  constructor(private client:HandanAcademicClient,private read:()=>AcademicCache,private commit:(c:AcademicCache)=>Promise<void>,private calendar:()=>Semester[]){}
+ private save(cache:AcademicCache,token:number){
+  const write=this.writes.catch(()=>{}).then(async()=>{if(token===this.generation){const latest=this.read();if(cache.localScope&&cache.localScope===latest.localScope)cache.courseAdjustments=latest.courseAdjustments;await this.commit(cache)}});
+  this.writes=write;return write;
+ }
+ /** Local edits share the same storage queue as sync and logout. */
+ updateCourseAdjustments(scope:string,term:string,mutate:(cache:AcademicCache)=>void):Promise<void>{
+  const token=this.generation;
+  const job=this.writes.catch(()=>{}).then(async()=>{
+   const next=structuredClone(this.read());
+   if(token!==this.generation||!scope||next.localScope!==scope||next.selectedTerm!==term||!next.connected)throw Error('学校账号或学期已变化，请返回课表重新打开');
+   mutate(next);if(next.courseAdjustments)validateSchoolAdjustments(next.courseAdjustments);
+   await this.commit(next);
+  });
+  this.writes=job;return job;
+ }
  sync(term?:SchoolTerm,login=false):Promise<void>{
+  if(this.loggingOut)return this.loggingOut.then(()=>this.sync(term,login));
   if(this.running)return this.running;
   const token=this.generation;
   const job=(async()=>{
@@ -111,9 +148,9 @@ export class AcademicSyncEngine {
     if(token!==this.generation)return;
     // A successful new interactive login starts a new account scope. Cancel/failure preserves prior cache.
     const base=login&&response.session==='valid'?emptyAcademicCache():this.read();
-    const next=applyAcademicResult(base,response,this.calendar());
+    const next=applyAcademicResult(base,response,this.calendar(),term);
     if(!response.modules?.timetable&&next.selectedTerm&&next.terms[next.selectedTerm])next.terms[next.selectedTerm].error=schoolError('SCHEMA');
-    await this.commit(next);
+    await this.save(next,token);
     if(response.session==='valid'&&!login){
      // Commit timetable before records. A slow/failed records module cannot hold the P1 path hostage.
      for(const name of ['grades','exams'] as const){
@@ -121,19 +158,25 @@ export class AcademicSyncEngine {
       const query=name==='grades'?this.client.getGrades:this.client.getExams;
       if(!query)continue;
       let r:NativeAcademicResult;
-      try{r=await query.call(this.client,name==='grades'?undefined:term)}catch{r={session:this.read().session,modules:{[name]:{status:'error',code:'NETWORK'}}}}
+      const queryTerm=name==='grades'?undefined:term??response.resolvedTerm??(response.modules?.timetable?.data as SchoolTimetable|undefined)?.term;
+      try{r=await query.call(this.client,queryTerm)}catch{r={session:this.read().session,modules:{[name]:{status:'error',code:'NETWORK'}}}}
       if(token!==this.generation)return;
-      await this.commit(applyAcademicResult(this.read(),r,this.calendar()));
+      await this.save(applyAcademicResult(this.read(),r,this.calendar(),queryTerm),token);
       if(r.session==='expired')break;
      }
     }
    }catch(e){
     if(token===this.generation){const next=structuredClone(this.read());if((e as {code?:string}).code!=='CANCELLED'){
-     next.session='unknown';next.lastError=schoolError('NETWORK');if(next.selectedTerm)next.terms[next.selectedTerm].error=schoolError('NETWORK');await this.commit(next);
+     next.session='unknown';next.lastError=schoolError('NETWORK');if(next.selectedTerm&&next.terms[next.selectedTerm])next.terms[next.selectedTerm].error=schoolError('NETWORK');await this.save(next,token);
     }}throw e;
    }
   })();
-  this.running=job.finally(()=>{this.running=null});return this.running;
+  const tracked=job.finally(()=>{if(this.running===tracked)this.running=null});this.running=tracked;return tracked;
  }
- async logout(){this.generation++;await this.client.logout();await this.commit(emptyAcademicCache())}
+ logout():Promise<void>{
+  if(this.loggingOut)return this.loggingOut;
+  const token=++this.generation;this.running=null;
+  const task=(async()=>{await this.client.logout();await this.save(emptyAcademicCache(),token)})();
+  const tracked=task.finally(()=>{if(this.loggingOut===tracked)this.loggingOut=null});this.loggingOut=tracked;return tracked;
+ }
 }

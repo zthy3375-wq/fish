@@ -1,0 +1,134 @@
+name: Native iOS unsigned test IPA
+on:
+  push:
+    branches: ['feature/ios-native-parity']
+    paths: ['.github/workflows/ios-native-ipa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-native-unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  package-device-app:
+    if: github.ref == 'refs/heads/feature/ios-native-parity'
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify previously tested application source
+        run: |
+          set -euo pipefail
+          # Packaging-only follow-up: do not silently ship later, untested app changes.
+          test "$(git rev-parse HEAD:ios-native)" = d17d9443d665fd7270b596fc8763e5d5eed1a130
+          python3 ios-native/Scripts/generate_project.py
+          git diff --exit-code -- ios-native
+          cmp android/app/src/main/assets/handan-academic.js ios-native/Hanyuantong/Resources/handan-academic.js
+          cmp android/app/src/main/assets/handan-rendered-reader.js ios-native/Hanyuantong/Resources/handan-rendered-reader.js
+      - name: Compile unsigned physical iPhone Release app
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios-device" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            build | tee "$RUNNER_TEMP/unsigned-iphone-build.log"
+      - name: Verify device binaries and package unsigned IPA
+        run: |
+          set -euo pipefail
+          export APP="$RUNNER_TEMP/ios-device/Build/Products/Release-iphoneos/Hanyuantong.app"
+          export OUTPUT="$RUNNER_TEMP/unsigned-ipa"
+          mkdir -p "$OUTPUT" "$RUNNER_TEMP/ipa-stage/Payload"
+          python3 - <<'PYTHON'
+          import json, os, plistlib, re, subprocess
+          from pathlib import Path
+          app = Path(os.environ['APP'])
+          output = Path(os.environ['OUTPUT'])
+          bundles = [app, app / 'PlugIns/HanyuantongWidget.appex']
+          expected = ['org.handancampus.ios.native', 'org.handancampus.ios.native.HanyuantongWidget']
+          records = []
+          for bundle, identifier in zip(bundles, expected):
+              info = plistlib.loads((bundle / 'Info.plist').read_bytes())
+              assert info['CFBundleIdentifier'] == identifier
+              assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS'], info
+              assert info['DTSDKName'].startswith('iphoneos'), info
+              assert info['MinimumOSVersion'] == '16.0', info
+              assert not (bundle / 'embedded.mobileprovision').exists()
+              assert not (bundle / '_CodeSignature').exists()
+              binary = bundle / info['CFBundleExecutable']
+              assert binary.is_file() and os.access(binary, os.X_OK)
+              arch = subprocess.check_output(['xcrun', 'lipo', '-archs', str(binary)], text=True).strip()
+              assert arch == 'arm64', arch
+              build = subprocess.check_output(['xcrun', 'vtool', '-show-build', str(binary)], text=True)
+              assert re.search(r'platform\s+IOS\b', build), build
+              assert 'IOSSIMULATOR' not in build, build
+              signature = subprocess.run(['codesign', '-dvv', str(bundle)], capture_output=True, text=True)
+              assert signature.returncode != 0 and 'not signed at all' in signature.stderr, signature.stderr
+              records.append({'bundle_id': identifier, 'platform': 'iPhoneOS', 'architecture': arch,
+                              'minimum_ios': info['MinimumOSVersion'], 'sdk': info['DTSDKName'],
+                              'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'],
+                              'signed': False, 'provisioned': False})
+          metadata = {'source_commit': os.environ['GITHUB_SHA'],
+                      'app_source_matches_tested_commit': 'a5530e55f6fc556433f3eaf1eeb727860dd58f30',
+                      'app_tree': 'd17d9443d665fd7270b596fc8763e5d5eed1a130',
+                      'prior_regression_run': 'https://github.com/zthy3375-wq/fish/actions/runs/43022223408',
+                      'packaging_run': os.environ['GITHUB_SERVER_URL'] + '/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + os.environ['GITHUB_RUN_ID'],
+                      'installable_without_signing': False, 'bundles': records}
+          (output / 'BUILD-INFO.json').write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + '\n')
+          PYTHON
+          ditto "$APP" "$RUNNER_TEMP/ipa-stage/Payload/Hanyuantong.app"
+          (cd "$RUNNER_TEMP/ipa-stage" && ditto -c -k --keepParent Payload "$OUTPUT/Hanyuantong-0.1.0-Unsigned-iPhone.ipa")
+          export IPA="$OUTPUT/Hanyuantong-0.1.0-Unsigned-iPhone.ipa"
+          python3 - <<'PYTHON'
+          import os, plistlib, zipfile
+          from pathlib import Path
+          ipa = Path(os.environ['IPA'])
+          with zipfile.ZipFile(ipa) as archive:
+              assert archive.testzip() is None
+              assert all(name.startswith('Payload/') for name in archive.namelist())
+              for base in ['Payload/Hanyuantong.app/', 'Payload/Hanyuantong.app/PlugIns/HanyuantongWidget.appex/']:
+                  info = plistlib.loads(archive.read(base + 'Info.plist'))
+                  assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS']
+                  entry = archive.getinfo(base + info['CFBundleExecutable'])
+                  assert (entry.external_attr >> 16) & 0o111
+              assert not any('embedded.mobileprovision' in name or '/_CodeSignature/' in name for name in archive.namelist())
+          print(f'Verified unsigned iPhone IPA: {ipa.name}, {ipa.stat().st_size} bytes')
+          PYTHON
+          cp ios-native/Hanyuantong/Hanyuantong.entitlements "$OUTPUT/App.entitlements.template"
+          cp ios-native/Widget/Widget.entitlements "$OUTPUT/Widget.entitlements.template"
+          cat > "$OUTPUT/READ-ME-FIRST.txt" <<'TEXT'
+          邯院通 0.1.0 / build 1：未签名 iPhone 测试包，最低 iOS 16，arm64。
+
+          这不是模拟器包，但也不能直接点击安装。IPA 未包含开发者签名、设备描述文件或任何账号凭据。
+          安卓手机不能安装或运行 IPA。仅借到一台 iPhone 仍不足以直接安装这个文件。
+
+          安装前需要使用你有权使用的 Apple 签名证书和对应设备描述文件，正确签名主应用及小组件。
+          App ID、扩展 App ID、App Group 与共享 Keychain 必须与自己的开发团队/描述文件匹配。
+          本包包含 WidgetKit 扩展，不保证免费 Apple ID 或任意自签工具支持所有能力。
+          不要把 Apple 密码、证书私钥或验证码发到聊天或不明签名网站。
+          本次没有创建凭据、购买开发者服务、上传 TestFlight、发布商店版本或改动安卓正式版。
+
+          应用源码与 a5530e5 完全相同。先前 CI 43022223408：316 单测通过、1 项真机保护测试跳过、5 UI 测试通过。
+          本次仅重新编译真实 iPhone Release 架构，检查 IPA 结构、设备平台及未签名状态。
+          尚未在真实 iPhone 验收官方登录、学习通、生活服务、取件码、通知、小组件或支付。
+          签名/重签名会改变校验值；签名后的安装与功能还需要独立验收。
+          TEXT
+          (cd "$OUTPUT" && shasum -a 256 Hanyuantong-0.1.0-Unsigned-iPhone.ipa > SHA256SUMS.txt)
+          cat "$OUTPUT/BUILD-INFO.json"
+          cat "$OUTPUT/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hanyuantong-Unsigned-iPhone-IPA
+          path: ${{ runner.temp }}/unsigned-ipa/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unsigned-iphone-build-log
+          path: ${{ runner.temp }}/unsigned-iphone-build.log
+          if-no-files-found: ignore
+          retention-days: 14

@@ -15,7 +15,7 @@ internal class PangguaiWater(
     companion object {
         val paths=setOf("payChannelRoute/afterPay","payChannelRoute/addUserAfterPayChannel","goods/water/unlock",
             "machine/msg/sync","goods/water/sync","goods/endWater","order/afterPay/creating","order/sync")
-        val terminal=setOf("settled","ended_zero","closed_unknown")
+        val terminal=setOf("settled","ended_zero","closed_unknown","archived_unverified")
         private fun text(o:JSONObject,k:String)=PangguaiProtocol.text(o,k)
         private fun req(o:JSONObject,k:String)=PangguaiProtocol.required(o,k)
         private fun obj(v:Any?)=v as? JSONObject ?: throw PangguaiFailure("FORMAT")
@@ -30,7 +30,7 @@ internal class PangguaiWater(
         fun view(s:JSONObject?):JSONObject? {
             if(s==null)return null
             val out=JSONObject()
-            listOf("id","deviceId","deviceName","outlet","feature","paymentName","phase","orderNo","updatedAt","startedAt","endedAt","amount","remoteEnd","error","endSent","endBasis").forEach{k->if(s.has(k))out.put(k,s.get(k))}
+            listOf("id","deviceId","deviceName","outlet","feature","paymentName","phase","orderNo","updatedAt","startedAt","endedAt","amount","remoteEnd","error","endSent","endBasis","archivedAt").forEach{k->if(s.has(k))out.put(k,s.get(k))}
             return out
         }
     }
@@ -72,6 +72,10 @@ internal class PangguaiWater(
         if(text(fresh,"price")!=text(quote,"price")||text(fresh,"feature")!=text(quote,"feature")||text(fresh,"outlet")!=text(quote,"outlet"))throw PangguaiFailure("PRICE_CHANGED")
         val before=reading(req(quote,"skuId"))
         if(before!=null&&text(before,"workStatus")=="2")throw PangguaiFailure("DEVICE_BUSY")
+        // status=5 confirms the end of an existing order, not readiness for a new order.
+        // Fresh details/SKU/channel checks above establish availability. A nonempty sync
+        // response must explicitly say not working; missing/unknown workStatus still blocks.
+        if(before!=null&&text(before,"workStatus")!="1")throw PangguaiFailure("WATER_WAIT")
         // Explicit confirmation selects the already available payment method; it does not sign an agreement.
         post("payChannelRoute/addUserAfterPayChannel",mapOf("method" to "15"))
         val s=JSONObject().put("id",UUID.randomUUID().toString()).put("deviceId",req(device,"id")).put("skuId",req(quote,"skuId"))
@@ -193,6 +197,16 @@ internal class PangguaiWater(
             if(post("goods/endWater",mapOf("goodsId" to req(s,"deviceId")))!=true)throw PangguaiFailure("WATER_PHYSICAL_END")
         }catch(e:Exception){s.put("error",(e as? PangguaiFailure)?.kind ?: "NETWORK");save(s);throw e}
         return poll(s)
+    }
+    /** Local-only escape hatch. User observation is NOT device-end or payment evidence. */
+    fun archiveUnverified(source:JSONObject,confirmedStopped:Boolean):JSONObject {
+        if(!confirmedStopped)throw PangguaiFailure("WATER_CONFIRM_REQUIRED")
+        val s=JSONObject(source.toString())
+        if(text(s,"phase") in terminal)return s
+        s.put("phase","archived_unverified").put("archivedAt",now()).put("updatedAt",now())
+            .put("remoteEnd",false).put("endBasis","user_reported_stop").put("error","WATER_UNVERIFIED")
+        // Keep identifiers/command-intents for audit; do not invent endedAt/deviceEnded/billConfirmed.
+        save(s);return s
     }
     /** Explicit recovery only after user reports using the physical settlement button. Never sends commands. */
     fun confirmPhysicalEnd(source:JSONObject):JSONObject {
