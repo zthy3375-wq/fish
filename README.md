@@ -6,12 +6,12 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| Android 线上版本 | 1.2.2 / 146，按此前授权发布；最新线上状态以更新服务为准 |
-| 本分支 Android | 1.2.3-test.3 / 149，在两端优化基础上增加按周调课；仅测试 |
+| Android 线上版本 | 1.2.4 / 150，已发布强制更新；最低支持版本 150 |
+| 本分支 Android | 1.2.4 / 150，包含按周调课、接水与同步修复，原签名覆盖安装 |
 | iPhone | `ios-native/` 原生 Swift/SwiftUI，最低 iOS 16；模拟器与未签名构建验证，不等于真机可安装 |
-| 开发分支 | `feat/course-reschedule-20261114`，基于两端优化 PR #63 增加调课；尚未合入 main |
+| 开发分支 | main 集成当前发布版本；后续开发使用独立分支 |
 
-[按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
+[1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
 
 ## 功能与架构
 

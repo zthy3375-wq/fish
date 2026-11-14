@@ -14,7 +14,7 @@ if(existing){
 const sourcePrefix=`https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v${candidate.versionName}`;
 if(![sourcePrefix+'.apk',sourcePrefix+'-'+candidate.sha256.slice(0,12)+'.apk'].includes(candidate.sourceUrl))throw Error('Unexpected APK source');
 const sha=b=>createHash('sha256').update(b).digest('hex');
-const source=await fetch(candidate.sourceUrl,{redirect:'error',signal:AbortSignal.timeout(60000)});
+const source=await fetch(candidate.sourceUrl,{redirect:'error',headers:{'User-Agent':'Hanyuantong/Android (Linux; Android 13)'},signal:AbortSignal.timeout(60000)});
 if(!source.ok)throw Error('APK source unavailable');
 const bytes=Buffer.from(await source.arrayBuffer());
 if(bytes.length!==candidate.sizeBytes||sha(bytes)!==candidate.sha256)throw Error('Source APK checksum mismatch');

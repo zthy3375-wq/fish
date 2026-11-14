@@ -1,5 +1,5 @@
 {
-  "latest": 146,
+  "latest": 150,
   "releases": [
     {
       "schema": 1,
@@ -122,6 +122,19 @@
         "优化胖乖接水异常恢复。确认设备已停水后，可以移出卡住的本机记录，未核对的订单仍会保留。"
       ],
       "buildKey": "4360d4575f39cb2f0ed7159e936c6d53"
+    },
+    {
+      "schema": 1,
+      "versionCode": 150,
+      "versionName": "1.2.4",
+      "minSupportedVersionCode": 150,
+      "minSdk": 23,
+      "sha256": "a5272bd52a283abf0d138720ad9ef6c024692d0aa214997da6bab7181a4e0b76",
+      "sizeBytes": 12430367,
+      "notes": [
+        "修复了一些问题"
+      ],
+      "buildKey": "2366ffdd425f60f5dc82a40aefb82515"
     }
   ]
 }
