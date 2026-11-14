@@ -14,6 +14,7 @@ struct ScheduleView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
+                if store.pausedCourseAdjustments > 0 { Text("学校原安排已变化，\(store.pausedCourseAdjustments) 条按周调课记录已暂停，请按新课表重新核对。").font(.caption).foregroundStyle(CampusTheme.muted) }
                 Picker("课表视图", selection: $mode) { Text("周课表").tag(0); Text("日程").tag(1) }.pickerStyle(.segmented)
                 HStack {
                     Button { shift(-7) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("上一周")
@@ -66,7 +67,7 @@ struct ScheduleView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(CampusTheme.date(store.selectedDate)).font(.headline)
             if store.courses(on: store.selectedDate).isEmpty { CampusEmpty(title: "这一天没有课程", detail: "可以添加自己的学习安排", symbol: "calendar") }
-            ForEach(store.courses(on: store.selectedDate)) { course in NavigationLink { CourseDetailView(course: course) } label: { CourseRow(course: course) }.buttonStyle(.plain) }
+            ForEach(store.courses(on: store.selectedDate)) { course in NavigationLink { CourseDetailView(course: course, occurrenceDate: store.selectedDate) } label: { CourseRow(course: course) }.buttonStyle(.plain) }
         }
     }
     private var weekList: some View {
@@ -133,7 +134,7 @@ private struct TimetableGrid: View {
                         .frame(width: dayWidth(layout)).padding(.top, 22)
                 }
                 ForEach(layout.events) { event in
-                    NavigationLink { CourseDetailView(course: event.course) } label: {
+                    NavigationLink { CourseDetailView(course: event.course, occurrenceDate: date) } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(event.course.name).font(.caption.weight(.semibold)).lineLimit(3)
                             Text(event.course.room).font(.caption2).lineLimit(2)
@@ -186,7 +187,11 @@ struct CourseDetailView: View {
     @EnvironmentObject var store: CampusStore
     @Environment(\.dismiss) private var dismiss
     let course: Course
+    var occurrenceDate: Date? = nil
     @State private var confirming = false
+    @State private var adjusting: SchoolCourseAdjustmentContext?
+    @State private var restoring: SchoolCourseAdjustmentContext?
+    @State private var error: String?
     var body: some View {
         Group {
             if let current = store.courses.first(where: { $0.id == course.id }) {
@@ -207,11 +212,33 @@ struct CourseDetailView: View {
                 LabeledContent("星期", value: ["一", "二", "三", "四", "五", "六", "日"][min(7, max(1, course.day)) - 1])
                 if !course.period.isEmpty { LabeledContent("节次", value: course.period) }
                 LabeledContent("教学周", value: course.weeks.map(String.init).joined(separator: "、"))
-                LabeledContent("来源", value: course.source == "personal" ? "个人课程" : "教务系统")
+                LabeledContent("来源", value: course.source == "personal" ? "个人课程" : (course.locallyAdjusted == true ? "学校课程 · 已在本机调课" : "教务系统"))
                 if !course.notes.isEmpty { Text(course.notes) }
             }
+            if course.source == "school" {
+                Section {
+                    Button("调整时间/地点") {
+                        if let context = store.schoolAdjustmentContext(for: course, date: occurrenceDate ?? Date()) { adjusting = context }
+                        else { error = "学校原安排已变化或存在重复，请返回课表同步后重新核对。" }
+                    }.accessibilityIdentifier("adjust-school-course")
+                    if store.hasSchoolAdjustment(for: course) {
+                        Button("恢复学校安排") { restoring = store.schoolAdjustmentContext(for: course, date: occurrenceDate ?? Date()) }
+                    }
+                    Text("只调整本人课表，不修改教务系统。可按周选择生效范围。").font(.caption).foregroundStyle(CampusTheme.muted)
+                }
+            }
+            if let error { Section { Text(error).foregroundStyle(.red) } }
             if course.source == "personal" { Section { Button("删除这个上课安排", role: .destructive) { confirming = true } } }
         }.navigationTitle("课程详情").navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $adjusting) { context in SchoolCourseAdjustmentView(context: context, onSaved: { dismiss() }).environmentObject(store) }
+            .confirmationDialog("恢复这项上课安排所有周次的学校时间和地点？", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }), titleVisibility: .visible) {
+                Button("确认恢复") {
+                    guard let context = restoring else { return }
+                    do { try store.restoreSchoolAdjustment(context); dismiss() } catch { self.error = error.localizedDescription }
+                    restoring = nil
+                }
+                Button("取消", role: .cancel) { restoring = nil }
+            }
             .confirmationDialog("删除这个个人上课安排？", isPresented: $confirming, titleVisibility: .visible) {
                 Button("删除安排", role: .destructive) {
                     store.deleteCourse(course.id)

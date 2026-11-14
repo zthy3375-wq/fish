@@ -206,7 +206,7 @@ export function buildAgenda(series: CourseSeries[], exams: Exam[], tasks: Campus
                 catch {
                     continue;
                 }
-                add({ id: `${s.source}/${s.semester.id}/${c.id}/${day}/${c.start}`, kind: 'course', title: c.name, date: day, time: `${c.start}–${c.end}`, startAt, endAt, location: c.room, source: s.source === 'school' ? '学校课表缓存' : '个人课表', completed: false, course: c });
+                add({ id: `${s.source}/${s.semester.id}/${c.id}/${day}/${c.start}`, kind: 'course', title: c.name, date: day, time: `${c.start}–${c.end}`, startAt, endAt, location: c.room, source: s.source === 'school' ? '学校课表缓存' : '个人课表', completed: false, course: {...c,occurrenceWeek:week} });
             }
     let unknownExams = 0;
     for (const e of exams) {

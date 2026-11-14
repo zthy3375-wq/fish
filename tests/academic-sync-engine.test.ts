@@ -1,3 +1,4 @@
+import {schoolCourseKey} from '../src/domain/school-course-adjustments';
 import {it,expect,vi} from 'vitest';
 import {AcademicSyncEngine,applyAcademicResult,emptyAcademicCache} from '../src/services/academic-sync-engine';
 import {defaultState,flatten} from '../src/domain/schedule';
@@ -129,4 +130,28 @@ it('a new account can sync after logout without waiting for a stale network requ
  const stale=engine.sync();await engine.logout();await engine.sync();
  expect(getTimetable).toHaveBeenCalledTimes(2);const current=structuredClone(c);
  release({session:'expired'});await stale;expect(c).toEqual(current);
+});
+
+it('a local course edit survives a concurrent refresh and later records writes',async()=>{
+ let c=applyAcademicResult(emptyAcademicCache(),result(),calendar()),release!:(r:NativeAcademicResult)=>void;
+ const engine=new AcademicSyncEngine({getTimetable:()=>new Promise<NativeAcademicResult>(r=>release=r)} as unknown as HandanAcademicClient,()=>c,async next=>{c=next},calendar);
+ const key=c.selectedTerm!,scope=c.localScope!,source=flatten(c.terms[key].data!.courses,c.terms[key].data!.semester.id,c.terms[key].data!.table)[0];
+ const sync=engine.sync();
+ await engine.updateCourseAdjustments(scope,key,next=>{next.courseAdjustments=[{term:key,sourceKey:schoolCourseKey(source),week:5,day:4,room:'新教室',timeMode:'custom',start:'12:00',end:'13:00',startPeriod:null,endPeriod:null}]});
+ release(result());await sync;expect(c.courseAdjustments).toHaveLength(1);
+ expect(c.courseAdjustments![0].room).toBe('新教室');
+});
+it('logout and a new interactive login invalidate stale course editors',async()=>{
+ let c=applyAcademicResult(emptyAcademicCache(),result(),calendar());const scope=c.localScope!,key=c.selectedTerm!;
+ const client={logout:async()=>({session:'disconnected'}),login:async()=>result()} as unknown as HandanAcademicClient;
+ const engine=new AcademicSyncEngine(client,()=>c,async next=>{c=next},calendar);
+ await engine.logout();await expect(engine.updateCourseAdjustments(scope,key,()=>{})).rejects.toThrow('账号或学期');
+ await engine.sync(undefined,true);expect(c.localScope).not.toBe(scope);expect(c.courseAdjustments).toBeUndefined();
+ await expect(engine.updateCourseAdjustments(scope,key,()=>{})).rejects.toThrow('账号或学期');
+});
+it('a failed adjustment write leaves displayed and persisted school data intact',async()=>{
+ let c=applyAcademicResult(emptyAcademicCache(),result(),calendar());const before=structuredClone(c);
+ const engine=new AcademicSyncEngine({} as HandanAcademicClient,()=>c,async()=>{throw Error('DISK')},calendar);
+ await expect(engine.updateCourseAdjustments(c.localScope!,c.selectedTerm!,next=>{next.courseAdjustments=[]})).rejects.toThrow('DISK');
+ expect(c).toEqual(before);
 });

@@ -8,6 +8,7 @@ final class CampusStore: ObservableObject {
     let widget = NativeWidgetPublisher()
     @Published var selectedTab: AppTab = .home
     @Published private(set) var courses: [Course] = []
+    @Published private(set) var pausedCourseAdjustments = 0
     @Published private(set) var tasks: [CampusTask] = []
     @Published private(set) var grades: [GradeRecord] = []
     @Published private(set) var academicProfile: AcademicProfile?
@@ -73,10 +74,15 @@ final class CampusStore: ObservableObject {
         service.onSessionInvalidated = { [weak self] in _ = self?.clearAcademic() }
         do {
             let savedScope = try service.validatedSavedScope()
-            if let saved = try storage?.read("academic", as: AcademicSnapshot.self), saved.scope == savedScope {
-                snapshot = saved; isConnected = true; apply(saved)
-            } else if savedScope != nil { try storage?.remove("academic") }
+            try restoreAcademicCache(scope: savedScope)
         } catch { message = "学校离线缓存暂时无法读取，可重新连接后同步。" }
+    }
+    /// Called only with the native session scope, or synthetic scopes in storage regression tests.
+    func restoreAcademicCache(scope: String?) throws {
+        guard let scope else { return }
+        if let saved = try storage?.read("academic", as: AcademicSnapshot.self), saved.scope == scope {
+            snapshot = saved; isConnected = true; apply(saved)
+        } else { try storage?.remove("academic") }
     }
     func connectSchool() { query(interactive: true) }
     func refreshSchool() { query(interactive: false) }
@@ -125,7 +131,7 @@ final class CampusStore: ObservableObject {
         }
     }
     @discardableResult private func clearAcademic() -> Bool {
-        snapshot = nil; isConnected = false; lastSynced = nil; selectedTerm = nil
+        snapshot = nil; pausedCourseAdjustments = 0; isConnected = false; lastSynced = nil; selectedTerm = nil
         academicProfile = nil
         grades = []; exams = []; practice = []; semesters = []; courses = personalCourses
         let widgetCleared = widget.clearForAccountChange()
@@ -138,18 +144,13 @@ final class CampusStore: ObservableObject {
         catch { message = "学校数据已从当前页面移除，但本机缓存清理未完成，请重试退出。"; return false }
     }
     private func apply(_ value: AcademicSnapshot) {
-        var unmapped = 0
-        let school: [Course] = (value.courses ?? []).compactMap { row in
-            let periods = ScheduleMath.parseRange(row.periods, limit: 24)
-            let weeks = ScheduleMath.parseRange(row.weeks, limit: 60)
-            guard let first = periods.first, let last = periods.last, !weeks.isEmpty else { unmapped += 1; return nil }
-            let officialStart = value.periods?.first { $0.number == first }?.start
-            let officialEnd = value.periods?.first { $0.number == last }?.end
-            guard let start = officialStart ?? (first <= ScheduleMath.starts.count ? ScheduleMath.starts[first - 1] : nil),
-                  let end = officialEnd ?? (last <= ScheduleMath.ends.count ? ScheduleMath.ends[last - 1] : nil) else { unmapped += 1; return nil }
-            return Course(name: row.name, teacher: row.teacher, room: row.room, day: row.weekday, start: start, end: end, period: row.periods + "节", weeks: weeks, color: "purple", startPeriod: first, endPeriod: last, notes: "学校同步", source: "school", externalID: row.id)
-        }
-        courses = school + personalCourses
+        let originals = SchoolCourseAdjustments.originals(value)
+        let unmapped = (value.courses?.count ?? 0) - originals.count
+        let records: [SchoolCourseAdjustment]
+        do { records = try SchoolCourseAdjustments.validated(value.courseAdjustments ?? []) }
+        catch { records = []; message = "本地调课记录暂时无法读取，当前显示学校原安排。原记录保留。" }
+        courses = SchoolCourseAdjustments.project(originals, term: value.term, records: records, periods: SchoolCourseAdjustments.periods(value)) + personalCourses
+        pausedCourseAdjustments = SchoolCourseAdjustments.inactiveCount(originals, term: value.term, records: records, periods: SchoolCourseAdjustments.periods(value))
         academicProfile = value.profile
         grades = (value.grades ?? []).map { GradeRecord(name: $0.name, score: $0.scoreText, credit: $0.credit.map { String(format: "%g", $0) } ?? "", term: $0.term, kind: $0.kind, schoolGPA: $0.gpa, courseCode: $0.courseCode, recordId: $0.recordId, year: $0.year, termCode: $0.termCode, examType: $0.examType) }
         exams = (value.exams ?? []).map { ExamRecord(name: $0.name, date: $0.date, time: $0.time, room: $0.room, seat: $0.seat) }
@@ -157,6 +158,46 @@ final class CampusStore: ObservableObject {
         lastSynced = value.moduleUpdatedAt["timetable"]
         refreshWidget()
         if unmapped > 0 { message = "有 \(unmapped) 条学校课程的周次或节次暂无法展示，原始同步记录已保留，请对照官方课表。" }
+    }
+    func schoolAdjustmentContext(for course: Course, date: Date) -> SchoolCourseAdjustmentContext? {
+        guard let snapshot, let term = snapshot.term, let key = course.adjustmentSourceKey else { return nil }
+        let originals = SchoolCourseAdjustments.originals(snapshot).filter { SchoolCourseAdjustments.key($0) == key }
+        guard originals.count == 1, courses.contains(where: { $0.id == course.id }) else { return nil }
+        return SchoolCourseAdjustmentContext(scope: snapshot.scope, term: term, source: originals[0], current: course,
+            week: ScheduleMath.week(on: date, start: schoolSemesterStart), periods: SchoolCourseAdjustments.periods(snapshot))
+    }
+    func hasSchoolAdjustment(for course: Course) -> Bool {
+        guard let snapshot, let key = course.adjustmentSourceKey else { return false }
+        return (snapshot.courseAdjustments ?? []).contains { $0.term == snapshot.term && $0.sourceKey == key }
+    }
+    func saveSchoolAdjustment(_ context: SchoolCourseAdjustmentContext, weeks: [Int], change: SchoolCourseTimeChange, allowConflicts: Bool = false) throws {
+        guard var next = snapshot, next.scope == context.scope, next.term == context.term, let storage else { throw BackupCompatibilityFailure("学校账号或学期已变化，请返回课表重新打开。") }
+        let key = SchoolCourseAdjustments.key(context.source), originals = SchoolCourseAdjustments.originals(next)
+        let matches = originals.filter { SchoolCourseAdjustments.key($0) == key }
+        guard matches.count == 1 else { throw BackupCompatibilityFailure("学校原安排已变化或存在重复，请同步后重新核对。") }
+        let periods = SchoolCourseAdjustments.periods(next)
+        let records = try SchoolCourseAdjustments.updating(next.courseAdjustments ?? [], term: context.term, source: matches[0], weeks: weeks, change: change, periods: periods)
+        let projected = SchoolCourseAdjustments.project(originals, term: next.term, records: records, periods: periods)
+        // Personal semesters have their own first Monday; compare actual dates in the school week system.
+        let personal = personalCourses.map { course -> Course in
+            var value = course
+            value.weeks = course.weeks.compactMap { week in
+                ScheduleMath.calendar.date(byAdding: .day, value: (week - 1) * 7 + course.day - 1, to: semesterStart).map { ScheduleMath.week(on: $0, start: schoolSemesterStart) }
+            }
+            return value
+        }
+        let conflicts = SchoolCourseAdjustments.conflicts(projected + personal, sourceKey: key, weeks: weeks)
+        if !conflicts.isEmpty && !allowConflicts { throw BackupCompatibilityFailure("时间与" + conflicts.joined(separator: "、") + "重叠，请核对后确认保留。") }
+        next.courseAdjustments = records
+        try storage.write(next, name: "academic")
+        snapshot = next; apply(next)
+    }
+    func restoreSchoolAdjustment(_ context: SchoolCourseAdjustmentContext) throws {
+        guard var next = snapshot, next.scope == context.scope, next.term == context.term, let storage else { throw BackupCompatibilityFailure("学校账号或学期已变化，请返回课表重新打开。") }
+        let key = SchoolCourseAdjustments.key(context.source)
+        next.courseAdjustments = (next.courseAdjustments ?? []).filter { $0.term != context.term || $0.sourceKey != key }
+        try storage.write(next, name: "academic")
+        snapshot = next; apply(next)
     }
     func week(for date: Date) -> Int { ScheduleMath.week(on: date, start: isConnected ? schoolSemesterStart : semesterStart) }
     func courses(on date: Date) -> [Course] {

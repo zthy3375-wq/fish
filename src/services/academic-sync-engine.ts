@@ -1,3 +1,4 @@
+import {validateSchoolAdjustments,type SchoolCourseAdjustment} from '../domain/school-course-adjustments';
 import {normalizeGrade} from '../domain/grade-analysis';
 import {uid,validateCourse,validateSemester,validateTimeTable, type Semester,type ManagedCourse,type TimeTable} from '../domain/schedule';
 import {handanTimeTable} from '../domain/handan-time-table';
@@ -6,6 +7,7 @@ import type {HandanAcademicClient,NativeAcademicResult,SchoolTerm,SchoolProfile,
 export interface CachedModule<T> {data:T|null;updatedAt:string|null;error:string|null;scope?:'all'|'term'|'unknown'}
 export interface SchoolTermCache {term:SchoolTerm;semester:Semester;table:TimeTable;courses:ManagedCourse[];practice:SchoolTimetable['practice']}
 export interface AcademicCache {
+ localScope?:string;courseAdjustments?:SchoolCourseAdjustment[];
  version:1;connected:boolean;session:SessionState;selectedTerm:string|null;lastError:string|null;
  terms:Record<string,CachedModule<SchoolTermCache>>;semesters:CachedModule<SchoolTerm[]>;
  profile:CachedModule<SchoolProfile>;grades:CachedModule<SchoolGrade[]>;exams:CachedModule<SchoolExam[]>;
@@ -48,7 +50,7 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
  if(cache.selectedTerm&&!next.examsByTerm[cache.selectedTerm]&&cache.exams.data!==null)next.examsByTerm[cache.selectedTerm]=structuredClone(cache.exams);
  let examKey:string|undefined;
  try {const term=result.resolvedTerm??(result.modules?.timetable?.data as SchoolTimetable|undefined)?.term??requestedTerm;if(term)examKey=termKey(validTerm(term))}catch{/* Unknown scope must not replace an exam snapshot. */}
- if(result.session==='valid')next.connected=true;
+ if(result.session==='valid'){next.connected=true;next.localScope??=uid();}
  for(const [name,module] of Object.entries(result.modules||{})){
   let target:CachedModule<any>|undefined;
   if(name==='timetable'){
@@ -113,6 +115,8 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
 export function validateAcademicCache(raw:unknown):AcademicCache {
  const c=raw as AcademicCache;if(!c||c.version!==1||!c.terms||typeof c.connected!=='boolean'||Object.keys(c.terms).length>100)throw Error('学校缓存无法识别');
  for(const v of Object.values(c.terms)){if(v.data){validTerm(v.data.term);validateSemester(v.data.semester);validateTimeTable(v.data.table);if(!Array.isArray(v.data.courses)||v.data.courses.length>500)throw Error('学校缓存无法识别')}}
+ if(c.connected)c.localScope??=uid();
+ if(c.courseAdjustments)c.courseAdjustments=validateSchoolAdjustments(c.courseAdjustments);
  return c;
 }
 export class AcademicSyncEngine {
@@ -120,8 +124,19 @@ export class AcademicSyncEngine {
  private writes:Promise<void>=Promise.resolve();private loggingOut:Promise<void>|null=null;
  constructor(private client:HandanAcademicClient,private read:()=>AcademicCache,private commit:(c:AcademicCache)=>Promise<void>,private calendar:()=>Semester[]){}
  private save(cache:AcademicCache,token:number){
-  const write=this.writes.catch(()=>{}).then(async()=>{if(token===this.generation)await this.commit(cache)});
+  const write=this.writes.catch(()=>{}).then(async()=>{if(token===this.generation){const latest=this.read();if(cache.localScope&&cache.localScope===latest.localScope)cache.courseAdjustments=latest.courseAdjustments;await this.commit(cache)}});
   this.writes=write;return write;
+ }
+ /** Local edits share the same storage queue as sync and logout. */
+ updateCourseAdjustments(scope:string,term:string,mutate:(cache:AcademicCache)=>void):Promise<void>{
+  const token=this.generation;
+  const job=this.writes.catch(()=>{}).then(async()=>{
+   const next=structuredClone(this.read());
+   if(token!==this.generation||!scope||next.localScope!==scope||next.selectedTerm!==term||!next.connected)throw Error('学校账号或学期已变化，请返回课表重新打开');
+   mutate(next);if(next.courseAdjustments)validateSchoolAdjustments(next.courseAdjustments);
+   await this.commit(next);
+  });
+  this.writes=job;return job;
  }
  sync(term?:SchoolTerm,login=false):Promise<void>{
   if(this.loggingOut)return this.loggingOut.then(()=>this.sync(term,login));

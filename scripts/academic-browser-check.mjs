@@ -6,6 +6,7 @@ import {chromium} from 'playwright';
 import {checkParcelShortcuts} from './parcel-browser-check.mjs';
 import {checkNativeLife} from './native-life-browser-check.mjs';
 import {checkWeekGrid} from './week-grid-browser-check.mjs';
+import {checkCourseAdjustment} from './course-adjustment-browser-check.mjs';
 import {checkProfile} from './profile-browser-check.mjs';
 const root=path.resolve('dist'),output='/tmp/handan-v050-qa';await mkdir(output,{recursive:true});
 const server=createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.webp':'image/webp'})[path.extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.writeHead(404);res.end()}});
@@ -205,6 +206,7 @@ try{
   await page.getByLabel('跳转教学周',{exact:true}).selectOption('9');
   await page.screenshot({path:path.join(output,`navigation-schedule-${width}.png`),animations:'disabled'});
   await checkWeekGrid(page,assert,{width,output});
+  await checkCourseAdjustment(page,assert,{width,output});
   await page.getByRole('button',{name:'添加个人事项',exact:true}).click();
   await page.locator('.course-editor-page').waitFor();
   await page.goBack();

@@ -37,7 +37,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 22) {
                 hero
                 if let focus = HomeCourseFocus.select(courses: store.courses, personalStart: store.semesterStart, schoolStart: store.schoolSemesterStart, now: now) {
-                    NavigationLink { CourseDetailView(course: focus.course) } label: { focusCard(focus) }.buttonStyle(.plain)
+                    NavigationLink { CourseDetailView(course: focus.course, occurrenceDate: focus.start) } label: { focusCard(focus) }.buttonStyle(.plain)
                 }
                 HStack {
                     Text("今日课程").font(.headline)

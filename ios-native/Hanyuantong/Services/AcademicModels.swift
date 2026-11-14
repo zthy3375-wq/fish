@@ -102,11 +102,13 @@ struct AcademicSnapshot: Codable, Equatable {
     var periods: [AcademicPeriod]? = nil
     var gradeScope: String? = nil
     var moduleUpdatedAt: [String: Date] = [:]
+    var courseAdjustments: [SchoolCourseAdjustment]? = nil
 
     func merging(previous: AcademicSnapshot?) -> AcademicSnapshot {
         guard let previous, previous.scope == scope else { return self }
         guard term == nil || previous.term == term else {
             var result = self
+            result.courseAdjustments = previous.courseAdjustments
             result.profile = profile ?? previous.profile
             if profile == nil { result.moduleUpdatedAt["profile"] = previous.moduleUpdatedAt["profile"] }
             return result
@@ -115,6 +117,7 @@ struct AcademicSnapshot: Codable, Equatable {
             practice: practice ?? previous.practice, grades: grades ?? previous.grades,
             exams: exams ?? previous.exams, semesters: semesters.isEmpty ? previous.semesters : semesters,
             moduleErrors: moduleErrors, updatedAt: updatedAt)
+        merged.courseAdjustments = previous.courseAdjustments
         merged.profile = profile ?? previous.profile
         merged.periods = periods ?? previous.periods
         merged.gradeScope = grades == nil ? previous.gradeScope : gradeScope

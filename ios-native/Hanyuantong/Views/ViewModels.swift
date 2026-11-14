@@ -19,6 +19,8 @@ struct Course: Identifiable, Codable, Hashable {
     var notes: String = ""
     var source: String = "personal"
     var externalID: String? = nil
+    var adjustmentSourceKey: String? = nil
+    var locallyAdjusted: Bool? = nil
 }
 
 /// Personal tasks only. Official learning items remain in LearningStore and cannot be completed here.

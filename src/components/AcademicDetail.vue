@@ -33,7 +33,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   navigate: [section: string];
-  course: [course: Course];
+  course: [course: Course, week: number];
   create: [preset?: CellPreset];
   conflict: [courses: Course[]];
 }>();
@@ -69,7 +69,7 @@ const upcomingId = computed(() =>
     : undefined,
 );
 function details(c: Course) {
-  emit("course", c);
+  emit("course", c, week.value);
 }
 function weekDate(week: number, day: number) {
   const d = semesterDate(props.semester, week, day);
@@ -224,7 +224,7 @@ function touchEnd(e: TouchEvent) {
             : "个人课表 · 已保存在本机"
       }}
       · 左右滑动切周 ·
-      {{ mode === "official" ? "学校课程只读，个人事项可编辑" : "点击空白格添加" }} ·
+      {{ mode === "official" ? "点课程可调整时间和地点" : "点击空白格添加" }} ·
       重叠课程点开逐门查看
     </p>
   </section>
