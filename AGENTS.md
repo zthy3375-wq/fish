@@ -8,6 +8,7 @@ Read README.md and docs/STATUS.md. main is the integration baseline. Use a short
 
 - `npm ci`: reproducible install with the committed lockfile.
 - `npm run check`: current unit tests, TypeScript and production build.
+- `npm run check:shared`: cross-platform school adapter and iOS HTML-reader contract checks.
 - `npm run test:watch`: focused feedback during development.
 - `npm run android:check`: build + Capacitor sync + native debug/release tests. Requires a full JDK 21 and SDK 35.
 - `npm run android:apk`: build + sync + native debug tests + installable debug APK.
@@ -24,7 +25,7 @@ Run checks appropriate to the change. For native/session changes also validate A
 - Keep school caches independent from personal schedules. Preserve storage keys, legacy `school-page-` recognition and backup compatibility.
 - Empty/error/partial responses must not wipe previously successful data. Logout/account changes must not reuse another account's snapshot.
 - Preserve the compact mobile layout and existing light theme. Do not add developer diagnostics or manual school import to the normal user flow.
-- Maintain Android only; do not reintroduce retired classroom queries or other native platforms. Android test signatures are not production release signatures.
+- Maintain Android (Vue/Capacitor with Kotlin services) and native Swift/SwiftUI iOS in `ios-native/`, as authorized by the owner on 2026-11-14. Keep platform implementations explicit; do not reintroduce Flutter or retired classroom queries. Android test signatures are not production release signatures.
 
 ## Repository hygiene
 

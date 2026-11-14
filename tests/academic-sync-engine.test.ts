@@ -3,6 +3,7 @@ import {AcademicSyncEngine,applyAcademicResult,emptyAcademicCache} from '../src/
 import {defaultState,flatten} from '../src/domain/schedule';
 import type {NativeAcademicResult,HandanAcademicClient} from '../src/services/handan-academic-client';
 const calendar=()=>defaultState().semesters;
+const exam={name:'合成考试',date:'2026-12-01',time:'09:00',room:'测试教室',seat:'1'};
 const result=():NativeAcademicResult=>({session:'valid',modules:{timetable:{status:'ok',data:{term:{xnm:'2026',xqm:'3'},kbList:[{kcmc:'人工链路测试课',xm:'教师',cdmc:'教室',xqj:'1',jcs:'11-13',zcd:'1-16周(单)'}],practice:[]}},grades:{status:'error',code:'HTTP'},exams:{status:'ok',data:[]}}});
 it('takes real-shaped native results into the existing grid without touching personal storage',()=>{
  const personal=defaultState(),before=structuredClone(personal),c=applyAcademicResult(emptyAcademicCache(),result(),personal.semesters);
@@ -81,4 +82,51 @@ it('reports only bounded numeric week formats and preserves the last complete ti
   if(expression==='1/3周')expect(c.lastError).toContain('1/3周');
   else expect(c.lastError).not.toContain('secret');
  }
+});
+
+it('partitions exams by verified term and restores them when returning to that timetable',()=>{
+ const first=result();first.modules!.exams={status:'ok',data:[exam]};
+ const original=applyAcademicResult(emptyAcademicCache(),first,calendar());
+ const second=result();(second.modules!.timetable.data as any).term={xnm:'2025',xqm:'12'};
+ second.modules!.exams={status:'error',code:'NETWORK'};
+ const switched=applyAcademicResult(original,second,calendar());
+ expect(switched.selectedTerm).toBe('2025-12');expect(switched.exams.data).toBeNull();
+ expect(switched.examsByTerm!['2026-3'].data).toEqual([exam]);
+ const restored=applyAcademicResult(switched,{session:'valid',modules:{timetable:first.modules!.timetable}},calendar());
+ expect(restored.exams.data).toEqual([exam]);
+});
+it('a failed timetable cannot attach another term\'s successful exams to the visible schedule',()=>{
+ const first=result();first.modules!.exams={status:'ok',data:[exam]};
+ const original=applyAcademicResult(emptyAcademicCache(),first,calendar());
+ const next=applyAcademicResult(original,{session:'valid',resolvedTerm:{xnm:'2025',xqm:'12'},modules:{timetable:{status:'error',code:'NETWORK'},exams:{status:'ok',data:[]}}},calendar());
+ expect(next.selectedTerm).toBe('2026-3');expect(next.exams.data).toEqual([exam]);
+ expect(next.examsByTerm!['2025-12'].data).toEqual([]);
+});
+it('malformed timetable metadata does not discard a valid independent grade result',()=>{
+ const response=result();(response.modules!.timetable.data as any).term={xnm:'bad',xqm:'3'};
+ response.modules!.grades={status:'ok',scope:'all',data:[{name:'课程',scoreText:'90',credit:2,gpa:4,term:'2026',kind:'必修'}]};
+ const next=applyAcademicResult(emptyAcademicCache(),response,calendar());
+ expect(next.lastError).toContain('学期');expect(next.grades.data).toHaveLength(1);
+});
+it('exam requests follow the term resolved by the timetable instead of guessing the current term',async()=>{
+ let c=emptyAcademicCache();const getExams=vi.fn(async()=>({session:'valid',modules:{exams:{status:'ok',data:[]}}}));
+ await new AcademicSyncEngine({getTimetable:async()=>result(),getExams} as unknown as HandanAcademicClient,()=>c,async next=>{c=next},calendar).sync();
+ expect(getExams).toHaveBeenCalledWith({xnm:'2026',xqm:'3'});
+});
+it('logout is written after an already pending storage write so old data cannot reappear',async()=>{
+ let c=emptyAcademicCache(),release!:()=>void;
+ const commit=vi.fn(async next=>{if(next.connected)await new Promise<void>(resolve=>{release=resolve});c=next});
+ const client={getTimetable:async()=>result(),logout:vi.fn(async()=>({session:'disconnected'}))} as unknown as HandanAcademicClient;
+ const engine=new AcademicSyncEngine(client,()=>c,commit,calendar);
+ const syncing=engine.sync();await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
+ const leaving=engine.logout();release();await Promise.all([syncing,leaving]);
+ expect(c).toEqual(emptyAcademicCache());
+});
+it('a new account can sync after logout without waiting for a stale network request',async()=>{
+ let c=emptyAcademicCache(),release!:(r:NativeAcademicResult)=>void;
+ const getTimetable=vi.fn().mockImplementationOnce(()=>new Promise<NativeAcademicResult>(resolve=>{release=resolve})).mockResolvedValue(result());
+ const engine=new AcademicSyncEngine({getTimetable,logout:async()=>({session:'disconnected'})} as unknown as HandanAcademicClient,()=>c,async next=>{c=next},calendar);
+ const stale=engine.sync();await engine.logout();await engine.sync();
+ expect(getTimetable).toHaveBeenCalledTimes(2);const current=structuredClone(c);
+ release({session:'expired'});await stale;expect(c).toEqual(current);
 });

@@ -1,8 +1,11 @@
 # 文档导航
 
-阅读项目现状请以 [当前进度](STATUS.md) 和根目录 [README](../README.md) 为准。版本文档描述对应时点，不覆盖较新的真机反馈。历史记录中的其他平台计划均已停止；当前只维护Android。
+阅读项目现状请以 [当前进度](STATUS.md) 和根目录 [README](../README.md) 为准。版本文档描述对应时点，不覆盖较新的真机反馈。当前维护 Android 与原生 Swift/SwiftUI iOS；历史 Flutter 验证分支保留追溯，已停止开发。
 
 ## 当前维护入口
+
+- [两端整理与验收清单](ANDROID-IOS-REVIEW-20261114.md)
+- [苹果工程与构建](../ios-native/README.md)
 
 - [胖乖官方页面模式与边界](V082-PANGGUAI-OFFICIAL.md)
 - [淘宝/拼多多出库码直达](V082-PARCEL-SHORTCUTS.md)

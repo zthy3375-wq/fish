@@ -20,4 +20,4 @@ export async function syncAcademic(login=false,term?:SchoolTerm){
 }
 export function autoSyncAcademic(){if(academicCache.value.connected&&Date.now()-lastAuto>120000)return syncAcademic()}
 export async function disconnectAcademic(){if(academicBusy.value)return;try{await engine.logout();academicError.value=''}catch{academicError.value='退出未完成，请重试'}}
-export async function selectSchoolTerm(t:SchoolTerm){const key=termKey(t);if(academicCache.value.terms[key]?.data)await commit({...toRaw(academicCache.value),selectedTerm:key});await syncAcademic(false,t)}
+export async function selectSchoolTerm(t:SchoolTerm){if(academicBusy.value)return;const key=termKey(t);if(academicCache.value.terms[key]?.data)await commit({...toRaw(academicCache.value),selectedTerm:key,exams:academicCache.value.examsByTerm?.[key]??{data:null,updatedAt:null,error:'当前学期考试尚未更新'}});await syncAcademic(false,t)}
