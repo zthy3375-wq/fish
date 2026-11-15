@@ -20,6 +20,12 @@ import Combine
     @Published var replyPages: [String: [String: String]] = [:]
     @Published var scope = "all"
     @Published var query = ""
+    @Published var feedLoadingMore = false
+    @Published var feedPageError: String?
+    @Published var feedRevision = 0
+    var feedNeedsRefresh = false
+    private var loadedFeedIdentity: [String: String]?
+    private var lastAutomaticCursor = ""
     @Published var feedNext: [String: String]?
     @Published var commentNext: [String: String]?
     @Published var pendingReactions: Set<String> = []
@@ -37,7 +43,7 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { epoch += 1; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { epoch += 1; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
@@ -47,18 +53,48 @@ import Combine
             self.ready = true
         }
     }
-    func feed(more: Bool = false) async throws {
-        var body: [String: Any] = ["scope": scope, "query": query, "category": category, "sort": sort]
-        if more { feedNext?.forEach { body[$0.key] = $0.value } }
-        let r = try await api.request("posts.list", body)
-        posts = more ? posts + (r.posts ?? []).filter { fresh in !posts.contains { $0.id == fresh.id } } : r.posts ?? []; feedNext = r.next
+    private var feedIdentity: [String: String] { ["scope": scope, "query": query, "category": category, "sort": sort] }
+    private func cursorKey(_ cursor: [String: String]) -> String { cursor.sorted { $0.key < $1.key }.map { $0.key + "=" + $0.value }.joined(separator: "|") }
+    func feed() async throws {
+        feedRevision += 1
+        let revision = feedRevision, generation = epoch, identity = feedIdentity
+        feedLoadingMore = false; feedPageError = nil; lastAutomaticCursor = ""
+        let result = try await api.request("posts.list", identity)
+        guard revision == feedRevision, generation == epoch else { return }
+        posts = result.posts ?? []; feedNext = result.next; loadedFeedIdentity = identity; feedNeedsRefresh = false
+    }
+    func loadMoreFeed(automatic: Bool = true) async {
+        guard !busy, !feedLoadingMore, let cursor = feedNext, loadedFeedIdentity == feedIdentity else { return }
+        let key = cursorKey(cursor), generation = epoch, revision = feedRevision, identity = feedIdentity
+        if automatic && (feedPageError != nil || lastAutomaticCursor == key) { return }
+        lastAutomaticCursor = key; feedLoadingMore = true; feedPageError = nil
+        var body: [String: Any] = identity; cursor.forEach { body[$0.key] = $0.value }
+        defer { if revision == feedRevision && generation == epoch { feedLoadingMore = false } }
+        do {
+            let result = try await api.request("posts.list", body)
+            guard revision == feedRevision, generation == epoch, identity == feedIdentity else { return }
+            var ids = Set(posts.map(\.id))
+            posts += (result.posts ?? []).filter { ids.insert($0.id).inserted }; feedNext = result.next
+            if let next = result.next, cursorKey(next) == key { feedPageError = "暂时无法继续加载，请刷新后重试" }
+        } catch {
+            guard revision == feedRevision, generation == epoch, identity == feedIdentity else { return }
+            if let failure = error as? TreeholeError, failure.code == "session_expired" { clear(); message = failure.errorDescription }
+            else { feedPageError = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试" }
+        }
+    }
+    private func syncFeedPost(_ fresh: TreeholePost) {
+        guard let index = posts.firstIndex(where: { $0.id == fresh.id }) else { return }
+        var updated = fresh
+        if pendingReactions.contains(fresh.id + ":like") { updated.liked = posts[index].liked; updated.likeCount = posts[index].likeCount }
+        if pendingReactions.contains(fresh.id + ":save") { updated.saved = posts[index].saved }
+        posts[index] = updated
     }
     func detail(_ post: TreeholePost, more: Bool = false) async throws {
         var body: [String: Any] = ["postId": post.id, "threaded": true]
         if more { commentNext?.forEach { body[$0.key] = $0.value } }
         let r = try await api.request("posts.get", body)
         if !more { discussion += 1; expandedReplies = []; replyPages = [:]; loadedThreads = [] }
-        current = r.post; comments = more ? comments + (r.comments ?? []) : r.comments ?? []; commentNext = r.next
+        current = r.post; if let post = r.post { syncFeedPost(post) }; comments = more ? comments + (r.comments ?? []) : r.comments ?? []; commentNext = r.next
     }
     func expand(_ comment: TreeholeComment, post: TreeholePost) {
         guard !busy, !loadingThreads.contains(comment.id) else { return }
@@ -121,6 +157,7 @@ import Combine
                 let r = try await api.request("reactions.set", ["postId": post.id, "kind": kind, "enabled": enabled])
                 guard generation == epoch, let fresh = r.post else { return }
                 updatePost(post.id, kind: kind, enabled: kind == "like" ? fresh.liked : fresh.saved, count: fresh.likeCount)
+                if kind == "save", !fresh.saved, scope == "saved" { posts.removeAll { $0.id == post.id } }
             } catch {
                 if generation == epoch { updatePost(post.id, kind: kind, enabled: kind == "like" ? post.liked : post.saved, count: post.likeCount) }
                 actionError(error, generation: generation)

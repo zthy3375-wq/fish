@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {ref,computed,onMounted,onUnmounted,watch,nextTick} from 'vue';
 import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ThumbsUp,ChevronLeft} from 'lucide-vue-next';
+import TreeholeFeedPage from './TreeholeFeedPage.vue';
 import TreeholeCommentThread from './TreeholeCommentThread.vue';
 import {treeholeCategories,treeholeCategoryName} from '../domain/treeholeCategories';
 import {readTreeholeDraft,writeTreeholeDraft,deleteTreeholeDraft,prepareTreeholeImage,type DraftImage} from '../services/treeholeDrafts';
@@ -25,6 +26,8 @@ const registration=ref(false),inviteRequired=ref(false),auth=ref<'login'|'regist
 const username=ref(''),password=ref(''),nickname=ref(''),invite=ref(''),agreed=ref(false),recoveryInput=ref(''),recovery=ref('');
 const screen=ref<'feed'|'compose'|'detail'|'account'|'moderate'>('feed');
 const posts=ref<TreeholePost[]>([]),scope=ref('all'),query=ref(''),feedNext=ref<Record<string,string>|null>(null);
+const feedLoadingMore=ref(false),feedPageError=ref(''),feedRevision=ref(0);
+let appliedFeedKey='',feedNeedsRefresh=false;
 const detail=ref<TreeholePost|null>(null),comments=ref<TreeholeComment[]>([]),commentNext=ref<Record<string,string>|null>(null),reply=ref<TreeholeComment|null>(null);
 const body=ref(''),anonymous=ref(false),commentBody=ref(''),commentAnon=ref(false),postKey=ref<string>(crypto.randomUUID()),commentKey=ref<string>(crypto.randomUUID());
 const reports=ref<TreeholeReport[]>([]),newPassword=ref(''),accountAction=ref<'overview'|'profile'|'password'|'delete'>('overview');
@@ -80,8 +83,24 @@ async function expandThread(c:TreeholeComment){
  c.replies=Array.from(new Map([...(more?c.replies||[]:[]),...r.comments||[]].map(x=>[x.id,x])).values());expandedReplies.value[c.id]=true;loadedThreads.add(c.id);replyPages.value[c.id]=r.next||null;
  }catch(e){actionError(e,epoch);}finally{if(epoch===accountEpoch)delete loadingThreads.value[c.id];}
 }
+let feedAnchor:{id:string;offset:number}|null=null;
 let feedScroll=0,previousFocus:HTMLElement|null=null,previousOverflow='',noticeTimer:ReturnType<typeof setTimeout>|undefined;
-watch(screen,async(next,prior)=>{if(prior==='feed')feedScroll=window.scrollY;await nextTick();if(alive)window.scrollTo({top:next==='feed'?feedScroll:0,behavior:'instant'});});
+function rememberFeedPosition(){
+ feedScroll=window.scrollY;
+ const top=document.querySelector('.th-nav')?.getBoundingClientRect().bottom||0;
+ const card=Array.from(document.querySelectorAll<HTMLElement>('.th-post[data-post-id]')).find(el=>el.getBoundingClientRect().bottom>top);
+ feedAnchor=card?.dataset.postId?{id:card.dataset.postId,offset:card.getBoundingClientRect().top}:null;
+}
+function restoreFeedPosition(){
+ const card=feedAnchor?Array.from(document.querySelectorAll<HTMLElement>('.th-post[data-post-id]')).find(el=>el.dataset.postId===feedAnchor!.id):undefined;
+ const top=card&&feedAnchor?window.scrollY+card.getBoundingClientRect().top-feedAnchor.offset:feedScroll;
+ window.scrollTo({top:Math.max(0,top),behavior:'instant'});
+}
+watch(screen,async(next,prior)=>{
+ if(prior==='feed')rememberFeedPosition();
+ await nextTick();if(!alive)return;
+ if(next==='feed'&&!feedNeedsRefresh)restoreFeedPosition();else window.scrollTo({top:0,behavior:'instant'});
+});
 watch(notice,()=>{clearTimeout(noticeTimer);if(notice.value)noticeTimer=setTimeout(()=>{notice.value='';},5000);});
 watch(dialogOpen,async(open)=>{if(open){previousFocus=document.activeElement as HTMLElement;previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';await nextTick();if(replyExpanded.value)replyInput.value?.focus();else dialogElement.value?.querySelector<HTMLElement>('button,input,textarea')?.focus();}else{document.body.style.overflow=previousOverflow;await nextTick();previousFocus?.focus();}});
 watch([menu,reportTarget,confirmAction,discard,gallery],async()=>{if(dialogOpen.value){await nextTick();if(replyExpanded.value)replyInput.value?.focus();else dialogElement.value?.querySelector<HTMLElement>('button,input,textarea')?.focus();}});
@@ -91,8 +110,47 @@ async function run(work:()=>Promise<void>){
  try{await work();}catch(e){if(alive){error.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'){clearAccount();}}}
  finally{if(alive)busy.value=false;}
 }
-function clearAccount(){accountEpoch++;pendingReactions.value={};pendingLikes.value={};loadingThreads.value={};loadedThreads.clear();replyExpanded.value=false;draftReady.value=false;postTitle.value='';images.value=[];category.value='all';sort.value='latest';showPassword.value=false;searchOpen.value=false;auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
-async function feed(more=false){const r=await api('posts.list',{scope:scope.value,query:query.value,category:category.value,sort:sort.value,...(more?feedNext.value:{})});if(!alive)return;posts.value=more?Array.from(new Map([...posts.value,...r.posts||[]].map(p=>[p.id,p])).values()):r.posts||[];feedNext.value=r.next||null;}
+function clearAccount(){accountEpoch++;feedRevision.value++;feedLoadingMore.value=false;feedPageError.value='';feedNext.value=null;commentNext.value=null;appliedFeedKey='';feedNeedsRefresh=false;feedScroll=0;feedAnchor=null;pendingReactions.value={};pendingLikes.value={};loadingThreads.value={};loadedThreads.clear();replyExpanded.value=false;draftReady.value=false;postTitle.value='';images.value=[];category.value='all';sort.value='latest';showPassword.value=false;searchOpen.value=false;auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
+function feedCriteria(){return {scope:scope.value,query:query.value,category:category.value,sort:sort.value};}
+function feedKey(){return JSON.stringify(feedCriteria());}
+function appendUnique<T extends {id:string}>(current:T[],incoming:T[]){
+ const seen=new Set(current.map(item=>item.id));
+ return [...current,...incoming.filter(item=>{if(seen.has(item.id))return false;seen.add(item.id);return true;})];
+}
+async function feed(){
+ const revision=++feedRevision.value,epoch=accountEpoch,criteria=feedCriteria(),key=JSON.stringify(criteria);
+ feedLoadingMore.value=false;feedPageError.value='';
+ const r=await api('posts.list',criteria);
+ if(!alive||epoch!==accountEpoch||revision!==feedRevision.value)return;
+ posts.value=r.posts||[];feedNext.value=r.next||null;appliedFeedKey=key;feedNeedsRefresh=false;feedAnchor=null;feedScroll=0;
+ await nextTick();if(screen.value==='feed')window.scrollTo({top:0,behavior:'instant'});
+}
+async function loadMoreFeed(){
+ if(busy.value||feedLoadingMore.value||!feedNext.value||appliedFeedKey!==feedKey())return;
+ const revision=feedRevision.value,epoch=accountEpoch,key=appliedFeedKey,cursor={...feedNext.value},criteria=feedCriteria();
+ feedLoadingMore.value=true;feedPageError.value='';
+ try{
+  const r=await api('posts.list',{...criteria,...cursor});
+  if(!alive||epoch!==accountEpoch||revision!==feedRevision.value||key!==feedKey())return;
+  posts.value=appendUnique(posts.value,r.posts||[]);
+  feedNext.value=r.next||null;
+  if(r.next&&JSON.stringify(r.next)===JSON.stringify(cursor))feedPageError.value='暂时无法继续加载，请刷新后重试';
+ }catch(e){
+  if(alive&&epoch===accountEpoch&&revision===feedRevision.value&&key===feedKey()){
+   if(treeholeErrorCode(e)==='session_expired')actionError(e,epoch);else feedPageError.value=treeholeError(e);
+  }
+ }finally{if(epoch===accountEpoch&&revision===feedRevision.value)feedLoadingMore.value=false;}
+}
+function syncFeedPost(post:TreeholePost){
+ posts.value=posts.value.map(cached=>{
+  if(cached.id!==post.id)return cached;
+  return {...post,...(pendingReactions.value[post.id+':like']?{liked:cached.liked,likeCount:cached.likeCount}:{}),...(pendingReactions.value[post.id+':save']?{saved:cached.saved}:{})};
+ });
+}
+function returnFeed(){
+ screen.value='feed';detail.value=null;password.value='';newPassword.value='';error.value='';
+ if(feedNeedsRefresh)void run(()=>feed());
+}
 async function initialize(){await run(async()=>{
  const config=await api('config');if(!alive)return;registration.value=!!config.registrationEnabled;inviteRequired.value=!!config.requiresInvite;imagesEnabled.value=!!config.imagesEnabled;
  try{const r=await api('me');if(!alive)return;user.value=r.user!;nickname.value=r.user!.nickname;await restoreDraft();await feed();}
@@ -107,13 +165,18 @@ function changeScope(next:string){if(busy.value)return;scope.value=next;if(next=
 function compose(anon=false){replyExpanded.value=false;reply.value=null;commentBody.value='';commentAnon.value=false;commentKey.value=crypto.randomUUID();if(!body.value&&!postTitle.value&&!images.value.length){anonymous.value=anon;postCategory.value=category.value==='all'?'daily':category.value;postKey.value=crypto.randomUUID();}screen.value='compose';error.value='';}
 
 async function loadDetail(post:TreeholePost,more=false){
- const r=await api('posts.get',{postId:post.id,threaded:true,...(more?commentNext.value:{})});if(!alive)return;detail.value=r.post!;if(!more){detailEpoch++;expandedReplies.value={};replyPages.value={};loadedThreads.clear();}comments.value=more?[...comments.value,...r.comments||[]]:r.comments||[];commentNext.value=r.next||null;
+ const r=await api('posts.get',{postId:post.id,threaded:true,...(more?commentNext.value:{})});if(!alive)return;detail.value=r.post!;syncFeedPost(r.post!);if(!more){detailEpoch++;expandedReplies.value={};replyPages.value={};loadedThreads.clear();}comments.value=more?[...comments.value,...r.comments||[]]:r.comments||[];commentNext.value=r.next||null;
 }
-function openPost(post:TreeholePost){void run(async()=>{await loadDetail(post);if(!alive)return;screen.value='detail';detailTab.value='body';replyExpanded.value=false;commentBody.value='';reply.value=null;commentAnon.value=false;commentKey.value=crypto.randomUUID();menu.value=null;});}
+function openPost(post:TreeholePost,discussion=false){void run(async()=>{
+ await loadDetail(post);if(!alive)return;
+ screen.value='detail';detailTab.value=discussion?'comments':'body';replyExpanded.value=false;commentBody.value='';reply.value=null;commentAnon.value=false;commentKey.value=crypto.randomUUID();menu.value=null;
+ await nextTick();
+ if(discussion){document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:'instant',block:'start'});detailTab.value='comments';}
+});}
 function publish(){void run(async()=>{
  for(const image of images.value){if(!image.remote){notice.value='正在上传图片 '+(images.value.indexOf(image)+1)+' / '+images.value.length;const r=await api('media.upload',{data:image.data,requestId:image.id});image.remote=r.image!;saveDraft();}}
  let r;try{r=await api('posts.create',{title:postTitle.value,category:postCategory.value,images:images.value.map(i=>i.remote!.id),body:body.value,anonymous:anonymous.value,requestId:postKey.value});}catch(e){if(treeholeErrorCode(e)==='image_unavailable'){for(const image of images.value){image.remote=undefined;image.id=crypto.randomUUID();}saveDraft();}throw e;}if(!alive)return;
- await clearDraft();postKey.value=crypto.randomUUID();posts.value=[r.post!,...posts.value];detail.value=r.post!;comments.value=[];screen.value='detail';detailTab.value='body';replyExpanded.value=false;await loadDetail(r.post!);notice.value='已发布';
+ await clearDraft();postKey.value=crypto.randomUUID();feedNeedsRefresh=true;feedScroll=0;feedAnchor=null;detail.value=r.post!;comments.value=[];screen.value='detail';detailTab.value='body';replyExpanded.value=false;await loadDetail(r.post!);notice.value='已发布';
 });}
 
 function sendComment(){if(!detail.value)return;const post=detail.value;void run(async()=>{
@@ -125,7 +188,7 @@ async function react(post:TreeholePost,kind:'like'|'save'){
  const before={liked:post.liked,saved:post.saved,likeCount:post.likeCount},enabled=kind==='like'?!post.liked:!post.saved;
  const apply=(value:Partial<TreeholePost>)=>{for(const p of posts.value)if(p.id===post.id)Object.assign(p,value);if(detail.value?.id===post.id)Object.assign(detail.value,value);};
  pendingReactions.value[key]=true;error.value='';apply(kind==='like'?{liked:enabled,likeCount:Math.max(0,post.likeCount+(enabled?1:-1))}:{saved:enabled});
- try{const r=await api('reactions.set',{postId:post.id,kind,enabled});if(!alive||epoch!==accountEpoch||!r.post)return;apply(kind==='like'?{liked:r.post.liked,likeCount:r.post.likeCount}:{saved:r.post.saved});}
+ try{const r=await api('reactions.set',{postId:post.id,kind,enabled});if(!alive||epoch!==accountEpoch||!r.post)return;apply(kind==='like'?{liked:r.post.liked,likeCount:r.post.likeCount}:{saved:r.post.saved});if(kind==='save'&&!r.post.saved&&scope.value==='saved')posts.value=posts.value.filter(item=>item.id!==post.id);}
  catch(e){if(epoch===accountEpoch)apply(kind==='like'?{liked:before.liked,likeCount:before.likeCount}:{saved:before.saved});actionError(e,epoch);}finally{if(epoch===accountEpoch)delete pendingReactions.value[key];}
 }
 function askDelete(post:TreeholePost,comment?:TreeholeComment){menu.value=null;confirmAction.value={title:comment?'删除这条评论？':'删除这条帖子和它的讨论？',run:async()=>{
@@ -137,16 +200,16 @@ function submitReport(){if(!reportTarget.value)return;void run(async()=>{await a
 function block(post:TreeholePost,comment?:TreeholeComment){menu.value=null;const anon=comment?comment.author.anonymous:post.anonymous;confirmAction.value={title:anon?'隐藏这条讨论？':'屏蔽此人的昵称发言？匿名内容不会关联屏蔽。',run:async()=>{await api('blocks.set',{postId:post.id,commentId:comment?.id});confirmAction.value=null;detail.value=null;screen.value='feed';await feed();}};}
 function account(){screen.value='account';nickname.value=user.value?.nickname||'';password.value='';newPassword.value='';accountAction.value='overview';}
 function saveAccount(){void run(async()=>{
- if(accountAction.value==='profile'){const r=await api('profile.update',{nickname:nickname.value});user.value=r.user!;notice.value='昵称已更新';}
+ if(accountAction.value==='profile'){const r=await api('profile.update',{nickname:nickname.value});user.value=r.user!;feedNeedsRefresh=true;notice.value='昵称已更新';}
  else if(accountAction.value==='password'){const r=await api('password.change',{password:password.value,newPassword:newPassword.value});password.value='';newPassword.value='';recovery.value=r.recoveryCode||'';notice.value='密码已更新，其他设备已退出';}
  else confirmAction.value={title:'注销邯院通账号？你的帖子、评论和登录状态将被删除，学校课表不受影响。',run:async()=>{await api('account.delete',{password:password.value});await clearDraft();confirmAction.value=null;clearAccount();notice.value='账号已注销';}};
 });}
 function logout(){confirmAction.value={title:'退出邯院通账号？',run:async()=>{await api('logout');await clearDraft();confirmAction.value=null;clearAccount();}};}
 function moderate(){void run(async()=>{const r=await api('admin.reports');reports.value=r.reports||[];screen.value='moderate';});}
 function resolveReport(r:TreeholeReport,decision:string){confirmAction.value={title:`确认${({remove:'删除内容',lock:'暂停回复',ban:'禁言 7 天',dismiss:'忽略举报'} as Record<string,string>)[decision]}？`,run:async()=>{
- await api('admin.resolve',{reportId:r.id,decision,reason:r.reason});confirmAction.value=null;const result=await api('admin.reports');reports.value=result.reports||[];notice.value='已处理';
+ await api('admin.resolve',{reportId:r.id,decision,reason:r.reason});feedNeedsRefresh=true;confirmAction.value=null;const result=await api('admin.reports');reports.value=result.reports||[];notice.value='已处理';
 }};}
-async function leaveEditor(){if(screen.value==='compose')await clearDraft();discard.value=false;body.value='';commentBody.value='';reply.value=null;screen.value='feed';detail.value=null;error.value='';}
+async function leaveEditor(){if(screen.value==='compose')await clearDraft();discard.value=false;body.value='';commentBody.value='';reply.value=null;returnFeed();}
 function requestBack(){
  if(busy.value||recovery.value)return true;
  if(gallery.value){gallery.value=null;return true;}
@@ -155,7 +218,7 @@ function requestBack(){
  if(menu.value){menu.value=null;return true;}
  if((screen.value==='compose'&&(body.value.trim()||postTitle.value.trim()||images.value.length))||(screen.value==='detail'&&commentBody.value.trim())){discard.value=true;return true;}
  if(screen.value==='account'&&accountAction.value!=='overview'){accountAction.value='overview';password.value='';newPassword.value='';return true;}
- if(screen.value!=='feed'){screen.value='feed';detail.value=null;password.value='';newPassword.value='';error.value='';void run(()=>feed());return true;}
+ if(screen.value!=='feed'){returnFeed();return true;}
  if(searchOpen.value){searchOpen.value=false;return true;}
  if(!user.value&&auth.value!=='login'){auth.value='login';password.value='';return true;}return false;
 }
@@ -204,8 +267,8 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
        <button v-if="body||postTitle||images.length" class="th-draft-resume" :disabled="busy" @click="compose()"><PenLine :size="15"/> 有一条未发布的草稿，继续编辑 <ChevronRight :size="15"/></button>
        <div v-if="query&&!searchOpen" class="th-query">正在看「{{query}}」的搜索结果<button aria-label="清除搜索" :disabled="busy" @click="clearSearch"><X :size="14"/></button></div>
        <div v-if="!posts.length&&!busy&&!error" class="th-empty"><span class="th-empty-art"><MessageCircle :size="32"/><i><Leaf :size="20"/></i></span><h3>{{query?'还没找到这段回声':scope==='mine'?'你的故事，从这里开始':scope==='saved'?'把喜欢的瞬间留在这里':'这里，等你说第一句话'}}</h3><p>{{query?'换个关键词，看看大家在聊什么。':scope==='saved'?'在帖子下方点一下收藏，下次就能找到。':'一件开心的小事，一个想问的问题，都可以。'}}</p><button v-if="!query&&scope!=='saved'" class="th-text-link" :disabled="busy" @click="compose()">写下第一条树洞 <ChevronRight :size="15"/></button></div>
-       <TreeholePostCard v-for="post in posts" :key="post.id" :post="post" :busy="busy" :reacting="pendingReactions[post.id+':like']" @open="openPost(post)" @react="react(post,$event)" @menu="menu=post.id" @image="imageView(post,$event)" @category="selectCategory"/>
-       <button v-if="feedNext" class="th-more" :disabled="busy" @click="run(()=>feed(true))">再看看更多树洞 <ChevronRight :size="15"/></button>
+       <TreeholePostCard v-for="post in posts" :key="post.id" :post="post" :busy="busy" :reacting="pendingReactions[post.id+':like']" @open="openPost(post)" @discussion="openPost(post,true)" @react="react(post,$event)" @menu="menu=post.id" @image="imageView(post,$event)" @category="selectCategory"/>
+       <TreeholeFeedPage v-if="feedNext" :page-key="feedRevision+JSON.stringify(feedNext)" :loading="feedLoadingMore" :error="feedPageError" :disabled="busy||!!recovery||dialogOpen" @load="loadMoreFeed"/>
        <p v-else-if="posts.length" class="th-feed-end">暂时就这些，过一会儿再来看看吧</p>
        <button class="th-fab" aria-label="发帖" :disabled="busy" @click="compose()"><PenLine :size="20"/>发树洞</button>
       </template>
@@ -235,7 +298,7 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
        <p v-if="user.bannedUntil&&new Date(user.bannedUntil)>new Date()" class="th-alert">禁言至 {{date(user.bannedUntil)}}</p>
        <template v-if="accountAction==='overview'">
         <div class="th-profile-shortcuts"><button :disabled="busy" @click="accountFeed('mine')"><PenLine :size="22"/><strong>我的帖子</strong><small>记录校园里的日常</small></button><button :disabled="busy" @click="accountFeed('saved')"><Bookmark :size="22"/><strong>我的收藏</strong><small>留住喜欢的内容</small></button></div>
-        <section class="th-settings"><button :disabled="busy" @click="accountAction='profile'"><PenLine :size="19"/><span>修改昵称</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="accountAction='password'"><LockKeyhole :size="19"/><span>修改密码与恢复码</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="run(async()=>{await api('blocks.clear');notice='已恢复屏蔽的内容'})"><Eye :size="19"/><span>恢复已屏蔽的内容</span><ChevronRight :size="17"/></button><button v-if="user.role==='moderator'" :disabled="busy" @click="moderate"><ShieldCheck :size="19"/><span>处理举报</span><ChevronRight :size="17"/></button></section>
+        <section class="th-settings"><button :disabled="busy" @click="accountAction='profile'"><PenLine :size="19"/><span>修改昵称</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="accountAction='password'"><LockKeyhole :size="19"/><span>修改密码与恢复码</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="run(async()=>{await api('blocks.clear');feedNeedsRefresh=true;notice='已恢复屏蔽的内容'})"><Eye :size="19"/><span>恢复已屏蔽的内容</span><ChevronRight :size="17"/></button><button v-if="user.role==='moderator'" :disabled="busy" @click="moderate"><ShieldCheck :size="19"/><span>处理举报</span><ChevronRight :size="17"/></button></section>
         <button class="th-logout" :disabled="busy" @click="logout"><LogOut :size="17"/>退出邯院通账号</button><button class="th-account-delete" :disabled="busy" @click="accountAction='delete'">注销账号</button>
        </template>
        <form v-else class="th-card" @submit.prevent="saveAccount"><h3>{{accountAction==='profile'?'换个喜欢的昵称':accountAction==='password'?'更新账号密码':'注销邯院通账号'}}</h3><label v-if="accountAction==='profile'">公开昵称<input v-model="nickname" minlength="2" maxlength="20" required :disabled="busy"/></label><template v-else><label>当前密码<input v-model="password" type="password" autocomplete="current-password" required minlength="10" :disabled="busy"/></label><label v-if="accountAction==='password'">新密码<input v-model="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required :disabled="busy"/></label><p v-else class="th-muted">注销将删除你的树洞帖子、评论和登录状态。学校课表保留。</p></template><button class="th-primary th-wide" :disabled="busy">{{accountAction==='delete'?'继续注销':'保存'}}</button></form>

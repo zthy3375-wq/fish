@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 import {createCommunity} from '../cloudbase/functions/community/core.mjs';
 import {createServer} from '../cloudbase/functions/community/server.mjs';
 
-const root=path.resolve('dist'),output='/tmp/handan-treehole-v4-qa';await mkdir(output,{recursive:true});
+const root=path.resolve('dist'),output='/tmp/handan-treehole-v5-qa';await mkdir(output,{recursive:true});
 const db=new PGlite();await db.exec(await readFile('cloudbase/community-schema.sql','utf8'));
 const objects=new Map();let mediaOrigin='';
 const storage={put:async(k,v)=>objects.set(k,v),url:async k=>mediaOrigin+'/fixtures/'+k,remove:async k=>objects.delete(k)};
@@ -27,12 +27,12 @@ const browser=await chromium.launch({args:['--no-sandbox'],executablePath:proces
 const checks=[];let active;
 async function client(width){
  const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
- const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[]};
+ const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[],requests:[],holdNextPage:false,releasePage:null,failNextPage:false};
  await context.exposeBinding('__treeholeNative',async(_,options)=>{
-  const {action,body}=options;state.actions.push(action);if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
+  const {action,body}=options;state.actions.push(action);state.requests.push({action,body});if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
   const result=await fetch(endpoint+'/v1/'+action,{method:action==='config'?'GET':'POST',headers,...(action==='config'?{}:{body:JSON.stringify(body)})});
-  const json=await result.json();if(!result.ok)return {error:json.error};
+  const json=await result.json();if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
   if(json.sessionToken){state.token=json.sessionToken;delete json.sessionToken;}
   if(action==='logout'||action==='account.delete')state.token=null;
   if(action.startsWith('posts.')||action.startsWith('comments.'))state.publicResponses.push(json);
@@ -163,7 +163,7 @@ try{
   const dual=visual.page.locator('.th-post').filter({hasText:two.title});assert.equal(await dual.locator('.th-images.two button').count(),2);
   const nine=visual.page.locator('.th-post').filter({hasText:many.title});assert.equal(await nine.locator('.th-images button').count(),3);assert.equal(await nine.locator('.th-image-count').innerText(),'+6');
   const tall=visual.page.locator('.th-post').filter({hasText:long.title});assert.equal(await tall.locator('.th-long-image').innerText(),'长图');assert((await tall.locator('.th-images button').boundingBox()).height<300);
-  await tall.locator('.th-post-body').click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();const full=await visual.page.locator('.th-detail .th-images button').boundingBox();assert(Math.abs(full.width/full.height-.3)<.01);assert.equal(await visual.page.getByLabel('你的回复',{exact:true}).count(),0);
+  await tall.getByRole('button',{name:/查看评论/}).click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();await visual.page.waitForFunction(()=>document.querySelector('.th-discussion-title').getBoundingClientRect().top<120);const full=await visual.page.locator('.th-detail .th-images button').boundingBox();assert(Math.abs(full.width/full.height-.3)<.01);assert.equal(await visual.page.getByLabel('你的回复',{exact:true}).count(),0);
   await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'评论',exact:true}).click();await visual.page.waitForFunction(()=>document.querySelector('.th-discussion-title').getBoundingClientRect().top<120);assert.equal(await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'评论',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);await visual.page.screenshot({path:path.join(output,`treehole-content-comments-${width}.png`),animations:'disabled'});
   await visual.page.getByRole('button',{name:'全部 4 条回复',exact:true}).click();await visual.page.getByRole('button',{name:'收起回复',exact:true}).waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),4);await visual.page.getByRole('button',{name:'收起回复',exact:true}).click();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);
@@ -175,6 +175,38 @@ try{
  visual.state.breakNextImage=true;await visual.page.locator('.th-post').filter({hasText:two.title}).getByRole('button',{name:'查看图片 1，共 2 张'}).click();await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).waitFor();visual.state.delayImage=true;await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).click();await visual.page.locator('.th-gallery img').waitFor();await visual.page.waitForFunction(()=>{const image=document.querySelector('.th-gallery img');return image&&image.complete&&image.naturalWidth>0;});await visual.page.getByRole('button',{name:'关闭大图'}).click();checks.push('expired gallery URL recovers on the first retry even when the old image fails during URL renewal');
  await db.query('UPDATE hyt_posts SET locked=true WHERE id=$1',[long.id]);await visual.page.locator('.th-post').filter({hasText:long.title}).locator('.th-post-body').click();await visual.page.getByText('这条讨论已暂停回复。',{exact:true}).waitFor();assert(await visual.page.locator('.th-reply-entry').isDisabled());assert(!await visual.page.getByRole('button',{name:'点赞',exact:true}).isDisabled());await visual.page.getByRole('button',{name:'收藏',exact:true}).click();await visual.page.getByRole('button',{name:'取消收藏',exact:true}).waitFor();checks.push('locked discussion keeps like/save controls while disabling reply entry');
  assert.deepEqual(visual.errors,[]);await visual.context.close();
+
+ // Forty-five deterministic SQL fixtures exercise real cursor paging without rate-limit bypass in product code.
+ for(const width of [360,390,430]){
+  const pager=await client(width);await register(pager.page,'pager_'+width,'翻页测试同学');
+  const member=(await db.query('SELECT id FROM hyt_members WHERE username=$1',['pager_'+width])).rows[0].id;
+  const keyword='分页样本'+width;
+  await db.query(`INSERT INTO hyt_posts(author_id,body,anonymous,request_id,title,category,created_at)
+    SELECT $1,'校园图书馆的午后，记录一件普通的小事。',false,gen_random_uuid(),$2||' · '||lpad(n::text,2,'0'),'daily',now()-n*interval '1 minute' FROM generate_series(1,45) AS n`,[member,keyword]);
+  const page=pager.page,card=()=>page.locator('.th-post'),pageCalls=()=>pager.state.requests.filter(r=>r.action==='posts.list'&&r.body?.beforeId),firstCalls=()=>pager.state.requests.filter(r=>r.action==='posts.list'&&!r.body?.beforeId).length;
+  const count=async n=>page.waitForFunction(n=>document.querySelectorAll('.th-post').length===n,n);
+  await page.getByRole('button',{name:'搜索帖子',exact:true}).click();await page.getByLabel('搜索树洞文字').fill(keyword);await page.locator('.th-search').getByRole('button',{name:'搜索',exact:true}).click();await count(20);
+  pager.state.holdNextPage=true;await page.locator('.th-page-end').scrollIntoViewIfNeeded();await page.getByText('正在加载更多帖子…',{exact:true}).waitFor();
+  assert.equal(pageCalls().length,1);assert.equal(await page.getByRole('button',{name:'发帖',exact:true}).isDisabled(),false);assert.equal(await card().first().locator('.th-post-body').isDisabled(),false);
+  while(!pager.state.releasePage)await new Promise(r=>setTimeout(r,10));pager.state.releasePage();pager.state.releasePage=null;await count(40);
+  assert.equal(pageCalls().length,1);const snapshot=pageCalls()[0].body.snapshotTime;assert(snapshot);checks.push(`${width}: near-bottom loads page two once, keeps snapshot and leaves reading enabled`);
+  pager.state.failNextPage=true;await page.locator('.th-page-end').scrollIntoViewIfNeeded();await page.getByRole('button',{name:'重试加载',exact:true}).waitFor();assert.equal(await card().count(),40);
+  const afterFailure=pageCalls().length;await page.evaluate(()=>window.scrollBy(0,-350));await page.locator('.th-page-end').scrollIntoViewIfNeeded();await page.waitForTimeout(120);assert.equal(pageCalls().length,afterFailure);
+  await page.screenshot({path:path.join(output,`treehole-pagination-retry-${width}.png`),animations:'disabled'});
+  await page.getByRole('button',{name:'重试加载',exact:true}).click();await count(45);assert.equal(await page.locator('.th-page-end').count(),0);assert(pageCalls().every(r=>r.body.snapshotTime===snapshot));
+  const ids=await card().evaluateAll(els=>els.map(el=>el.dataset.postId));assert.equal(new Set(ids).size,45);checks.push(`${width}: failed third page retains forty cards, pauses auto retry, manual retry appends five unique cards`);
+  const target=card().nth(26),id=ids[26];await target.evaluate(el=>window.scrollTo({top:window.scrollY+el.getBoundingClientRect().top-150,behavior:'instant'}));
+  const origin=await page.evaluate(()=>window.scrollY),beforeReturn=firstCalls();await target.getByRole('button',{name:/查看评论/}).click();await page.getByRole('heading',{name:'评论',exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('.th-detail-tabs button[aria-pressed=true]')?.textContent==='评论');
+  const discussion=await page.locator('.th-discussion-title').boundingBox();assert(discussion.y>=0&&discussion.y<650);
+  await page.locator('.th-reply-entry').click();await page.getByLabel('你的回复',{exact:true}).fill('翻页之后也能正确回复。');await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.getByText('翻页之后也能正确回复。',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'返回树洞',exact:true}).click();await count(45);await page.waitForFunction(y=>Math.abs(window.scrollY-y)<3,origin);assert.equal(firstCalls(),beforeReturn);await page.locator(`.th-post[data-post-id="${id}"]`).getByRole('button',{name:'查看评论，共 1 条',exact:true}).waitFor();
+  checks.push(`${width}: comment icon enters discussion; reply count updates; back retains all pages, exact scroll and makes no refresh request`);
+  await page.locator(`.th-post[data-post-id="${id}"] .th-post-body`).click();await page.getByRole('heading',{name:'评论',exact:true}).waitFor();await page.waitForFunction(()=>window.scrollY===0);await page.getByRole('button',{name:'返回树洞',exact:true}).click();await count(45);checks.push(`${width}: body opens at the top while comment icon opens discussion`);
+  await page.getByRole('button',{name:'刷新树洞',exact:true}).click();await count(20);pager.state.holdNextPage=true;await page.locator('.th-page-end').scrollIntoViewIfNeeded();await page.getByText('正在加载更多帖子…',{exact:true}).waitFor();while(!pager.state.releasePage)await new Promise(r=>setTimeout(r,10));
+  await page.locator('.th-category-nav').getByRole('button',{name:'提问求助',exact:true}).click();await count(0);pager.state.releasePage();pager.state.releasePage=null;await page.waitForTimeout(120);assert.equal(await card().count(),0);checks.push(`${width}: stale page response cannot append after category changes`);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(pager.errors,[]);await pager.context.close();
+ }
  await writeFile(path.join(output,'checks.json'),JSON.stringify({backend:'actual PostgreSQL (PGlite), HTTP service',bridge:'test-only native adapter',checks},null,2));
  console.log(JSON.stringify({passed:checks.length,output}));
 }catch(error){if(active&&!active.isClosed())await active.screenshot({path:path.join(output,'failure.png')});throw error;}

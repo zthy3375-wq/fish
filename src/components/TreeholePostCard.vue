@@ -6,15 +6,15 @@ import {treeholeTimestamp} from '../domain/treeholePresentation';
 import {treeholeCategoryName} from '../domain/treeholeCategories';
 import type {TreeholePost} from '../services/treehole';
 withDefaults(defineProps<{post:TreeholePost;full?:boolean;busy?:boolean;reacting?:boolean}>(),{full:false,busy:false,reacting:false});
-defineEmits<{open:[];react:[kind:'like'|'save'];menu:[];image:[index:number];category:[id:string]}>();
+defineEmits<{open:[];discussion:[];react:[kind:'like'|'save'];menu:[];image:[index:number];category:[id:string]}>();
 </script>
 <template>
- <article class="th-post-card" :class="full?'th-detail':'th-post'">
+ <article class="th-post-card" :class="full?'th-detail':'th-post'" :data-post-id="post.id">
   <header><TreeholeAvatar :name="post.author.name" :anonymous="post.anonymous" :size="full?40:32"/><div class="th-post-byline"><strong>{{post.author.name}}</strong><span v-if="post.author.mine" class="th-owner">我</span><small v-if="full">{{treeholeTimestamp(post.createdAt)}}</small></div><button class="th-post-menu" aria-label="帖子操作" :disabled="busy" @click="$emit('menu')"><MoreHorizontal :size="21"/></button></header>
   <div v-if="full" class="th-full-body"><h2 v-if="post.title">{{post.title}}</h2><p v-if="post.body">{{post.body}}</p></div>
   <button v-else class="th-post-body" :disabled="busy" @click="$emit('open')"><h2 v-if="post.title">{{post.title}}</h2><span v-if="post.body">{{post.body}}</span></button>
   <TreeholeImages :images="post.images||[]" :post-id="post.id" :full="full" @open="$emit('image',$event)"/>
-  <footer class="th-post-actions"><button class="th-category-tag" :disabled="busy" @click="$emit('category',post.category||'daily')"><span>#</span>{{treeholeCategoryName(post.category)}}</button><span class="th-action-spacer"/><span v-if="post.locked" class="th-locked-tag" aria-label="已暂停回复"><LockKeyhole :size="13"/></span><template v-if="!full"><button :aria-label="'查看评论，共 '+post.commentCount+' 条'" :disabled="busy" @click="$emit('open')"><MessageCircle :size="19"/><span>{{post.commentCount||'评论'}}</span></button><button :aria-label="post.liked?'取消点赞':'点赞'" :aria-pressed="post.liked" :disabled="busy||reacting" @click="$emit('react','like')"><ThumbsUp :size="19" :fill="post.liked?'currentColor':'none'"/><span>{{post.likeCount||'赞'}}</span></button></template></footer>
+  <footer class="th-post-actions"><button class="th-category-tag" :disabled="busy" @click="$emit('category',post.category||'daily')"><span>#</span>{{treeholeCategoryName(post.category)}}</button><span class="th-action-spacer"/><span v-if="post.locked" class="th-locked-tag" aria-label="已暂停回复"><LockKeyhole :size="13"/></span><template v-if="!full"><button :aria-label="'查看评论，共 '+post.commentCount+' 条'" :disabled="busy" @click="$emit('discussion')"><MessageCircle :size="19"/><span>{{post.commentCount||'评论'}}</span></button><button :aria-label="post.liked?'取消点赞':'点赞'" :aria-pressed="post.liked" :disabled="busy||reacting" @click="$emit('react','like')"><ThumbsUp :size="19" :fill="post.liked?'currentColor':'none'"/><span>{{post.likeCount||'赞'}}</span></button></template></footer>
  </article>
 </template>
 <style scoped>

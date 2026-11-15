@@ -10,13 +10,19 @@ private final class TreeholeMemoryVault: TreeholeTokenVault {
 }
 private final class TreeholeTestProtocol: URLProtocol {
     static var handler: ((URLRequest) -> (Int, Data))?
+    static var pauseNext = false
+    static var resume: (() -> Void)?
+    static var paused: (() -> Void)?
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         guard let handler = Self.handler else { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)); return }
         let (code, data) = handler(request)
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
+        let deliver: () -> Void = { [self] in
+            client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
+        }
+        if Self.pauseNext { Self.pauseNext = false; Self.resume = deliver; Self.paused?() } else { deliver() }
     }
     override func stopLoading() { }
 }
@@ -25,7 +31,7 @@ final class TreeholeTests: XCTestCase {
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [TreeholeTestProtocol.self]
         return TreeholeService(vault: vault, session: URLSession(configuration: config))
     }
-    override func tearDown() { TreeholeTestProtocol.handler = nil }
+    override func tearDown() { TreeholeTestProtocol.handler = nil; TreeholeTestProtocol.pauseNext = false; TreeholeTestProtocol.resume = nil; TreeholeTestProtocol.paused = nil }
     func testNativeLoginStoresTokenAndRemovesItFromEnvelope() async throws {
         let vault = TreeholeMemoryVault(), token = String(repeating: "a", count: 43)
         TreeholeTestProtocol.handler = { request in
@@ -93,8 +99,8 @@ final class TreeholeTests: XCTestCase {
         XCTAssertEqual(decoded.size.width, 1600); XCTAssertEqual(decoded.size.height, 800); XCTAssertLessThanOrEqual(photo.data.count, 1_200_000); XCTAssertEqual(Array(photo.data.prefix(2)), [255,216])
     }
 
-    private func samplePost() -> TreeholePost {
-        TreeholePost(id: "post-id", body: "校园日常", createdAt: "2026-11-15T00:00:00Z", anonymous: false, locked: false, liked: false, saved: false, author: TreeholeAuthor(name: "同学", anonymous: false, mine: false), commentCount: 1, likeCount: 2)
+    private func samplePost(_ id: String = "post-id", comments: Int = 1) -> TreeholePost {
+        TreeholePost(id: id, body: "校园日常", createdAt: "2026-11-15T00:00:00Z", anonymous: false, locked: false, liked: false, saved: false, author: TreeholeAuthor(name: "同学", anonymous: false, mine: false), commentCount: comments, likeCount: 2)
     }
     @MainActor private func settle(_ store: TreeholeStore) async throws {
         for _ in 0..<200 {
@@ -146,6 +152,78 @@ final class TreeholeTests: XCTestCase {
         await fulfillment(of: [finished], timeout: 3)
         try await Task.sleep(nanoseconds: 20_000_000)
         XCTAssertNil(store.current); XCTAssertTrue(store.posts.isEmpty); XCTAssertTrue(store.pendingReactions.isEmpty); XCTAssertNil(store.message)
+    }
+
+
+    private func page(_ posts: [TreeholePost], next: [String: String]? = nil) -> Data {
+        var value: [String: Any] = ["posts": try! JSONSerialization.jsonObject(with: JSONEncoder().encode(posts))]
+        if let next { value["next"] = next }
+        return try! JSONSerialization.data(withJSONObject: value)
+    }
+    @MainActor func testFeedPaginationRetainsPagesOnFailureAndRetriesWithoutBlockingReading() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)), cursor = ["beforeId": "one", "snapshotTime": "2026-11-15T00:00:00Z"]
+        TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("one")], next: cursor)) }
+        try await store.feed()
+        var calls = 0
+        TreeholeTestProtocol.handler = { _ in calls += 1; return (503, Data("{\"error\":\"network_unavailable\"}".utf8)) }
+        await store.loadMoreFeed(); await store.loadMoreFeed()
+        XCTAssertEqual(calls, 1); XCTAssertEqual(store.posts.map(\.id), ["one"]); XCTAssertEqual(store.feedNext, cursor)
+        XCTAssertNotNil(store.feedPageError); XCTAssertFalse(store.busy); XCTAssertFalse(store.feedLoadingMore)
+        TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("one"), self.samplePost("two"), self.samplePost("two")])) }
+        await store.loadMoreFeed(automatic: false)
+        XCTAssertEqual(store.posts.map(\.id), ["one", "two"]); XCTAssertNil(store.feedNext); XCTAssertNil(store.feedPageError)
+    }
+    @MainActor func testLateFeedPageCannotRestoreOldCategoryOrClearedAccount() async throws {
+        for clearsAccount in [false, true] {
+            let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+            let store = TreeholeStore(api: service(vault))
+            TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("one")], next: ["beforeId": "one"])) }
+            try await store.feed()
+            let delayed = expectation(description: "page response held")
+            TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("old-page")])) }
+            TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { delayed.fulfill() }
+            let loading = Task { await store.loadMoreFeed() }
+            await fulfillment(of: [delayed], timeout: 3)
+            XCTAssertTrue(store.feedLoadingMore); XCTAssertFalse(store.busy)
+            if clearsAccount { store.clear() }
+            else {
+                store.category = "help"
+                TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("help-post")])) }
+                try await store.feed()
+            }
+            TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil; await loading.value
+            XCTAssertEqual(store.posts.map(\.id), clearsAccount ? [] : ["help-post"])
+            XCTAssertFalse(store.feedLoadingMore); XCTAssertNil(store.feedPageError)
+        }
+    }
+    @MainActor func testNonAdvancingCursorDoesNotAutomaticallyLoop() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)), cursor = ["beforeId": "one"]
+        var calls = 0
+        TreeholeTestProtocol.handler = { _ in calls += 1; return (200, self.page([self.samplePost("one")], next: cursor)) }
+        try await store.feed(); await store.loadMoreFeed(); await store.loadMoreFeed()
+        XCTAssertEqual(calls, 2); XCTAssertNotNil(store.feedPageError); XCTAssertEqual(store.posts.count, 1)
+    }
+    @MainActor func testDetailUpdatesCachedCountsWithoutDroppingPagesOrPendingReactions() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)), cursor = ["beforeId": "two"]
+        TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("one"), self.samplePost("two")], next: cursor)) }
+        try await store.feed()
+        store.posts[1].liked = true; store.posts[1].likeCount = 3; store.pendingReactions = ["two:like"]
+        TreeholeTestProtocol.handler = { _ in (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(self.samplePost("two", comments: 9))) + Data("}".utf8)) }
+        try await store.detail(store.posts[1])
+        XCTAssertEqual(store.posts.map(\.id), ["one", "two"]); XCTAssertEqual(store.feedNext, cursor)
+        XCTAssertEqual(store.posts[1].commentCount, 9); XCTAssertTrue(store.posts[1].liked); XCTAssertEqual(store.posts[1].likeCount, 3)
+    }
+    @MainActor func testRemovingSavedPostKeepsOtherCachedCards() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.scope = "saved"
+        var saved = samplePost("one"); saved.saved = true
+        store.posts = [saved, samplePost("two")]; store.current = saved
+        TreeholeTestProtocol.handler = { _ in (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(self.samplePost("one"))) + Data("}".utf8)) }
+        store.react(saved, kind: "save"); try await settle(store)
+        XCTAssertEqual(store.posts.map(\.id), ["two"]); XCTAssertEqual(store.current?.saved, false)
     }
 
 }
