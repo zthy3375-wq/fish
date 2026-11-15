@@ -143,5 +143,5 @@ jobs:
           name: handan-campus-browser-checks-${{ github.sha }}
           path: |
             /tmp/handan-v050-qa
-            /tmp/handan-treehole-v3-qa
+            /tmp/handan-treehole-*-qa
           if-no-files-found: warn

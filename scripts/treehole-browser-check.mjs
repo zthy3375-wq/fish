@@ -27,7 +27,7 @@ const browser=await chromium.launch({args:['--no-sandbox'],executablePath:proces
 const checks=[];let active;
 async function client(width){
  const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
- const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,publicResponses:[],actions:[]};
+ const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[]};
  await context.exposeBinding('__treeholeNative',async(_,options)=>{
   const {action,body}=options;state.actions.push(action);if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
@@ -36,6 +36,8 @@ async function client(width){
   if(json.sessionToken){state.token=json.sessionToken;delete json.sessionToken;}
   if(action==='logout'||action==='account.delete')state.token=null;
   if(action.startsWith('posts.')||action.startsWith('comments.'))state.publicResponses.push(json);
+  if(action==='media.url'&&state.breakNextImage){state.breakNextImage=false;json.image.url=mediaOrigin+'/fixtures/expired-image';}
+  else if(action==='media.url'&&state.delayImage)await new Promise(r=>setTimeout(r,180));
   if(action==='posts.create'&&state.dropNextPost){state.dropNextPost=false;return {error:'network_unavailable'};}
   return {result:json};
  });
@@ -170,6 +172,7 @@ try{
   await visual.page.locator('.carousel').evaluate(el=>el.scrollTo({left:el.clientWidth*2,behavior:'instant'}));await visual.page.waitForFunction(()=>document.querySelector('.th-media-pagination strong').textContent==='3 / 9');await visual.page.getByRole('button',{name:'查看图片 3，共 9 张',exact:true}).click();await visual.page.getByRole('button',{name:'下一张',exact:true}).click();assert.equal(await visual.page.locator('.th-gallery-bar>span').innerText(),'4 / 9');await visual.page.getByRole('button',{name:'关闭大图'}).click();await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();
   checks.push(`${width}: long image keeps full aspect, two/nine photos, selected comment tab, preview-two/expand-four and carousel/gallery indices`);
  }
+ visual.state.breakNextImage=true;await visual.page.locator('.th-post').filter({hasText:two.title}).getByRole('button',{name:'查看图片 1，共 2 张'}).click();await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).waitFor();visual.state.delayImage=true;await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).click();await visual.page.locator('.th-gallery img').waitFor();await visual.page.waitForFunction(()=>{const image=document.querySelector('.th-gallery img');return image&&image.complete&&image.naturalWidth>0;});await visual.page.getByRole('button',{name:'关闭大图'}).click();checks.push('expired gallery URL recovers on the first retry even when the old image fails during URL renewal');
  await db.query('UPDATE hyt_posts SET locked=true WHERE id=$1',[long.id]);await visual.page.locator('.th-post').filter({hasText:long.title}).locator('.th-post-body').click();await visual.page.getByText('这条讨论已暂停回复。',{exact:true}).waitFor();assert(await visual.page.locator('.th-reply-entry').isDisabled());assert(!await visual.page.getByRole('button',{name:'点赞',exact:true}).isDisabled());await visual.page.getByRole('button',{name:'收藏',exact:true}).click();await visual.page.getByRole('button',{name:'取消收藏',exact:true}).waitFor();checks.push('locked discussion keeps like/save controls while disabling reply entry');
  assert.deepEqual(visual.errors,[]);await visual.context.close();
  await writeFile(path.join(output,'checks.json'),JSON.stringify({backend:'actual PostgreSQL (PGlite), HTTP service',bridge:'test-only native adapter',checks},null,2));
