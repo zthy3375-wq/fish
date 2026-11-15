@@ -14,13 +14,23 @@ const category=ref('all'),postCategory=ref('daily'),sort=ref('latest'),postTitle
 const expandedReplies=ref<Record<string,boolean>>({}),replyPages=ref<Record<string,Record<string,string>|null>>({});
 const gallery=ref<{post:TreeholePost;index:number}|null>(null),zoomed=ref(false),galleryX=ref(0);
 const replyExpanded=ref(false),detailTab=ref('body'),galleryFailed=ref(false);
+const detailLoading=ref(false),detailError=ref(''),pageMotion=ref('forward'),selectedPhoto=ref<string|null>(null);
+let detailRequest=0;
+const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const scrollBehavior=():ScrollBehavior=>reducedMotion()?'instant':'smooth';
+function movePhoto(delta:number){const index=images.value.findIndex(i=>i.id===selectedPhoto.value),next=index+delta;if(index<0||next<0||next>=images.value.length)return;const [photo]=images.value.splice(index,1);images.value.splice(next,0,photo);}
+let edgeStart:{x:number;y:number;valid:boolean}|null=null;
+function edgeDown(e:TouchEvent){const t=e.touches[0];edgeStart=screen.value!=='feed'&&!dialogOpen.value&&t.clientX<24?{x:t.clientX,y:t.clientY,valid:true}:null;}
+function edgeMove(e:TouchEvent){if(!edgeStart)return;const t=e.touches[0];if(Math.abs(t.clientY-edgeStart.y)>30)edgeStart.valid=false;}
+function edgeEnd(e:TouchEvent){const start=edgeStart;edgeStart=null;if(!start?.valid)return;const t=e.changedTouches[0];if(t.clientX-start.x>90&&Math.abs(t.clientY-start.y)<30)requestBack();}
+
 const pendingReactions=ref<Record<string,boolean>>({}),pendingLikes=ref<Record<string,boolean>>({}),loadingThreads=ref<Record<string,boolean>>({}),loadedThreads=new Set<string>();
 let accountEpoch=0,detailEpoch=0,scrollFrame=0;
 const currentImage=computed(()=>gallery.value?.post.images?.[gallery.value.index]);
 let draftQueue=Promise.resolve(),draftTimer:ReturnType<typeof setTimeout>|undefined;
 const emit=defineEmits<{exit:[]}>();
 const searchOpen=ref(false),showPassword=ref(false),replyInput=ref<HTMLTextAreaElement>(),searchInput=ref<HTMLInputElement>();
-const dialogElement=ref<HTMLElement>();
+const dialogElement=ref<HTMLElement>(),dialogMotion=ref('th-sheet-motion');
 const user=ref<TreeholeUser|null>(null),busy=ref(false),ready=ref(false),error=ref(''),notice=ref('');
 const registration=ref(false),inviteRequired=ref(false),auth=ref<'login'|'register'|'recover'>('login');
 const username=ref(''),password=ref(''),nickname=ref(''),invite=ref(''),agreed=ref(false),recoveryInput=ref(''),recovery=ref('');
@@ -51,8 +61,8 @@ function closeReply(){replyInput.value?.blur();replyExpanded.value=false;}
 function accountFeed(next:string){scope.value=next;query.value='';screen.value='feed';void run(()=>feed());}
 function selectCategory(next:string){if(busy.value)return;if(screen.value==='detail'&&commentBody.value.trim()){error.value='请先发布回复，或返回时选择放弃';return;}category.value=next;scope.value='all';screen.value='feed';detail.value=null;void run(()=>feed());}
 function setSort(next:string){if(busy.value)return;sort.value=next;scope.value='all';void run(()=>feed());}
-function windowTop(){detailTab.value="body";window.scrollTo({top:0,behavior:"smooth"});}
-function scrollDiscussion(){detailTab.value='comments';document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:'smooth',block:'start'});}
+function windowTop(){detailTab.value="body";window.scrollTo({top:0,behavior:scrollBehavior()});}
+function scrollDiscussion(){detailTab.value='comments';document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:scrollBehavior(),block:'start'});}
 function trackDetailScroll(){cancelAnimationFrame(scrollFrame);scrollFrame=requestAnimationFrame(()=>{if(screen.value!=='detail')return;const heading=document.querySelector('.th-discussion-title'),nav=document.querySelector('.th-nav');if(!heading||!nav)return;const top=heading.getBoundingClientRect().top;if(window.scrollY<8)detailTab.value='body';else if(top<=nav.getBoundingClientRect().bottom+24)detailTab.value='comments';else if(top>window.innerHeight*.7)detailTab.value='body';});}
 async function restoreDraft(){if(!user.value)return;draftReady.value=false;try{const d=await readTreeholeDraft(user.value.id);if(d){postTitle.value=d.title;body.value=d.body;postCategory.value=d.category;anonymous.value=d.anonymous;postKey.value=d.requestId;images.value=d.images;}}catch{draftSaved.value='草稿暂时无法读取';}finally{draftReady.value=true;}}
 function saveDraft():Promise<boolean>{if(!draftReady.value||!user.value)return Promise.resolve(false);const id=user.value.id;let saved=false;const snapshot=JSON.parse(JSON.stringify({title:postTitle.value,body:body.value,category:postCategory.value,anonymous:anonymous.value,requestId:postKey.value,images:images.value}));draftQueue=draftQueue.then(()=>snapshot.title||snapshot.body||snapshot.images.length?writeTreeholeDraft(id,snapshot):deleteTreeholeDraft(id)).then(()=>{saved=true;draftSaved.value='草稿已保存';}).catch(()=>{draftSaved.value='草稿保存失败，请保留当前页面';});return draftQueue.then(()=>saved);}
@@ -98,11 +108,13 @@ function restoreFeedPosition(){
 }
 watch(screen,async(next,prior)=>{
  if(prior==='feed')rememberFeedPosition();
+ pageMotion.value=next==='feed'?'back':'forward';
+ if(prior==='detail'&&next!=='detail'){detailRequest++;detailEpoch++;detailLoading.value=false;detailError.value='';}
  await nextTick();if(!alive)return;
  if(next==='feed'&&!feedNeedsRefresh)restoreFeedPosition();else window.scrollTo({top:0,behavior:'instant'});
 });
 watch(notice,()=>{clearTimeout(noticeTimer);if(notice.value)noticeTimer=setTimeout(()=>{notice.value='';},5000);});
-watch(dialogOpen,async(open)=>{if(open){previousFocus=document.activeElement as HTMLElement;previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';await nextTick();if(replyExpanded.value)replyInput.value?.focus();else dialogElement.value?.querySelector<HTMLElement>('button,input,textarea')?.focus();}else{document.body.style.overflow=previousOverflow;await nextTick();previousFocus?.focus();}});
+watch(dialogOpen,async(open)=>{if(open){dialogMotion.value=gallery.value?'th-gallery-motion':'th-sheet-motion';previousFocus=document.activeElement as HTMLElement;previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';await nextTick();if(replyExpanded.value)replyInput.value?.focus();else dialogElement.value?.querySelector<HTMLElement>('button,input,textarea')?.focus();}else{document.body.style.overflow=previousOverflow;await nextTick();previousFocus?.focus({preventScroll:true});}});
 watch([menu,reportTarget,confirmAction,discard,gallery],async()=>{if(dialogOpen.value){await nextTick();if(replyExpanded.value)replyInput.value?.focus();else dialogElement.value?.querySelector<HTMLElement>('button,input,textarea')?.focus();}});
 function trapKeys(event:KeyboardEvent){if(!dialogOpen.value)return;if(event.key==='Escape'){event.stopImmediatePropagation();event.preventDefault();requestBack();}if(event.key==='Tab'){const controls=Array.from(dialogElement.value?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled)')||[]);const first=controls[0],last=controls.at(-1);if(!first){event.preventDefault();return;}if(event.shiftKey&&document.activeElement===first){last?.focus();event.preventDefault();}else if(!event.shiftKey&&document.activeElement===last){first.focus();event.preventDefault();}}}
 async function run(work:()=>Promise<void>){
@@ -110,7 +122,7 @@ async function run(work:()=>Promise<void>){
  try{await work();}catch(e){if(alive){error.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'){clearAccount();}}}
  finally{if(alive)busy.value=false;}
 }
-function clearAccount(){accountEpoch++;feedRevision.value++;feedLoadingMore.value=false;feedPageError.value='';feedNext.value=null;commentNext.value=null;appliedFeedKey='';feedNeedsRefresh=false;feedScroll=0;feedAnchor=null;pendingReactions.value={};pendingLikes.value={};loadingThreads.value={};loadedThreads.clear();replyExpanded.value=false;draftReady.value=false;postTitle.value='';images.value=[];category.value='all';sort.value='latest';showPassword.value=false;searchOpen.value=false;auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
+function clearAccount(){accountEpoch++;detailRequest++;detailEpoch++;detailLoading.value=false;detailError.value='';feedRevision.value++;feedLoadingMore.value=false;feedPageError.value='';feedNext.value=null;commentNext.value=null;appliedFeedKey='';feedNeedsRefresh=false;feedScroll=0;feedAnchor=null;pendingReactions.value={};pendingLikes.value={};loadingThreads.value={};loadedThreads.clear();replyExpanded.value=false;draftReady.value=false;postTitle.value='';images.value=[];category.value='all';sort.value='latest';showPassword.value=false;searchOpen.value=false;auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
 function feedCriteria(){return {scope:scope.value,query:query.value,category:category.value,sort:sort.value};}
 function feedKey(){return JSON.stringify(feedCriteria());}
 function appendUnique<T extends {id:string}>(current:T[],incoming:T[]){
@@ -165,14 +177,29 @@ function changeScope(next:string){if(busy.value)return;scope.value=next;if(next=
 function compose(anon=false){replyExpanded.value=false;reply.value=null;commentBody.value='';commentAnon.value=false;commentKey.value=crypto.randomUUID();if(!body.value&&!postTitle.value&&!images.value.length){anonymous.value=anon;postCategory.value=category.value==='all'?'daily':category.value;postKey.value=crypto.randomUUID();}screen.value='compose';error.value='';}
 
 async function loadDetail(post:TreeholePost,more=false){
- const r=await api('posts.get',{postId:post.id,threaded:true,...(more?commentNext.value:{})});if(!alive)return;detail.value=r.post!;syncFeedPost(r.post!);if(!more){detailEpoch++;expandedReplies.value={};replyPages.value={};loadedThreads.clear();}comments.value=more?[...comments.value,...r.comments||[]]:r.comments||[];commentNext.value=r.next||null;
+ const epoch=accountEpoch,request=++detailRequest;
+ detailLoading.value=true;detailError.value='';
+ try{
+  const r=await api('posts.get',{postId:post.id,threaded:true,...(more?commentNext.value:{})});
+  if(!alive||epoch!==accountEpoch||request!==detailRequest||screen.value!=='detail'||detail.value?.id!==post.id)return;
+  if(!r.post)throw Error('post_not_found');
+  const fresh={...r.post,...(pendingReactions.value[post.id+':like']?{liked:detail.value.liked,likeCount:detail.value.likeCount}:{}),...(pendingReactions.value[post.id+':save']?{saved:detail.value.saved}:{})};
+  detail.value=fresh;syncFeedPost(fresh);
+  if(!more){detailEpoch++;expandedReplies.value={};replyPages.value={};loadedThreads.clear();}
+  comments.value=more?appendUnique(comments.value,r.comments||[]):r.comments||[];commentNext.value=r.next||null;
+ }catch(e){
+  if(alive&&epoch===accountEpoch&&request===detailRequest&&screen.value==='detail'&&detail.value?.id===post.id){
+   if(treeholeErrorCode(e)==='session_expired')actionError(e,epoch);else detailError.value=treeholeError(e);
+  }
+ }finally{if(epoch===accountEpoch&&request===detailRequest)detailLoading.value=false;}
 }
-function openPost(post:TreeholePost,discussion=false){void run(async()=>{
- await loadDetail(post);if(!alive)return;
- screen.value='detail';detailTab.value=discussion?'comments':'body';replyExpanded.value=false;commentBody.value='';reply.value=null;commentAnon.value=false;commentKey.value=crypto.randomUUID();menu.value=null;
- await nextTick();
- if(discussion){document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:'instant',block:'start'});detailTab.value='comments';}
-});}
+function openPost(post:TreeholePost,discussion=false){
+ if(busy.value||screen.value==='detail')return;
+ detailEpoch++;detail.value={...post};comments.value=[];commentNext.value=null;expandedReplies.value={};replyPages.value={};loadedThreads.clear();
+ screen.value='detail';detailTab.value=discussion?'comments':'body';replyExpanded.value=false;commentBody.value='';reply.value=null;commentAnon.value=false;commentKey.value=crypto.randomUUID();menu.value=null;error.value='';
+ void loadDetail(post);
+ void nextTick(()=>{if(discussion&&screen.value==='detail'){document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:'instant',block:'start'});detailTab.value='comments';}});
+}
 function publish(){void run(async()=>{
  for(const image of images.value){if(!image.remote){notice.value='正在上传图片 '+(images.value.indexOf(image)+1)+' / '+images.value.length;const r=await api('media.upload',{data:image.data,requestId:image.id});image.remote=r.image!;saveDraft();}}
  let r;try{r=await api('posts.create',{title:postTitle.value,category:postCategory.value,images:images.value.map(i=>i.remote!.id),body:body.value,anonymous:anonymous.value,requestId:postKey.value});}catch(e){if(treeholeErrorCode(e)==='image_unavailable'){for(const image of images.value){image.remote=undefined;image.id=crypto.randomUUID();}saveDraft();}throw e;}if(!alive)return;
@@ -227,7 +254,7 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
 </script>
 
 <template>
- <section class="treehole" aria-label="邯院通树洞" :aria-busy="busy" :class="{'has-replies':screen==='detail'&&detail&&!recovery}">
+ <section class="treehole" aria-label="邯院通树洞" :aria-busy="busy" :class="{'has-replies':screen==='detail'&&detail&&!recovery}" @touchstart.passive="edgeDown" @touchmove.passive="edgeMove" @touchend.passive="edgeEnd">
   <div :inert="dialogOpen">
    <header class="th-nav">
     <button class="th-icon" :aria-label="screen==='feed'?'返回上一页':'返回树洞'" :disabled="busy||!!recovery" @click="navigationBack"><ArrowLeft :size="22"/></button>
@@ -259,7 +286,7 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
       </form>
       <details class="th-rules"><summary><ShieldCheck :size="15"/>树洞规则与匿名说明</summary><p>尊重同学，勿发布他人隐私、辱骂、骚扰、垃圾广告或违法内容。可举报、删除自己的内容和注销账号。匿名会对其他用户隐藏昵称与账号，后台保留账号关联用于处理举报；不同帖子使用不同匿名代号。同一帖子内的匿名发言可关联。昵称发帖后改为匿名回复时，请留意内容本身是否暴露身份。</p><p>账号服务保存登录账号、昵称、密码加密摘要、帖子、互动与举报记录，用于登录及社区服务。教务账号与课表不会上传到社区。可以在账号设置中注销。</p></details>
      </template>
-     <template v-if="user">
+     <div v-if="user" :key="screen" class="th-screen-panel" :class="'th-page-'+pageMotion" :data-screen="screen">
       <template v-if="screen==='feed'">
        <form v-if="searchOpen" class="th-search" @submit.prevent="run(()=>feed())"><Search :size="18"/><input ref="searchInput" v-model="query" maxlength="80" aria-label="搜索树洞文字" placeholder="搜索你感兴趣的内容" :disabled="busy"/><button v-if="query" type="button" aria-label="清除搜索" :disabled="busy" @click="clearSearch"><X :size="17"/></button><button class="th-search-submit" :disabled="busy">搜索</button></form>
        <nav class="th-category-nav" aria-label="帖子分区"><button :aria-pressed="category==='all'" :disabled="busy" @click="selectCategory('all')">全部</button><button v-for="item in treeholeCategories" :key="item.id" :aria-pressed="category===item.id" :disabled="busy" @click="selectCategory(item.id)">{{item.name}}</button></nav>
@@ -267,17 +294,18 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
        <button v-if="body||postTitle||images.length" class="th-draft-resume" :disabled="busy" @click="compose()"><PenLine :size="15"/> 有一条未发布的草稿，继续编辑 <ChevronRight :size="15"/></button>
        <div v-if="query&&!searchOpen" class="th-query">正在看「{{query}}」的搜索结果<button aria-label="清除搜索" :disabled="busy" @click="clearSearch"><X :size="14"/></button></div>
        <div v-if="!posts.length&&!busy&&!error" class="th-empty"><span class="th-empty-art"><MessageCircle :size="32"/><i><Leaf :size="20"/></i></span><h3>{{query?'还没找到这段回声':scope==='mine'?'你的故事，从这里开始':scope==='saved'?'把喜欢的瞬间留在这里':'这里，等你说第一句话'}}</h3><p>{{query?'换个关键词，看看大家在聊什么。':scope==='saved'?'在帖子下方点一下收藏，下次就能找到。':'一件开心的小事，一个想问的问题，都可以。'}}</p><button v-if="!query&&scope!=='saved'" class="th-text-link" :disabled="busy" @click="compose()">写下第一条树洞 <ChevronRight :size="15"/></button></div>
-       <TreeholePostCard v-for="post in posts" :key="post.id" :post="post" :busy="busy" :reacting="pendingReactions[post.id+':like']" @open="openPost(post)" @discussion="openPost(post,true)" @react="react(post,$event)" @menu="menu=post.id" @image="imageView(post,$event)" @category="selectCategory"/>
+       <TreeholePostCard v-for="post in posts" :key="post.id" :post="post" :busy="busy" :reacting="pendingReactions[post.id+':like']" @open="openPost(post)" @discussion="openPost(post,true)" @react="react(post,$event)" @menu="menu=post.id" @image="openPost(post)" @category="selectCategory"/>
        <TreeholeFeedPage v-if="feedNext" :page-key="feedRevision+JSON.stringify(feedNext)" :loading="feedLoadingMore" :error="feedPageError" :disabled="busy||!!recovery||dialogOpen" @load="loadMoreFeed"/>
        <p v-else-if="posts.length" class="th-feed-end">暂时就这些，过一会儿再来看看吧</p>
-       <button class="th-fab" aria-label="发帖" :disabled="busy" @click="compose()"><PenLine :size="20"/>发树洞</button>
+
       </template>
       <form v-else-if="screen==='compose'" id="treehole-compose" class="th-compose" @submit.prevent="publish">
        <div class="th-compose-identity"><TreeholeAvatar :name="identity" :anonymous="anonymous" :size="36"/><div><strong>{{identity}}</strong><small>{{anonymous?'本帖使用独立匿名代号':'使用邯院通账号'}}</small></div><label class="th-anon-pill" :class="{selected:anonymous}"><input v-model="anonymous" type="checkbox" :disabled="busy"/><VenetianMask :size="17"/>匿名发布</label></div>
        <label class="th-zone-select">发布到<select v-model="postCategory" aria-label="选择分区" :disabled="busy"><option v-for="item in treeholeCategories" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
        <input v-model="postTitle" class="th-title-input" aria-label="帖子标题" placeholder="添加标题（选填）" maxlength="40" :disabled="busy"/>
        <label class="th-editor-label"><span class="th-sr-only">想说的话</span><textarea v-model="body" maxlength="3000" rows="6" :required="!images.length" placeholder="分享校园里的新鲜事…" :disabled="busy"/></label>
-       <div class="th-draft-images"><div v-for="(photo,index) in images" :key="photo.id"><img :src="'data:image/jpeg;base64,'+photo.data" :alt="'待发布图片 '+(index+1)"/><button type="button" :aria-label="'移除图片 '+(index+1)" :disabled="busy" @click="removeImage(index)"><X :size="15"/></button></div><label v-if="imagesEnabled&&images.length<9" class="th-add-photo"><ImagePlus :size="25"/><span>{{images.length}} / 9</span><input type="file" accept="image/*" multiple aria-label="添加图片" :disabled="busy" @change="chooseImages"/></label></div>
+       <div class="th-draft-images"><div v-for="(photo,index) in images" :key="photo.id" :class="{'is-selected':selectedPhoto===photo.id}"><button class="th-photo-select" type="button" :aria-label="'调整图片 '+(index+1)+' 顺序'" :aria-pressed="selectedPhoto===photo.id" @click="selectedPhoto=photo.id"><img :src="'data:image/jpeg;base64,'+photo.data" :alt="'待发布图片 '+(index+1)"/><span>{{index+1}}</span></button><button class="th-photo-remove" type="button" :aria-label="'移除图片 '+(index+1)" :disabled="busy" @click="removeImage(index)"><X :size="15"/></button></div><label v-if="imagesEnabled&&images.length<9" class="th-add-photo"><ImagePlus :size="25"/><span>{{images.length}} / 9</span><input type="file" accept="image/*" multiple aria-label="添加图片" :disabled="busy" @change="chooseImages"/></label></div>
+       <div v-if="selectedPhoto&&images.some(i=>i.id===selectedPhoto)" class="th-photo-order"><span>调整第 {{images.findIndex(i=>i.id===selectedPhoto)+1}} 张</span><button type="button" :disabled="busy||images[0]?.id===selectedPhoto" @click="movePhoto(-1)"><ChevronLeft :size="18"/>前移</button><button type="button" :disabled="busy||images.at(-1)?.id===selectedPhoto" @click="movePhoto(1)">后移<ChevronRight :size="18"/></button></div>
        <p class="th-draft-status">{{draftSaved}}<span v-if="!imagesEnabled">图片服务连接后可添加配图</span></p>
        <div class="th-editor-footer"><span><MessageCircle :size="15"/> 友善表达，尊重隐私</span><span>{{body.length}} / 3000</span></div>
        <div class="th-compose-note"><ShieldCheck :size="17"/><p>{{anonymous?'其他同学看不到你的昵称和账号。本帖内的匿名回复使用同一代号。':'帖子会显示你的邯院通昵称。你也可以在上方开启匿名。'}} 发布后身份方式固定。</p></div>
@@ -285,13 +313,15 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
       <template v-else-if="screen==='detail'&&detail">
        <TreeholePostCard :post="detail" full :busy="busy" @open="focusReply()" @react="react(detail,$event)" @menu="menu=detail.id" @image="imageView(detail,$event)" @category="selectCategory"/>
        <div class="th-discussion-title"><h2>评论 <span aria-hidden="true">{{detail.commentCount}}</span></h2><span>按时间排序</span></div>
+       <div v-if="detailError" class="th-detail-error" role="alert"><AlertCircle :size="18"/><div><strong>暂时没有加载完整</strong><p>{{detailError}}，当前正文已保留。</p></div><button :disabled="detailLoading" @click="loadDetail(detail!)">重试</button></div>
        <div class="th-comments">
-        <div v-if="!comments.length" class="th-no-comments"><MessageCircle :size="25"/><strong>第一声回应，就从你开始</strong><p>一句关心、一个想法，都很好。</p></div>
+        <div v-if="detailLoading&&!comments.length" class="th-comment-loading" role="status"><span/><span/><span/><p>正在加载评论…</p></div>
+        <div v-else-if="!comments.length&&!detailError" class="th-no-comments"><MessageCircle :size="25"/><strong>第一声回应，就从你开始</strong><p>一句关心、一个想法，都很好。</p></div>
         <TreeholeCommentThread v-for="comment in comments" :key="comment.id" :comment="comment" :busy="busy" :locked="detail.locked" :expanded="expandedReplies[comment.id]" :loading="loadingThreads[comment.id]" :pending-likes="pendingLikes" :more="!!replyPages[comment.id]" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(comment)" @collapse="expandedReplies[comment.id]=false"/>
        </div>
-       <button v-if="commentNext" class="th-more" :disabled="busy" @click="run(()=>loadDetail(detail!,true))">加载更多评论</button>
+       <button v-if="commentNext" class="th-more" :disabled="busy||detailLoading" @click="loadDetail(detail!,true)">{{detailLoading?'正在加载…':'加载更多评论'}}</button>
        <p v-if="detail.locked" class="th-locked"><LockKeyhole :size="16"/>这条讨论已暂停回复。</p>
-       <div class="th-readbar" aria-label="帖子互动"><button class="th-reply-entry" :disabled="busy||detail.locked" @click="focusReply()"><PenLine :size="17"/><span>{{detail.locked?'讨论已暂停':commentBody?'继续编辑回复…':'说点什么吧…'}}</span></button><button class="th-read-action" :aria-label="detail.liked?'取消点赞':'点赞'" :aria-pressed="detail.liked" :disabled="busy||pendingReactions[detail.id+':like']" @click="react(detail,'like')"><ThumbsUp :size="21" :fill="detail.liked?'currentColor':'none'"/><span>{{detail.likeCount||'点赞'}}</span></button><button class="th-read-action" :aria-label="detail.saved?'取消收藏':'收藏'" :aria-pressed="detail.saved" :disabled="busy||pendingReactions[detail.id+':save']" @click="react(detail,'save')"><Bookmark :size="21" :fill="detail.saved?'currentColor':'none'"/><span>{{detail.saved?'已收藏':'收藏'}}</span></button><button class="th-read-action" aria-label="查看评论" @click="scrollDiscussion"><MessageCircle :size="21"/><span>{{detail.commentCount||'评论'}}</span></button></div>
+
       </template>
       <template v-else-if="screen==='account'">
        <div class="th-profile"><TreeholeAvatar :name="user.nickname" :size="68"/><h2>{{user.nickname}}</h2><p><AtSign :size="13"/>{{user.username}}</p><span>邯院通账号 · 昵称由你决定</span></div>
@@ -304,10 +334,13 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
        <form v-else class="th-card" @submit.prevent="saveAccount"><h3>{{accountAction==='profile'?'换个喜欢的昵称':accountAction==='password'?'更新账号密码':'注销邯院通账号'}}</h3><label v-if="accountAction==='profile'">公开昵称<input v-model="nickname" minlength="2" maxlength="20" required :disabled="busy"/></label><template v-else><label>当前密码<input v-model="password" type="password" autocomplete="current-password" required minlength="10" :disabled="busy"/></label><label v-if="accountAction==='password'">新密码<input v-model="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required :disabled="busy"/></label><p v-else class="th-muted">注销将删除你的树洞帖子、评论和登录状态。学校课表保留。</p></template><button class="th-primary th-wide" :disabled="busy">{{accountAction==='delete'?'继续注销':'保存'}}</button></form>
       </template>
       <section v-else-if="screen==='moderate'"><div class="th-feed-intro"><h2>举报处理</h2><p>认真对待每一次反馈。</p></div><p v-if="!reports.length" class="th-empty">暂无待处理举报。</p><article v-for="r in reports" :key="r.id" class="th-card"><p class="th-full-body">{{r.body}}</p><p class="th-muted">举报原因：{{r.reason}}</p><div class="th-moderation-actions"><button v-for="(name,key) in {remove:'删除',lock:'锁帖',ban:'禁言 7 天',dismiss:'忽略'}" :key="key" :disabled="busy" @click="resolveReport(r,key)">{{name}}</button></div></article></section>
-     </template>
+     </div>
     </template>
    </div>
+   <button v-if="user&&screen==='feed'&&!recovery" class="th-fab" aria-label="发帖" :disabled="busy" @click="compose()"><PenLine :size="20"/>发树洞</button>
+   <div v-if="user&&screen==='detail'&&detail&&!recovery" class="th-readbar" aria-label="帖子互动"><button class="th-reply-entry" :disabled="busy||detail.locked" @click="focusReply()"><PenLine :size="17"/><span>{{detail.locked?'讨论已暂停':commentBody?'继续编辑回复…':'说点什么吧…'}}</span></button><button class="th-read-action" :aria-label="detail.liked?'取消点赞':'点赞'" :aria-pressed="detail.liked" :disabled="busy||pendingReactions[detail.id+':like']" @click="react(detail,'like')"><ThumbsUp :size="21" :fill="detail.liked?'currentColor':'none'"/><span>{{detail.likeCount||'点赞'}}</span></button><button class="th-read-action" :aria-label="detail.saved?'取消收藏':'收藏'" :aria-pressed="detail.saved" :disabled="busy||pendingReactions[detail.id+':save']" @click="react(detail,'save')"><Bookmark :size="21" :fill="detail.saved?'currentColor':'none'"/><span>{{detail.saved?'已收藏':'收藏'}}</span></button><button class="th-read-action" aria-label="查看评论" @click="scrollDiscussion"><MessageCircle :size="21"/><span>{{detail.commentCount||'评论'}}</span></button></div>
   </div>
+  <Transition :name="dialogMotion" @before-leave="(el:Element)=>{el.setAttribute('inert','');el.setAttribute('aria-hidden','true')}">
   <div v-if="dialogOpen" class="th-dialog-backdrop" :class="{'is-gallery':!!gallery}" @click.self="!busy&&requestBack()">
    <section ref="dialogElement" class="th-dialog" :class="{'th-gallery':!!gallery,'th-reply-sheet':replyExpanded}" role="dialog" aria-modal="true" aria-label="树洞操作"><div class="th-sheet-grip"/>
     <template v-if="gallery"><div class="th-gallery-bar"><button class="th-icon" aria-label="关闭大图" @click="gallery=null"><X :size="23"/></button><span>{{gallery.index+1}} / {{gallery.post.images?.length}}</span><button class="th-icon" :aria-label="zoomed?'缩小图片':'放大图片'" @click="zoomed=!zoomed"><Search :size="22"/></button></div><div class="th-gallery-stage" :class="{zoomed}" @touchstart="galleryX=$event.touches[0].clientX" @touchend="imageGesture" @dblclick="zoomed=!zoomed"><img v-if="currentImage?.url&&!galleryFailed" :src="currentImage.url" alt="帖子原图" referrerpolicy="no-referrer" @error="galleryFailed=true"/><button v-else @click="renewImage">图片暂未加载，点击重试</button></div><div class="th-gallery-actions"><button :disabled="gallery.index===0" @click="galleryStep(-1)"><ChevronLeft :size="22"/>上一张</button><button :disabled="gallery.index===(gallery.post.images?.length||1)-1" @click="galleryStep(1)">下一张<ChevronRight :size="22"/></button></div></template>
@@ -318,6 +351,7 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
     <template v-else-if="menu&&actionPost"><h3>{{actionComment?'评论操作':'帖子操作'}}</h3><div class="th-sheet-actions"><button v-if="(actionComment||actionPost).author.mine" :disabled="busy" @click="askDelete(actionPost,actionComment)"><Trash2 :size="20"/>{{actionComment?'删除评论':'删除帖子'}}</button><template v-else><button :disabled="busy" @click="report(actionPost,actionComment)"><Flag :size="20"/>举报</button><button :disabled="busy" @click="block(actionPost,actionComment)"><VolumeX :size="20"/>{{(actionComment?.author.anonymous??actionPost.anonymous)?'隐藏这条讨论':'屏蔽昵称发言'}}</button></template></div><button class="th-more" @click="menu=null">取消</button></template>
    </section>
   </div>
+  </Transition>
  </section>
 </template>
 <style scoped src="./Treehole.css"></style>

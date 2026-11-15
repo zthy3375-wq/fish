@@ -226,4 +226,43 @@ final class TreeholeTests: XCTestCase {
         XCTAssertEqual(store.posts.map(\.id), ["two"]); XCTAssertEqual(store.current?.saved, false)
     }
 
+    @MainActor func testCachedDetailAppearsBeforeNetworkAndBackInvalidatesResponse() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)), post = samplePost("cached")
+        TreeholeTestProtocol.handler = { _ in (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(post)) + Data("}".utf8)) }
+        let delayed = expectation(description: "detail response held")
+        TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { delayed.fulfill() }
+        let loading = store.openDetail(post)
+        XCTAssertEqual(store.current?.id, "cached"); XCTAssertTrue(store.detailLoading); XCTAssertFalse(store.busy)
+        await fulfillment(of: [delayed], timeout: 3)
+        store.leaveDetail(); TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil; await loading.value
+        XCTAssertNil(store.current); XCTAssertFalse(store.detailLoading); XCTAssertNil(store.detailError)
+    }
+    @MainActor func testLateDetailCannotReplaceNewPostOrRestoreAccount() async throws {
+        for clears in [false, true] {
+            let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+            let store = TreeholeStore(api: service(vault)), old = samplePost("old"), next = samplePost("next")
+            TreeholeTestProtocol.handler = { _ in (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(old)) + Data("}".utf8)) }
+            let delayed = expectation(description: "old detail held")
+            TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { delayed.fulfill() }
+            let loading = store.openDetail(old); await fulfillment(of: [delayed], timeout: 3)
+            if clears { store.clear() }
+            else {
+                TreeholeTestProtocol.handler = { _ in (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(next)) + Data("}".utf8)) }
+                await store.openDetail(next).value
+            }
+            TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil; await loading.value
+            XCTAssertEqual(store.current?.id, clears ? nil : "next"); XCTAssertNil(store.detailError); XCTAssertFalse(store.detailLoading)
+        }
+    }
+    @MainActor func testDetailFailureKeepsBodyAndRetryRecovers() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)), post = samplePost("cached")
+        TreeholeTestProtocol.handler = { _ in (503, Data("{\"error\":\"network_unavailable\"}".utf8)) }
+        await store.openDetail(post).value
+        XCTAssertEqual(store.current?.id, post.id); XCTAssertNotNil(store.detailError); XCTAssertFalse(store.busy); XCTAssertFalse(store.detailLoading)
+        TreeholeTestProtocol.handler = { _ in (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(post)) + Data("}".utf8)) }
+        try await store.detail(post); XCTAssertNil(store.detailError); XCTAssertEqual(store.current?.id, post.id)
+    }
+
 }

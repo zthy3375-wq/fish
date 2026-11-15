@@ -18,22 +18,21 @@ struct TreeholeImageGrid: View {
     var body: some View {
         if images.count == 1 {
             imageButton(0, image: images[0], ratio: full ? ratio : min(1.8, max(0.75, ratio)), fit: full)
-                .frame(maxWidth: full || ratio >= 1.15 ? .infinity : ratio < 0.85 ? 220 : 260, alignment: .leading)
+                .frame(maxWidth: full || ratio >= 1.15 ? .infinity : ratio < 0.85 ? 240 : 300, alignment: .leading)
         } else if full {
             VStack(spacing: 8) {
                 TabView(selection: $page) { ForEach(Array(images.enumerated()), id: \.element.id) { index, image in imageButton(index, image: image, ratio: 4 / 3, fit: true).tag(index) } }.tabViewStyle(.page(indexDisplayMode: .never)).aspectRatio(4 / 3, contentMode: .fit)
                 HStack { Text("左右滑动查看"); Spacer(); Text("\(page + 1) / \(images.count)") }.font(.caption2).foregroundStyle(.secondary)
             }
         } else {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: images.count == 2 ? 2 : 3), spacing: 5) { ForEach(Array(images.prefix(3).enumerated()), id: \.element.id) { index, image in imageButton(index, image: image, ratio: 1, fit: false) } }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: images.count == 2 || images.count == 4 ? 2 : 3), spacing: 5) { ForEach(Array(images.prefix(9).enumerated()), id: \.element.id) { index, image in imageButton(index, image: image, ratio: 1, fit: false) } }
         }
     }
     private func imageButton(_ index: Int, image: TreeholeImage, ratio: CGFloat, fit: Bool) -> some View {
         Button { open(index) } label: {
             Color.clear.aspectRatio(ratio, contentMode: .fit).overlay { TreeholeRemoteImage(postId: postId, image: image, api: api, fit: fit) }.clipped()
-                .overlay { if !full && index == 2 && images.count > 3 { Color.black.opacity(0.4); Text("+\(images.count - 3)").font(.title2.bold()).foregroundStyle(.white) } }
                 .overlay(alignment: .bottomTrailing) { if !full && images.count == 1 && self.ratio < 0.6 { Text("长图").font(.system(size: 10)).padding(4).foregroundStyle(.white).background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 3)).padding(6) } }
-                .background(TreeholeTheme.background).clipShape(RoundedRectangle(cornerRadius: 5))
+                .background(TreeholeTheme.background).clipShape(RoundedRectangle(cornerRadius: 9))
         }.buttonStyle(.plain).accessibilityLabel("查看第 \(index + 1) 张图片")
     }
 }

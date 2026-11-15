@@ -5,6 +5,9 @@ import Combine
     @Published var user: TreeholeMember?
     @Published var posts: [TreeholePost] = []
     @Published var current: TreeholePost?
+    @Published var detailLoading = false
+    @Published var detailError: String?
+    private var detailRequest = 0
     @Published var comments: [TreeholeComment] = []
     @Published var reports: [TreeholeReport] = []
     @Published var busy = false
@@ -43,7 +46,7 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { epoch += 1; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { leaveDetail(); epoch += 1; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
@@ -89,12 +92,42 @@ import Combine
         if pendingReactions.contains(fresh.id + ":save") { updated.saved = posts[index].saved }
         posts[index] = updated
     }
+    func leaveDetail() {
+        detailRequest += 1; discussion += 1; detailLoading = false; detailError = nil
+        current = nil; comments = []; commentNext = nil; expandedReplies = []; replyPages = [:]; loadedThreads = []
+    }
+    @discardableResult func openDetail(_ post: TreeholePost) -> Task<Void, Never> {
+        leaveDetail(); current = post; detailLoading = true
+        let ticket = detailRequest
+        return Task {
+            guard ticket == detailRequest, current?.id == post.id else { return }
+            do { try await detail(post) } catch { /* Inline error preserves the cached reading surface. */ }
+        }
+    }
     func detail(_ post: TreeholePost, more: Bool = false) async throws {
+        if current?.id != post.id { leaveDetail(); current = post }
+        detailRequest += 1
+        let ticket = detailRequest, generation = epoch, conversation = discussion
+        detailLoading = true; detailError = nil
         var body: [String: Any] = ["postId": post.id, "threaded": true]
         if more { commentNext?.forEach { body[$0.key] = $0.value } }
-        let r = try await api.request("posts.get", body)
-        if !more { discussion += 1; expandedReplies = []; replyPages = [:]; loadedThreads = [] }
-        current = r.post; if let post = r.post { syncFeedPost(post) }; comments = more ? comments + (r.comments ?? []) : r.comments ?? []; commentNext = r.next
+        defer { if ticket == detailRequest && generation == epoch { detailLoading = false } }
+        do {
+            let r = try await api.request("posts.get", body)
+            guard ticket == detailRequest, generation == epoch, conversation == discussion, current?.id == post.id else { return }
+            guard var fresh = r.post else { throw TreeholeError(code: "post_not_found") }
+            if pendingReactions.contains(post.id + ":like"), let cached = current { fresh.liked = cached.liked; fresh.likeCount = cached.likeCount }
+            if pendingReactions.contains(post.id + ":save"), let cached = current { fresh.saved = cached.saved }
+            if !more { discussion += 1; expandedReplies = []; replyPages = [:]; loadedThreads = [] }
+            current = fresh; syncFeedPost(fresh)
+            var ids = Set(comments.map(\.id))
+            comments = more ? comments + (r.comments ?? []).filter { ids.insert($0.id).inserted } : r.comments ?? []; commentNext = r.next
+        } catch {
+            guard ticket == detailRequest, generation == epoch, conversation == discussion else { return }
+            if let failure = error as? TreeholeError, failure.code == "session_expired" { clear(); message = failure.errorDescription }
+            else { detailError = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试" }
+            throw error
+        }
     }
     func expand(_ comment: TreeholeComment, post: TreeholePost) {
         guard !busy, !loadingThreads.contains(comment.id) else { return }

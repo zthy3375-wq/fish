@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 import {createCommunity} from '../cloudbase/functions/community/core.mjs';
 import {createServer} from '../cloudbase/functions/community/server.mjs';
 
-const root=path.resolve('dist'),output='/tmp/handan-treehole-v5-qa';await mkdir(output,{recursive:true});
+const root=path.resolve('dist'),output='/tmp/handan-treehole-v6-qa';await mkdir(output,{recursive:true});
 const db=new PGlite();await db.exec(await readFile('cloudbase/community-schema.sql','utf8'));
 const objects=new Map();let mediaOrigin='';
 const storage={put:async(k,v)=>objects.set(k,v),url:async k=>mediaOrigin+'/fixtures/'+k,remove:async k=>objects.delete(k)};
@@ -27,12 +27,12 @@ const browser=await chromium.launch({args:['--no-sandbox'],executablePath:proces
 const checks=[];let active;
 async function client(width){
  const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
- const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[],requests:[],holdNextPage:false,releasePage:null,failNextPage:false};
+ const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[],requests:[],holdNextPage:false,releasePage:null,failNextPage:false,holdNextDetail:false,releaseDetail:null,failNextDetail:false};
  await context.exposeBinding('__treeholeNative',async(_,options)=>{
-  const {action,body}=options;state.actions.push(action);state.requests.push({action,body});if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
+  const {action,body}=options;state.actions.push(action);state.requests.push({action,body});if(action==='posts.get'&&state.failNextDetail){state.failNextDetail=false;return {error:'network_unavailable'};}if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
   const result=await fetch(endpoint+'/v1/'+action,{method:action==='config'?'GET':'POST',headers,...(action==='config'?{}:{body:JSON.stringify(body)})});
-  const json=await result.json();if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
+  const json=await result.json();if(action==='posts.get'&&state.holdNextDetail){state.holdNextDetail=false;await new Promise(resolve=>state.releaseDetail=resolve);}if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
   if(json.sessionToken){state.token=json.sessionToken;delete json.sessionToken;}
   if(action==='logout'||action==='account.delete')state.token=null;
   if(action.startsWith('posts.')||action.startsWith('comments.'))state.publicResponses.push(json);
@@ -83,6 +83,7 @@ try{
   assert.equal(await a.page.locator('.th-comment strong em').first().innerText(),'楼主');checks.push(`${width}: anonymous author replies retain alias`);
   await a.page.screenshot({path:path.join(output,`treehole-detail-${width}.png`),animations:'disabled'});
   await a.page.setViewportSize({width,height:400});await a.page.locator('.th-reply-entry').click();await a.page.getByLabel('你的回复',{exact:true}).focus();
+  await a.page.waitForFunction(()=>!document.querySelector('.th-sheet-motion-enter-active'));
   const replyBounds=await a.page.locator('.th-reply-box').boundingBox();const sendBounds=await a.page.getByRole('button',{name:'发布回复',exact:true}).boundingBox();
   assert(replyBounds.y>=0&&replyBounds.y+replyBounds.height<=401);assert(sendBounds.y>=0&&sendBounds.y+sendBounds.height<=401);
   await a.page.getByRole('button',{name:'收起回复编辑器'}).click();await a.page.setViewportSize({width,height:844});checks.push(`${width}: reply controls remain visible in keyboard-sized viewport`);
@@ -92,7 +93,7 @@ try{
   assert.equal(await a.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);checks.push(`${width}: compact feed has no horizontal overflow`);
   const b=await client(width);await register(b.page,'reader_'+width,'测试同学乙');
   await b.page.locator('.th-post-body').first().click();await b.page.getByRole('heading',{name:'评论',exact:true}).waitFor();
-  const viewer=b.state.publicResponses.at(-1);assert(!JSON.stringify(viewer).includes('测试同学甲'));assert(!JSON.stringify(viewer).includes('author_'+width));
+  await b.page.locator('.th-comment-loading').waitFor({state:'hidden'});const viewer=b.state.publicResponses.at(-1);assert(!JSON.stringify(viewer).includes('测试同学甲'));assert(!JSON.stringify(viewer).includes('author_'+width));
   await b.page.locator('.th-reply-entry').click();
   assert.equal(await b.page.getByRole('checkbox',{name:'匿名回复',exact:true}).isDisabled(),false);checks.push(`${width}: second account sees anonymous projections without account identity`);
   await b.page.getByLabel('你的回复',{exact:true}).fill('今天也要好好休息呀。');await b.page.getByRole('button',{name:'发布回复',exact:true}).click();await b.page.getByText('今天也要好好休息呀。',{exact:true}).waitFor();
@@ -105,12 +106,12 @@ try{
   await b.page.getByRole('button',{name:'收起回复',exact:true}).click();assert.equal(await b.page.getByRole('button',{name:'全部 1 条回复',exact:true}).count(),1);const loaded=b.state.actions.filter(x=>x==='comments.replies').length;await b.page.getByRole('button',{name:'全部 1 条回复',exact:true}).click();assert.equal(b.state.actions.filter(x=>x==='comments.replies').length,loaded);checks.push(`${width}: collapsed threads reopen from loaded replies`);
   b.state.failNextReaction=true;await b.page.getByRole('button',{name:'点赞',exact:true}).click();await b.page.getByRole('button',{name:'取消点赞',exact:true}).waitFor();assert(await b.page.getByRole('button',{name:'取消点赞',exact:true}).isDisabled());assert(!await b.page.getByRole('button',{name:'帖子操作'}).isDisabled());assert(!await b.page.getByRole('button',{name:'收藏',exact:true}).isDisabled());
   await b.page.waitForFunction(()=>true);while(!b.state.releaseReaction)await new Promise(r=>setTimeout(r,10));b.state.releaseReaction();await b.page.getByRole('button',{name:'点赞',exact:true}).waitFor();await b.page.getByRole('alert').filter({hasText:'连接失败'}).waitFor();checks.push(`${width}: failed optimistic like rolls back without freezing reading or saving`);
-  await b.page.locator('.th-reply-entry').click();await b.page.getByLabel('你的回复',{exact:true}).fill('暂存的回复');await b.page.getByRole('button',{name:'收起回复编辑器'}).click();assert.equal(await b.page.getByLabel('你的回复',{exact:true}).count(),0);await b.page.locator('.th-reply-entry').click();assert.equal(await b.page.getByLabel('你的回复',{exact:true}).inputValue(),'暂存的回复');await b.page.getByLabel('你的回复',{exact:true}).fill('');await b.page.getByRole('button',{name:'收起回复编辑器'}).click();checks.push(`${width}: compact read bar opens editor and preserves text when folded`);
+  await b.page.locator('.th-reply-entry').click();await b.page.getByLabel('你的回复',{exact:true}).fill('暂存的回复');await b.page.getByRole('button',{name:'收起回复编辑器'}).click();await b.page.locator('.th-dialog').waitFor({state:'detached'});assert.equal(await b.page.getByLabel('你的回复',{exact:true}).count(),0);await b.page.locator('.th-reply-entry').click();assert.equal(await b.page.getByLabel('你的回复',{exact:true}).inputValue(),'暂存的回复');await b.page.getByLabel('你的回复',{exact:true}).fill('');await b.page.getByRole('button',{name:'收起回复编辑器'}).click();checks.push(`${width}: compact read bar opens editor and preserves text when folded`);
   await b.page.getByRole('button',{name:'点赞',exact:true}).click();await b.page.getByRole('button',{name:'取消点赞',exact:true}).waitFor();
   await b.page.getByRole('button',{name:'收藏',exact:true}).click();await b.page.getByRole('button',{name:'取消收藏',exact:true}).waitFor();checks.push(`${width}: reactions show committed server state`);
   await b.page.getByRole('button',{name:'帖子操作'}).click();
   for(let i=0;i<5;i++){await b.page.keyboard.press('Tab');assert(await b.page.evaluate(()=>!!document.activeElement?.closest('[role=dialog]')));}
-  await b.page.keyboard.press('Escape');assert.equal(await b.page.getByRole('dialog').count(),0);assert.equal(await b.page.getByRole('button',{name:'帖子操作'}).evaluate(e=>e===document.activeElement),true);
+  await b.page.keyboard.press('Escape');await b.page.locator('.th-dialog').waitFor({state:'detached'});assert.equal(await b.page.getByRole('dialog').count(),0);assert.equal(await b.page.getByRole('button',{name:'帖子操作'}).evaluate(e=>e===document.activeElement),true);
   checks.push(`${width}: action sheet traps focus and restores the trigger`);
   await b.page.getByRole('button',{name:'帖子操作'}).click();await b.page.getByRole('button',{name:'举报',exact:true}).click();
   await b.page.getByLabel('原因',{exact:true}).fill('人工测试举报');await b.page.getByRole('button',{name:'提交举报',exact:true}).click();await b.page.getByText('举报已提交，管理员会查看处理',{exact:true}).waitFor();checks.push(`${width}: named comments and reporting work across accounts`);
@@ -161,19 +162,48 @@ try{
  for(const width of [360,390,430]){
   await visual.page.setViewportSize({width,height:844});await visual.page.screenshot({path:path.join(output,`treehole-content-feed-${width}.png`),fullPage:true,animations:'disabled'});assert.equal(await visual.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   const dual=visual.page.locator('.th-post').filter({hasText:two.title});assert.equal(await dual.locator('.th-images.two button').count(),2);
-  const nine=visual.page.locator('.th-post').filter({hasText:many.title});assert.equal(await nine.locator('.th-images button').count(),3);assert.equal(await nine.locator('.th-image-count').innerText(),'+6');
-  const tall=visual.page.locator('.th-post').filter({hasText:long.title});assert.equal(await tall.locator('.th-long-image').innerText(),'长图');assert((await tall.locator('.th-images button').boundingBox()).height<300);
+  const nine=visual.page.locator('.th-post').filter({hasText:many.title});assert.equal(await nine.locator('.th-images button').count(),9);
+  const tall=visual.page.locator('.th-post').filter({hasText:long.title});assert.equal(await tall.locator('.th-long-image').innerText(),'长图');assert((await tall.locator('.th-images button').boundingBox()).height<=325);
   await tall.getByRole('button',{name:/查看评论/}).click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();await visual.page.waitForFunction(()=>document.querySelector('.th-discussion-title').getBoundingClientRect().top<120);const full=await visual.page.locator('.th-detail .th-images button').boundingBox();assert(Math.abs(full.width/full.height-.3)<.01);assert.equal(await visual.page.getByLabel('你的回复',{exact:true}).count(),0);
   await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'评论',exact:true}).click();await visual.page.waitForFunction(()=>document.querySelector('.th-discussion-title').getBoundingClientRect().top<120);assert.equal(await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'评论',exact:true}).getAttribute('aria-pressed'),'true');
-  assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);await visual.page.screenshot({path:path.join(output,`treehole-content-comments-${width}.png`),animations:'disabled'});
+  await visual.page.locator('.th-comment').first().waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);await visual.page.screenshot({path:path.join(output,`treehole-content-comments-${width}.png`),animations:'disabled'});
   await visual.page.getByRole('button',{name:'全部 4 条回复',exact:true}).click();await visual.page.getByRole('button',{name:'收起回复',exact:true}).waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),4);await visual.page.getByRole('button',{name:'收起回复',exact:true}).click();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);
   await visual.page.locator('.th-reply-entry').click();await visual.page.getByLabel('你的回复',{exact:true}).fill('编辑器展开后再选择匿名，阅读时保留更多空间。');await visual.page.screenshot({path:path.join(output,`treehole-content-editor-${width}.png`),animations:'disabled'});await visual.page.getByLabel('你的回复',{exact:true}).fill('');await visual.page.getByRole('button',{name:'收起回复编辑器'}).click();
   await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();await visual.page.locator('.th-post').filter({hasText:many.title}).locator('.th-post-body').click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();assert.equal(await visual.page.locator('.carousel button').count(),9);
   await visual.page.locator('.carousel').evaluate(el=>el.scrollTo({left:el.clientWidth*2,behavior:'instant'}));await visual.page.waitForFunction(()=>document.querySelector('.th-media-pagination strong').textContent==='3 / 9');await visual.page.getByRole('button',{name:'查看图片 3，共 9 张',exact:true}).click();await visual.page.getByRole('button',{name:'下一张',exact:true}).click();assert.equal(await visual.page.locator('.th-gallery-bar>span').innerText(),'4 / 9');await visual.page.getByRole('button',{name:'关闭大图'}).click();await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();
   checks.push(`${width}: long image keeps full aspect, two/nine photos, selected comment tab, preview-two/expand-four and carousel/gallery indices`);
  }
- visual.state.breakNextImage=true;await visual.page.locator('.th-post').filter({hasText:two.title}).getByRole('button',{name:'查看图片 1，共 2 张'}).click();await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).waitFor();visual.state.delayImage=true;await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).click();await visual.page.locator('.th-gallery img').waitFor();await visual.page.waitForFunction(()=>{const image=document.querySelector('.th-gallery img');return image&&image.complete&&image.naturalWidth>0;});await visual.page.getByRole('button',{name:'关闭大图'}).click();checks.push('expired gallery URL recovers on the first retry even when the old image fails during URL renewal');
+ await visual.page.locator('.th-post').filter({hasText:two.title}).getByRole('button',{name:'查看图片 1，共 2 张'}).click();await visual.page.locator('.th-detail').waitFor();visual.state.breakNextImage=true;await visual.page.getByRole('button',{name:'查看图片 1，共 2 张'}).click();await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).waitFor();visual.state.delayImage=true;await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).click();await visual.page.locator('.th-gallery img').waitFor();await visual.page.waitForFunction(()=>{const image=document.querySelector('.th-gallery img');return image&&image.complete&&image.naturalWidth>0;});await visual.page.getByRole('button',{name:'关闭大图'}).click();checks.push('expired gallery URL recovers on the first retry even when the old image fails during URL renewal');
+ await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();
  await db.query('UPDATE hyt_posts SET locked=true WHERE id=$1',[long.id]);await visual.page.locator('.th-post').filter({hasText:long.title}).locator('.th-post-body').click();await visual.page.getByText('这条讨论已暂停回复。',{exact:true}).waitFor();assert(await visual.page.locator('.th-reply-entry').isDisabled());assert(!await visual.page.getByRole('button',{name:'点赞',exact:true}).isDisabled());await visual.page.getByRole('button',{name:'收藏',exact:true}).click();await visual.page.getByRole('button',{name:'取消收藏',exact:true}).waitFor();checks.push('locked discussion keeps like/save controls while disabling reply entry');
+
+ await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();
+ const vp=visual.page;
+ const visibleCard=()=>vp.locator('.th-post').filter({hasText:two.title});
+ async function backToCards(){await vp.getByRole('button',{name:'返回树洞',exact:true}).click();await visibleCard().waitFor();await vp.waitForTimeout(260);}
+ for(const region of ['author','padding','footer','image']){
+  await visibleCard().scrollIntoViewIfNeeded();await vp.waitForTimeout(260);visual.state.holdNextDetail=true;
+  const box=await visibleCard().boundingBox();
+  if(region==='image')await visibleCard().locator('.th-images button').first().click();
+  else {const point=region==='author'?await visibleCard().locator('.th-post-byline').boundingBox():region==='footer'?await visibleCard().locator('.th-action-spacer').boundingBox():{x:box.x+2,y:box.y+60,width:8,height:8};await vp.mouse.click(point.x+point.width/2,point.y+point.height/2);}
+  await vp.locator('.th-detail').waitFor();await vp.locator('.th-comment-loading').waitFor();
+  assert.equal(await vp.locator('.th-detail h2').innerText(),two.title);assert(!await vp.getByRole('button',{name:'返回树洞',exact:true}).isDisabled());assert.equal(await vp.getByRole('dialog').count(),0);
+  while(!visual.state.releaseDetail)await new Promise(r=>setTimeout(r,10));
+  await backToCards();visual.state.releaseDetail();visual.state.releaseDetail=null;await vp.waitForTimeout(100);assert.equal(await vp.locator('.th-detail').count(),0);
+  checks.push(`hit ${region}: immediate cached detail, nonblocking loading, back discards delayed response`);
+ }
+ // Child controls must not bubble into navigation.
+ await visibleCard().getByRole('button',{name:'点赞',exact:true}).click();await visibleCard().getByRole('button',{name:'取消点赞',exact:true}).waitFor();assert.equal(await vp.locator('.th-detail').count(),0);
+ await visibleCard().getByRole('button',{name:'帖子操作',exact:true}).click();await vp.getByRole('heading',{name:'帖子操作',exact:true}).waitFor();assert.equal(await vp.locator('.th-detail').count(),0);await vp.getByRole('button',{name:'取消',exact:true}).click();
+ checks.push('like and more controls remain isolated from card navigation');
+ // Drag and long press generate no accidental click navigation.
+ await visibleCard().scrollIntoViewIfNeeded();const rect=await visibleCard().boundingBox();
+ await vp.mouse.move(rect.x+7,rect.y+70);await vp.mouse.down();await vp.mouse.move(rect.x+7,rect.y+110,{steps:6});await vp.mouse.up();assert.equal(await vp.locator('.th-detail').count(),0);
+ await vp.mouse.move(rect.x+7,rect.y+70);await vp.mouse.down();await vp.waitForTimeout(650);await vp.mouse.up();assert.equal(await vp.locator('.th-detail').count(),0);
+ checks.push('movement and long press suppress accidental card activation');
+ visual.state.failNextDetail=true;await visibleCard().locator('.th-post-body').click();await vp.locator('.th-detail-error').waitFor();assert.equal(await vp.locator('.th-detail h2').innerText(),two.title);await vp.locator('.th-detail-error').getByRole('button',{name:'重试',exact:true}).click();await vp.locator('.th-detail-error').waitFor({state:'hidden'});await vp.locator('.th-comment-loading').waitFor({state:'hidden'});checks.push('detail failure retains cached body and inline retry recovers');await backToCards();
+ await vp.emulateMedia({reducedMotion:'reduce'});await visibleCard().locator('.th-post-body').focus();await vp.keyboard.press('Enter');await vp.locator('.th-detail').waitFor();assert.equal(await vp.locator('.th-screen-panel').evaluate(el=>getComputedStyle(el).animationName),'none');checks.push('keyboard opens detail and reduced motion disables page animation');await backToCards();await vp.emulateMedia({reducedMotion:'no-preference'});
+ await vp.evaluate(()=>document.documentElement.style.fontSize='22px');assert.equal(await vp.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await vp.evaluate(()=>document.documentElement.style.fontSize='');checks.push('large text retains single-column reading without horizontal overflow');
  assert.deepEqual(visual.errors,[]);await visual.context.close();
 
  // Forty-five deterministic SQL fixtures exercise real cursor paging without rate-limit bypass in product code.
