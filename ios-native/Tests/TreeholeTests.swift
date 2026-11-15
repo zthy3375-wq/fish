@@ -93,4 +93,59 @@ final class TreeholeTests: XCTestCase {
         XCTAssertEqual(decoded.size.width, 1600); XCTAssertEqual(decoded.size.height, 800); XCTAssertLessThanOrEqual(photo.data.count, 1_200_000); XCTAssertEqual(Array(photo.data.prefix(2)), [255,216])
     }
 
+    private func samplePost() -> TreeholePost {
+        TreeholePost(id: "post-id", body: "校园日常", createdAt: "2026-11-15T00:00:00Z", anonymous: false, locked: false, liked: false, saved: false, author: TreeholeAuthor(name: "同学", anonymous: false, mine: false), commentCount: 1, likeCount: 2)
+    }
+    @MainActor private func settle(_ store: TreeholeStore) async throws {
+        for _ in 0..<200 {
+            if store.pendingReactions.isEmpty && store.pendingCommentLikes.isEmpty { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("Interaction did not settle")
+    }
+    @MainActor func testFailedReactionsRollBackWithoutBlockingReading() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        TreeholeTestProtocol.handler = { _ in (503, Data("{\"error\":\"network_unavailable\"}".utf8)) }
+        let store = TreeholeStore(api: service(vault)), post = samplePost()
+        store.posts = [post]; store.current = post
+        let comment = TreeholeComment(id: "comment", postId: post.id, body: "回复", createdAt: post.createdAt, replyTo: nil, author: post.author, deleted: false, isOriginalPoster: false, likeCount: 4, liked: false)
+        store.comments = [comment]
+        store.react(post, kind: "like"); store.likeComment(comment, post: post)
+        XCTAssertFalse(store.busy); XCTAssertEqual(store.current?.likeCount, 3); XCTAssertEqual(store.comments.first?.likeCount, 5)
+        XCTAssertTrue(store.pendingReactions.contains(post.id + ":like"))
+        try await settle(store)
+        XCTAssertEqual(store.current?.liked, false); XCTAssertEqual(store.posts.first?.likeCount, 2)
+        XCTAssertEqual(store.comments.first?.liked, false); XCTAssertEqual(store.comments.first?.likeCount, 4)
+        XCTAssertNotNil(store.message)
+    }
+    @MainActor func testConcurrentLikeAndSaveKeepIndependentFields() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let post = samplePost()
+        TreeholeTestProtocol.handler = { request in
+            var bytes = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream { stream.open(); defer { stream.close() }; var chunk = [UInt8](repeating: 0, count: 1024); while stream.hasBytesAvailable { let n = stream.read(&chunk, maxLength: chunk.count); if n <= 0 { break }; bytes.append(contentsOf: chunk.prefix(n)) } }
+            let payload = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any]
+            var fresh = post
+            if payload?["kind"] as? String == "like" { fresh.liked = true; fresh.likeCount = 3 } else { fresh.saved = true }
+            return (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(fresh)) + Data("}".utf8))
+        }
+        let store = TreeholeStore(api: service(vault)); store.posts = [post]; store.current = post
+        store.react(post, kind: "like"); store.react(post, kind: "save")
+        XCTAssertFalse(store.busy); XCTAssertEqual(store.pendingReactions.count, 2)
+        try await settle(store)
+        XCTAssertEqual(store.current?.liked, true); XCTAssertEqual(store.current?.saved, true); XCTAssertEqual(store.current?.likeCount, 3)
+        XCTAssertEqual(store.posts.first?.liked, true); XCTAssertEqual(store.posts.first?.saved, true)
+    }
+    @MainActor func testOldInteractionCannotRestoreClearedAccount() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        var post = samplePost(); post.liked = true
+        let finished = expectation(description: "old request completes")
+        TreeholeTestProtocol.handler = { _ in defer { finished.fulfill() }; return (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(post)) + Data("}".utf8)) }
+        let store = TreeholeStore(api: service(vault)); store.posts = [samplePost()]; store.current = samplePost()
+        store.react(samplePost(), kind: "like"); store.clear()
+        await fulfillment(of: [finished], timeout: 3)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertNil(store.current); XCTAssertTrue(store.posts.isEmpty); XCTAssertTrue(store.pendingReactions.isEmpty); XCTAssertNil(store.message)
+    }
+
 }

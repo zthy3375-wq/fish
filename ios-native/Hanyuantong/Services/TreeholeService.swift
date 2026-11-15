@@ -9,9 +9,11 @@ struct TreeholeAuthor: Codable, Equatable { let name: String; let anonymous: Boo
 struct TreeholeImage: Codable, Identifiable, Equatable { let id: String; var url: String? = nil; let width: Int; let height: Int }
 struct TreeholePost: Codable, Identifiable, Equatable {
     let id: String, body: String, createdAt: String
-    let anonymous: Bool, locked: Bool, liked: Bool, saved: Bool
+    let anonymous: Bool, locked: Bool
+    var liked: Bool, saved: Bool
     let author: TreeholeAuthor
-    let commentCount: Int, likeCount: Int
+    let commentCount: Int
+    var likeCount: Int
     var title: String? = nil
     var category: String? = nil
     var images: [TreeholeImage]? = nil
