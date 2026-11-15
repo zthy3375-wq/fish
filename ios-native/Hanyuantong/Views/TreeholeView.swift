@@ -4,6 +4,8 @@ import PhotosUI
 struct TreeholeView: View {
     @EnvironmentObject var tree: TreeholeStore
     @State private var screen = "feed"
+    @State private var routes: [TreeholeRouteFrame] = []
+    @State private var bio = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pageOffset: CGFloat = 0
     @State private var selectedPhoto: String?
@@ -44,11 +46,13 @@ struct TreeholeView: View {
     @FocusState private var replyFocused: Bool
     private var title: String {
         switch screen {
-        case "compose": return "发树洞"
-        case "detail": return "树洞详情"
+        case "compose": return "发帖"
+        case "detail": return "帖子详情"
+        case "inbox": return "互动消息"
+        case "profile": return "同学主页"
         case "account": return accountPage == "overview" ? "我的树洞" : accountPage == "profile" ? "修改昵称" : accountPage == "password" ? "账号安全" : "注销账号"
         case "moderate": return "举报处理"
-        default: return "邯院树洞"
+        default: return "邯院社区"
         }
     }
     private var forceAnonymous: Bool { tree.current?.anonymous == true && tree.current?.author.mine == true }
@@ -71,6 +75,8 @@ struct TreeholeView: View {
                     case "detail": if let post = tree.current { discussion(post) }
                     case "account": account(user)
                     case "moderate": moderation
+                    case "inbox": TreeholeInboxView(tree: tree, open: openNotification)
+                    case "profile": publicProfile
                     default: feed
                     }
                 }
@@ -99,7 +105,7 @@ struct TreeholeView: View {
                 let target = tree.feedNeedsRefresh ? "feed-top" : feedAnchor ?? "feed-top"
                 DispatchQueue.main.async { proxy.scrollTo(target, anchor: .top) }
             } else if next == "detail" {
-                DispatchQueue.main.async { proxy.scrollTo(initialDetailTarget, anchor: .top); detailTab = initialDetailTarget == "comments" ? "comments" : "body" }
+                DispatchQueue.main.async { proxy.scrollTo(initialDetailTarget, anchor: .top); detailTab = ["comments", "context"].contains(initialDetailTarget) ? "comments" : "body" }
             }
         }
         .simultaneousGesture(DragGesture(minimumDistance: 20).onChanged { value in
@@ -123,6 +129,7 @@ struct TreeholeView: View {
         }
         .background(screen == "feed" || screen == "detail" || screen == "compose" ? TreeholeTheme.surface : TreeholeTheme.background).navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(tree.busy || screen != "feed")
+        .toolbar(screen == "feed" && tree.recovery == nil ? .visible : .hidden, for: .tabBar)
         .toolbar {
             if screen == "detail" {
                 ToolbarItem(placement: .principal) {
@@ -132,12 +139,13 @@ struct TreeholeView: View {
                     }
                 }
             }
-            if screen != "feed" { ToolbarItem(placement: .navigationBarLeading) { Button { back() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("返回树洞").disabled(tree.busy) } }
+            if screen != "feed" { ToolbarItem(placement: .navigationBarLeading) { Button { back() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("返回社区").disabled(tree.busy) } }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 if screen == "compose" { Button("发布", action: publish).fontWeight(.semibold).disabled(tree.busy || (bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.value.photos.isEmpty)) }
                 else if screen == "feed", let user = tree.user {
                     Button { withAnimation { searchOpen.toggle() } } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索帖子")
-                    Button { nickname = user.nickname; password = ""; newPassword = ""; accountPage = "overview"; screen = "account" } label: { TreeholeAvatar(name: user.nickname, size: 32) }.accessibilityLabel("我的树洞")
+                    if tree.engagementEnabled { Button(action: showInbox) { Image(systemName: "bell").overlay(alignment: .topTrailing) { if tree.unreadCount > 0 { Text(tree.unreadCount > 99 ? "99+" : "\(tree.unreadCount)").font(.system(size: 9, weight: .bold)).padding(3).background(TreeholeTheme.primary, in: Capsule()).foregroundStyle(.white).offset(x: 9, y: -9) } } }.accessibilityLabel("互动消息") }
+                    Button { nickname = user.nickname; bio = user.bio ?? ""; password = ""; newPassword = ""; accountPage = "overview"; screen = "account" } label: { TreeholeAvatar(name: user.nickname, size: 32) }.accessibilityLabel("我的树洞")
                 }
             }
         }
@@ -151,12 +159,19 @@ struct TreeholeView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if screen == "detail", let post = tree.current, tree.user != nil { replyBar(post) { scrollIntentUntil = Date().addingTimeInterval(0.65); detailTab = "comments"; withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }.disabled(tree.busy) }
         }
-        .task { draft.bind(tree.user?.id); tree.enter() }
+        .task { draft.bind(tree.user?.id); if !tree.ready { tree.enter() } }
         .onDisappear { draft.flush() }
-        .onChange(of: scenePhase) { if $0 != .active { draft.flush() } }
+        .onChange(of: scenePhase) { if $0 != .active { draft.flush() } else { Task { await tree.refreshUnread() } } }
+        .task(id: tree.user?.id) {
+            guard tree.user != nil else { return }
+            while !Task.isCancelled {
+                if scenePhase == .active { await tree.refreshUnread() }
+                do { try await Task.sleep(nanoseconds: 60_000_000_000) } catch { break }
+            }
+        }
         .onChange(of: pickedPhotos) { items in loadPhotos(items) }
         .fullScreenCover(item: $gallery) { TreeholeGallery(selection: $0, api: tree.api) }
-        .onChange(of: tree.user?.id) { identity in if identity == nil { auth = "login" }; draft.bind(identity); replyText = ""; replyExpanded = false; password = ""; newPassword = ""; replyTo = nil; accountPage = "overview"; screen = "feed" }
+        .onChange(of: tree.user?.id) { identity in if identity == nil { auth = "login"; routes = [] }; draft.bind(identity); replyText = ""; replyExpanded = false; password = ""; newPassword = ""; replyTo = nil; accountPage = "overview"; screen = "feed" }
         .sheet(isPresented: Binding(get: { tree.recovery != nil }, set: { if !$0 { tree.recovery = nil } })) {
             VStack(alignment: .leading, spacing: 20) {
                 Label("保存你的账号恢复码", systemImage: "checkmark.shield").font(.title2.bold())
@@ -203,7 +218,7 @@ struct TreeholeView: View {
             Button(auth == "login" ? "登录树洞" : auth == "register" ? "创建账号" : "重设密码并登录") {
                 tree.perform {
                     let result = try await tree.api.request(auth, ["username": username, "password": password, "nickname": nickname, "invite": invitation, "agreed": agreed, "recoveryCode": recoveryInput])
-                    password = ""; recoveryInput = ""; tree.user = result.user; tree.recovery = result.recoveryCode; try await tree.feed()
+                    password = ""; recoveryInput = ""; tree.user = result.user; tree.recovery = result.recoveryCode; try await tree.feed(); await tree.refreshUnread()
                 }
             }.buttonStyle(.borderedProminent).disabled(username.isEmpty || password.count < 10 || (auth == "register" && (!agreed || !tree.registration || nickname.count < 2)))
             HStack {
@@ -217,6 +232,13 @@ struct TreeholeView: View {
     }
     private var feed: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if tree.engagementEnabled {
+                HStack(spacing: 22) {
+                    ForEach([("all", "广场"), ("participated", "我参与的"), ("watching", "关注的讨论")], id: \.0) { id, label in
+                        Button { accountFeed(id) } label: { Text(label).font(.subheadline.weight(tree.scope == id ? .bold : .regular)).frame(minHeight: 44) }.foregroundStyle(tree.scope == id ? TreeholeTheme.text : TreeholeTheme.muted)
+                    }
+                }.padding(.bottom, 8)
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 24) {
                     ForEach([("all", "全部")] + TreeholeCategories.all, id: \.0) { id, label in
@@ -243,7 +265,7 @@ struct TreeholeView: View {
                         Button { tree.sort = value; reloadFeed() } label: { Text(label).font(.system(size: 12, weight: tree.sort == value ? .semibold : .regular)).foregroundStyle(tree.sort == value ? TreeholeTheme.text : TreeholeTheme.muted) }.accessibilityAddTraits(tree.sort == value ? .isSelected : [])
                     }
                 } else {
-                    Text(tree.scope == "mine" ? "我的帖子" : "我的收藏").font(.caption.weight(.semibold))
+                    Text(["mine": "我的帖子", "saved": "我的收藏", "participated": "我参与的", "watching": "关注的讨论"][tree.scope] ?? "广场").font(.caption.weight(.semibold))
                     Button("查看全部") { tree.scope = "all"; reloadFeed() }.font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -272,7 +294,7 @@ struct TreeholeView: View {
         Task { await tree.loadMoreFeed() }
     }
     private func returnToFeed() {
-        tree.leaveDetail(); screen = "feed"
+        routes = []; tree.leaveDetail(); screen = "feed"
         if tree.feedNeedsRefresh { reloadFeed() }
     }
     private var composer: some View {
@@ -345,6 +367,20 @@ struct TreeholeView: View {
     }
     @ViewBuilder private func discussion(_ post: TreeholePost) -> some View {
         postCard(post, full: true).id("post")
+        if tree.engagementEnabled {
+            HStack {
+                VStack(alignment: .leading, spacing: 5) { Text(post.watching == true ? "正在关注这段讨论" : "想知道后续？").font(.subheadline.weight(.semibold)); Text("新回复会出现在互动消息").font(.caption2).foregroundStyle(.secondary) }
+                Spacer()
+                Button { Task { await tree.toggleWatch(post) } } label: { Label(post.watching == true ? "取消关注" : "关注讨论", systemImage: post.watching == true ? "bell.slash" : "bell").font(.caption).frame(minHeight: 44) }.disabled(tree.watchPending)
+            }.padding(.vertical, 10)
+            Divider()
+        }
+        if let context = tree.focusedThread {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack { Text("消息对应的回复").font(.caption).foregroundStyle(.secondary); Spacer(); Button("查看全部讨论") { tree.focusedThread = nil }.font(.caption) }
+                commentRow(context, post: post, floor: 0)
+            }.padding(12).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 12)).id("context")
+        }
         HStack { Text("评论 \(post.commentCount)").font(.system(size: 16, weight: .semibold)); Spacer(); Text("按时间排序").font(.caption2).foregroundStyle(.secondary) }.padding(.top, 12).padding(.bottom, 4).id("comments").background(GeometryReader { geometry in Color.clear.preference(key: TreeholeDiscussionOffset.self, value: geometry.frame(in: .named("treehole-scroll")).minY) })
         if let error = tree.detailError {
             HStack(spacing: 10) {
@@ -383,7 +419,7 @@ struct TreeholeView: View {
                             Text(comment.author.name).font(.system(size: 14, weight: .semibold))
                             if comment.isOriginalPoster { Text("楼主").font(.system(size: 10)).foregroundStyle(TreeholeTheme.primary).padding(.horizontal, 4).padding(.vertical, 2).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 4)) }
                         }
-                        Text(TreeholePresentation.date(comment.createdAt) + " · \(floor) 楼").font(.caption2).foregroundStyle(.secondary)
+                        Text(TreeholePresentation.date(comment.createdAt) + (floor > 0 ? " · \(floor) 楼" : "")).font(.caption2).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     if !comment.deleted { commentLike(comment, post: post); contentMenu(post, comment: comment) }
@@ -454,7 +490,9 @@ struct TreeholeView: View {
     private func postCard(_ post: TreeholePost, full: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top) {
-                if full { author(post.author, date: post.createdAt, full: true) }
+                if tree.engagementEnabled, let id = post.author.id, !post.anonymous {
+                    Button { showProfile(id) } label: { author(post.author, date: post.createdAt, full: full) }.buttonStyle(.plain).accessibilityLabel("查看 " + post.author.name + " 的主页")
+                } else if full { author(post.author, date: post.createdAt, full: true) }
                 else { Button { open(post) } label: { author(post.author, date: post.createdAt, full: false).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()) }.buttonStyle(TreeholePressStyle()).accessibilityLabel("打开 " + post.author.name + " 的帖子") }
                 Spacer(minLength: 3); contentMenu(post)
             }
@@ -464,7 +502,8 @@ struct TreeholeView: View {
             } else {
                 Button { open(post) } label: { VStack(alignment: .leading, spacing: 8) { if let title = post.title, !title.isEmpty { Text(title).font(.headline.weight(.bold)).lineLimit(2) }; if !post.body.isEmpty { Text(post.body).font(.body).lineSpacing(5).lineLimit(3) } }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading) }.buttonStyle(TreeholePressStyle())
             }
-            if let images = post.images, !images.isEmpty { TreeholeImageGrid(postId: post.id, images: images, full: full, api: tree.api) { index in if full { gallery = TreeholeGallerySelection(postId: post.id, images: images, index: index) } else { open(post) } } }
+            if let images = post.images, !images.isEmpty { TreeholeImageGrid(postId: post.id, images: images, full: full, api: tree.api) { index in gallery = TreeholeGallerySelection(postId: post.id, images: images, index: index) } }
+            if !full, let count = post.newReplyCount, count > 0 { Button("\(count) 条新回复 · 接着聊") { open(post, comments: true) }.font(.caption).frame(minHeight: 40) }
             if post.locked { Label("已暂停回复", systemImage: "lock").font(.caption2).foregroundStyle(.secondary) }
             HStack {
                 Button { if !replyText.isEmpty { tree.message = "请先发布回复，或返回时选择放弃"; return }; tree.category = post.category ?? "daily"; tree.scope = "all"; screen = "feed"; reloadFeed() } label: { Text("# " + TreeholeCategories.name(post.category)).font(.caption).foregroundStyle(TreeholeTheme.muted).padding(.horizontal, 8).padding(.vertical, 5).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 6)).frame(minHeight: 44) }
@@ -521,6 +560,9 @@ struct TreeholeView: View {
                 Divider()
                 Button { accountFeed("saved") } label: { VStack(spacing: 10) { Image(systemName: "bookmark").font(.title3); Text("我的收藏").font(.subheadline) }.frame(maxWidth: .infinity).padding(.vertical, 8) }
             }.fixedSize(horizontal: false, vertical: true).campusCard()
+            if tree.engagementEnabled {
+                HStack { Button { accountFeed("participated") } label: { Label("我参与的", systemImage: "bubble.left.and.bubble.right").frame(maxWidth: .infinity, minHeight: 44) }; Button(action: showInbox) { Label("互动消息", systemImage: "bell").frame(maxWidth: .infinity, minHeight: 44) } }.font(.subheadline).campusCard()
+            }
             VStack(spacing: 0) {
                 settingsRow("修改昵称", symbol: "person.crop.circle") { accountPage = "profile" }
                 Divider()
@@ -536,7 +578,8 @@ struct TreeholeView: View {
                 if accountPage == "profile" {
                     Text("其他同学会看到这个昵称。").font(.subheadline).foregroundStyle(.secondary)
                     TextField("公开昵称", text: $nickname).textContentType(.nickname)
-                    Button("保存昵称") { tree.perform { tree.user = try await tree.api.request("profile.update", ["nickname": nickname]).user; tree.feedNeedsRefresh = true; accountPage = "overview" } }.buttonStyle(.borderedProminent).disabled(nickname.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
+                    if tree.engagementEnabled { TextField("个人简介（选填）", text: $bio, axis: .vertical).lineLimit(2...4).onChange(of: bio) { bio = String($0.prefix(120)) } }
+                    Button("保存资料") { tree.perform { var body = ["nickname": nickname]; if tree.engagementEnabled { body["bio"] = bio }; tree.user = try await tree.api.request("profile.update", body).user; tree.feedNeedsRefresh = true; accountPage = "overview" } }.buttonStyle(.borderedProminent).disabled(nickname.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
                 } else if accountPage == "password" {
                     Text("修改后其他设备会退出登录，并生成新的恢复码。").font(.subheadline).foregroundStyle(.secondary)
                     SecureField("当前密码", text: $password).textContentType(.password)
@@ -553,7 +596,7 @@ struct TreeholeView: View {
     private func settingsRow(_ label: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { HStack(spacing: 12) { Image(systemName: symbol).frame(width: 22).foregroundStyle(TreeholeTheme.muted); Text(label).foregroundStyle(TreeholeTheme.text); Spacer(); Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary) }.font(.subheadline).padding(.vertical, 14) }.buttonStyle(.plain)
     }
-    private func accountFeed(_ scope: String) { tree.scope = scope; tree.query = ""; searchOpen = false; screen = "feed"; reloadFeed() }
+    private func accountFeed(_ scope: String) { routes = []; tree.scope = scope; tree.query = ""; tree.category = "all"; tree.sort = "latest"; searchOpen = false; screen = "feed"; reloadFeed() }
     private func reportSheet(_ target: TreeholeTarget) -> some View {
         NavigationStack {
             Form {
@@ -577,8 +620,52 @@ struct TreeholeView: View {
             }
         }
     }
+    private func routeFrame() -> TreeholeRouteFrame {
+        TreeholeRouteFrame(screen: screen, post: tree.current, comments: tree.comments, next: tree.commentNext, context: tree.focusedThread, profile: tree.publicProfile, profilePosts: tree.profilePosts, profileNext: tree.profileNext)
+    }
+    private func previousRoute() {
+        guard let frame = routes.popLast() else { returnToFeed(); return }
+        tree.leaveDetail(); tree.current = frame.post; tree.comments = frame.comments; tree.commentNext = frame.next; tree.focusedThread = frame.context
+        tree.publicProfile = frame.profile; tree.profilePosts = frame.profilePosts; tree.profileNext = frame.profileNext
+        initialDetailTarget = frame.context == nil ? "post" : "context"; screen = frame.screen
+        if screen == "feed" && tree.feedNeedsRefresh { reloadFeed() }
+    }
+    private func showInbox() {
+        routes.append(routeFrame()); screen = "inbox"
+        Task { await tree.loadInbox() }
+    }
+    private func openNotification(_ item: TreeholeNotification) {
+        let frame = routeFrame()
+        tree.perform {
+            try await tree.notificationDetail(item)
+            routes.append(frame); replyText = ""; replyTo = nil; replyAnonymous = false; commentRequest = UUID().uuidString
+            initialDetailTarget = tree.focusedThread != nil ? "context" : item.commentId != nil ? "comments" : "post"
+            detailTab = item.commentId == nil ? "body" : "comments"; screen = "detail"
+        }
+    }
+    private func showProfile(_ id: String) {
+        guard tree.engagementEnabled, !(screen == "profile" && tree.publicProfile?.id == id) else { return }
+        let frame = routeFrame()
+        tree.perform { try await tree.profile(id); routes.append(frame); screen = "profile" }
+    }
+    @ViewBuilder private var publicProfile: some View {
+        if let profile = tree.publicProfile {
+            VStack(spacing: 12) {
+                TreeholeAvatar(name: profile.nickname, size: 64)
+                Text(profile.nickname).font(.title2.bold())
+                Text(profile.bio.isEmpty ? "还没有填写简介" : profile.bio).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text("\(profile.postCount) 条公开帖子").font(.caption).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity).padding(.vertical, 24)
+            Label("这里展示公开帖子，匿名发言不会出现在主页", systemImage: "checkmark.shield").font(.caption2).foregroundStyle(.secondary)
+            Divider()
+            if tree.profilePosts.isEmpty { CampusEmpty(title: "还没有公开帖子", detail: "之后再来看看吧", symbol: "bubble.left") }
+            LazyVStack(spacing: 0) { ForEach(tree.profilePosts) { post in postCard(post); Divider() } }
+            if tree.profileNext != nil { Button("更多公开帖子") { tree.perform { try await tree.profile(profile.id, more: true) } }.frame(maxWidth: .infinity, minHeight: 44) }
+        }
+    }
     private func open(_ post: TreeholePost, comments: Bool = false) {
         guard !tree.busy, screen != "detail" else { return }
+        routes.append(routeFrame())
         scrollIntentUntil = Date().addingTimeInterval(0.65)
         initialDetailTarget = comments ? "comments" : "post"; detailTab = comments ? "comments" : "body"
         replyExpanded = false; replyText = ""; replyTo = nil; replyAnonymous = false; commentRequest = UUID().uuidString
@@ -589,9 +676,19 @@ struct TreeholeView: View {
         if screen == "account" && accountPage != "overview" { accountPage = "overview"; password = ""; newPassword = ""; return }
         if screen == "moderate" { screen = "account"; return }
         if (screen == "compose" && draft.value.hasContent) || (screen == "detail" && !replyText.isEmpty) { discard = true; return }
-        password = ""; newPassword = ""; returnToFeed()
+        password = ""; newPassword = ""; previousRoute()
     }
     static let rules = "尊重同学，勿发布他人隐私、辱骂、骚扰、垃圾广告或违法内容。可以举报、删除自己的内容和注销账号。匿名会对其他用户隐藏昵称与账号，后台保留账号关联用于处理举报；不同帖子使用不同匿名代号，同一帖子内的匿名发言可关联。请留意文字本身是否暴露身份。账号服务保存登录账号、昵称、密码加密摘要、帖子、互动与举报记录，用于登录及社区服务。教务账号与课表不会上传到社区。可以在账号设置中注销。"
+}
+private struct TreeholeRouteFrame {
+    let screen: String
+    let post: TreeholePost?
+    let comments: [TreeholeComment]
+    let next: [String: String]?
+    let context: TreeholeComment?
+    let profile: TreeholePublicProfile?
+    let profilePosts: [TreeholePost]
+    let profileNext: [String: String]?
 }
 // Derive presentation only from the public alias, never an account identifier.
 private struct TreeholeAvatar: View {

@@ -1,6 +1,6 @@
 import Foundation
 
-enum AppTab: String, CaseIterable { case home, schedule, tasks, profile }
+enum AppTab: String, CaseIterable { case home, schedule, community, tasks, profile }
 
 struct Course: Identifiable, Codable, Hashable {
     var id: UUID = UUID()

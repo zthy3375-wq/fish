@@ -27,10 +27,10 @@ if(!/^[a-zA-Z0-9_-]{1,120}$/.test(dbRole||'')||['anon','authenticated','public']
 const schema=readFileSync('cloudbase/community-schema.sql','utf8');
 cli(['db','execute','--sql','BEGIN;\n'+schema+`\nDO $$ DECLARE obj record; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN
- ('hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes') LOOP
+ ('hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications') LOOP
  EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,'${dbRole}'); END LOOP;
  FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
- ('hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json') LOOP
+ ('hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment') LOOP
  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\nCOMMIT;`,'--json']);
 console.log('Community schema installed with direct-client access denied');
 await cloudMedia({env:envId,key}).ensureBucket();
@@ -47,10 +47,10 @@ try{cli(['fn','deploy','hyt-community','--httpFn','--dir','cloudbase/functions/c
 let configuration;
 for(let attempt=0;attempt<12;attempt++){
  try{configuration=await fetch(base+'/v1/config',{signal:AbortSignal.timeout(10000)}).then(async r=>({ok:r.ok,value:await r.json()}));}catch{configuration=null;}
- if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite&&configuration.value.imagesEnabled&&configuration.value.schema===2)break;
+ if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite&&configuration.value.imagesEnabled&&configuration.value.schema===3&&configuration.value.engagementEnabled===true)break;
  await new Promise(resolve=>setTimeout(resolve,2500));
 }
-if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite||!configuration.value.imagesEnabled||configuration.value.schema!==2)throw Error('Invite gate did not activate');
+if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite||!configuration.value.imagesEnabled||configuration.value.schema!==3||configuration.value.engagementEnabled!==true)throw Error('Invite gate did not activate');
 const http=async(action,body={},token='')=>{const r=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});return {status:r.status,body:await r.json()};};
 if((await http('posts.list')).status!==401)throw Error('Anonymous read access unexpectedly enabled');
 if((await http('credentials',{username:'test'})).status!==404)throw Error('Internal endpoint was exposed');
@@ -82,11 +82,20 @@ try{
  if(nested.status!==201||nested.body.comment.rootId!==commented.body.comment.id)throw Error('Live thread grouping failed');
  const threaded=await http('posts.get',{postId:created.body.post.id,threaded:true},reader.sessionToken);
  if(threaded.body.comments?.[0]?.replies?.length!==1)throw Error('Live reply preview failed');
- console.log('Live HTTP/PG checks passed: images, categories, threads, invite gate, login boundary, posts, cross-account anonymity, deletion ownership, comments');
+ const inbox=await http('notifications.list',{},author.sessionToken);
+ if(inbox.status!==200||inbox.body.notifications?.length!==1||inbox.body.notifications[0].commentId!==nested.body.comment.id)throw Error('Live reply notification failed');
+ const selected=inbox.body.notifications[0];
+ const context=await http('comments.context',{postId:created.body.post.id,commentId:selected.commentId},author.sessionToken);
+ if(context.body.context?.replies?.[0]?.id!==selected.commentId)throw Error('Live notification context failed');
+ await http('notifications.read',{ids:[selected.id]},author.sessionToken);
+ if((await http('notifications.unread',{},author.sessionToken)).body.unreadCount!==0)throw Error('Live read-state failed');
+ const profile=await http('posts.list',{scope:'author',memberId:author.user.id},reader.sessionToken);
+ if(profile.body.posts?.some(p=>p.id===created.body.post.id))throw Error('Anonymous post leaked through profile');
+ console.log('Live HTTP/PG checks passed: inbox, notification context, read-state, private profile, images, categories, threads, invite gate, login boundary, posts, cross-account anonymity, deletion ownership, comments');
 }finally{
  for(const u of testAccounts){await local.execute('account.delete',{password:u.password},u.sessionToken,'deployment');}
  // Remove only these generated test identities/content, never real user rows.
- for(const pid of testPosts){await sql('DELETE FROM hyt_comment_likes WHERE comment_id IN (SELECT id FROM hyt_comments WHERE post_id=$1::uuid)',[pid]);await sql('DELETE FROM hyt_media WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_aliases WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comments WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_posts WHERE id=$1::uuid',[pid]);}
+ for(const pid of testPosts){await sql('DELETE FROM hyt_notifications WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_watches WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_visits WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comment_likes WHERE comment_id IN (SELECT id FROM hyt_comments WHERE post_id=$1::uuid)',[pid]);await sql('DELETE FROM hyt_media WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_aliases WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comments WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_posts WHERE id=$1::uuid',[pid]);}
  for(const u of testAccounts)await sql('DELETE FROM hyt_members WHERE id=$1::uuid AND deleted_at IS NOT NULL',[u.user.id]);
 }
 console.log(JSON.stringify({service:'hyt-community',mode:'invite-only',apkPublished:false,updateChannelChanged:false}));

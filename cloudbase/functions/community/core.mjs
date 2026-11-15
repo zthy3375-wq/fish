@@ -22,15 +22,25 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like']);
+export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get']);
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
- if(action==='profile.update')return {nickname:text(b.nickname,2,20)};
+ if(action==='profile.update')return {nickname:text(b.nickname,2,20),...(b.bio!==undefined?{bio:text(b.bio,0,120)}:{})};
+ if(action==='profile.get')return {memberId:id(b.memberId)};
+ if(action==='notifications.unread')return {};
+ if(action==='notifications.read'){
+  if(!Array.isArray(b.ids)||b.ids.length<1||b.ids.length>50)fail();
+  return {ids:[...new Set(b.ids.map(x=>id(x)))]};
+ }
+ if(action==='notifications.list'){
+  const filter=b.filter??'all';if(!['all','replies','likes'].includes(filter))fail();
+  return {filter,...(b.beforeTime!=null||b.beforeId!=null?{beforeTime:time(b.beforeTime),beforeId:id(b.beforeId)}:{})};
+ }
  if(action==='posts.list'){
-  const scope=b.scope??'all';if(!['all','mine','saved'].includes(scope))fail();
+  const scope=b.scope??'all';if(!['all','mine','saved','participated','watching','author'].includes(scope))fail();
   const category=b.category??'all',sort=b.sort??'latest';if(!['all','daily','help','study','buddies'].includes(category)||!['latest','hot'].includes(sort))fail();
-  const out={scope,category,sort,query:b.query?text(b.query,1,80):''};
+  const out={scope,category,sort,query:b.query?text(b.query,1,80):'',...(scope==='author'?{memberId:id(b.memberId)}:{})};
   if(b.snapshotTime!=null)out.snapshotTime=time(b.snapshotTime);
   if(b.beforeRank!=null){if(typeof b.beforeRank!=='string'||!/^\d{1,12}(\.\d{1,8})?$/.test(b.beforeRank))fail();out.beforeRank=b.beforeRank;}
   if(b.beforeTime!=null||b.beforeId!=null){out.beforeTime=time(b.beforeTime);out.beforeId=id(b.beforeId);}return out;
@@ -51,6 +61,8 @@ function sanitize(action,b){
  }
  if(['me','logout','password.change','account.delete','blocks.clear','admin.reports'].includes(action))return {};
  const out={postId:id(b.postId)};
+ if(action==='threads.watch')out.enabled=boolean(b.enabled);
+ if(action==='comments.context')out.commentId=id(b.commentId);
  if(action==='posts.get')out.threaded=b.threaded===true;
  if(action==='media.url')out.imageId=id(b.imageId);
  if(action==='comments.replies')out.rootId=id(b.rootId);
@@ -117,6 +129,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   delete r.passwordHash;delete r.recoveryHash;
   if(r.posts){const rows=r.posts;r.posts=rows.slice(0,20);r.next=rows.length>20?{beforeTime:r.posts.at(-1).createdAt,beforeId:r.posts.at(-1).id,beforeRank:r.posts.at(-1).rank,snapshotTime:r.snapshotTime}:null;}
   if(r.comments){const rows=r.comments,limit=action==='posts.get'&&b.threaded?20:50;r.comments=rows.slice(0,limit);r.next=rows.length>limit?{afterTime:r.comments.at(-1).createdAt,afterId:r.comments.at(-1).id}:null;}
+  if(r.notifications){const rows=r.notifications;r.notifications=rows.slice(0,30);r.next=rows.length>30?{beforeTime:r.notifications.at(-1).createdAt,beforeId:r.notifications.at(-1).id}:null;}
   // Internal object keys never leave this service. Signed links expire after ten minutes.
   const images=[...(r.image?[r.image]:[]),...(r.post?.images||[]),...(r.posts||[]).flatMap(p=>p.images||[])];
   const keys=[...new Set(images.map(i=>i.key))];let urls=new Map();
@@ -129,5 +142,5 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories:['daily','help','study','buddies'],schema:2})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories:['daily','help','study','buddies'],schema:3,engagementEnabled:true})};
 }

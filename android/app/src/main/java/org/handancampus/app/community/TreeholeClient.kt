@@ -12,7 +12,7 @@ internal class TreeholeFailure(val code: String) : Exception(code)
 /** A serialized native session. Tokens and server-selected identities never cross the JS bridge. */
 internal class TreeholeClient(private val vault: TreeholeTokenStore, private val transport: TreeholeTransport = TreeholeHttp()) {
     companion object {
-        val actions = setOf("config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like")
+        val actions = setOf("config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like", "comments.context", "threads.watch", "notifications.list", "notifications.unread", "notifications.read", "profile.get")
         private val auth = setOf("register", "login", "recover")
         private val tokenPattern = Regex("[A-Za-z0-9_-]{43}")
     }

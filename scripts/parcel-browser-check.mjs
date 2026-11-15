@@ -44,7 +44,7 @@ export async function checkParcelShortcuts(page, assert, {width, output}) {
   assert(await shortcuts.getByRole('status').count() === 0, `${width}: old parcel launch reply does not appear after navigation`);
   await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).click();
   await shortcuts.getByRole('status').filter({hasText: '已请求打开拼多多'}).waitFor();
-  assert(await page.locator('.floating-nav button').count() === 4, `${width}: parcel feature preserves the four navigation tabs`);
+  assert(await page.locator('.floating-nav button').count() === 5, `${width}: parcel feature preserves the five navigation tabs`);
   assert(await page.evaluate(() => history.length) === historyLength, `${width}: parcel launch adds no browser-history entry`);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: parcel card has no horizontal overflow`);
   await shortcuts.scrollIntoViewIfNeeded();

@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 import {createCommunity} from '../cloudbase/functions/community/core.mjs';
 import {createServer} from '../cloudbase/functions/community/server.mjs';
 
-const root=path.resolve('dist'),output='/tmp/handan-treehole-v6-qa';await mkdir(output,{recursive:true});
+const root=path.resolve('dist'),output='/tmp/handan-community-v7-qa';await mkdir(output,{recursive:true});
 const db=new PGlite();await db.exec(await readFile('cloudbase/community-schema.sql','utf8'));
 const objects=new Map();let mediaOrigin='';
 const storage={put:async(k,v)=>objects.set(k,v),url:async k=>mediaOrigin+'/fixtures/'+k,remove:async k=>objects.delete(k)};
@@ -58,7 +58,7 @@ async function register(page,username,nickname){
  await page.getByLabel('登录账号',{exact:true}).fill(username);await page.getByLabel('公开昵称',{exact:true}).fill(nickname);
  await page.getByLabel('密码',{exact:true}).fill('synthetic-long-password');await page.getByRole('checkbox',{name:/我已阅读/}).check();
  await page.getByRole('button',{name:'创建账号',exact:true}).click();await page.getByRole('heading',{name:'保存你的账号恢复码'}).waitFor();
- await page.getByRole('button',{name:'我已保存恢复码'}).click();await page.getByRole('heading',{name:'邯院树洞',exact:true}).waitFor();
+ await page.getByRole('button',{name:'我已保存恢复码'}).click();await page.getByRole('heading',{name:'邯院社区',exact:true}).waitFor();
 }
 try{
  for(const width of [360,390,430]){
@@ -66,7 +66,16 @@ try{
   await a.page.screenshot({path:path.join(output,`treehole-login-${width}.png`),animations:'disabled'});
   const beforePostCount=(await db.query('SELECT count(*)::int AS n FROM hyt_posts')).rows[0].n;
   await register(a.page,'author_'+width,'测试同学甲');
+  const nav=a.page.getByRole('navigation',{name:'主导航'});
+  assert.deepEqual(await nav.getByRole('button').allTextContents(),['首页','课表','社区','待办','我的']);
+  assert.equal(await nav.getByRole('button',{name:'社区',exact:true}).getAttribute('aria-current'),'page');
+  const slots=await nav.getByRole('button').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().width));assert(slots.every(w=>w>=44));
+  const rows=await nav.getByRole('button').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().y));assert(rows.every(y=>Math.abs(y-rows[0])<1));
+  await a.page.waitForTimeout(400);const indicator=await nav.locator('.nav-indicator').boundingBox(),middle=await nav.getByRole('button',{name:'社区',exact:true}).boundingBox();assert(Math.abs(indicator.x+indicator.width/2-middle.x-middle.width/2)<2);
+  const fab=await a.page.getByRole('button',{name:'发帖',exact:true}).boundingBox(),dock=await nav.boundingBox();assert(fab.y+fab.height<dock.y);
+  checks.push(`${width}: treehole is the middle tab, all five targets fit and composer clears the dock`);
   await a.page.getByRole('button',{name:'发帖',exact:true}).click();await a.page.getByLabel('想说的话').fill('今天图书馆靠窗的位置很安静。下课后，给自己一点慢下来的时间。');
+  assert.equal(await nav.count(),0);checks.push(`${width}: composing hides main navigation to protect the draft`);
   await a.page.getByLabel('帖子标题').fill('图书馆的午后');await a.page.getByLabel('选择分区').selectOption('study');await a.page.getByLabel('添加图片').setInputFiles({name:'campus-fixture.webp',mimeType:'image/webp',buffer:fixture});await a.page.locator('.th-draft-images img').waitFor();
   await a.page.getByRole('checkbox',{name:'匿名发布',exact:true}).check();await a.page.screenshot({path:path.join(output,`treehole-compose-${width}.png`),animations:'disabled'});a.state.dropNextPost=true;
   await a.page.getByRole('button',{name:'匿名发布',exact:true}).click();await a.page.getByRole('alert').filter({hasText:'连接失败'}).waitFor();
@@ -88,7 +97,7 @@ try{
   assert(replyBounds.y>=0&&replyBounds.y+replyBounds.height<=401);assert(sendBounds.y>=0&&sendBounds.y+sendBounds.height<=401);
   await a.page.getByRole('button',{name:'收起回复编辑器'}).click();await a.page.locator('.th-dialog').waitFor({state:'detached'});await a.page.setViewportSize({width,height:844});checks.push(`${width}: reply controls remain visible in keyboard-sized viewport`);
 
-  await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();await a.page.getByRole('heading',{name:'邯院树洞',exact:true}).waitFor();
+  await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.getByRole('heading',{name:'邯院社区',exact:true}).waitFor();
   await a.page.screenshot({path:path.join(output,`treehole-feed-${width}.png`),animations:'disabled'});
   assert.equal(await a.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);checks.push(`${width}: compact feed has no horizontal overflow`);
   const b=await client(width);await register(b.page,'reader_'+width,'测试同学乙');
@@ -115,7 +124,31 @@ try{
   checks.push(`${width}: action sheet traps focus and restores the trigger`);
   await b.page.getByRole('button',{name:'帖子操作'}).click();await b.page.getByRole('button',{name:'举报',exact:true}).click();
   await b.page.getByLabel('原因',{exact:true}).fill('人工测试举报');await b.page.getByRole('button',{name:'提交举报',exact:true}).click();await b.page.getByText('举报已提交，管理员会查看处理',{exact:true}).waitFor();checks.push(`${width}: named comments and reporting work across accounts`);
-  await b.page.getByRole('button',{name:'返回树洞',exact:true}).click();await b.page.getByRole('button',{name:'测试同学乙',exact:true}).click();await b.page.getByRole('button',{name:/我的收藏/}).click();await b.page.locator('.th-post-body').first().waitFor();
+  active=a.page;
+  await a.page.getByRole('button',{name:'刷新树洞',exact:true}).click();await a.page.locator('.th-unread-badge').waitFor();
+  await a.page.getByRole('button',{name:'互动消息',exact:true}).click();await a.page.locator('.th-inbox-item').first().waitFor();
+  assert.equal(await a.page.getByRole('navigation',{name:'主导航'}).count(),0);
+  await a.page.getByRole('navigation',{name:'互动消息筛选'}).getByRole('button',{name:'回复',exact:true}).click();
+  const notification=a.page.locator('.th-inbox-item').filter({hasText:'回复楼主：下次也去靠窗坐坐。'});await notification.waitFor();
+  const noticeId=await notification.getAttribute('data-notification-id');
+  await a.page.screenshot({path:path.join(output,`community-inbox-${width}.png`),animations:'disabled'});
+  await notification.click();await a.page.getByLabel('消息对应的回复',{exact:true}).waitFor();
+  assert((await a.page.locator('.th-focus-context').innerText()).includes('回复楼主：下次也去靠窗坐坐。'));
+  assert(!await a.page.locator('.th-focus-context').innerText().then(t=>t.includes('测试同学甲')));
+  await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.locator('.th-inbox-item').first().waitFor();
+  assert(!await a.page.locator(`[data-notification-id="${noticeId}"]`).getAttribute('class').then(t=>t.includes('is-unread')));
+  await a.page.getByRole('navigation',{name:'互动消息筛选'}).getByRole('button',{name:'收到的赞',exact:true}).click();await a.page.locator('.th-inbox-item').first().waitFor();
+  assert((await a.page.locator('.th-inbox-item').allTextContents()).every(t=>t.includes('一位同学')));
+  await a.page.getByRole('button',{name:'将当前消息标为已读',exact:true}).click();await a.page.waitForFunction(()=>!document.querySelector('.th-inbox-item.is-unread'));
+  await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.locator('.th-return-links').getByRole('button',{name:'我参与的',exact:true}).click();await a.page.locator('.th-post').first().waitFor();
+  assert.equal(await a.page.locator('.th-scope strong').innerText(),'我参与的');
+  await a.page.locator('.th-return-links').getByRole('button',{name:'广场',exact:true}).click();await a.page.locator('.th-post').first().waitFor();
+  checks.push(`${width}: reply/like inbox, anonymous previews, nested notification context, read state and return to inbox work`);
+  active=b.page;
+  await b.page.getByRole('button',{name:'取消关注',exact:true}).click();await b.page.getByRole('button',{name:'关注讨论',exact:true}).waitFor();
+  await b.page.getByRole('button',{name:'关注讨论',exact:true}).click();await b.page.getByRole('button',{name:'取消关注',exact:true}).waitFor();
+  checks.push(`${width}: discussion follow toggle reflects committed state`);
+  await b.page.getByRole('button',{name:'返回社区',exact:true}).click();await b.page.getByRole('button',{name:'测试同学乙',exact:true}).click();await b.page.getByRole('button',{name:/我的收藏/}).click();await b.page.locator('.th-post-body').first().waitFor();
   assert.equal(await b.page.locator('.th-post').count(),1);
   await b.page.getByRole('button',{name:'搜索帖子',exact:true}).click();await b.page.getByLabel('搜索树洞文字').fill('这个关键词没有帖子');await b.page.getByRole('button',{name:'搜索',exact:true}).click();await b.page.getByRole('heading',{name:'还没找到这段回声'}).waitFor();
   await b.page.getByRole('button',{name:'清除搜索',exact:true}).click();await b.page.locator('.th-post-body').first().waitFor();checks.push(`${width}: saved feed and search preserve scope`);
@@ -127,17 +160,25 @@ try{
   await b.page.screenshot({path:path.join(output,`treehole-account-${width}.png`),animations:'disabled'});
   await b.page.getByRole('button',{name:'退出邯院通账号',exact:true}).click();await b.page.getByRole('button',{name:'确认',exact:true}).click();await b.page.getByRole('heading',{name:'说说校园里的那些事'}).waitFor();
   assert.equal(b.state.token,null);assert.equal(await b.page.locator('.th-post').count(),0);checks.push(`${width}: logout clears content and session`);
-  await a.page.getByRole('button',{name:'发帖',exact:true}).click();await a.page.getByLabel('想说的话').fill('还没写完的草稿');await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();
+  await a.page.getByRole('button',{name:'发帖',exact:true}).click();await a.page.getByLabel('想说的话').fill('还没写完的草稿');await a.page.getByRole('button',{name:'返回社区',exact:true}).click();
   await a.page.getByRole('heading',{name:'放弃还没发布的文字？'}).waitFor();await a.page.getByRole('button',{name:'继续编辑',exact:true}).click();assert.equal(await a.page.getByLabel('想说的话').inputValue(),'还没写完的草稿');checks.push(`${width}: back navigation protects unpublished text`);
-  await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();await a.page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();await a.page.getByRole('heading',{name:'邯院树洞',exact:true}).waitFor();
+  await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();await a.page.getByRole('heading',{name:'邯院社区',exact:true}).waitFor();
   active=a.page;await a.page.reload();await a.page.locator('.th-draft-resume').waitFor();await a.page.locator('.th-draft-resume').click();assert.equal(await a.page.getByLabel('想说的话').inputValue(),'还没写完的草稿');checks.push(`${width}: account draft survives page recreation`);
-  await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();await a.page.getByRole('button',{name:'放弃并返回',exact:true}).click();
+  await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.getByRole('button',{name:'放弃并返回',exact:true}).click();
   await a.page.locator('.th-post-body').first().click();await a.page.locator('.th-comment').first().getByRole('button',{name:'回复',exact:true}).click();
-  await a.page.getByRole('button',{name:'收起回复编辑器'}).click();await a.page.locator('.th-dialog').waitFor({state:'detached'});await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();await a.page.getByRole('button',{name:'发帖',exact:true}).click();
+  await a.page.getByRole('button',{name:'收起回复编辑器'}).click();await a.page.locator('.th-dialog').waitFor({state:'detached'});await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.getByRole('button',{name:'发帖',exact:true}).click();
   await a.page.getByLabel('想说的话').fill('第二条树洞，开始一段新的讨论。');await a.page.getByRole('button',{name:'以昵称发布',exact:true}).click();await a.page.getByRole('heading',{name:'评论',exact:true}).waitFor();
   assert.equal(await a.page.locator('.th-reply-target').count(),0,'A new discussion must not inherit the previous reply target');
   await a.page.locator('.th-reply-entry').click();await a.page.getByLabel('你的回复',{exact:true}).fill('新讨论里的第一条回复。');await a.page.getByRole('button',{name:'发布回复',exact:true}).click();await a.page.getByText('新讨论里的第一条回复。',{exact:true}).waitFor();
   checks.push(`${width}: new post resets the previous discussion reply target`);
+  await a.page.getByRole('button',{name:'查看 测试同学甲 的主页',exact:true}).click();await a.page.locator('.th-public-profile').waitFor();
+  assert.equal(await a.page.locator('.th-post').count(),1);assert(!(await a.page.locator('.th-post').innerText()).includes('图书馆的午后'));
+  await a.page.screenshot({path:path.join(output,`community-profile-${width}.png`),animations:'disabled'});
+  await a.page.locator('.th-post-body').click();await a.page.locator('.th-detail').waitFor();
+  await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.locator('.th-public-profile').waitFor();
+  await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.locator('.th-detail').waitFor();
+  checks.push(`${width}: named avatar opens profile, anonymous posts stay private, nested back restores each page`);
+
   assert.deepEqual(a.errors,[]);assert.deepEqual(b.errors,[]);
   await a.context.close();await b.context.close();console.log(`account/read regressions ${width}: ${checks.length} checks`);
  }
@@ -169,25 +210,24 @@ try{
   await visual.page.locator('.th-comment').first().waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);await visual.page.screenshot({path:path.join(output,`treehole-content-comments-${width}.png`),animations:'disabled'});
   await visual.page.getByRole('button',{name:'全部 4 条回复',exact:true}).click();await visual.page.getByRole('button',{name:'收起回复',exact:true}).waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),4);await visual.page.getByRole('button',{name:'收起回复',exact:true}).click();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);
   await visual.page.locator('.th-reply-entry').click();await visual.page.getByLabel('你的回复',{exact:true}).fill('编辑器展开后再选择匿名，阅读时保留更多空间。');await visual.page.screenshot({path:path.join(output,`treehole-content-editor-${width}.png`),animations:'disabled'});await visual.page.getByLabel('你的回复',{exact:true}).fill('');await visual.page.getByRole('button',{name:'收起回复编辑器'}).click();
-  await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();await visual.page.locator('.th-post').filter({hasText:many.title}).locator('.th-post-body').click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();assert.equal(await visual.page.locator('.carousel button').count(),9);
-  await visual.page.locator('.carousel').evaluate(el=>el.scrollTo({left:el.clientWidth*2,behavior:'instant'}));await visual.page.waitForFunction(()=>document.querySelector('.th-media-pagination strong').textContent==='3 / 9');await visual.page.getByRole('button',{name:'查看图片 3，共 9 张',exact:true}).click();await visual.page.getByRole('button',{name:'下一张',exact:true}).click();assert.equal(await visual.page.locator('.th-gallery-bar>span').innerText(),'4 / 9');await visual.page.getByRole('button',{name:'关闭大图'}).click();await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();
+  await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();await visual.page.locator('.th-post').filter({hasText:many.title}).locator('.th-post-body').click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();assert.equal(await visual.page.locator('.carousel button').count(),9);
+  await visual.page.locator('.carousel').evaluate(el=>el.scrollTo({left:el.clientWidth*2,behavior:'instant'}));await visual.page.waitForFunction(()=>document.querySelector('.th-media-pagination strong').textContent==='3 / 9');await visual.page.getByRole('button',{name:'查看图片 3，共 9 张',exact:true}).click();await visual.page.getByRole('button',{name:'下一张',exact:true}).click();assert.equal(await visual.page.locator('.th-gallery-bar>span').innerText(),'4 / 9');await visual.page.getByRole('button',{name:'关闭大图'}).click();await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();
   checks.push(`${width}: long image keeps full aspect, two/nine photos, selected comment tab, preview-two/expand-four and carousel/gallery indices`);
  }
- await visual.page.locator('.th-post').filter({hasText:two.title}).getByRole('button',{name:'打开帖子，配图 1，共 2 张'}).click();await visual.page.locator('.th-detail').waitFor();visual.state.breakNextImage=true;await visual.page.getByRole('button',{name:'查看图片 1，共 2 张'}).click();await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).waitFor();visual.state.delayImage=true;await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).click();await visual.page.locator('.th-gallery img').waitFor();await visual.page.waitForFunction(()=>{const image=document.querySelector('.th-gallery img');return image&&image.complete&&image.naturalWidth>0;});await visual.page.getByRole('button',{name:'关闭大图'}).click();checks.push('expired gallery URL recovers on the first retry even when the old image fails during URL renewal');
- await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();
+ visual.state.breakNextImage=true;await visual.page.locator('.th-post').filter({hasText:two.title}).getByRole('button',{name:'查看配图 1，共 2 张'}).click();assert.equal(await visual.page.locator('.th-detail').count(),0);await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).waitFor();visual.state.delayImage=true;await visual.page.getByRole('button',{name:'图片暂未加载，点击重试',exact:true}).click();await visual.page.locator('.th-gallery img').waitFor();await visual.page.waitForFunction(()=>{const image=document.querySelector('.th-gallery img');return image&&image.complete&&image.naturalWidth>0;});await visual.page.getByRole('button',{name:'关闭大图'}).click();checks.push('expired gallery URL recovers on the first retry even when the old image fails during URL renewal');
  await db.query('UPDATE hyt_posts SET locked=true WHERE id=$1',[long.id]);await visual.page.locator('.th-post').filter({hasText:long.title}).locator('.th-post-body').click();await visual.page.getByText('这条讨论已暂停回复。',{exact:true}).waitFor();assert(await visual.page.locator('.th-reply-entry').isDisabled());assert(!await visual.page.getByRole('button',{name:'点赞',exact:true}).isDisabled());await visual.page.getByRole('button',{name:'收藏',exact:true}).click();await visual.page.getByRole('button',{name:'取消收藏',exact:true}).waitFor();checks.push('locked discussion keeps like/save controls while disabling reply entry');
 
- await visual.page.getByRole('button',{name:'返回树洞',exact:true}).click();
+ await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();
  const vp=visual.page;
  const visibleCard=()=>vp.locator('.th-post').filter({hasText:two.title});
- async function backToCards(){await vp.getByRole('button',{name:'返回树洞',exact:true}).click();await visibleCard().waitFor();await vp.waitForTimeout(260);}
- for(const region of ['author','padding','footer','image']){
+ async function backToCards(){await vp.getByRole('button',{name:'返回社区',exact:true}).click();await visibleCard().waitFor();await vp.waitForTimeout(260);}
+ for(const region of ['padding','footer']){
   await visibleCard().scrollIntoViewIfNeeded();await vp.waitForTimeout(260);visual.state.holdNextDetail=true;
   const box=await visibleCard().boundingBox();
   if(region==='image')await visibleCard().locator('.th-images button').first().click();
   else {const point=region==='author'?await visibleCard().locator('.th-post-byline').boundingBox():region==='footer'?await visibleCard().locator('.th-action-spacer').boundingBox():{x:box.x+2,y:box.y+60,width:8,height:8};await vp.mouse.click(point.x+point.width/2,point.y+point.height/2);}
   await vp.locator('.th-detail').waitFor();await vp.locator('.th-comment-loading').waitFor();
-  assert.equal(await vp.locator('.th-detail h2').innerText(),two.title);assert(!await vp.getByRole('button',{name:'返回树洞',exact:true}).isDisabled());assert.equal(await vp.getByRole('dialog').count(),0);
+  assert.equal(await vp.locator('.th-detail h2').innerText(),two.title);assert(!await vp.getByRole('button',{name:'返回社区',exact:true}).isDisabled());assert.equal(await vp.getByRole('dialog').count(),0);
   while(!visual.state.releaseDetail)await new Promise(r=>setTimeout(r,10));
   await backToCards();visual.state.releaseDetail();visual.state.releaseDetail=null;await vp.waitForTimeout(100);assert.equal(await vp.locator('.th-detail').count(),0);
   checks.push(`hit ${region}: immediate cached detail, nonblocking loading, back discards delayed response`);
@@ -227,12 +267,19 @@ try{
   const ids=await card().evaluateAll(els=>els.map(el=>el.dataset.postId));assert.equal(new Set(ids).size,45);checks.push(`${width}: failed third page retains forty cards, pauses auto retry, manual retry appends five unique cards`);
   const target=card().nth(26),id=ids[26];await target.evaluate(el=>window.scrollTo({top:window.scrollY+el.getBoundingClientRect().top-150,behavior:'instant'}));
   const origin=await page.evaluate(()=>window.scrollY),beforeReturn=firstCalls();await target.getByRole('button',{name:/查看评论/}).click();await page.getByRole('heading',{name:'评论',exact:true}).waitFor();
+  assert.equal(await page.getByRole('navigation',{name:'主导航'}).count(),0);
   await page.waitForFunction(()=>document.querySelector('.th-detail-tabs button[aria-pressed=true]')?.textContent==='评论');
   const discussion=await page.locator('.th-discussion-title').boundingBox();assert(discussion.y>=0&&discussion.y<650);
   await page.locator('.th-reply-entry').click();await page.getByLabel('你的回复',{exact:true}).fill('翻页之后也能正确回复。');await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.getByText('翻页之后也能正确回复。',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'返回树洞',exact:true}).click();await count(45);await page.waitForFunction(y=>Math.abs(window.scrollY-y)<3,origin);assert.equal(firstCalls(),beforeReturn);await page.locator(`.th-post[data-post-id="${id}"]`).getByRole('button',{name:'查看评论，共 1 条',exact:true}).waitFor();
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();await count(45);await page.waitForFunction(y=>Math.abs(window.scrollY-y)<3,origin);assert.equal(firstCalls(),beforeReturn);await page.locator(`.th-post[data-post-id="${id}"]`).getByRole('button',{name:'查看评论，共 1 条',exact:true}).waitFor();
   checks.push(`${width}: comment icon enters discussion; reply count updates; back retains all pages, exact scroll and makes no refresh request`);
-  await page.locator(`.th-post[data-post-id="${id}"] .th-post-body`).click();await page.getByRole('heading',{name:'评论',exact:true}).waitFor();await page.waitForFunction(()=>window.scrollY===0);await page.getByRole('button',{name:'返回树洞',exact:true}).click();await count(45);checks.push(`${width}: body opens at the top while comment icon opens discussion`);
+  const tab=label=>page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:label,exact:true});
+  await tab('课表').click();await page.waitForFunction(()=>location.hash==='#/schedule');await page.waitForFunction(()=>window.scrollY===0);
+  await tab('社区').click();await count(45);await page.waitForFunction(y=>Math.abs(window.scrollY-y)<3,origin);
+  assert.equal(await page.getByLabel('搜索树洞文字').inputValue(),keyword);assert.equal(firstCalls(),beforeReturn);
+  await page.screenshot({path:path.join(output,`community-middle-tab-${width}.png`),animations:'disabled'});
+  checks.push(`${width}: switching to timetable and back keeps filter, forty-five posts and exact reading position without refresh`);
+  await page.locator(`.th-post[data-post-id="${id}"] .th-post-body`).click();await page.getByRole('heading',{name:'评论',exact:true}).waitFor();await page.waitForFunction(()=>window.scrollY===0);await page.getByRole('button',{name:'返回社区',exact:true}).click();await count(45);checks.push(`${width}: body opens at the top while comment icon opens discussion`);
   await page.getByRole('button',{name:'刷新树洞',exact:true}).click();await count(20);pager.state.holdNextPage=true;await page.locator('.th-page-end').scrollIntoViewIfNeeded();await page.getByText('正在加载更多帖子…',{exact:true}).waitFor();while(!pager.state.releasePage)await new Promise(r=>setTimeout(r,10));
   await page.locator('.th-category-nav').getByRole('button',{name:'提问求助',exact:true}).click();await count(0);pager.state.releasePage();pager.state.releasePage=null;await page.waitForTimeout(120);assert.equal(await card().count(),0);checks.push(`${width}: stale page response cannot append after category changes`);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(pager.errors,[]);await pager.context.close();

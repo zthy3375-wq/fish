@@ -7,7 +7,7 @@ import {useNavigation} from '../src/composables/navigation';
 describe('导航返回路径',()=>{
  it('五个 Tab 连续切换不会留下返回堆栈',()=>{
   const n=new NavigationStack(parseRoute('#/home'));
-  for(let i=0;i<20;i++){n.move('schedule');n.move('tasks');n.move('profile');n.move('academic');n.move('home')}
+  for(let i=0;i<20;i++){n.move('schedule');n.move('community');expect(n.parents).toEqual([]);n.move('tasks');n.move('profile');n.move('academic');n.move('home')}
   expect(n.parents).toEqual([]);expect(n.canBack()).toBe(false);
  });
  it.each(['home','academic','profile'] as const)('二级页返回原入口 %s',page=>{

@@ -16,6 +16,7 @@ import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
 const Treehole=defineAsyncComponent(()=>import('./components/Treehole.vue'));
 const treeholeRef=ref<{requestBack:()=>boolean;refresh:()=>void}>();
+const treeholeTabNavigation=ref(true);
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
 const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
@@ -414,8 +415,12 @@ function go(id: string) {
 }
 function nav(p: Page) { move(p, p === "schedule" ? "schedule" : "overview"); }
 const content=ref<HTMLElement>();
-const scrollPositions=new Map<string,number>();
-watch(()=>`${page.value}/${section.value}`,async(key,oldKey)=>{scrollPositions.set(oldKey,content.value?.scrollTop??0);await nextTick();content.value?.scrollTo({top:scrollPositions.get(key)??0,behavior:'instant'})});
+const scrollPositions=new Map<string,{main:number;window:number}>();
+watch(()=>`${page.value}/${section.value}`,async(key,oldKey)=>{
+ scrollPositions.set(oldKey,{main:content.value?.scrollTop??0,window:window.scrollY});
+ await nextTick();if(key!==`${page.value}/${section.value}`)return;
+ const position=scrollPositions.get(key);content.value?.scrollTo({top:position?.main??0,behavior:'instant'});window.scrollTo({top:position?.window??0,behavior:'instant'});
+});
 function details(c: Course, occurrenceWeek?:number) {
   adjustmentWeek.value=occurrenceWeek??c.occurrenceWeek??(page.value==='schedule'?(scheduleViews[semester.value.id]?.week??week.value):currentWeek(c===next.value?.course?next.value.date:now.value,semester.value));
   selected.value = c;
@@ -648,6 +653,7 @@ onUnmounted(() => {
         <button class="primary" @click="load">重试</button>
       </div>
       <div v-else class="page-content">
+          <KeepAlive><Treehole v-if="page === 'community'" ref="treeholeRef" tab-root @exit="back" @tab-navigation="treeholeTabNavigation=$event"/></KeepAlive>
           <p v-if="pausedCourseAdjustments && (page==='schedule'||page==='home')" class="task-hint" role="status">学校原安排已变化，{{pausedCourseAdjustments}} 条按周调课记录已暂停，请按新课表重新核对。</p>
           <template v-if="page === 'home'">
             <CampusHero :date="`${dateLabel(now)} · 周${weekdays[dayNumber(now)-1]}`" :week="week>=1&&week<=semester.weekCount?`第 ${week} 教学周`:'学期外'" :unread="!read&&prefs.notifications" :obscured="!!modal||updatesOpen||agendaView.editor" @notifications="open('notifications')"/>
@@ -665,13 +671,11 @@ onUnmounted(() => {
               <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
               </section>
               <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
-              <button class="learning-page-link" @click="nav('community')"><MessageSquare :size="22"/><strong>邯院树洞</strong><span>聊聊校园里的那些事</span><ChevronRight :size="16"/></button>
               <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
 
 
             </div>
           </template>
-          <Treehole v-else-if="page === 'community'" ref="treeholeRef" @exit="back"/>
           <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
           <template v-else-if="page === 'academic' || page === 'schedule' || page === 'tasks'">
             <button v-if="section==='agenda'" class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通作业</strong><span>按课程查看与安排</span><ChevronRight :size="16"/></button>
@@ -701,7 +705,7 @@ onUnmounted(() => {
                 @conflict="showConflicts"
             />
           </template>
-          <template v-else>
+          <template v-else-if="page === 'profile'">
             <div class="profile-page">
             <button class="profile-strip" @click="open('edit')">
               <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
@@ -765,7 +769,7 @@ onUnmounted(() => {
           </footer>
         </div>
     </main>
-    <div v-if="page!=='community'" class="navigation-dock" :inert="!!modal || agendaView.editor" :class="{ 'nav-suspended': !!modal }">
+    <div v-if="page!=='community'||treeholeTabNavigation" class="navigation-dock" :inert="!!modal || agendaView.editor" :class="{ 'nav-suspended': !!modal }">
       <FloatingNavigation :page="page" @navigate="nav" />
     </div>
     <Transition name="toast"

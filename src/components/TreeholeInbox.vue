@@ -1,0 +1,28 @@
+<script setup lang="ts">
+import {Bell,MessageCircle,ThumbsUp,CheckCheck,RefreshCw,ChevronRight} from 'lucide-vue-next';
+import TreeholeAvatar from './TreeholeAvatar.vue';
+import {treeholeTimestamp} from '../domain/treeholePresentation';
+import type {TreeholeNotification} from '../services/treehole';
+defineProps<{items:TreeholeNotification[];filter:string;loading:boolean;error:string;more:boolean;unread:number}>();
+defineEmits<{filter:[value:string];open:[item:TreeholeNotification];refresh:[];more:[];read:[]}>();
+const labels={reply:'回复了你',post_reply:'评论了你的帖子',thread_reply:'更新了你关注的讨论',post_like:'赞了你的帖子',comment_like:'赞了你的回复'};
+</script>
+<template>
+ <div class="th-inbox">
+  <div class="th-inbox-heading"><div><p class="th-eyebrow">每一份回应，都在这里</p><p class="th-muted">{{unread?unread+' 条未读互动':'看看之前的交流，也可以继续聊聊'}}</p></div><button aria-label="刷新互动消息" :disabled="loading" @click="$emit('refresh')"><RefreshCw :size="19"/></button></div>
+  <nav class="th-inbox-filters" aria-label="互动消息筛选"><button v-for="tab in [{id:'all',label:'全部'},{id:'replies',label:'回复'},{id:'likes',label:'收到的赞'}]" :key="tab.id" :aria-pressed="filter===tab.id" :disabled="loading" @click="$emit('filter',tab.id)">{{tab.label}}</button><button class="th-read-visible" aria-label="将当前消息标为已读" :disabled="loading||!items.some(n=>!n.readAt)" @click="$emit('read')"><CheckCheck :size="18"/></button></nav>
+  <div v-if="error" class="th-detail-error" role="alert"><p>{{error}}</p><button :disabled="loading" @click="more&&items.length?$emit('more'):$emit('refresh')">重试</button></div>
+  <div v-if="loading&&!items.length" class="th-skeleton" role="status" aria-label="正在加载互动消息"><span/><span/><span/></div>
+  <div v-else-if="!items.length&&!error" class="th-empty"><Bell :size="32"/><h3>回应会来到这里</h3><p>有人回复你、点赞，或关注的讨论有新回复时，就能在这里找到。</p></div>
+  <button v-for="item in items" :key="item.id" class="th-inbox-item" :class="{'is-unread':!item.readAt}" :data-notification-id="item.id" :disabled="loading" @click="$emit('open',item)">
+   <span class="th-inbox-avatar"><TreeholeAvatar :name="item.actor.name" :anonymous="item.actor.anonymous" :size="40"/><span class="th-notice-kind"><ThumbsUp v-if="item.kind.endsWith('like')" :size="11"/><MessageCircle v-else :size="11"/></span></span>
+   <span class="th-inbox-body"><span class="th-inbox-byline"><strong>{{item.actor.name}}</strong><small>{{treeholeTimestamp(item.createdAt)}}</small></span><span class="th-notice-action">{{labels[item.kind]}}</span><span v-if="!item.kind.endsWith('like')" class="th-notice-excerpt">{{item.excerpt}}</span><span class="th-notice-post">{{item.postTitle||'图片分享'}}</span></span><span v-if="!item.readAt" class="th-unread-dot" aria-label="未读"/><ChevronRight v-else :size="15" class="th-inbox-chevron"/>
+  </button>
+  <button v-if="more" class="th-more" :disabled="loading" @click="$emit('more')">{{loading?'正在加载…':'更早的互动'}}</button>
+ </div>
+</template>
+<style scoped>
+.th-inbox-heading{display:flex;align-items:center;justify-content:space-between;padding:10px 0 12px}.th-inbox-heading p{margin:5px 0}.th-inbox-heading>button,.th-read-visible{min-width:44px;min-height:44px;color:var(--color-muted);display:grid;place-items:center}
+.th-inbox-filters{display:flex;align-items:center;gap:22px;border-bottom:1px solid var(--color-divider)}.th-inbox-filters button{min-height:46px;font-size:14px;color:var(--color-muted);position:relative}.th-inbox-filters button[aria-pressed=true]{color:var(--color-text);font-weight:700}.th-inbox-filters button[aria-pressed=true]:after{content:'';position:absolute;bottom:0;height:3px;border-radius:2px;left:4px;right:4px;background:var(--color-primary)}.th-read-visible{margin-left:auto}
+.th-inbox-item{display:flex;align-items:flex-start;gap:12px;width:calc(100% + 36px);margin:0 -18px;padding:20px 18px;text-align:left;border-bottom:1px solid var(--color-divider);transition:background 120ms}.th-inbox-item.is-unread{background:var(--color-tint)}.th-inbox-item:active{background:var(--color-bg)}.th-inbox-avatar{position:relative;flex-shrink:0}.th-notice-kind{position:absolute;bottom:-3px;right:-3px;border:2px solid var(--color-surface);border-radius:50%;background:var(--color-primary);color:white;width:20px;height:20px;display:grid;place-items:center}.th-inbox-body{display:flex;flex-direction:column;flex:1;min-width:0;gap:7px}.th-inbox-byline{display:flex;align-items:center;justify-content:space-between;gap:7px}.th-inbox-byline strong{font-size:14px;overflow-wrap:anywhere}.th-inbox-byline small{font-size:11px;white-space:nowrap;color:var(--color-muted)}.th-notice-action{font-size:12px;color:var(--color-muted)}.th-notice-excerpt{font-size:15px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.th-notice-post{font-size:12px;padding:9px 11px;border-radius:7px;background:var(--color-bg);color:var(--color-muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.th-unread-dot{width:7px;height:7px;border-radius:50%;background:var(--color-primary);margin-top:7px;flex-shrink:0}.th-inbox-chevron{margin-top:6px;color:var(--color-muted);flex-shrink:0}button:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}@media(prefers-reduced-motion:reduce){.th-inbox-item{transition:none}}
+</style>

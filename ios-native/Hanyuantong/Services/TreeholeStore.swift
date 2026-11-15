@@ -19,6 +19,20 @@ import Combine
     @Published var category = "all"
     @Published var sort = "latest"
     @Published var imagesEnabled = false
+    @Published var engagementEnabled = false
+    @Published var unreadCount = 0
+    @Published var notifications: [TreeholeNotification] = []
+    @Published var inboxFilter = "all"
+    @Published var inboxLoading = false
+    @Published var inboxError: String?
+    @Published var inboxNext: [String: String]?
+    @Published var publicProfile: TreeholePublicProfile?
+    @Published var profilePosts: [TreeholePost] = []
+    @Published var profileNext: [String: String]?
+    @Published var focusedThread: TreeholeComment?
+    @Published var watchPending = false
+    private var inboxRevision = 0
+    private var unreadBusy = false
     @Published var expandedReplies: Set<String> = []
     @Published var replyPages: [String: [String: String]] = [:]
     @Published var scope = "all"
@@ -46,14 +60,16 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { leaveDetail(); epoch += 1; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
+            self.engagementEnabled = config.engagementEnabled == true
             do { self.user = try await self.api.request("me").user; try await self.feed() }
             catch let error as TreeholeError where error.code == "session_expired" { self.clear() }
             self.ready = true
+            await self.refreshUnread()
         }
     }
     private var feedIdentity: [String: String] { ["scope": scope, "query": query, "category": category, "sort": sort] }
@@ -94,7 +110,81 @@ import Combine
     }
     func leaveDetail() {
         detailRequest += 1; discussion += 1; detailLoading = false; detailError = nil
-        current = nil; comments = []; commentNext = nil; expandedReplies = []; replyPages = [:]; loadedThreads = []
+        current = nil; comments = []; commentNext = nil; expandedReplies = []; replyPages = [:]; loadedThreads = []; focusedThread = nil
+    }
+    func refreshUnread() async {
+        guard engagementEnabled, user != nil, !unreadBusy else { return }
+        let generation = epoch; unreadBusy = true; defer { unreadBusy = false }
+        do { let r = try await api.request("notifications.unread"); guard generation == epoch else { return }; unreadCount = r.unreadCount ?? 0 }
+        catch { if generation == epoch, let e = error as? TreeholeError, e.code == "session_expired" { clear() } }
+    }
+    func loadInbox(more: Bool = false) async {
+        guard user != nil, engagementEnabled, !inboxLoading else { return }
+        inboxRevision += 1; let revision = inboxRevision, generation = epoch
+        inboxLoading = true; inboxError = nil
+        defer { if generation == epoch && revision == inboxRevision { inboxLoading = false } }
+        var body: [String: Any] = ["filter": inboxFilter]
+        if more { inboxNext?.forEach { body[$0.key] = $0.value } }
+        do {
+            let r = try await api.request("notifications.list", body)
+            guard generation == epoch, revision == inboxRevision else { return }
+            var ids = Set(notifications.map(\.id))
+            notifications = more ? notifications + (r.notifications ?? []).filter { ids.insert($0.id).inserted } : r.notifications ?? []
+            inboxNext = r.next; unreadCount = r.unreadCount ?? 0
+        } catch {
+            guard generation == epoch, revision == inboxRevision else { return }
+            if let e = error as? TreeholeError, e.code == "session_expired" { clear() }
+            else { inboxError = (error as? TreeholeError)?.errorDescription ?? "连接失败，请重试" }
+        }
+    }
+    func readNotifications(_ ids: [String]) async throws {
+        guard !ids.isEmpty else { return }; let generation = epoch
+        let r = try await api.request("notifications.read", ["ids": Array(ids.prefix(50))])
+        guard generation == epoch else { return }
+        let read = Set(ids.prefix(50)); let now = ISO8601DateFormatter().string(from: Date())
+        for index in notifications.indices where read.contains(notifications[index].id) { if notifications[index].readAt == nil { notifications[index].readAt = now } }
+        unreadCount = r.unreadCount ?? unreadCount
+    }
+    func notificationDetail(_ item: TreeholeNotification) async throws {
+        let generation = epoch
+        let r = try await api.request("posts.get", ["postId": item.postId, "threaded": true])
+        guard let post = r.post else { throw TreeholeError(code: "not_found") }
+        var context: TreeholeComment?
+        if let id = item.commentId {
+            do { context = try await api.request("comments.context", ["postId": item.postId, "commentId": id]).context }
+            catch let e as TreeholeError where e.code == "not_found" { message = "这条回复已不可用，可以继续查看讨论" }
+        }
+        guard generation == epoch else { throw CancellationError() }
+        leaveDetail(); current = post; syncFeedPost(post); comments = r.comments ?? []; commentNext = r.next; focusedThread = context
+        do { try await readNotifications([item.id]) } catch { message = "已打开讨论，消息已读状态暂未同步" }
+    }
+    func profile(_ id: String, more: Bool = false) async throws {
+        let generation = epoch
+        var body: [String: Any] = ["scope": "author", "memberId": id]
+        if more { profileNext?.forEach { body[$0.key] = $0.value } }
+        var person = publicProfile
+        if !more { person = try await api.request("profile.get", ["memberId": id]).profile }
+        let r = try await api.request("posts.list", body)
+        guard generation == epoch else { throw CancellationError() }
+        if more && publicProfile?.id != id { return }
+        publicProfile = person
+        var ids = Set(profilePosts.map(\.id))
+        profilePosts = more ? profilePosts + (r.posts ?? []).filter { ids.insert($0.id).inserted } : r.posts ?? []; profileNext = r.next
+    }
+    func toggleWatch(_ post: TreeholePost) async {
+        guard !watchPending else { return }; let generation = epoch; watchPending = true
+        defer { if generation == epoch { watchPending = false } }
+        do {
+            let r = try await api.request("threads.watch", ["postId": post.id, "enabled": post.watching != true])
+            guard generation == epoch, let updated = r.post else { return }
+            if let index = posts.firstIndex(where: { $0.id == post.id }) { posts[index].watching = updated.watching }
+            if current?.id == post.id { current?.watching = updated.watching }
+            if scope == "watching" { feedNeedsRefresh = true }; await refreshUnread()
+        } catch {
+            guard generation == epoch else { return }
+            if let e = error as? TreeholeError, e.code == "session_expired" { clear() }
+            message = (error as? TreeholeError)?.errorDescription ?? "关注状态未更新，请重试"
+        }
     }
     @discardableResult func openDetail(_ post: TreeholePost) -> Task<Void, Never> {
         leaveDetail(); current = post; detailLoading = true
@@ -141,16 +231,22 @@ import Combine
                 var body: [String: Any] = ["postId": post.id, "rootId": comment.id]
                 if more { replyPages[comment.id]?.forEach { body[$0.key] = $0.value } }
                 let r = try await api.request("comments.replies", body)
-                guard generation == epoch, conversation == discussion, current?.id == post.id, let index = comments.firstIndex(where: { $0.id == comment.id }) else { return }
-                let previous = more ? comments[index].replies ?? [] : []
+                guard generation == epoch, conversation == discussion, current?.id == post.id else { return }
+                let index = comments.firstIndex(where: { $0.id == comment.id })
+                guard index != nil || focusedThread?.id == comment.id else { return }
+                let previous = more ? (index.map { comments[$0].replies ?? [] } ?? focusedThread?.replies ?? []) : []
                 var ids = Set(previous.map(\.id))
-                comments[index].replies = previous + (r.comments ?? []).filter { ids.insert($0.id).inserted }
+                let replies = previous + (r.comments ?? []).filter { ids.insert($0.id).inserted }
+                if let index { comments[index].replies = replies }
+                if focusedThread?.id == comment.id { focusedThread?.replies = replies }
                 expandedReplies.insert(comment.id); loadedThreads.insert(comment.id); replyPages[comment.id] = r.next
             } catch { actionError(error, generation: generation) }
         }
     }
     func collapse(_ comment: TreeholeComment) { expandedReplies.remove(comment.id) }
     private func updateComment(_ id: String, liked: Bool, count: Int) {
+        if focusedThread?.id == id { focusedThread?.liked = liked; focusedThread?.likeCount = count }
+        if let index = focusedThread?.replies?.firstIndex(where: { $0.id == id }) { focusedThread?.replies?[index].liked = liked; focusedThread?.replies?[index].likeCount = count }
         for i in comments.indices {
             if comments[i].id == id { comments[i].liked = liked; comments[i].likeCount = count }
             if let j = comments[i].replies?.firstIndex(where: { $0.id == id }) { comments[i].replies?[j].liked = liked; comments[i].replies?[j].likeCount = count }
@@ -176,6 +272,7 @@ import Combine
     private func updatePost(_ id: String, kind: String, enabled: Bool, count: Int) {
         func apply(_ post: inout TreeholePost) { if kind == "like" { post.liked = enabled; post.likeCount = count } else { post.saved = enabled } }
         if let index = posts.firstIndex(where: { $0.id == id }) { apply(&posts[index]) }
+        if let index = profilePosts.firstIndex(where: { $0.id == id }) { apply(&profilePosts[index]) }
         if var post = current, post.id == id { apply(&post); current = post }
     }
     func react(_ post: TreeholePost, kind: String) {

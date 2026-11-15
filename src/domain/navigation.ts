@@ -23,7 +23,7 @@ export class NavigationStack {
   move(page: Page, section = 'overview') {
     const target = parseRoute(`#/${page}/${section}`);
     if (routeKey(target) === routeKey(this.route)) { this.overlay = ''; return; }
-    if (target.page === 'community' || (target.page === 'academic' && target.section !== 'overview')) this.parents.push({...this.route});
+    if (target.page === 'academic' && target.section !== 'overview') this.parents.push({...this.route});
     else this.parents = [];
     this.route = target;
     this.overlay = '';

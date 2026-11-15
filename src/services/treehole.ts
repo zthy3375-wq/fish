@@ -1,11 +1,13 @@
 import {Capacitor,registerPlugin} from '@capacitor/core';
-export interface TreeholeUser {id:string;username:string;nickname:string;role:'member'|'moderator';bannedUntil:string|null}
-export interface TreeholeAuthor {name:string;anonymous:boolean;mine:boolean}
+export interface TreeholeUser {id:string;username:string;nickname:string;role:'member'|'moderator';bannedUntil:string|null;bio?:string}
+export interface TreeholeAuthor {id?:string;name:string;anonymous:boolean;mine:boolean}
 export interface TreeholeImage {id:string;url:string|null;width:number;height:number}
-export interface TreeholePost {title?:string;category?:string;images?:TreeholeImage[];id:string;body:string;anonymous:boolean;author:TreeholeAuthor;createdAt:string;locked:boolean;commentCount:number;likeCount:number;liked:boolean;saved:boolean}
+export interface TreeholePost {title?:string;category?:string;images?:TreeholeImage[];id:string;body:string;anonymous:boolean;author:TreeholeAuthor;createdAt:string;locked:boolean;commentCount:number;likeCount:number;liked:boolean;saved:boolean;watching?:boolean;newReplyCount?:number}
 export interface TreeholeComment {rootId?:string|null;replies?:TreeholeComment[];replyCount?:number;likeCount?:number;liked?:boolean;id:string;postId:string;body:string;author:TreeholeAuthor;createdAt:string;replyTo:string|null;deleted:boolean;isOriginalPoster:boolean}
 export interface TreeholeReport {id:string;postId:string;commentId:string|null;body:string;reason:string;createdAt:string}
-export interface TreeholeResult {image?:TreeholeImage;imagesEnabled?:boolean;user?:TreeholeUser;post?:TreeholePost;comment?:TreeholeComment;posts?:TreeholePost[];comments?:TreeholeComment[];reports?:TreeholeReport[];next?:Record<string,string>|null;recoveryCode?:string;registrationEnabled?:boolean;requiresInvite?:boolean}
+export interface TreeholeNotification {id:string;kind:'reply'|'post_reply'|'thread_reply'|'post_like'|'comment_like';postId:string;commentId:string|null;rootId:string|null;actor:TreeholeAuthor;postTitle:string;excerpt:string;createdAt:string;readAt:string|null}
+export interface TreeholeProfile {id:string;nickname:string;bio:string;postCount:number}
+export interface TreeholeResult {image?:TreeholeImage;imagesEnabled?:boolean;user?:TreeholeUser;post?:TreeholePost;comment?:TreeholeComment;posts?:TreeholePost[];comments?:TreeholeComment[];reports?:TreeholeReport[];next?:Record<string,string>|null;recoveryCode?:string;registrationEnabled?:boolean;requiresInvite?:boolean;engagementEnabled?:boolean;notifications?:TreeholeNotification[];unreadCount?:number;context?:TreeholeComment;focusCommentId?:string;profile?:TreeholeProfile}
 const native=registerPlugin<{request(options:{action:string;body:Record<string,unknown>}):Promise<TreeholeResult>}>('Treehole');
 const messages:Record<string,string>={
  invalid_image:'这张图片暂不支持，请换一张 JPG、PNG 或截图',image_too_large:'图片较大，请缩小后再添加',images_unavailable:'图片服务暂时不可用，请稍后重试',image_unavailable:'图片已过期或不可用，请移除后重新添加',upload_limit:'今天上传的图片较多，请明天再试',

@@ -255,6 +255,51 @@ final class TreeholeTests: XCTestCase {
             XCTAssertEqual(store.current?.id, clears ? nil : "next"); XCTAssertNil(store.detailError); XCTAssertFalse(store.detailLoading)
         }
     }
+    @MainActor func testInboxSurvivesReadFailureAndDoesNotRestoreClearedAccount() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault))
+        store.user = TreeholeMember(id: "viewer", username: "viewer", nickname: "同学", role: "member", bannedUntil: nil); store.engagementEnabled = true
+        let item = TreeholeNotification(id: "notice", kind: "reply", postId: "post", postTitle: "讨论", excerpt: "回复", createdAt: "2026-11-16T00:00:00Z", commentId: "comment", rootId: "root", actor: TreeholeAuthor(name: "匿名同学 · abc", anonymous: true, mine: false), readAt: nil)
+        let payload = Data("{\"unreadCount\":1,\"notifications\":[".utf8) + (try JSONEncoder().encode(item)) + Data("]}".utf8)
+        TreeholeTestProtocol.handler = { _ in (200, payload) }; await store.loadInbox()
+        XCTAssertEqual(store.notifications.map(\.id), ["notice"]); XCTAssertEqual(store.unreadCount, 1)
+        TreeholeTestProtocol.handler = { _ in (503, Data("{\"error\":\"network_unavailable\"}".utf8)) }
+        do { try await store.readNotifications([item.id]); XCTFail("Expected read failure") } catch { }
+        XCTAssertNil(store.notifications.first?.readAt); XCTAssertEqual(store.unreadCount, 1)
+        TreeholeTestProtocol.handler = { _ in (200, payload) }
+        let delayed = expectation(description: "inbox response held")
+        TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { delayed.fulfill() }
+        let loading = Task { await store.loadInbox() }; await fulfillment(of: [delayed], timeout: 3)
+        store.clear(); TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil; await loading.value
+        XCTAssertTrue(store.notifications.isEmpty); XCTAssertEqual(store.unreadCount, 0); XCTAssertFalse(store.inboxLoading)
+    }
+    @MainActor func testNotificationNavigationLoadsExactContextAndMarksOnlySelectedId() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)), post = samplePost()
+        let comment = TreeholeComment(id: "late-reply", postId: post.id, body: "通知目标", createdAt: post.createdAt, replyTo: nil, author: post.author, deleted: false, isOriginalPoster: false)
+        let item = TreeholeNotification(id: "notice", kind: "reply", postId: post.id, postTitle: "讨论", excerpt: "通知目标", createdAt: post.createdAt, commentId: comment.id, rootId: comment.id, actor: comment.author, readAt: nil)
+        var actions: [String] = []
+        TreeholeTestProtocol.handler = { request in
+            let action = request.url!.lastPathComponent; actions.append(action)
+            if action == "posts.get" { return (200, Data("{\"post\":".utf8) + (try! JSONEncoder().encode(post)) + Data(",\"comments\":[]}".utf8)) }
+            if action == "comments.context" { return (200, Data("{\"context\":".utf8) + (try! JSONEncoder().encode(comment)) + Data("}".utf8)) }
+            return (200, Data("{\"unreadCount\":0}".utf8))
+        }
+        store.notifications = [item]; store.unreadCount = 1
+        try await store.notificationDetail(item)
+        XCTAssertEqual(actions, ["posts.get", "comments.context", "notifications.read"])
+        XCTAssertEqual(store.focusedThread?.id, comment.id); XCTAssertEqual(store.current?.id, post.id)
+        XCTAssertNotNil(store.notifications.first?.readAt); XCTAssertEqual(store.unreadCount, 0)
+    }
+    @MainActor func testWatchFailurePreservesStatusAndPublicProfileClearsOnLogout() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); var post = samplePost(); post.watching = true
+        store.current = post; store.posts = [post]
+        TreeholeTestProtocol.handler = { _ in (503, Data("{\"error\":\"network_unavailable\"}".utf8)) }
+        await store.toggleWatch(post); XCTAssertEqual(store.current?.watching, true); XCTAssertFalse(store.watchPending)
+        store.publicProfile = TreeholePublicProfile(id: "public", nickname: "同学", bio: "简介", postCount: 1); store.profilePosts = [post]
+        store.clear(); XCTAssertNil(store.publicProfile); XCTAssertTrue(store.profilePosts.isEmpty)
+    }
     @MainActor func testDetailFailureKeepsBodyAndRetryRecovers() async throws {
         let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
         let store = TreeholeStore(api: service(vault)), post = samplePost("cached")

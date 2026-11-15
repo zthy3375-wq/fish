@@ -1,10 +1,17 @@
-:global(.community-active main){padding:0!important;min-height:100dvh}
+:global(.app-shell.community-active){display:block;height:auto;min-height:100dvh;overflow:visible}
+:global(.community-active main){padding:0!important;min-height:100dvh;overflow:visible}
+:global(.community-active .navigation-dock){position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--content-max);z-index:40}
 :global(.community-active .page-content){padding:0!important}
 .th-nav h1{flex:1;min-width:0;font-size:19px;letter-spacing:.2px;font-weight:700;margin-left:3px}
 .th-icon{width:40px;display:inline-flex;align-items:center;justify-content:center;color:var(--color-muted);flex-shrink:0}
 .th-nav>.th-icon:first-child{color:var(--color-text);margin-left:-6px}
 .th-self{width:41px;display:grid;place-items:center;padding:0}
 .th-nav-spacer{width:38px}
+.th-inbox-entry{position:relative}.th-unread-badge{position:absolute;top:3px;right:0;min-width:16px;min-height:16px;padding:1px 4px;border-radius:9px;background:var(--color-primary);color:white;font-size:10px;border:2px solid var(--color-surface);line-height:12px}
+.th-return-links{display:flex;align-items:center;gap:20px;padding:3px 0 9px;overflow-x:auto;scrollbar-width:none}.th-return-links button{min-height:44px;display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;color:var(--color-muted);position:relative}.th-return-links button[aria-pressed=true]{font-weight:700;color:var(--color-text)}.th-return-links button[aria-pressed=true]:after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--th-accent);border-radius:3px}
+.th-follow-discussion{display:flex;align-items:center;gap:12px;padding:15px 0;border-bottom:1px solid var(--color-divider)}.th-follow-discussion>div{flex:1;min-width:0}.th-follow-discussion strong{font-size:13px;font-weight:600}.th-follow-discussion small{display:block;font-size:11px;color:var(--color-muted);line-height:1.5;margin-top:4px}.th-follow-discussion button{display:flex;align-items:center;gap:6px;border:1px solid var(--color-border);border-radius:8px;padding:0 10px;min-height:42px;font-size:12px;color:var(--th-accent);flex-shrink:0}
+.th-focus-context{scroll-margin-top:80px;background:var(--color-tint);border:1px solid var(--color-border);border-radius:12px;padding:0 12px;margin:12px 0 20px}.th-context-heading{display:flex;align-items:center;gap:10px;justify-content:space-between;font-size:11px;color:var(--color-muted);border-bottom:1px solid var(--color-border)}.th-context-heading button{min-height:42px;color:var(--th-accent);font-size:11px}.th-focus-context .th-comment{padding-bottom:14px}
+.th-public-profile{display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px 0}.th-public-profile h2{font-size:23px;margin:0}.th-public-profile p{font-size:14px;line-height:1.7;color:var(--color-muted);white-space:pre-wrap;overflow-wrap:anywhere;margin:0;text-align:center}.th-public-profile>span{font-size:12px;color:var(--color-muted)}.th-profile-privacy{display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--color-muted);padding:10px 0;border-block:1px solid var(--color-divider);line-height:1.6}
 .th-publish,.th-primary,.th-send{background:var(--th-accent);color:var(--color-raised,#fff);border-radius:14px;font-size:14px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 18px;min-height:46px}
 .th-publish{border-radius:22px;min-height:36px!important;padding:9px 18px;font-size:13px}
 .th-wide{width:100%;margin-top:20px}
@@ -149,6 +156,8 @@
 .treehole{--color-surface:#fff;--color-bg:#f6f7f8;--color-text:#1c2227;--color-muted:#747b84;--color-faint:#9299a3;--color-border:#e7e9ec;--color-divider:#f0f1f3;--color-primary:#7251c9;--color-tint:#f4f0fc;--color-raised:#fff;--th-accent:#262c32;max-width:680px;margin:0 auto;min-height:100dvh;padding-bottom:calc(32px + var(--safe-bottom));background:var(--color-surface);color:var(--color-text)}
 
 .treehole.has-replies{padding-bottom:calc(80px + var(--safe-bottom))}
+.treehole.with-tab-navigation{padding-bottom:calc(155px + var(--safe-bottom))}
+.treehole.with-tab-navigation .th-fab{bottom:calc(102px + var(--safe-bottom))}
 
 .treehole :where(button){min-height:44px}
 

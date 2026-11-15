@@ -100,7 +100,7 @@ try{
   await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
   await page.goto('http://127.0.0.1:4175');
   await page.getByRole('heading',{name:'邯院通',exact:true}).waitFor();
-  assert(await page.locator('.floating-nav button').count()===4,`${width}: home has four navigation tabs`);
+  assert(await page.locator('.floating-nav button').count()===5,`${width}: home has five navigation tabs`);
   assert(await page.locator('.home-body .school-connection').count()===0,`${width}: disconnected home keeps school account in profile`);
   await page.getByRole('button',{name:'暂停小鱼动画',exact:true}).click();
   assert(await page.getByRole('button',{name:'播放小鱼动画',exact:true}).getAttribute('aria-pressed')==='true',`${width}: fish can be paused`);
@@ -185,7 +185,7 @@ try{
 
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
-  assert(await page.locator('.floating-nav button').count()===4,`${width}: four navigation tabs`);
+  assert(await page.locator('.floating-nav button').count()===5,`${width}: five navigation tabs`);
   assert(await page.getByRole('button',{name:'打开侧边栏',exact:true}).count()===0,`${width}: no duplicate hamburger navigation`);
   assert(await page.getByRole('button',{name:'添加个人事项',exact:true}).count()===1,`${width}: compact timetable header add action`);
   const historyLength=await page.evaluate(()=>history.length);
