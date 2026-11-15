@@ -225,6 +225,7 @@
 
 .th-editor-heading .th-icon{min-height:35px;width:35px;margin-right:-5px}
 
+.th-reply-input textarea:focus{outline:none;box-shadow:inset 0 0 0 1px #d8d1e9}
 .th-reply-input textarea{margin:0;resize:none;min-height:100px;max-height:28dvh;border:0;font-size:16px;line-height:1.6;padding:12px;border-radius:7px}
 
 .th-reply-bottom{display:flex;align-items:center;gap:9px;margin-top:12px}
