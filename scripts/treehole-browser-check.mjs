@@ -120,7 +120,7 @@ try{
   assert.equal(b.state.token,null);assert.equal(await b.page.locator('.th-post').count(),0);checks.push(`${width}: logout clears content and session`);
   await a.page.getByRole('button',{name:'发帖',exact:true}).click();await a.page.getByLabel('想说的话').fill('还没写完的草稿');await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();
   await a.page.getByRole('heading',{name:'放弃还没发布的文字？'}).waitFor();await a.page.getByRole('button',{name:'继续编辑',exact:true}).click();assert.equal(await a.page.getByLabel('想说的话').inputValue(),'还没写完的草稿');checks.push(`${width}: back navigation protects unpublished text`);
-  await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();await a.page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();
+  await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();await a.page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();await a.page.getByRole('heading',{name:'邯院树洞',exact:true}).waitFor();
   await a.page.reload();await a.page.locator('.th-draft-resume').waitFor();await a.page.locator('.th-draft-resume').click();assert.equal(await a.page.getByLabel('想说的话').inputValue(),'还没写完的草稿');checks.push(`${width}: account draft survives page recreation`);
   await a.page.getByRole('button',{name:'返回树洞',exact:true}).click();await a.page.getByRole('button',{name:'放弃并返回',exact:true}).click();
   await a.page.locator('.th-post-body').first().click();await a.page.locator('.th-comment').first().getByRole('button',{name:'回复',exact:true}).click();
