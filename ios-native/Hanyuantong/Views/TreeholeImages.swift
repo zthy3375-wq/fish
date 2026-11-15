@@ -33,7 +33,7 @@ struct TreeholeImageGrid: View {
             Color.clear.aspectRatio(ratio, contentMode: .fit).overlay { TreeholeRemoteImage(postId: postId, image: image, api: api, fit: fit) }.clipped()
                 .overlay(alignment: .bottomTrailing) { if !full && images.count == 1 && self.ratio < 0.6 { Text("长图").font(.system(size: 10)).padding(4).foregroundStyle(.white).background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 3)).padding(6) } }
                 .background(TreeholeTheme.background).clipShape(RoundedRectangle(cornerRadius: 9))
-        }.buttonStyle(.plain).accessibilityLabel("查看第 \(index + 1) 张图片")
+        }.buttonStyle(.plain).accessibilityLabel(full ? "查看第 \(index + 1) 张图片" : "打开帖子，配图 \(index + 1)")
     }
 }
 struct TreeholeRemoteImage: View {
@@ -47,7 +47,7 @@ struct TreeholeRemoteImage: View {
         AsyncImage(url: url) { phase in
             switch phase {
             case .success(let value): if fit { value.resizable().scaledToFit() } else { value.resizable().scaledToFill() }
-            case .failure: Button { Task { await renew() } } label: { Label("重新加载", systemImage: "arrow.clockwise").font(.caption).frame(maxWidth: .infinity, maxHeight: .infinity).background(TreeholeTheme.background) }.task { if !attempted { await renew() } }
+            case .failure: Label("图片暂未加载", systemImage: "photo").font(.caption).frame(maxWidth: .infinity, maxHeight: .infinity).background(TreeholeTheme.background).task { if !attempted { await renew() } }
             default: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity).background(TreeholeTheme.background)
             }
         }.task(id: image.id) { url = image.url.flatMap(URL.init(string:)); if url == nil { await renew() } }

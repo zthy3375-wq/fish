@@ -14,15 +14,16 @@ const category=ref('all'),postCategory=ref('daily'),sort=ref('latest'),postTitle
 const expandedReplies=ref<Record<string,boolean>>({}),replyPages=ref<Record<string,Record<string,string>|null>>({});
 const gallery=ref<{post:TreeholePost;index:number}|null>(null),zoomed=ref(false),galleryX=ref(0);
 const replyExpanded=ref(false),detailTab=ref('body'),galleryFailed=ref(false);
-const detailLoading=ref(false),detailError=ref(''),pageMotion=ref('forward'),selectedPhoto=ref<string|null>(null);
-let detailRequest=0;
+const detailLoading=ref(false),detailError=ref(''),pageMotion=ref('forward'),selectedPhoto=ref<string|null>(null),edgeOffset=ref(0);
+let detailRequest=0,scrollIntentUntil=0;
+function manualScroll(){scrollIntentUntil=0;}
 const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const scrollBehavior=():ScrollBehavior=>reducedMotion()?'instant':'smooth';
 function movePhoto(delta:number){const index=images.value.findIndex(i=>i.id===selectedPhoto.value),next=index+delta;if(index<0||next<0||next>=images.value.length)return;const [photo]=images.value.splice(index,1);images.value.splice(next,0,photo);}
 let edgeStart:{x:number;y:number;valid:boolean}|null=null;
-function edgeDown(e:TouchEvent){const t=e.touches[0];edgeStart=screen.value!=='feed'&&!dialogOpen.value&&t.clientX<24?{x:t.clientX,y:t.clientY,valid:true}:null;}
-function edgeMove(e:TouchEvent){if(!edgeStart)return;const t=e.touches[0];if(Math.abs(t.clientY-edgeStart.y)>30)edgeStart.valid=false;}
-function edgeEnd(e:TouchEvent){const start=edgeStart;edgeStart=null;if(!start?.valid)return;const t=e.changedTouches[0];if(t.clientX-start.x>90&&Math.abs(t.clientY-start.y)<30)requestBack();}
+function edgeDown(e:TouchEvent){manualScroll();const t=e.touches?.[0]||e.changedTouches?.[0];if(!t)return;edgeStart=screen.value!=='feed'&&!dialogOpen.value&&t.clientX<24?{x:t.clientX,y:t.clientY,valid:true}:null;}
+function edgeMove(e:TouchEvent){if(!edgeStart)return;const t=e.touches[0];if(Math.abs(t.clientY-edgeStart.y)>30){edgeStart.valid=false;edgeOffset.value=0;}else if(edgeStart.valid&&!reducedMotion())edgeOffset.value=Math.min(180,Math.max(0,t.clientX-edgeStart.x));}
+function edgeEnd(e:TouchEvent){const start=edgeStart;edgeStart=null;edgeOffset.value=0;if(!start?.valid)return;const t=e.changedTouches[0];if(t.clientX-start.x>90&&Math.abs(t.clientY-start.y)<30)requestBack();}
 
 const pendingReactions=ref<Record<string,boolean>>({}),pendingLikes=ref<Record<string,boolean>>({}),loadingThreads=ref<Record<string,boolean>>({}),loadedThreads=new Set<string>();
 let accountEpoch=0,detailEpoch=0,scrollFrame=0;
@@ -61,9 +62,9 @@ function closeReply(){replyInput.value?.blur();replyExpanded.value=false;}
 function accountFeed(next:string){scope.value=next;query.value='';screen.value='feed';void run(()=>feed());}
 function selectCategory(next:string){if(busy.value)return;if(screen.value==='detail'&&commentBody.value.trim()){error.value='请先发布回复，或返回时选择放弃';return;}category.value=next;scope.value='all';screen.value='feed';detail.value=null;void run(()=>feed());}
 function setSort(next:string){if(busy.value)return;sort.value=next;scope.value='all';void run(()=>feed());}
-function windowTop(){detailTab.value="body";window.scrollTo({top:0,behavior:scrollBehavior()});}
-function scrollDiscussion(){detailTab.value='comments';document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:scrollBehavior(),block:'start'});}
-function trackDetailScroll(){cancelAnimationFrame(scrollFrame);scrollFrame=requestAnimationFrame(()=>{if(screen.value!=='detail')return;const heading=document.querySelector('.th-discussion-title'),nav=document.querySelector('.th-nav');if(!heading||!nav)return;const top=heading.getBoundingClientRect().top;if(window.scrollY<8)detailTab.value='body';else if(top<=nav.getBoundingClientRect().bottom+24)detailTab.value='comments';else if(top>window.innerHeight*.7)detailTab.value='body';});}
+function windowTop(){scrollIntentUntil=performance.now()+650;detailTab.value="body";window.scrollTo({top:0,behavior:scrollBehavior()});}
+function scrollDiscussion(){scrollIntentUntil=performance.now()+650;detailTab.value='comments';document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:scrollBehavior(),block:'start'});}
+function trackDetailScroll(){cancelAnimationFrame(scrollFrame);scrollFrame=requestAnimationFrame(()=>{if(screen.value!=='detail'||performance.now()<scrollIntentUntil)return;const heading=document.querySelector('.th-discussion-title'),nav=document.querySelector('.th-nav');if(!heading||!nav)return;const top=heading.getBoundingClientRect().top;if(window.scrollY<8)detailTab.value='body';else if(top<=nav.getBoundingClientRect().bottom+24)detailTab.value='comments';else if(top>window.innerHeight*.7)detailTab.value='body';});}
 async function restoreDraft(){if(!user.value)return;draftReady.value=false;try{const d=await readTreeholeDraft(user.value.id);if(d){postTitle.value=d.title;body.value=d.body;postCategory.value=d.category;anonymous.value=d.anonymous;postKey.value=d.requestId;images.value=d.images;}}catch{draftSaved.value='草稿暂时无法读取';}finally{draftReady.value=true;}}
 function saveDraft():Promise<boolean>{if(!draftReady.value||!user.value)return Promise.resolve(false);const id=user.value.id;let saved=false;const snapshot=JSON.parse(JSON.stringify({title:postTitle.value,body:body.value,category:postCategory.value,anonymous:anonymous.value,requestId:postKey.value,images:images.value}));draftQueue=draftQueue.then(()=>snapshot.title||snapshot.body||snapshot.images.length?writeTreeholeDraft(id,snapshot):deleteTreeholeDraft(id)).then(()=>{saved=true;draftSaved.value='草稿已保存';}).catch(()=>{draftSaved.value='草稿保存失败，请保留当前页面';});return draftQueue.then(()=>saved);}
 function saveAndLeave(){void run(async()=>{clearTimeout(draftTimer);if(!await saveDraft()){error.value='草稿未保存，请继续编辑后重试';return;}discard.value=false;screen.value='feed';});}
@@ -108,7 +109,7 @@ function restoreFeedPosition(){
 }
 watch(screen,async(next,prior)=>{
  if(prior==='feed')rememberFeedPosition();
- pageMotion.value=next==='feed'?'back':'forward';
+ pageMotion.value=next==='feed'?'back':'forward';notice.value='';
  if(prior==='detail'&&next!=='detail'){detailRequest++;detailEpoch++;detailLoading.value=false;detailError.value='';}
  await nextTick();if(!alive)return;
  if(next==='feed'&&!feedNeedsRefresh)restoreFeedPosition();else window.scrollTo({top:0,behavior:'instant'});
@@ -198,7 +199,7 @@ function openPost(post:TreeholePost,discussion=false){
  detailEpoch++;detail.value={...post};comments.value=[];commentNext.value=null;expandedReplies.value={};replyPages.value={};loadedThreads.clear();
  screen.value='detail';detailTab.value=discussion?'comments':'body';replyExpanded.value=false;commentBody.value='';reply.value=null;commentAnon.value=false;commentKey.value=crypto.randomUUID();menu.value=null;error.value='';
  void loadDetail(post);
- void nextTick(()=>{if(discussion&&screen.value==='detail'){document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:'instant',block:'start'});detailTab.value='comments';}});
+ void nextTick(()=>{if(discussion&&screen.value==='detail'){scrollIntentUntil=performance.now()+650;document.querySelector('.th-discussion-title')?.scrollIntoView({behavior:'instant',block:'start'});detailTab.value='comments';}});
 }
 function publish(){void run(async()=>{
  for(const image of images.value){if(!image.remote){notice.value='正在上传图片 '+(images.value.indexOf(image)+1)+' / '+images.value.length;const r=await api('media.upload',{data:image.data,requestId:image.id});image.remote=r.image!;saveDraft();}}
@@ -250,11 +251,11 @@ function requestBack(){
  if(!user.value&&auth.value!=='login'){auth.value='login';password.value='';return true;}return false;
 }
 function flushDraft(){clearTimeout(draftTimer);saveDraft();}
-defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.addEventListener('visibilitychange',flushDraft);document.addEventListener('keydown',trapKeys,true);window.addEventListener('scroll',trackDetailScroll,{passive:true});});onUnmounted(()=>{clearTimeout(draftTimer);saveDraft();alive=false;clearTimeout(noticeTimer);document.removeEventListener('visibilitychange',flushDraft);document.removeEventListener('keydown',trapKeys,true);window.removeEventListener('scroll',trackDetailScroll);cancelAnimationFrame(scrollFrame);if(dialogOpen.value)document.body.style.overflow=previousOverflow;password.value='';newPassword.value='';});
+defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.addEventListener('visibilitychange',flushDraft);document.addEventListener('keydown',trapKeys,true);window.addEventListener('scroll',trackDetailScroll,{passive:true});window.addEventListener('wheel',manualScroll,{passive:true});});onUnmounted(()=>{clearTimeout(draftTimer);saveDraft();alive=false;clearTimeout(noticeTimer);document.removeEventListener('visibilitychange',flushDraft);document.removeEventListener('keydown',trapKeys,true);window.removeEventListener('scroll',trackDetailScroll);window.removeEventListener('wheel',manualScroll);cancelAnimationFrame(scrollFrame);if(dialogOpen.value)document.body.style.overflow=previousOverflow;password.value='';newPassword.value='';});
 </script>
 
 <template>
- <section class="treehole" aria-label="邯院通树洞" :aria-busy="busy" :class="{'has-replies':screen==='detail'&&detail&&!recovery}" @touchstart.passive="edgeDown" @touchmove.passive="edgeMove" @touchend.passive="edgeEnd">
+ <section class="treehole" aria-label="邯院通树洞" :aria-busy="busy" :class="{'has-replies':screen==='detail'&&detail&&!recovery}" @touchstart.passive="edgeDown" @touchmove.passive="edgeMove" @touchend.passive="edgeEnd" @touchcancel="edgeStart=null;edgeOffset=0">
   <div :inert="dialogOpen">
    <header class="th-nav">
     <button class="th-icon" :aria-label="screen==='feed'?'返回上一页':'返回树洞'" :disabled="busy||!!recovery" @click="navigationBack"><ArrowLeft :size="22"/></button>
@@ -286,7 +287,7 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
       </form>
       <details class="th-rules"><summary><ShieldCheck :size="15"/>树洞规则与匿名说明</summary><p>尊重同学，勿发布他人隐私、辱骂、骚扰、垃圾广告或违法内容。可举报、删除自己的内容和注销账号。匿名会对其他用户隐藏昵称与账号，后台保留账号关联用于处理举报；不同帖子使用不同匿名代号。同一帖子内的匿名发言可关联。昵称发帖后改为匿名回复时，请留意内容本身是否暴露身份。</p><p>账号服务保存登录账号、昵称、密码加密摘要、帖子、互动与举报记录，用于登录及社区服务。教务账号与课表不会上传到社区。可以在账号设置中注销。</p></details>
      </template>
-     <div v-if="user" :key="screen" class="th-screen-panel" :class="'th-page-'+pageMotion" :data-screen="screen">
+     <div v-if="user" :key="screen" class="th-screen-panel" :style="edgeOffset?{transform:'translateX('+edgeOffset+'px)',animation:'none',transition:'none'}:undefined" :class="'th-page-'+pageMotion" :data-screen="screen">
       <template v-if="screen==='feed'">
        <form v-if="searchOpen" class="th-search" @submit.prevent="run(()=>feed())"><Search :size="18"/><input ref="searchInput" v-model="query" maxlength="80" aria-label="搜索树洞文字" placeholder="搜索你感兴趣的内容" :disabled="busy"/><button v-if="query" type="button" aria-label="清除搜索" :disabled="busy" @click="clearSearch"><X :size="17"/></button><button class="th-search-submit" :disabled="busy">搜索</button></form>
        <nav class="th-category-nav" aria-label="帖子分区"><button :aria-pressed="category==='all'" :disabled="busy" @click="selectCategory('all')">全部</button><button v-for="item in treeholeCategories" :key="item.id" :aria-pressed="category===item.id" :disabled="busy" @click="selectCategory(item.id)">{{item.name}}</button></nav>
@@ -340,7 +341,7 @@ defineExpose({requestBack,refresh});onMounted(()=>{void initialize();document.ad
    <button v-if="user&&screen==='feed'&&!recovery" class="th-fab" aria-label="发帖" :disabled="busy" @click="compose()"><PenLine :size="20"/>发树洞</button>
    <div v-if="user&&screen==='detail'&&detail&&!recovery" class="th-readbar" aria-label="帖子互动"><button class="th-reply-entry" :disabled="busy||detail.locked" @click="focusReply()"><PenLine :size="17"/><span>{{detail.locked?'讨论已暂停':commentBody?'继续编辑回复…':'说点什么吧…'}}</span></button><button class="th-read-action" :aria-label="detail.liked?'取消点赞':'点赞'" :aria-pressed="detail.liked" :disabled="busy||pendingReactions[detail.id+':like']" @click="react(detail,'like')"><ThumbsUp :size="21" :fill="detail.liked?'currentColor':'none'"/><span>{{detail.likeCount||'点赞'}}</span></button><button class="th-read-action" :aria-label="detail.saved?'取消收藏':'收藏'" :aria-pressed="detail.saved" :disabled="busy||pendingReactions[detail.id+':save']" @click="react(detail,'save')"><Bookmark :size="21" :fill="detail.saved?'currentColor':'none'"/><span>{{detail.saved?'已收藏':'收藏'}}</span></button><button class="th-read-action" aria-label="查看评论" @click="scrollDiscussion"><MessageCircle :size="21"/><span>{{detail.commentCount||'评论'}}</span></button></div>
   </div>
-  <Transition :name="dialogMotion" @before-leave="(el:Element)=>{el.setAttribute('inert','');el.setAttribute('aria-hidden','true')}">
+  <Transition :name="dialogMotion" @before-enter="(el:Element)=>{el.removeAttribute('inert');el.removeAttribute('aria-hidden')}" @before-leave="(el:Element)=>{el.setAttribute('inert','');el.setAttribute('aria-hidden','true')}">
   <div v-if="dialogOpen" class="th-dialog-backdrop" :class="{'is-gallery':!!gallery}" @click.self="!busy&&requestBack()">
    <section ref="dialogElement" class="th-dialog" :class="{'th-gallery':!!gallery,'th-reply-sheet':replyExpanded}" role="dialog" aria-modal="true" aria-label="树洞操作"><div class="th-sheet-grip"/>
     <template v-if="gallery"><div class="th-gallery-bar"><button class="th-icon" aria-label="关闭大图" @click="gallery=null"><X :size="23"/></button><span>{{gallery.index+1}} / {{gallery.post.images?.length}}</span><button class="th-icon" :aria-label="zoomed?'缩小图片':'放大图片'" @click="zoomed=!zoomed"><Search :size="22"/></button></div><div class="th-gallery-stage" :class="{zoomed}" @touchstart="galleryX=$event.touches[0].clientX" @touchend="imageGesture" @dblclick="zoomed=!zoomed"><img v-if="currentImage?.url&&!galleryFailed" :src="currentImage.url" alt="帖子原图" referrerpolicy="no-referrer" @error="galleryFailed=true"/><button v-else @click="renewImage">图片暂未加载，点击重试</button></div><div class="th-gallery-actions"><button :disabled="gallery.index===0" @click="galleryStep(-1)"><ChevronLeft :size="22"/>上一张</button><button :disabled="gallery.index===(gallery.post.images?.length||1)-1" @click="galleryStep(1)">下一张<ChevronRight :size="22"/></button></div></template>

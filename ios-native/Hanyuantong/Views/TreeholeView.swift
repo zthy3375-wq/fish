@@ -23,6 +23,7 @@ struct TreeholeView: View {
     private var anonymous: Bool { draft.value.anonymous }
     @State private var replyExpanded = false
     @State private var detailTab = "body"
+    @State private var scrollIntentUntil = Date.distantPast
     @State private var feedAnchor: String?
     @State private var visibleFeedPost: String?
     @State private var previousScreen = "feed"
@@ -76,7 +77,7 @@ struct TreeholeView: View {
             }.offset(x: pageOffset).padding(.horizontal, 18).padding(.top, screen == "feed" ? 0 : 8).padding(.bottom, screen == "feed" ? 88 : 24).frame(maxWidth: 680).frame(maxWidth: .infinity).disabled(tree.busy)
         }
         .coordinateSpace(name: "treehole-scroll")
-        .onPreferenceChange(TreeholeDiscussionOffset.self) { value in if screen == "detail" { if value < 24 { detailTab = "comments" } else if value > 160 { detailTab = "body" } } }
+        .onPreferenceChange(TreeholeDiscussionOffset.self) { value in if screen == "detail" && Date() > scrollIntentUntil { if value < 24 { detailTab = "comments" } else if value > 160 { detailTab = "body" } } }
         .background(GeometryReader { geometry in Color.clear.preference(key: TreeholeViewportHeight.self, value: geometry.size.height) })
         .onPreferenceChange(TreeholeViewportHeight.self) { viewportHeight = $0 }
         .onPreferenceChange(TreeholeFeedFrames.self) { frames in
@@ -92,7 +93,7 @@ struct TreeholeView: View {
             if next != "detail" { tree.leaveDetail() }
             if !reduceMotion {
                 pageOffset = next == "feed" ? -18 : 24
-                withAnimation(pageAnimation) { pageOffset = 0 }
+                DispatchQueue.main.async { if screen == next { withAnimation(pageAnimation) { pageOffset = 0 } } }
             }
             if next == "feed" {
                 let target = tree.feedNeedsRefresh ? "feed-top" : feedAnchor ?? "feed-top"
@@ -101,7 +102,11 @@ struct TreeholeView: View {
                 DispatchQueue.main.async { proxy.scrollTo(initialDetailTarget, anchor: .top); detailTab = initialDetailTarget == "comments" ? "comments" : "body" }
             }
         }
-        .simultaneousGesture(DragGesture(minimumDistance: 20).onEnded { value in
+        .simultaneousGesture(DragGesture(minimumDistance: 20).onChanged { value in
+            guard screen != "feed", !tree.busy, !reduceMotion, value.startLocation.x < 24 else { return }
+            pageOffset = abs(value.translation.height) < 30 ? min(180, max(0, value.translation.width)) : 0
+        }.onEnded { value in
+            withAnimation(pageAnimation) { pageOffset = 0 }
             guard screen != "feed", !tree.busy, value.startLocation.x < 24,
                   value.translation.width > 90, abs(value.translation.height) < 30 else { return }
             back()
@@ -122,8 +127,8 @@ struct TreeholeView: View {
             if screen == "detail" {
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 28) {
-                        detailTabButton("正文", value: "body") { withAnimation(pageAnimation) { proxy.scrollTo("post", anchor: .top) } }
-                        detailTabButton("评论", value: "comments") { withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }
+                        detailTabButton("正文", value: "body") { scrollIntentUntil = Date().addingTimeInterval(0.65); withAnimation(pageAnimation) { proxy.scrollTo("post", anchor: .top) } }
+                        detailTabButton("评论", value: "comments") { scrollIntentUntil = Date().addingTimeInterval(0.65); withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }
                     }
                 }
             }
@@ -144,7 +149,7 @@ struct TreeholeView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if screen == "detail", let post = tree.current, tree.user != nil { replyBar(post) { detailTab = "comments"; withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }.disabled(tree.busy) }
+            if screen == "detail", let post = tree.current, tree.user != nil { replyBar(post) { scrollIntentUntil = Date().addingTimeInterval(0.65); detailTab = "comments"; withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }.disabled(tree.busy) }
         }
         .task { draft.bind(tree.user?.id); tree.enter() }
         .onDisappear { draft.flush() }
@@ -354,16 +359,16 @@ struct TreeholeView: View {
                 RoundedRectangle(cornerRadius: 6).fill(TreeholeTheme.background).frame(width: 120, height: 28)
                 RoundedRectangle(cornerRadius: 6).fill(TreeholeTheme.background).frame(height: 12)
                 HStack { ProgressView(); Text("正在加载评论…").font(.caption).foregroundStyle(.secondary) }
-            }.padding(.vertical, 24).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(.vertical, 24).frame(maxWidth: .infinity, minHeight: max(180, viewportHeight - 80), alignment: .topLeading)
         }
-        else if tree.comments.isEmpty && tree.detailError == nil { CampusEmpty(title: "第一句回应，留给你", detail: "认真倾听，也是一种陪伴。", symbol: "bubble.left") }
+        else if tree.comments.isEmpty && tree.detailError == nil { CampusEmpty(title: "第一句回应，留给你", detail: "认真倾听，也是一种陪伴。", symbol: "bubble.left").frame(minHeight: max(180, viewportHeight - 80), alignment: .top) }
         else {
             VStack(spacing: 0) {
                 ForEach(Array(tree.comments.enumerated()), id: \.element.id) { index, comment in
                     commentRow(comment, post: post, floor: index + 1)
                     if index < tree.comments.count - 1 { Divider().padding(.leading, 44) }
                 }
-            }
+            }.frame(minHeight: max(180, viewportHeight - 80), alignment: .top)
         }
         if tree.commentNext != nil { Button(tree.detailLoading ? "正在加载…" : "加载更多评论") { Task { try? await tree.detail(post, more: true) } }.frame(maxWidth: .infinity, minHeight: 44).disabled(tree.detailLoading) }
         if post.locked { Label("这条讨论已暂停回复", systemImage: "lock").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding() }
@@ -393,7 +398,7 @@ struct TreeholeView: View {
                                 Button { replyTo = child; replyExpanded = true } label: {
                                     (Text(child.author.name + (child.isOriginalPoster ? " [楼主]" : "")).foregroundColor(Color(red: 0.23, green: 0.40, blue: 0.54)) + Text(child.replyTo != comment.id && child.replyTo != nil ? " 回复 " + replyName(child.replyTo!) : "").foregroundColor(.secondary) + Text("：" + child.body)).font(.system(size: 14)).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
                                 }.buttonStyle(.plain).disabled(child.deleted || post.locked)
-                                HStack { Text(TreeholePresentation.date(child.createdAt)).font(.system(size: 10)).foregroundStyle(.secondary); Spacer(); if !child.deleted { if tree.expandedReplies.contains(comment.id) { commentLike(child, post: post) }; contentMenu(post, comment: child) } }
+                                if tree.expandedReplies.contains(comment.id) { HStack { Text(TreeholePresentation.date(child.createdAt)).font(.system(size: 10)).foregroundStyle(.secondary); Spacer(); if !child.deleted { if tree.expandedReplies.contains(comment.id) { commentLike(child, post: post) }; contentMenu(post, comment: child) } } }
                             }
                         }
                         if !tree.expandedReplies.contains(comment.id) || tree.replyPages[comment.id] != nil {
@@ -574,6 +579,7 @@ struct TreeholeView: View {
     }
     private func open(_ post: TreeholePost, comments: Bool = false) {
         guard !tree.busy, screen != "detail" else { return }
+        scrollIntentUntil = Date().addingTimeInterval(0.65)
         initialDetailTarget = comments ? "comments" : "post"; detailTab = comments ? "comments" : "body"
         replyExpanded = false; replyText = ""; replyTo = nil; replyAnonymous = false; commentRequest = UUID().uuidString
         tree.openDetail(post); screen = "detail"
