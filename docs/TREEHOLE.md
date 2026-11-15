@@ -6,7 +6,11 @@
 
 验证：484 前端、78 共享、20 后端和生产构建通过；`scripts/treehole-browser-check.mjs` 83 项通过，输出 `/tmp/handan-treehole-v5-qa/`。新验收以 45 条合成 PostgreSQL 记录，在 360/390/430 px 检查自动翻页不阻塞阅读、40 条时失败保留、重试追加 5 条、快照一致、无重复、评论直达、回复数同步、返回完整列表和原位置且无刷新请求、正文顶部与切分区旧响应隔离。长图直接评论入口同样验证。5 项新 XCTest 覆盖失败重试/去重、旧分区及退出隔离、停滞游标、详情缓存合并、取消收藏。
 
-Android 原签名包与完整 iOS 验证结果待本轮构建完成回写。本轮不变更数据库或在线服务、不发布正式更新；无真实手机安装和真机社区验收。
+源码 `93e35b2` 的 Quality [43718162171](https://github.com/zthy3375-wq/fish/actions/runs/43718162171)、Android [43718162204](https://github.com/zthy3375-wq/fish/actions/runs/43718162204) 均成功；云端社区浏览器同样 83 项通过。本地 Android Debug/Release 各 188 项通过，Release 构建成功。
+
+已生成 `Hanyuantong-v1.3.0-test.5-Community.apk`：12,459,214 bytes，SHA-256 `08593f9ba04296e410b4d8e8e511c7cebd9c1b82ad8c06aedf1294a12bb90352`。包名 `org.handancampus.app`，版本码 155，非 debuggable，原证书 SHA-256 `4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9`；签名、版本递增、4 字节/16 KB ZIP 对齐、30 项网页资源逐字节校验通过。满足原版覆盖升级的包身份条件，无需卸载。
+
+iOS [43718162187](https://github.com/zthy3375-wq/fish/actions/runs/43718162187) **整体成功**：348 项单元用例中 347 通过、1 项真机数据保护按设计跳过，16 项 TreeholeTests 全部通过；5 项 UI 流程、模拟器应用/测试目标、未签名 iPhone Release 构建与模拟器打包成功。CI 的合并提交 `e647b2e` 与应用源码 `93e35b2` 的 tree 均为 `d4642c3909ac5d572963382b0c5bf7b43b5d751c`。最终补充提交仅更新验证文档，跳过重复 CI；交付 APK 对应的应用代码未变。本轮不变更数据库或在线服务、不发布正式更新；无真实手机安装和真机社区验收。
 
 ---
 
