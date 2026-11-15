@@ -13,7 +13,7 @@ concurrency:
 jobs:
   native-ios:
     runs-on: macos-15
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Verify project and identical school query assets
@@ -64,7 +64,7 @@ jobs:
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
       - name: Native unit regression
-        timeout-minutes: 8
+        timeout-minutes: 12
         run: |
           set -o pipefail
           # Keep the app-hosted unit bundle separate from UI tests: installing both

@@ -2,6 +2,7 @@ import http from 'node:http';
 import {pathToFileURL} from 'node:url';
 import {createCommunity,CommunityError} from './core.mjs';
 import {sql} from './database.mjs';
+import {cloudMedia} from './media.mjs';
 
 export function createServer(community,{allowedOrigins=[]}={}){
  return http.createServer(async(req,res)=>{
@@ -12,14 +13,15 @@ export function createServer(community,{allowedOrigins=[]}={}){
   if(origin&&!allowedOrigins.includes(origin))return send(403,{error:'origin_not_allowed'});
   if(req.method==='OPTIONS')return send(204,{});
   const path=new URL(req.url,'http://localhost').pathname.replace(/^\/hyt-community/,'');
-  if(req.method==='GET'&&path==='/health')return send(200,{ok:true,service:'hyt-community',schema:1});
+  if(req.method==='GET'&&path==='/health')return send(200,{ok:true,service:'hyt-community',schema:2});
   if(req.method==='GET'&&path==='/v1/config')return send(200,community.config());
   if(req.method!=='POST'||!/^\/v1\/[a-z.]+$/.test(path))return send(404,{error:'not_found'});
   if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))return send(415,{error:'json_required'});
-  if(Number(req.headers['content-length']||0)>20000)return send(413,{error:'request_too_large'});
+  const maxBody=path==='/v1/media.upload'?1_650_000:20000;
+  if(Number(req.headers['content-length']||0)>maxBody)return send(413,{error:'request_too_large'});
   try{
    const chunks=[];let length=0;
-   for await(const chunk of req){length+=chunk.length;if(length>20000){send(413,{error:'request_too_large'});req.destroy();return;}chunks.push(chunk);}
+   for await(const chunk of req){length+=chunk.length;if(length>maxBody){send(413,{error:'request_too_large'});req.destroy();return;}chunks.push(chunk);}
    let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{return send(400,{error:'invalid_json'});}
    const auth=req.headers.authorization||'';const bearer=auth.startsWith('Bearer ')?auth.slice(7):'';
    // Trust the provider-injected client IP only in explicitly configured CloudBase deployment.
@@ -35,7 +37,7 @@ export function createServer(community,{allowedOrigins=[]}={}){
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const db=async(action,data,token)=>{const rows=await sql('SELECT public.hyt_community($1,$2::jsonb,$3) AS result',[action,JSON.stringify(data),token]);return rows[0]?.result;};
- const community=createCommunity({db,registrationEnabled:process.env.COMMUNITY_REGISTRATION==='open',inviteHash:process.env.COMMUNITY_INVITE_HASH||'',rateSalt:process.env.COMMUNITY_RATE_SALT});
+ const community=createCommunity({db,storage:cloudMedia(),registrationEnabled:process.env.COMMUNITY_REGISTRATION==='open',inviteHash:process.env.COMMUNITY_INVITE_HASH||'',rateSalt:process.env.COMMUNITY_RATE_SALT});
  const origins=['https://localhost','capacitor://localhost',...(process.env.COMMUNITY_WEB_ORIGINS||'').split(',').filter(Boolean)];
  createServer(community,{allowedOrigins:origins}).listen(Number(process.env.PORT||9000),'0.0.0.0');
 }

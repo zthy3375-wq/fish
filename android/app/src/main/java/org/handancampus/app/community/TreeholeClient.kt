@@ -12,13 +12,13 @@ internal class TreeholeFailure(val code: String) : Exception(code)
 /** A serialized native session. Tokens and server-selected identities never cross the JS bridge. */
 internal class TreeholeClient(private val vault: TreeholeTokenStore, private val transport: TreeholeTransport = TreeholeHttp()) {
     companion object {
-        val actions = setOf("config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve")
+        val actions = setOf("config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like")
         private val auth = setOf("register", "login", "recover")
         private val tokenPattern = Regex("[A-Za-z0-9_-]{43}")
     }
     @Synchronized fun request(action: String, body: JSONObject): JSONObject {
         if (action !in actions) throw TreeholeFailure("invalid_request")
-        if (body.toString().toByteArray().size > 20000) throw TreeholeFailure("invalid_request")
+        if (body.toString().toByteArray().size > (if (action == "media.upload") 1_650_000 else 20000)) throw TreeholeFailure("invalid_request")
         val token = vault.read()?.takeIf { tokenPattern.matches(it) }
         if (action == "logout") {
             // Revoke when reachable, but a network failure must never prevent local sign-out.

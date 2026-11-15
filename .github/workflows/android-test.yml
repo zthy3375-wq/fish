@@ -135,6 +135,7 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: node scripts/academic-browser-check.mjs
+      - run: npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund
       - run: node scripts/treehole-browser-check.mjs
       - uses: actions/upload-artifact@v4
         if: always()
@@ -142,5 +143,5 @@ jobs:
           name: handan-campus-browser-checks-${{ github.sha }}
           path: |
             /tmp/handan-v050-qa
-            /tmp/handan-treehole-qa
+            /tmp/handan-treehole-v3-qa
           if-no-files-found: warn

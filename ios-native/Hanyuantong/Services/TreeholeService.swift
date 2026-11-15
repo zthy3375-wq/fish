@@ -6,23 +6,33 @@ struct TreeholeMember: Codable, Equatable {
     let bannedUntil: String?
 }
 struct TreeholeAuthor: Codable, Equatable { let name: String; let anonymous: Bool, mine: Bool }
+struct TreeholeImage: Codable, Identifiable, Equatable { let id: String; var url: String? = nil; let width: Int; let height: Int }
 struct TreeholePost: Codable, Identifiable, Equatable {
     let id: String, body: String, createdAt: String
     let anonymous: Bool, locked: Bool, liked: Bool, saved: Bool
     let author: TreeholeAuthor
     let commentCount: Int, likeCount: Int
+    var title: String? = nil
+    var category: String? = nil
+    var images: [TreeholeImage]? = nil
 }
 struct TreeholeComment: Codable, Identifiable, Equatable {
     let id: String, postId: String, body: String, createdAt: String
     let replyTo: String?
     let author: TreeholeAuthor
     let deleted: Bool, isOriginalPoster: Bool
+    var rootId: String? = nil
+    var likeCount: Int? = nil
+    var liked: Bool? = nil
+    var replyCount: Int? = nil
+    var replies: [TreeholeComment]? = nil
 }
 struct TreeholeReport: Codable, Identifiable {
     let id: String, postId: String, reason: String, body: String, createdAt: String
     let commentId: String?
 }
 struct TreeholeEnvelope: Decodable {
+    var image: TreeholeImage?; var imagesEnabled: Bool?
     var user: TreeholeMember?; var post: TreeholePost?; var comment: TreeholeComment?
     var posts: [TreeholePost]?; var comments: [TreeholeComment]?; var reports: [TreeholeReport]?
     var next: [String: String]?; var recoveryCode: String?
@@ -33,7 +43,7 @@ struct TreeholeEnvelope: Decodable {
 struct TreeholeError: LocalizedError {
     let code: String
     var errorDescription: String? {
-        ["session_expired": "请登录邯院通账号", "invalid_credentials": "账号、密码或恢复码不正确",
+        ["invalid_image": "图片暂不支持，请换一张照片或截图", "image_too_large": "图片较大，请缩小后重试", "image_unavailable": "图片已过期，请重新添加", "upload_limit": "今天上传的图片较多，请明天再试", "images_unavailable": "图片服务暂不可用", "session_expired": "请登录邯院通账号", "invalid_credentials": "账号、密码或恢复码不正确",
          "username_unavailable": "这个登录账号已被使用，请换一个", "invalid_username": "账号需以字母开头，使用 4–24 位字母、数字或下划线",
          "password_length": "密码需为 10–128 位", "invalid_request": "请检查填写内容和字数", "agreement_required": "请先同意树洞规则",
          "registration_closed": "树洞注册暂未开放", "invite_invalid": "内测邀请码不正确", "too_many_requests": "操作较频繁，请稍后重试",
@@ -68,7 +78,7 @@ private final class TreeholeRedirectGuard: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
 actor TreeholeService {
-    static let actions: Set<String> = ["config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve"]
+    static let actions: Set<String> = ["config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like"]
     private let vault: TreeholeTokenVault
     private let session: URLSession
     private var generation = 0
@@ -95,7 +105,7 @@ actor TreeholeService {
         if let token, !authenticating { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if action != "config" {
             let data = try JSONSerialization.data(withJSONObject: body)
-            guard data.count <= 20000 else { throw TreeholeError(code: "invalid_request") }
+            guard data.count <= (action == "media.upload" ? 1_650_000 : 20000) else { throw TreeholeError(code: "invalid_request") }
             request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.httpBody = data
         }
         do {

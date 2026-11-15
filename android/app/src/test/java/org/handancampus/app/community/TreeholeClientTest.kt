@@ -50,4 +50,18 @@ class TreeholeClientTest {
         try { client.request("login", JSONObject()); fail() } catch (e: TreeholeFailure) { assertEquals("invalid_response", e.code) }
         assertEquals("a".repeat(43), vault.token)
     }
+    @Test fun imageUploadsHaveBoundedLargerPayloadWithoutRelaxingOtherActions() {
+        val vault = Vault().apply { token = "a".repeat(43) }; var sent = 0
+        val client = TreeholeClient(vault) { _, _, token -> assertEquals(vault.token, token); sent++; TreeholeResponse(200, JSONObject()) }
+        val image = JSONObject().put("data", "a".repeat(1_600_000))
+        client.request("media.upload", image); assertEquals(1, sent)
+        for (action in listOf("posts.create", "comments.create", "media.upload")) {
+            val body = if (action == "media.upload") JSONObject().put("data", "a".repeat(1_650_001)) else image
+            try { client.request(action, body); fail() } catch (e: TreeholeFailure) { assertEquals("invalid_request", e.code) }
+        }
+        assertEquals(1, sent)
+        for (action in listOf("media.url", "media.discard", "comments.replies", "comments.like")) client.request(action, JSONObject())
+        assertEquals(5, sent)
+    }
+
 }

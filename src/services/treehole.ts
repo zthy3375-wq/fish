@@ -1,12 +1,14 @@
 import {Capacitor,registerPlugin} from '@capacitor/core';
 export interface TreeholeUser {id:string;username:string;nickname:string;role:'member'|'moderator';bannedUntil:string|null}
 export interface TreeholeAuthor {name:string;anonymous:boolean;mine:boolean}
-export interface TreeholePost {id:string;body:string;anonymous:boolean;author:TreeholeAuthor;createdAt:string;locked:boolean;commentCount:number;likeCount:number;liked:boolean;saved:boolean}
-export interface TreeholeComment {id:string;postId:string;body:string;author:TreeholeAuthor;createdAt:string;replyTo:string|null;deleted:boolean;isOriginalPoster:boolean}
+export interface TreeholeImage {id:string;url:string|null;width:number;height:number}
+export interface TreeholePost {title?:string;category?:string;images?:TreeholeImage[];id:string;body:string;anonymous:boolean;author:TreeholeAuthor;createdAt:string;locked:boolean;commentCount:number;likeCount:number;liked:boolean;saved:boolean}
+export interface TreeholeComment {rootId?:string|null;replies?:TreeholeComment[];replyCount?:number;likeCount?:number;liked?:boolean;id:string;postId:string;body:string;author:TreeholeAuthor;createdAt:string;replyTo:string|null;deleted:boolean;isOriginalPoster:boolean}
 export interface TreeholeReport {id:string;postId:string;commentId:string|null;body:string;reason:string;createdAt:string}
-export interface TreeholeResult {user?:TreeholeUser;post?:TreeholePost;comment?:TreeholeComment;posts?:TreeholePost[];comments?:TreeholeComment[];reports?:TreeholeReport[];next?:Record<string,string>|null;recoveryCode?:string;registrationEnabled?:boolean;requiresInvite?:boolean}
+export interface TreeholeResult {image?:TreeholeImage;imagesEnabled?:boolean;user?:TreeholeUser;post?:TreeholePost;comment?:TreeholeComment;posts?:TreeholePost[];comments?:TreeholeComment[];reports?:TreeholeReport[];next?:Record<string,string>|null;recoveryCode?:string;registrationEnabled?:boolean;requiresInvite?:boolean}
 const native=registerPlugin<{request(options:{action:string;body:Record<string,unknown>}):Promise<TreeholeResult>}>('Treehole');
 const messages:Record<string,string>={
+ invalid_image:'这张图片暂不支持，请换一张 JPG、PNG 或截图',image_too_large:'图片较大，请缩小后再添加',images_unavailable:'图片服务暂时不可用，请稍后重试',image_unavailable:'图片已过期或不可用，请移除后重新添加',upload_limit:'今天上传的图片较多，请明天再试',
  session_expired:'请登录邯院通账号',invalid_credentials:'账号、密码或恢复码不正确',username_unavailable:'这个登录账号已被使用，请换一个',
  invalid_username:'登录账号需以字母开头，使用 4–24 位字母、数字或下划线',password_length:'密码需为 10–128 位',
  invalid_request:'请检查填写内容和字数',agreement_required:'请先阅读并同意树洞规则',registration_closed:'树洞注册暂未开放',invite_invalid:'内测邀请码不正确',

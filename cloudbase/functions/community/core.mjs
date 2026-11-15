@@ -1,3 +1,4 @@
+import {cleanImage,MAX_IMAGE_BYTES} from './media.mjs';
 import {randomBytes,createHash,createHmac,scrypt,timingSafeEqual} from 'node:crypto';
 import {promisify} from 'node:util';
 
@@ -21,24 +22,40 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve']);
+export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like']);
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
  if(action==='profile.update')return {nickname:text(b.nickname,2,20)};
  if(action==='posts.list'){
   const scope=b.scope??'all';if(!['all','mine','saved'].includes(scope))fail();
-  const out={scope,query:b.query?text(b.query,1,80):''};
+  const category=b.category??'all',sort=b.sort??'latest';if(!['all','daily','help','study','buddies'].includes(category)||!['latest','hot'].includes(sort))fail();
+  const out={scope,category,sort,query:b.query?text(b.query,1,80):''};
+  if(b.snapshotTime!=null)out.snapshotTime=time(b.snapshotTime);
+  if(b.beforeRank!=null){if(typeof b.beforeRank!=='string'||!/^\d{1,12}(\.\d{1,8})?$/.test(b.beforeRank))fail();out.beforeRank=b.beforeRank;}
   if(b.beforeTime!=null||b.beforeId!=null){out.beforeTime=time(b.beforeTime);out.beforeId=id(b.beforeId);}return out;
  }
- if(action==='posts.create')return {body:text(b.body,1,3000),anonymous:boolean(b.anonymous),requestId:id(b.requestId)};
+ if(action==='media.upload'){
+  if(typeof b.data!=='string'||b.data.length>Math.ceil(MAX_IMAGE_BYTES/3)*4||b.data.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(b.data))fail('invalid_image');
+  return {requestId:id(b.requestId),digest:digest(b.data)};
+ }
+ if(action==='media.discard')return {imageId:id(b.imageId)};
+ if(action==='posts.create'){
+  const images=b.images??[];if(!Array.isArray(images)||images.length>9||new Set(images).size!==images.length)fail();images.forEach(x=>id(x));
+  const category=b.category??'daily';if(!['daily','help','study','buddies'].includes(category))fail();
+  return {body:text(b.body,images.length?0:1,3000),title:text(b.title??'',0,40),category,images,anonymous:boolean(b.anonymous),requestId:id(b.requestId)};
+ }
  if(action==='admin.resolve'){
   if(!['remove','lock','ban','dismiss'].includes(b.decision))fail();
   return {reportId:id(b.reportId),decision:b.decision,reason:text(b.reason,2,300)};
  }
  if(['me','logout','password.change','account.delete','blocks.clear','admin.reports'].includes(action))return {};
  const out={postId:id(b.postId)};
- if(action==='posts.get'&&(b.afterTime!=null||b.afterId!=null)){out.afterTime=time(b.afterTime);out.afterId=id(b.afterId);}
+ if(action==='posts.get')out.threaded=b.threaded===true;
+ if(action==='media.url')out.imageId=id(b.imageId);
+ if(action==='comments.replies')out.rootId=id(b.rootId);
+ if(['posts.get','comments.replies'].includes(action)&&(b.afterTime!=null||b.afterId!=null)){out.afterTime=time(b.afterTime);out.afterId=id(b.afterId);}
+ if(action==='comments.like')Object.assign(out,{commentId:id(b.commentId),enabled:boolean(b.enabled)});
  if(action==='comments.create')Object.assign(out,{body:text(b.body,1,1000),anonymous:boolean(b.anonymous),requestId:id(b.requestId),replyTo:id(b.replyTo,true)});
  if(['comments.delete','reports.create','blocks.set'].includes(action))out.commentId=id(b.commentId,action!=='comments.delete');
  if(action==='reports.create')out.reason=text(b.reason,2,300);
@@ -46,7 +63,7 @@ function sanitize(action,b){
  return out;
 }
 /** db is a server-only RPC adapter; client-controlled proof, ids and roles are discarded. */
-export function createCommunity({db,registrationEnabled=false,inviteHash='',rateSalt=randomBytes(32).toString('hex')}){
+export function createCommunity({db,storage=null,registrationEnabled=false,inviteHash='',rateSalt=randomBytes(32).toString('hex')}){
  async function call(action,payload={},token=''){const r=await db(action,payload,token);if(!r||!Number.isInteger(r.status))throw Error('database_response');if(r.status>=400)fail(r.error||'temporarily_unavailable',r.status);return r;}
  const rate=(key,limit,seconds)=>call('rate',{key:createHmac('sha256',rateSalt).update(new Date().toISOString().slice(0,10)+':'+key).digest('hex'),limit,seconds});
  async function execute(action,input={},bearer='',peer='unknown'){
@@ -85,14 +102,32 @@ export function createCommunity({db,registrationEnabled=false,inviteHash='',rate
     if(action==='password.change'){b.passwordHash=await hashPassword(password(input.newPassword));recoveryCode=secret();b.recoveryHash=digest(recoveryCode);}
    }
   }
-  const r=await call(action,b,tokenHash);
+  let r;
+  if(action==='media.upload'){
+   if(!storage)fail('images_unavailable',503);
+   const reserved=await call('media.reserve',b,tokenHash);
+   if(reserved.ready)r={status:200,image:reserved.image};
+   else {
+    let encoded;try{encoded=cleanImage(input.data);}catch(e){fail(e.code||'invalid_image',e.status||400);}
+    await storage.put(reserved.image.key,encoded.bytes);
+    r=await call('media.commit',{imageId:reserved.image.id,width:encoded.width,height:encoded.height,bytes:encoded.bytes.length},tokenHash);
+   }
+  }else r=await call(action,b,tokenHash);
   // Cursor pages never include excess records or private credential fields.
   delete r.passwordHash;delete r.recoveryHash;
-  if(r.posts){const rows=r.posts;r.posts=rows.slice(0,20);r.next=rows.length>20?{beforeTime:r.posts.at(-1).createdAt,beforeId:r.posts.at(-1).id}:null;}
-  if(r.comments){const rows=r.comments;r.comments=rows.slice(0,50);r.next=rows.length>50?{afterTime:r.comments.at(-1).createdAt,afterId:r.comments.at(-1).id}:null;}
+  if(r.posts){const rows=r.posts;r.posts=rows.slice(0,20);r.next=rows.length>20?{beforeTime:r.posts.at(-1).createdAt,beforeId:r.posts.at(-1).id,beforeRank:r.posts.at(-1).rank,snapshotTime:r.snapshotTime}:null;}
+  if(r.comments){const rows=r.comments,limit=action==='posts.get'&&b.threaded?20:50;r.comments=rows.slice(0,limit);r.next=rows.length>limit?{afterTime:r.comments.at(-1).createdAt,afterId:r.comments.at(-1).id}:null;}
+  // Internal object keys never leave this service. Signed links expire after ten minutes.
+  const images=[...(r.image?[r.image]:[]),...(r.post?.images||[]),...(r.posts||[]).flatMap(p=>p.images||[])];
+  const keys=[...new Set(images.map(i=>i.key))];let urls=new Map();
+  if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
+  for(const image of images){image.url=urls.get(image.key)||null;delete image.key;}
+  if(storage&&['posts.delete','account.delete','admin.resolve','media.discard','media.upload'].includes(action)){
+   try {const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}}catch{console.warn('Community image cleanup will retry');}
+  }
   if(sessionToken)r.sessionToken=sessionToken;
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:false})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories:['daily','help','study','buddies'],schema:2})};
 }

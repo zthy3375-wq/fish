@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Hanyuantong
 
 private final class TreeholeMemoryVault: TreeholeTokenVault {
@@ -65,6 +66,31 @@ final class TreeholeTests: XCTestCase {
         XCTAssertEqual(TreeholePresentation.date("2026-11-14T01:00:00Z", now: now), "11月14日 09:00")
         XCTAssertEqual(TreeholePresentation.date("2026-11-15T02:00:00Z", now: now), "11月15日 10:00")
         XCTAssertEqual(TreeholePresentation.date("invalid", now: now), "时间未知")
+    }
+
+    func testUploadSizeLimitDoesNotRelaxPostBodyLimit() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        TreeholeTestProtocol.handler = { request in XCTAssertEqual(request.url?.lastPathComponent, "media.upload"); return (200, Data("{}".utf8)) }
+        let api = service(vault), body = ["data": String(repeating: "a", count: 1_600_000)]
+        _ = try await api.request("media.upload", body)
+        for (action, payload) in [("posts.create", body), ("media.upload", ["data": String(repeating: "a", count: 1_650_001)])] {
+            do { _ = try await api.request(action, payload); XCTFail() } catch { XCTAssertEqual((error as? TreeholeError)?.code, "invalid_request") }
+        }
+    }
+    @MainActor func testDraftPersistsImagesAndIsolatesAccounts() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = try ProtectedStorage(directory: directory), first = UUID().uuidString, second = UUID().uuidString
+        let draft = TreeholeDraftStore(storage: storage); draft.bind(first); draft.value.title = "草稿标题"; draft.value.body = "草稿正文"; draft.value.anonymous = true
+        draft.value.photos = [TreeholeDraftPhoto(id: UUID().uuidString, data: Data([1,2,3]), remote: TreeholeImage(id: "uploaded", width: 4, height: 3))]
+        let request = draft.value.requestId; draft.flush(); draft.bind(second); XCTAssertFalse(draft.value.hasContent)
+        draft.value.body = "另一账号"; draft.flush(); draft.bind(first); XCTAssertEqual(draft.value.requestId, request); XCTAssertEqual(draft.value.photos.first?.remote?.id, "uploaded"); XCTAssertTrue(draft.value.anonymous)
+        draft.clear(); draft.bind(second); XCTAssertEqual(draft.value.body, "另一账号")
+    }
+    @MainActor func testPickedImageIsResizedAndConvertedToJPEG() throws {
+        let bytes = UIGraphicsImageRenderer(size: CGSize(width: 2400, height: 1200)).image { context in UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 0, width: 2400, height: 1200)) }.pngData()!
+        let photo = try TreeholeDraftStore.prepare(bytes), decoded = try XCTUnwrap(UIImage(data: photo.data))
+        XCTAssertEqual(decoded.size.width, 1600); XCTAssertEqual(decoded.size.height, 800); XCTAssertLessThanOrEqual(photo.data.count, 1_200_000); XCTAssertEqual(Array(photo.data.prefix(2)), [255,216])
     }
 
 }

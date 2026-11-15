@@ -1,0 +1,65 @@
+import {test,before,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import {PGlite} from '@electric-sql/pglite';
+import jpeg from '../functions/community/node_modules/jpeg-js/index.js';
+import {createCommunity} from '../functions/community/core.mjs';
+import {cleanImage} from '../functions/community/media.mjs';
+let pg,api,a,b;const objects=new Map();
+const storage={put:async(k,v)=>objects.set(k,v),url:async k=>'https://media.invalid/'+k,remove:async k=>objects.delete(k)};
+const rpc=async(action,body,token)=>(await pg.query('SELECT hyt_community($1,$2::jsonb,$3) AS result',[action,JSON.stringify(body),token])).rows[0].result;
+const exec=(action,body={},who=a)=>api.execute(action,body,who.sessionToken,'v2');
+const picture=()=>jpeg.encode({width:4,height:3,data:Buffer.alloc(4*3*4,120)},75).data.toString('base64');
+const make=(payload={},who=a)=>exec('posts.create',{body:'新帖子',anonymous:true,requestId:randomUUID(),...payload},who);
+const reply=(postId,body,replyTo=null,who=b)=>exec('comments.create',{postId,body,replyTo,anonymous:false,requestId:randomUUID()},who);
+before(async()=>{pg=new PGlite();const schema=await readFile(new URL('../community-schema.sql',import.meta.url),'utf8');await pg.exec(schema);await pg.exec(schema);api=createCommunity({db:rpc,storage,registrationEnabled:true});
+ a=await api.execute('register',{username:'v2_author',nickname:'作者甲',password:'password-test-v2',agreed:true},'','first');
+ b=await api.execute('register',{username:'v2_reader',nickname:'读者乙',password:'password-test-v2',agreed:true},'','second');});
+after(async()=>pg.close());
+test('category/title filters, image-only posts and legacy text posts coexist',async()=>{
+ const legacy=(await make()).post;assert.equal(legacy.category,'daily');assert.equal(legacy.title,'');assert.deepEqual(legacy.images,[]);
+ const p=(await make({category:'study',title:'期末复习资料'})).post;
+ assert.deepEqual((await exec('posts.list',{category:'study',query:'复习'})).posts.map(p=>p.id),[p.id]);
+ assert.equal((await exec('posts.list',{category:'buddies'})).posts.length,0);
+ await assert.rejects(make({category:'admin'}),{code:'invalid_request'});await assert.rejects(make({title:'x'.repeat(41)}),{code:'invalid_request'});
+});
+test('image bytes are decoded, reencoded and metadata removed before storage',async()=>{
+ const source=Buffer.from(picture(),'base64');const secret=Buffer.from('Exif\0\0GPS-PRIVATE-COORDINATES');const len=Buffer.alloc(2);len.writeUInt16BE(secret.length+2);
+ const data=Buffer.concat([source.subarray(0,2),Buffer.from([255,225]),len,secret,source.subarray(2)]).toString('base64');
+ const clean=cleanImage(data);assert.equal(clean.width,4);assert.equal(clean.height,3);assert(!clean.bytes.includes(secret));
+ assert.throws(()=>cleanImage(Buffer.from('<svg onload="alert(1)">').toString('base64')),{code:'invalid_image'});
+ const r=await exec('media.upload',{data,requestId:randomUUID()});assert.equal(r.image.width,4);assert(!('key' in r.image));assert(!JSON.stringify(r).includes(a.user.id));
+});
+test('uploads are idempotent; post attachment ownership and single-post binding are enforced',async()=>{
+ const payload={data:picture(),requestId:randomUUID()};const first=await exec('media.upload',payload),second=await exec('media.upload',payload);assert.equal(first.image.id,second.image.id);
+ await assert.rejects(make({images:[first.image.id]},b),{code:'image_unavailable'});
+ const p=(await make({body:'',images:[first.image.id]})).post;assert.equal(p.images.length,1);
+ await assert.rejects(make({images:[first.image.id]}),{code:'image_unavailable'});
+ const seen=(await exec('posts.get',{postId:p.id},b)).post;assert(!JSON.stringify(seen).includes(a.user.nickname));assert(seen.images[0].url.startsWith('https://'));
+ const other=(await make({},b)).post;await assert.rejects(exec('media.url',{postId:other.id,imageId:first.image.id},b),{code:'not_found'});
+ await exec('posts.delete',{postId:p.id});assert(!objects.has(first.image.id+'.jpg'));await assert.rejects(exec('media.url',{postId:p.id,imageId:first.image.id},b),{code:'not_found'});
+});
+test('threaded replies group grandchildren under their root; likes and deletion stay scoped',async()=>{
+ const post=(await make()).post;const root=(await reply(post.id,'主评论')).comment;
+ const child=(await reply(post.id,'楼主回应',root.id,a)).comment;const grandchild=(await reply(post.id,'再回复',child.id,b)).comment;
+ assert.equal(child.rootId,root.id);assert.equal(grandchild.rootId,root.id);assert(child.author.anonymous);
+ const view=await exec('posts.get',{postId:post.id,threaded:true});assert.equal(view.comments.length,1);assert.equal(view.comments[0].replyCount,2);assert.equal(view.comments[0].replies.length,2);
+ const liked=await exec('comments.like',{postId:post.id,commentId:grandchild.id,enabled:true});assert.equal(liked.comment.likeCount,1);
+ assert.equal((await exec('comments.like',{postId:post.id,commentId:grandchild.id,enabled:true})).comment.likeCount,1);
+ await exec('comments.delete',{postId:post.id,commentId:root.id},b);
+ const deleted=await exec('posts.get',{postId:post.id,threaded:true});assert(deleted.comments[0].deleted);assert.equal(deleted.comments[0].replies.length,2);
+ assert.equal((await exec('comments.replies',{postId:post.id,rootId:root.id})).comments.length,2);
+ const other=(await make({},b)).post;await assert.rejects(exec('comments.like',{postId:other.id,commentId:grandchild.id,enabled:true}),{code:'not_found'});
+});
+test('hot ranking uses recent engagement and freezes additions behind its snapshot',async()=>{
+ const quiet=(await make({},b)).post,hot=(await make({},b)).post;
+ await exec('reactions.set',{postId:hot.id,kind:'like',enabled:true});
+ const feed=await exec('posts.list',{scope:'mine',sort:'hot'},b);assert.equal(feed.posts[0].id,hot.id);assert(feed.posts.find(p=>p.id===quiet.id));
+ const future=(await make({},b)).post;assert(!(await exec('posts.list',{sort:'hot',snapshotTime:feed.snapshotTime})).posts.some(p=>p.id===future.id));
+});
+test('blocked roots cannot be probed through reply count, pagination or likes',async()=>{
+ const p=(await make()).post;const root=(await reply(p.id,'昵称主评论')).comment;await reply(p.id,'匿名楼主的回复',root.id,a);
+ await exec('blocks.set',{postId:p.id,commentId:root.id});assert.equal((await exec('posts.get',{postId:p.id,threaded:true})).comments.length,0);
+ await assert.rejects(exec('comments.replies',{postId:p.id,rootId:root.id}),{code:'not_found'});
+});

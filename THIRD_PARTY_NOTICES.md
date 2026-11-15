@@ -5,3 +5,5 @@
 - `src/data/campus-geometry.json` and `src/data/campus-places.json`: OpenStreetMap contributor data retrieved 2026-11-08 through Overpass. © OpenStreetMap contributors, available under the Open Database License (ODbL) 1.0: https://www.openstreetmap.org/copyright and https://opendatacommons.org/licenses/odbl/1-0/ . These datasets retain their ODbL licensing independently of the application code's MIT license. The same attribution is displayed on the map. This repository distributes the derived data in machine-readable JSON. Source query: ways with highway/building tags in bbox (36.563,114.485,36.584,114.511), way 226564123, relation 21262225, `out geom`.
 
 Research references and fixed revisions are listed in docs/V083-NATIVE-LIFE.md. No code, images, application assets or tests from the researched campus apps were copied into this implementation.
+
+- jpeg-js 0.4.4: BSD-3-Clause, https://github.com/jpeg-js/jpeg-js . Server-only JPEG decoder/encoder for community image sanitization; license retained in the npm deployment package.
