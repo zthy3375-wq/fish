@@ -13,7 +13,7 @@ Android 1.3.0-test.3 /153 与原生 SwiftUI 同步开发：全部/校园日常/�
 - Android Debug/Release 各 188 项原生测试通过；Release APK 已构建。`Hanyuantong-v1.3.0-test.3-Community.apk`：12,459,214 bytes，SHA-256 `75e660aa4b74bc12a1a67ec31af63b786e29332979d0e55a530991de0a555818`。原包名、153/1.3.0-test.3、非 debug、原证书、ZIP 4 字节/原生库 16 KB 对齐与 30 个前端资源逐字节核验通过；签名材料已清理。真实手机覆盖升级和选图器仍待设备验收。
 - 测试后台任务 [43679764786](https://github.com/zthy3375-wq/fish/actions/runs/43679764786) 成功，附加迁移、私有图片桶及服务部署完成；公网 HTTP 双账号验证图片上传/读取、分区图文、匿名投影、删除权限、匿名楼主回复和楼中楼通过；生成的测试账号与内容已清理。在线 config 返回 schema 2 / imagesEnabled true / requiresInvite true。
 - 云端浏览器首次检查发现保存草稿后立即重载的时序问题：返回前未等待 IndexedDB 提交。现已等待事务完成，失败时保留编辑页；修复后本地 54 项社区交互再次通过，并重新构建、签名和校验上述 APK。
-- Quality [43679768658](https://github.com/zthy3375-wq/fish/actions/runs/43679768658) 成功。Android [43679768649](https://github.com/zthy3375-wq/fish/actions/runs/43679768649) 的原生 APK job 成功，浏览器 job 在草稿重载用例失败；`ffff3bf` 修复后本地 54 项通过，云端复跑另记，不把旧失败写成成功。
+- Quality [43679768658](https://github.com/zthy3375-wq/fish/actions/runs/43679768658) 成功。Android [43679768649](https://github.com/zthy3375-wq/fish/actions/runs/43679768649) 的原生 APK job 成功，浏览器 job 在草稿重载用例失败；`ffff3bf` 修复后本地 54 项通过；云端复跑 [43680777326](https://github.com/zthy3375-wq/fish/actions/runs/43680777326) 的 browser job 也已成功。Quality 复跑 43680777337 成功；重复 Android 原生构建和未改源码的 iOS 复跑仍在进行，不重复计作已通过。
 - iOS [43679768647](https://github.com/zthy3375-wq/fish/actions/runs/43679768647) **整体成功**：340 项单元用例中 339 通过、1 项真机数据保护按设计跳过，5 项 UI 流程及模拟器和未签名 iPhone Release 编译通过。后续草稿修复没有更改 iOS 文件，因此此证据覆盖当前原生 iOS 源码。未交付签名 IPA，也未完成真机相册、网络或 TestFlight 验收。
 - 实际读取正式更新接口仍为 1.2.4 /150、最低 150。没有上传蒲公英、修改正式更新清单或合入 main。
 
