@@ -1,0 +1,507 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-16T16:58:27.959617+00:00",
+  "title": "Design System: 邯院通",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "校园紫",
+        "tonalRamp": [
+          "oklch(15.0% 0.17202 294.00)",
+          "oklch(27.0% 0.17202 294.00)",
+          "oklch(38.0% 0.17202 294.00)",
+          "oklch(49.0% 0.17202 294.00)",
+          "oklch(61.0% 0.17202 294.00)",
+          "oklch(72.0% 0.17202 294.00)",
+          "oklch(84.0% 0.17202 294.00)",
+          "oklch(95.0% 0.17202 294.00)"
+        ]
+      },
+      "primary-strong": {
+        "role": "primary",
+        "displayName": "深校园紫",
+        "tonalRamp": [
+          "oklch(15.0% 0.14643 294.22)",
+          "oklch(27.0% 0.14643 294.22)",
+          "oklch(38.0% 0.14643 294.22)",
+          "oklch(49.0% 0.14643 294.22)",
+          "oklch(61.0% 0.14643 294.22)",
+          "oklch(72.0% 0.14643 294.22)",
+          "oklch(84.0% 0.14643 294.22)",
+          "oklch(95.0% 0.14643 294.22)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "浅紫灰底",
+        "tonalRamp": [
+          "oklch(15.0% 0.00539 297.73)",
+          "oklch(27.0% 0.00539 297.73)",
+          "oklch(38.0% 0.00539 297.73)",
+          "oklch(49.0% 0.00539 297.73)",
+          "oklch(61.0% 0.00539 297.73)",
+          "oklch(72.0% 0.00539 297.73)",
+          "oklch(84.0% 0.00539 297.73)",
+          "oklch(95.0% 0.00539 297.73)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "白色阅读面",
+        "tonalRamp": [
+          "oklch(15.0% 0.00000 0.00)",
+          "oklch(27.0% 0.00000 0.00)",
+          "oklch(38.0% 0.00000 0.00)",
+          "oklch(49.0% 0.00000 0.00)",
+          "oklch(61.0% 0.00000 0.00)",
+          "oklch(72.0% 0.00000 0.00)",
+          "oklch(84.0% 0.00000 0.00)",
+          "oklch(95.0% 0.00000 0.00)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "深紫灰正文",
+        "tonalRamp": [
+          "oklch(15.0% 0.03174 294.93)",
+          "oklch(27.0% 0.03174 294.93)",
+          "oklch(38.0% 0.03174 294.93)",
+          "oklch(49.0% 0.03174 294.93)",
+          "oklch(61.0% 0.03174 294.93)",
+          "oklch(72.0% 0.03174 294.93)",
+          "oklch(84.0% 0.03174 294.93)",
+          "oklch(95.0% 0.03174 294.93)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "辅助紫灰",
+        "tonalRamp": [
+          "oklch(15.0% 0.03020 297.37)",
+          "oklch(27.0% 0.03020 297.37)",
+          "oklch(38.0% 0.03020 297.37)",
+          "oklch(49.0% 0.03020 297.37)",
+          "oklch(61.0% 0.03020 297.37)",
+          "oklch(72.0% 0.03020 297.37)",
+          "oklch(84.0% 0.03020 297.37)",
+          "oklch(95.0% 0.03020 297.37)"
+        ]
+      },
+      "faint": {
+        "role": "neutral",
+        "displayName": "次级紫灰",
+        "tonalRamp": [
+          "oklch(15.0% 0.02998 299.82)",
+          "oklch(27.0% 0.02998 299.82)",
+          "oklch(38.0% 0.02998 299.82)",
+          "oklch(49.0% 0.02998 299.82)",
+          "oklch(61.0% 0.02998 299.82)",
+          "oklch(72.0% 0.02998 299.82)",
+          "oklch(84.0% 0.02998 299.82)",
+          "oklch(95.0% 0.02998 299.82)"
+        ]
+      },
+      "tint": {
+        "role": "primary",
+        "displayName": "淡紫选中面",
+        "tonalRamp": [
+          "oklch(15.0% 0.02227 302.93)",
+          "oklch(27.0% 0.02227 302.93)",
+          "oklch(38.0% 0.02227 302.93)",
+          "oklch(49.0% 0.02227 302.93)",
+          "oklch(61.0% 0.02227 302.93)",
+          "oklch(72.0% 0.02227 302.93)",
+          "oklch(84.0% 0.02227 302.93)",
+          "oklch(95.0% 0.02227 302.93)"
+        ]
+      },
+      "highlight": {
+        "role": "primary",
+        "displayName": "浅紫阅读强调面",
+        "tonalRamp": [
+          "oklch(15.0% 0.01391 304.14)",
+          "oklch(27.0% 0.01391 304.14)",
+          "oklch(38.0% 0.01391 304.14)",
+          "oklch(49.0% 0.01391 304.14)",
+          "oklch(61.0% 0.01391 304.14)",
+          "oklch(72.0% 0.01391 304.14)",
+          "oklch(84.0% 0.01391 304.14)",
+          "oklch(95.0% 0.01391 304.14)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "轮廓灰紫",
+        "tonalRamp": [
+          "oklch(15.0% 0.01670 301.20)",
+          "oklch(27.0% 0.01670 301.20)",
+          "oklch(38.0% 0.01670 301.20)",
+          "oklch(49.0% 0.01670 301.20)",
+          "oklch(61.0% 0.01670 301.20)",
+          "oklch(72.0% 0.01670 301.20)",
+          "oklch(84.0% 0.01670 301.20)",
+          "oklch(95.0% 0.01670 301.20)"
+        ]
+      },
+      "divider": {
+        "role": "neutral",
+        "displayName": "细分隔灰紫",
+        "tonalRamp": [
+          "oklch(15.0% 0.01111 303.11)",
+          "oklch(27.0% 0.01111 303.11)",
+          "oklch(38.0% 0.01111 303.11)",
+          "oklch(49.0% 0.01111 303.11)",
+          "oklch(61.0% 0.01111 303.11)",
+          "oklch(72.0% 0.01111 303.11)",
+          "oklch(84.0% 0.01111 303.11)",
+          "oklch(95.0% 0.01111 303.11)"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "危险红",
+        "tonalRamp": [
+          "oklch(15.0% 0.13818 16.65)",
+          "oklch(27.0% 0.13818 16.65)",
+          "oklch(38.0% 0.13818 16.65)",
+          "oklch(49.0% 0.13818 16.65)",
+          "oklch(61.0% 0.13818 16.65)",
+          "oklch(72.0% 0.13818 16.65)",
+          "oklch(84.0% 0.13818 16.65)",
+          "oklch(95.0% 0.13818 16.65)"
+        ]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "完成绿",
+        "tonalRamp": [
+          "oklch(15.0% 0.04567 176.32)",
+          "oklch(27.0% 0.04567 176.32)",
+          "oklch(38.0% 0.04567 176.32)",
+          "oklch(49.0% 0.04567 176.32)",
+          "oklch(61.0% 0.04567 176.32)",
+          "oklch(72.0% 0.04567 176.32)",
+          "oklch(84.0% 0.04567 176.32)",
+          "oklch(95.0% 0.04567 176.32)"
+        ]
+      },
+      "course-blue": {
+        "role": "secondary",
+        "displayName": "course-blue",
+        "tonalRamp": [
+          "oklch(15.0% 0.06927 251.89)",
+          "oklch(27.0% 0.06927 251.89)",
+          "oklch(38.0% 0.06927 251.89)",
+          "oklch(49.0% 0.06927 251.89)",
+          "oklch(61.0% 0.06927 251.89)",
+          "oklch(72.0% 0.06927 251.89)",
+          "oklch(84.0% 0.06927 251.89)",
+          "oklch(95.0% 0.06927 251.89)"
+        ]
+      },
+      "course-blue-bg": {
+        "role": "secondary",
+        "displayName": "course-blue-bg",
+        "tonalRamp": [
+          "oklch(15.0% 0.01081 256.70)",
+          "oklch(27.0% 0.01081 256.70)",
+          "oklch(38.0% 0.01081 256.70)",
+          "oklch(49.0% 0.01081 256.70)",
+          "oklch(61.0% 0.01081 256.70)",
+          "oklch(72.0% 0.01081 256.70)",
+          "oklch(84.0% 0.01081 256.70)",
+          "oklch(95.0% 0.01081 256.70)"
+        ]
+      },
+      "course-purple": {
+        "role": "secondary",
+        "displayName": "course-purple",
+        "tonalRamp": [
+          "oklch(15.0% 0.06022 297.42)",
+          "oklch(27.0% 0.06022 297.42)",
+          "oklch(38.0% 0.06022 297.42)",
+          "oklch(49.0% 0.06022 297.42)",
+          "oklch(61.0% 0.06022 297.42)",
+          "oklch(72.0% 0.06022 297.42)",
+          "oklch(84.0% 0.06022 297.42)",
+          "oklch(95.0% 0.06022 297.42)"
+        ]
+      },
+      "course-purple-bg": {
+        "role": "secondary",
+        "displayName": "course-purple-bg",
+        "tonalRamp": [
+          "oklch(15.0% 0.01109 303.11)",
+          "oklch(27.0% 0.01109 303.11)",
+          "oklch(38.0% 0.01109 303.11)",
+          "oklch(49.0% 0.01109 303.11)",
+          "oklch(61.0% 0.01109 303.11)",
+          "oklch(72.0% 0.01109 303.11)",
+          "oklch(84.0% 0.01109 303.11)",
+          "oklch(95.0% 0.01109 303.11)"
+        ]
+      },
+      "course-orange": {
+        "role": "secondary",
+        "displayName": "course-orange",
+        "tonalRamp": [
+          "oklch(15.0% 0.06253 69.60)",
+          "oklch(27.0% 0.06253 69.60)",
+          "oklch(38.0% 0.06253 69.60)",
+          "oklch(49.0% 0.06253 69.60)",
+          "oklch(61.0% 0.06253 69.60)",
+          "oklch(72.0% 0.06253 69.60)",
+          "oklch(84.0% 0.06253 69.60)",
+          "oklch(95.0% 0.06253 69.60)"
+        ]
+      },
+      "course-orange-bg": {
+        "role": "secondary",
+        "displayName": "course-orange-bg",
+        "tonalRamp": [
+          "oklch(15.0% 0.01245 75.37)",
+          "oklch(27.0% 0.01245 75.37)",
+          "oklch(38.0% 0.01245 75.37)",
+          "oklch(49.0% 0.01245 75.37)",
+          "oklch(61.0% 0.01245 75.37)",
+          "oklch(72.0% 0.01245 75.37)",
+          "oklch(84.0% 0.01245 75.37)",
+          "oklch(95.0% 0.01245 75.37)"
+        ]
+      },
+      "course-green": {
+        "role": "secondary",
+        "displayName": "course-green",
+        "tonalRamp": [
+          "oklch(15.0% 0.04958 172.90)",
+          "oklch(27.0% 0.04958 172.90)",
+          "oklch(38.0% 0.04958 172.90)",
+          "oklch(49.0% 0.04958 172.90)",
+          "oklch(61.0% 0.04958 172.90)",
+          "oklch(72.0% 0.04958 172.90)",
+          "oklch(84.0% 0.04958 172.90)",
+          "oklch(95.0% 0.04958 172.90)"
+        ]
+      },
+      "course-green-bg": {
+        "role": "secondary",
+        "displayName": "course-green-bg",
+        "tonalRamp": [
+          "oklch(15.0% 0.00841 168.75)",
+          "oklch(27.0% 0.00841 168.75)",
+          "oklch(38.0% 0.00841 168.75)",
+          "oklch(49.0% 0.00841 168.75)",
+          "oklch(61.0% 0.00841 168.75)",
+          "oklch(72.0% 0.00841 168.75)",
+          "oklch(84.0% 0.00841 168.75)",
+          "oklch(95.0% 0.00841 168.75)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "sans": {
+        "displayName": "系统业务字体",
+        "purpose": "中文业务界面。"
+      },
+      "brand": {
+        "displayName": "校园横幅品牌",
+        "purpose": "仅用于既有横幅品牌；窄屏有局部字号覆盖。"
+      },
+      "body": {
+        "displayName": "业务正文",
+        "purpose": "默认内容阅读。"
+      },
+      "editor": {
+        "displayName": "社区编辑正文",
+        "purpose": "无边框写作面。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-card",
+        "value": "none",
+        "purpose": "静态卡片。"
+      },
+      {
+        "name": "shadow-float",
+        "value": "0 7px 22px rgba(33,48,70,.14),0 1px 3px rgba(33,48,70,.08)",
+        "purpose": "浮层和提示；深色模式由运行时覆盖。"
+      },
+      {
+        "name": "sheet",
+        "value": "0 -8px 32px #26223312",
+        "purpose": "通用底部弹层。"
+      },
+      {
+        "name": "community-dialog",
+        "value": "0 -4px 32px #12121a0d",
+        "purpose": "社区对话框。"
+      },
+      {
+        "name": "community-reply",
+        "value": "0 -8px 50px #20202a0d",
+        "purpose": "社区回复弹层。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "motion-fast",
+        "value": "120ms",
+        "purpose": "共享按下与内容反馈。"
+      },
+      {
+        "name": "motion-normal",
+        "value": "200ms",
+        "purpose": "共享正常状态切换。"
+      },
+      {
+        "name": "motion-slow",
+        "value": "300ms",
+        "purpose": "共享浮层与指示器。"
+      },
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(.22,.61,.36,1)",
+        "purpose": "共享标准缓动。"
+      },
+      {
+        "name": "ease-spring",
+        "value": "cubic-bezier(.22,1,.36,1)",
+        "purpose": "既有浮层与指示器缓动。"
+      },
+      {
+        "name": "community-forward",
+        "value": "200ms",
+        "purpose": "社区前进。"
+      },
+      {
+        "name": "community-back",
+        "value": "180ms",
+        "purpose": "社区返回，非全局时长。"
+      },
+      {
+        "name": "community-sheet",
+        "value": "220ms",
+        "purpose": "社区弹层。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-page",
+        "value": "374px"
+      },
+      {
+        "name": "compact-community",
+        "value": "370px"
+      },
+      {
+        "name": "community-readbar-border",
+        "value": "700px"
+      },
+      {
+        "name": "wide-sheet",
+        "value": "768px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "主要操作",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "共享按钮；文案随真实业务替换。",
+      "html": "<button class=\"ds-button-primary\">主要操作</button>",
+      "css": ".ds-button-primary{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:12px 20px;border:0;border-radius:var(--radius-sm);background:var(--color-primary);color:var(--color-surface);font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background var(--motion-fast),color var(--motion-fast),transform var(--motion-fast) var(--ease-standard)}.ds-button-primary:focus-visible{outline:2px solid var(--color-primary);outline-offset:3px}.ds-button-primary:active{transform:scale(.98)}.ds-button-primary:disabled{opacity:.35;cursor:default;transform:none}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none}}"
+    },
+    {
+      "name": "次级操作",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "共享按钮；文案随真实业务替换。",
+      "html": "<button class=\"ds-button-secondary\">次级操作</button>",
+      "css": ".ds-button-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:12px 20px;border:0;border-radius:var(--radius-sm);background:var(--color-tint);color:var(--color-primary);font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background var(--motion-fast),color var(--motion-fast),transform var(--motion-fast) var(--ease-standard)}.ds-button-secondary:focus-visible{outline:2px solid var(--color-primary);outline-offset:3px}.ds-button-secondary:active{transform:scale(.98)}.ds-button-secondary:disabled{opacity:.35;cursor:default;transform:none}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none}}"
+    },
+    {
+      "name": "弹层文本输入",
+      "kind": "input",
+      "refersTo": "sheet",
+      "description": "通用弹层中的原生文本输入。",
+      "html": "<input class=\"ds-input\" aria-label=\"任务名称\" placeholder=\"输入任务名称\">",
+      "css": ".ds-input{color:var(--color-text);background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm);min-height:44px;padding:11px 12px;font:inherit;font-size:16px;caret-color:var(--color-primary)}.ds-input::placeholder{color:var(--color-muted);opacity:1}.ds-input:hover{border-color:var(--color-primary)}.ds-input:focus-visible{outline:2px solid var(--color-primary);outline-offset:3px}"
+    },
+    {
+      "name": "话题筛选",
+      "kind": "chip",
+      "refersTo": "topic-chip",
+      "description": "现有36px话题胶囊；是局部现状，44px触控目标仍适用于新增交互。",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">学习交流</button>",
+      "css": ".ds-chip{min-height:36px;padding:0 12px;border:0;border-radius:18px;background:var(--color-bg);color:var(--color-muted);font:inherit;font-size:max(12px,.75rem);cursor:pointer;transition:color .14s,background .14s}.ds-chip[aria-pressed=true]{background:var(--color-tint);color:var(--color-primary)}.ds-chip:hover{background:var(--color-tint)}.ds-chip:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}.ds-chip:active{transform:scale(.98)}@media(prefers-reduced-motion:reduce){.ds-chip{transition:none}}"
+    },
+    {
+      "name": "共享阅读卡片",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "白色、细边界和无投影的共享内容面。",
+      "html": "<article class=\"ds-card\"><h2>任务名称</h2><p>正文与状态由真实业务内容提供。</p></article>",
+      "css": ".ds-card{background:var(--color-surface);color:var(--color-text);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:16px;box-shadow:none}.ds-card h2{margin:0;font:inherit;font-size:16px;font-weight:650;line-height:1.5}.ds-card p{margin:8px 0 0;color:var(--color-muted);font-size:13px;line-height:1.8}"
+    },
+    {
+      "name": "五入口底栏",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "展示五等分入口与选中指示；页面定位与安全区由宿主布局管理。",
+      "html": "<nav class=\"ds-nav\" aria-label=\"主导航\"><button aria-current=\"page\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><path d=\"m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z\"/></svg><span>首页</span></button><button><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M16 3v4M8 3v4M3 11h18\"/></svg><span>课表</span></button><button><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><path d=\"M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z\"/></svg><span>社区</span></button><button><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><rect x=\"4\" y=\"3\" width=\"16\" height=\"18\" rx=\"2\"/><path d=\"m8 11 2 2 5-5M8 17h8\"/></svg><span>待办</span></button><button><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21v-2a8 8 0 0 1 16 0v2\"/></svg><span>我的</span></button></nav>",
+      "css": ".ds-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:var(--color-surface);border-top:1px solid var(--color-divider);padding:4px 8px}.ds-nav button{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;min-height:52px;min-width:0;background:transparent;border:0;border-radius:12px;color:var(--color-muted);font:inherit;cursor:pointer}.ds-nav span{font-size:11px;font-weight:500}.ds-nav button[aria-current=page]{background:var(--color-tint);color:var(--color-primary-strong)}.ds-nav button[aria-current=page] span{font-weight:650}.ds-nav button:hover{background:var(--color-highlight)}.ds-nav button:focus-visible{outline:2px solid var(--color-primary);outline-offset:3px}.ds-nav button:active{transform:scale(.98)}"
+    },
+    {
+      "name": "无边框写作面",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "现有社区编辑标题与正文；保留可读占位文字，局部焦点例外不推广。",
+      "html": "<section class=\"ds-writing\"><input aria-label=\"标题\" placeholder=\"添加标题\"><textarea aria-label=\"正文\" placeholder=\"分享校园里的新鲜事\"></textarea></section>",
+      "css": ".ds-writing{background:var(--color-surface);color:var(--color-text)}.ds-writing input,.ds-writing textarea{display:block;width:100%;border:0;border-radius:0;background:transparent;color:var(--color-text);font:inherit;caret-color:var(--color-primary)}.ds-writing input{min-height:48px;padding:7px 0;font-size:21px;font-weight:650;line-height:1.5;letter-spacing:-.3px}.ds-writing textarea{min-height:152px;resize:none;padding:6px 0 16px;font-size:17px;line-height:1.8}.ds-writing input::placeholder,.ds-writing textarea::placeholder{color:var(--color-muted)}.ds-writing input:focus,.ds-writing textarea:focus{outline:none;box-shadow:none}"
+    }
+  ],
+  "narrative": {
+    "northStar": "安静的校园工具",
+    "overview": "中文校园工具，面向 Android 上频繁、短时、单手的查课、学习任务、生活服务与社区阅读。延续现有浅紫与白色品牌：白色承担阅读，淡紫承担分组和选中状态，小金鱼与校园横幅承担主要品牌表达。业务页面保持安静，层级来自正文、辅助文字、间距和细分隔。\n\n参考 Apple HIG 的层级、可读性、安全区域与直接操作，保留 Android 返回和系统控件。运行时令牌以 `src/tokens.css` 为准；`src/product.css` 在既有布局样式之后加载，共享语义值而保留领域布局。社区沿用相同语义令牌，编辑与阅读仍有局部排版。此记录来自当前代码及 Chromium 合成截图，未有获批视觉稿或原生截图；不构成真机质量通过证明。",
+    "keyCharacteristics": [
+      "白色阅读面与淡紫选中面。",
+      "系统中文无衬线处理业务，宋体保留给横幅品牌。",
+      "五 Tab 与既有二级页面结构稳定。",
+      "静态分组平面化，浮层使用柔和深度。"
+    ],
+    "rules": [
+      {
+        "name": "The Shared Palette Rule",
+        "body": "首页和社区使用同一组语义颜色；局部排版不建立第二套主题。",
+        "section": "colors"
+      },
+      {
+        "name": "The Brand Type Rule",
+        "body": "宋体只承担横幅品牌；业务标题、正文、输入和操作沿用系统无衬线。",
+        "section": "typography"
+      },
+      {
+        "name": "The Quiet Surface Rule",
+        "body": "静态分组依靠色面和细边界；浮层深度不扩散为每张卡片的装饰。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 保留首页、课表、社区、待办、我的五 Tab、小金鱼、现有校园横幅和主题选择。",
+      "Do 从运行时语义令牌取色，依内容层级选择正文、辅助文字和边界。",
+      "Do 将主操作与图标实际触控区域做到至少 44px；允许文字、错误信息和表单随内容增高。",
+      "Do 让长标题换行、数字按需等宽，并尊重安全区域与 reduced-motion。",
+      "Do 保留真实加载、错误、空状态和恢复入口；截图使用合成数据时明确标注为测试。"
+    ],
+    "donts": [
+      "Don't 将所有卡片、按钮、分组统一改成胶囊，或用装饰卡片替代功能层级。",
+      "Don't 将横幅品牌宋体扩散到业务正文，或为系统字体另行下载字体包。",
+      "Don't 隐藏失败、用演示数据填充线上空状态，或改变接口、权限、存储键和数据格式。",
+      "Don't 因记录设计而更改课表节次几何、草稿、返回位置或匿名与公开身份隔离。",
+      "Don't 将现有小触控区域、特殊焦点覆盖或局部硬编码颜色推广为新页面默认值。"
+    ]
+  }
+}
