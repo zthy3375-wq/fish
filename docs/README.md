@@ -4,6 +4,7 @@
 
 ## 当前维护入口
 
+- [关注用户与关注动态（test.10）](COMMUNITY-FOLLOWING.md)
 - [兴趣分区与社区首页（test.9）](COMMUNITY-DISCOVERY.md)
 - [头像上传与轻量回应（test.8）](COMMUNITY-PARTICIPATION.md)
 - [互动消息与讨论回访（test.7）](COMMUNITY-RETURN.md)

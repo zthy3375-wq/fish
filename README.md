@@ -7,9 +7,9 @@
 | 项目 | 状态 |
 | --- | --- |
 | Android 线上版本 | 1.2.4 / 150，已发布强制更新；最低支持版本 150 |
-| 本分支 Android | 1.3.0-test.10 / 160，关注用户与关注动态验证中；邀请码内测，正式更新仍为 1.2.4 |
+| 本分支 Android | 1.3.0-test.10 / 160，关注用户与关注动态测试包；邀请码内测，正式更新仍为 1.2.4 |
 | iPhone | `ios-native/` 原生 Swift/SwiftUI，最低 iOS 16；模拟器与未签名构建验证，不等于真机可安装 |
-| 开发分支 | `feat/community-following-20261116`，基于社区 PR #70；未合入 main |
+| 开发分支 | `feat/community-following-20261116`，草稿 [PR #71](https://github.com/zthy3375-wq/fish/pull/71)，基于社区 PR #70；未合入 main |
 
 [关注用户与动态](docs/COMMUNITY-FOLLOWING.md) · [兴趣分区与首页整理](docs/COMMUNITY-DISCOVERY.md) · [头像与轻量回应](docs/COMMUNITY-PARTICIPATION.md) · [社区回访功能与验证](docs/COMMUNITY-RETURN.md) · [树洞开发与验证](docs/TREEHOLE.md) · [1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
 
