@@ -368,24 +368,24 @@ to{transform:scaleX(1);opacity:1}
 .th-zone-select>svg{position:absolute;right:9px;pointer-events:none;color:var(--color-muted)}
 .th-compose-writing{padding:5px 0 2px}
 .th-title-input{display:block;width:100%;min-width:0;min-height:48px;margin:0;border:0;border-radius:0;background:transparent;padding:7px 0;color:var(--color-text);font:inherit;font-size:21px;font-weight:650;line-height:1.5;letter-spacing:-.3px}
-.th-title-input::placeholder{color:#a1a1aa;font-weight:500}
+.th-title-input::placeholder{color:var(--color-muted);font-weight:500}
 .treehole .th-editor-label{display:block;margin:0}
 .treehole .th-editor-label textarea{display:block;width:100%;min-width:0;min-height:152px;resize:none;overflow:hidden;color:var(--color-text);background:transparent;border:0;border-radius:0;margin:0;padding:6px 0 16px;font:inherit;font-size:17px;line-height:1.8;scroll-margin-top:calc(76px + var(--safe-top))}
-.th-editor-label textarea::placeholder{color:#a1a1aa}
+.th-editor-label textarea::placeholder{color:var(--color-muted)}
 .treehole .th-compose-writing :is(input,textarea):is(:focus,:focus-visible){outline:none;box-shadow:none;border:0;background:transparent}
 .th-compose-tools{display:flex;align-items:center;gap:6px;border-block:1px solid var(--color-divider);padding:4px 0;margin-top:7px;min-height:52px}
 .treehole .th-compose-tool{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 9px;border-radius:10px;color:var(--color-muted);font-size:13px;line-height:1.5;overflow:hidden;white-space:nowrap}
 .th-compose-tool small{font-size:11px;margin-left:4px}.th-compose-tool[aria-pressed=true]{color:var(--color-primary);background:var(--color-tint)}
 .th-compose-tool:active{background:var(--color-bg)}.th-compose-tool.disabled{opacity:.4;cursor:default}
 .treehole .th-compose-tool input{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;cursor:pointer}
-.th-compose-count{margin-left:auto;font-size:11px;color:#9999a1;white-space:nowrap;font-variant-numeric:tabular-nums}.th-compose-count.near-limit{color:#b04747}
+.th-compose-count{margin-left:auto;font-size:11px;color:var(--color-muted);white-space:nowrap;font-variant-numeric:tabular-nums}.th-compose-count.near-limit{color:#b04747}
 .th-draft-images{display:grid;grid-template-columns:repeat(3,minmax(0,100px));gap:8px;margin:10px 0}
 .th-draft-images>div{border-radius:12px}
 .th-draft-images .th-photo-remove{isolation:isolate;width:44px;min-height:44px;border-radius:0 10px 0 10px;background:transparent}.th-draft-images .th-photo-remove:before{content:'';position:absolute;z-index:-1;inset:10px;border-radius:50%;background:#28282da6}
 .th-photo-order{border-radius:10px;background:var(--color-bg);font-size:12px}
-.th-compose-footnote{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;color:#92929a;font-size:11px}
-.th-compose-footnote .th-draft-status{display:flex;align-items:center;gap:4px;min-height:0;font-size:11px;color:#92929a}
-.th-compose-note{display:flex;align-items:flex-start;gap:7px;border:0;padding:0;margin-top:5px;color:#92929a}
+.th-compose-footnote{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;color:var(--color-muted);font-size:11px}
+.th-compose-footnote .th-draft-status{display:flex;align-items:center;gap:4px;min-height:0;font-size:11px;color:var(--color-muted)}
+.th-compose-note{display:flex;align-items:flex-start;gap:7px;border:0;padding:0;margin-top:5px;color:var(--color-muted)}
 .th-compose-note svg{flex-shrink:0;margin-top:3px}.th-compose-note p{font-size:11px;line-height:1.7}
 .th-compose :deep(.th-poll-editor),.th-compose :deep(.th-buddy-editor){background:var(--color-bg);border:0;border-radius:14px}
 .th-compose :deep(.th-poll-editor input),.th-compose :deep(.th-buddy-editor input){border:1px solid transparent;outline:none;box-shadow:none}
@@ -410,3 +410,6 @@ to{transform:scaleX(1);opacity:1}
 .treehole:not(.keyboard-navigation) .th-anon-pill:has(input:focus-visible){outline:none;box-shadow:none}
 .treehole textarea:focus-visible{outline:none}
 .treehole .th-compose-tool:focus-within{box-shadow:inset 0 0 0 1px #d8d0e9}
+
+/* Review: the icon artwork stays compact; its actual hit area is 44px. */
+.treehole .th-icon,.treehole .th-feed-tools .th-icon{width:44px;min-width:44px;min-height:44px}

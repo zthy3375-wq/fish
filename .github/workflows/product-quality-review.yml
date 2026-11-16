@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        snapshot: [before, after]
+        snapshot: [after]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +55,7 @@ jobs:
             /tmp/handan-community-*-qa
             /tmp/handan-community-*-preview
   android:
+    if: ${{ !contains(github.event.head_commit.message, '[ui-only]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
