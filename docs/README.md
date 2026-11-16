@@ -4,6 +4,7 @@
 
 ## 当前维护入口
 
+- [所有者账号首次管理员绑定](COMMUNITY-MODERATOR-BINDING.md)
 - [Android test.15 浏览器与触控复核](COMMUNITY-TEST15-REVIEW.md)
 - [schema 10 内测后台启用](COMMUNITY-ACTIVATION-20261116.md)
 - [社区阅读与发帖设计（test.15）](COMMUNITY-READING-DESIGN.md)
