@@ -1,8 +1,6 @@
 name: Verify test10 disposable media cleanup
 on:
-  push:
-    branches: [chore/community-test10-cleanup-20261116]
-    paths: [scripts/cloudbase/verify-test10-cleanup.mjs]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
