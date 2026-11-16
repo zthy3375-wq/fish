@@ -1,0 +1,52 @@
+name: Community test15 review
+on:
+  push:
+    branches: ['test/community-test15-review-20261116']
+    paths: ['.github/workflows/community-test15-review.yml', 'scripts/**', 'src/**', 'tests/fixtures/treehole/**']
+permissions:
+  contents: read
+concurrency:
+  group: community-test15-review
+  cancel-in-progress: true
+jobs:
+  review:
+    name: ${{ matrix.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [community, messages, touch]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get install -y fonts-noto-cjk fonts-noto-color-emoji
+      - run: npm run build
+      - name: Community PostgreSQL HTTP browser
+        if: matrix.suite == 'community'
+        run: node scripts/treehole-browser-check.mjs
+      - name: Private messages PostgreSQL HTTP browser
+        if: matrix.suite == 'messages'
+        run: node scripts/community-messages-browser-check.mjs
+      - name: Preview and touch
+        if: matrix.suite == 'touch'
+        run: |
+          node scripts/treehole-preview.mjs /tmp/community-test15-preview.html
+          node scripts/treehole-preview-check.mjs /tmp/community-test15-preview.html
+          node scripts/treehole-touch-check.mjs /tmp/community-test15-preview.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: community-test15-review-${{ matrix.suite }}-${{ github.sha }}
+          path: |
+            /tmp/handan-community-v15-qa/
+            /tmp/handan-community-messages-v15-qa/
+            /tmp/handan-community-v15-preview/
+          retention-days: 7
+          if-no-files-found: warn
