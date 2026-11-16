@@ -5,14 +5,15 @@ struct TreeholeMember: Codable, Equatable {
     let id: String, username: String, nickname: String, role: String
     let bannedUntil: String?
     var bio: String? = nil
+    var avatar: TreeholeImage? = nil
 }
-struct TreeholeAuthor: Codable, Equatable { let name: String; let anonymous: Bool, mine: Bool; var id: String? = nil }
+struct TreeholeAuthor: Codable, Equatable { let name: String; let anonymous: Bool, mine: Bool; var id: String? = nil; var avatar: TreeholeImage? = nil }
 struct TreeholeImage: Codable, Identifiable, Equatable { let id: String; var url: String? = nil; let width: Int; let height: Int }
 struct TreeholePost: Codable, Identifiable, Equatable {
     let id: String, body: String, createdAt: String
     let anonymous: Bool, locked: Bool
     var liked: Bool, saved: Bool
-    let author: TreeholeAuthor
+    var author: TreeholeAuthor
     let commentCount: Int
     var likeCount: Int
     var title: String? = nil
@@ -20,11 +21,13 @@ struct TreeholePost: Codable, Identifiable, Equatable {
     var images: [TreeholeImage]? = nil
     var watching: Bool? = nil
     var newReplyCount: Int? = nil
+    var myResponse: String? = nil
+    var responseCounts: [String: Int]? = nil
 }
 struct TreeholeComment: Codable, Identifiable, Equatable {
     let id: String, postId: String, body: String, createdAt: String
     let replyTo: String?
-    let author: TreeholeAuthor
+    var author: TreeholeAuthor
     let deleted: Bool, isOriginalPoster: Bool
     var rootId: String? = nil
     var likeCount: Int? = nil
@@ -41,15 +44,16 @@ struct TreeholeNotification: Codable, Identifiable, Equatable {
     let commentId: String?, rootId: String?
     let actor: TreeholeAuthor
     var readAt: String?
-    var label: String { ["reply": "回复了你", "post_reply": "评论了你的帖子", "thread_reply": "更新了你关注的讨论", "post_like": "赞了你的帖子", "comment_like": "赞了你的回复"][kind] ?? "有新的互动" }
+    var label: String { ["reply": "回复了你", "post_reply": "评论了你的帖子", "thread_reply": "更新了你关注的讨论", "post_like": "赞了你的帖子", "comment_like": "赞了你的回复", "post_response": "回应了你的帖子"][kind] ?? "有新的互动" }
 }
-struct TreeholePublicProfile: Codable, Equatable { let id: String, nickname: String, bio: String; let postCount: Int }
+struct TreeholePublicProfile: Codable, Equatable { let id: String, nickname: String, bio: String; let postCount: Int; var avatar: TreeholeImage? = nil }
 struct TreeholeEnvelope: Decodable {
     var image: TreeholeImage?; var imagesEnabled: Bool?
     var user: TreeholeMember?; var post: TreeholePost?; var comment: TreeholeComment?
     var posts: [TreeholePost]?; var comments: [TreeholeComment]?; var reports: [TreeholeReport]?
     var next: [String: String]?; var recoveryCode: String?
     var registrationEnabled: Bool?; var requiresInvite: Bool?
+    var avatarsEnabled: Bool?; var responsesEnabled: Bool?
     var engagementEnabled: Bool?; var unreadCount: Int?; var notifications: [TreeholeNotification]?
     var context: TreeholeComment?; var focusCommentId: String?; var profile: TreeholePublicProfile?
     // Native transport strips this before returning to the view model.
@@ -93,7 +97,7 @@ private final class TreeholeRedirectGuard: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
 actor TreeholeService {
-    static let actions: Set<String> = ["config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like", "comments.context", "threads.watch", "notifications.list", "notifications.unread", "notifications.read", "profile.get"]
+    static let actions: Set<String> = ["config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like", "comments.context", "threads.watch", "notifications.list", "notifications.unread", "notifications.read", "profile.get", "avatar.set", "responses.set"]
     private let vault: TreeholeTokenVault
     private let session: URLSession
     private var generation = 0

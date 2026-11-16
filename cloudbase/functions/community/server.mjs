@@ -13,7 +13,7 @@ export function createServer(community,{allowedOrigins=[]}={}){
   if(origin&&!allowedOrigins.includes(origin))return send(403,{error:'origin_not_allowed'});
   if(req.method==='OPTIONS')return send(204,{});
   const path=new URL(req.url,'http://localhost').pathname.replace(/^\/hyt-community/,'');
-  if(req.method==='GET'&&path==='/health')return send(200,{ok:true,service:'hyt-community',schema:2});
+  if(req.method==='GET'&&path==='/health')return send(200,{ok:true,service:'hyt-community',schema:community.config().schema});
   if(req.method==='GET'&&path==='/v1/config')return send(200,community.config());
   if(req.method!=='POST'||!/^\/v1\/[a-z.]+$/.test(path))return send(404,{error:'not_found'});
   if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))return send(415,{error:'json_required'});

@@ -64,4 +64,18 @@ class TreeholeClientTest {
         assertEquals(5, sent)
     }
 
+    @Test fun participationActionsKeepAuthenticationAndPrivateMediaOperationsBlocked() {
+        val vault = Vault().apply { token = "a".repeat(43) }; val sent = mutableListOf<String>()
+        val client = TreeholeClient(vault) { action, body, token ->
+            assertEquals(vault.token, token); sent.add(action)
+            if (action == "responses.set") assertTrue(body.isNull("kind"))
+            TreeholeResponse(200, JSONObject().put("sessionToken", "must-not-cross").put("user", JSONObject()))
+        }
+        for (action in listOf("avatar.set", "responses.set")) assertFalse(client.request(action, JSONObject().put("kind", JSONObject.NULL)).has("sessionToken"))
+        for (action in listOf("media.reserve", "media.commit", "media.cleanup", "media.purge")) {
+            try { client.request(action, JSONObject()); fail() } catch (e: TreeholeFailure) { assertEquals("invalid_request", e.code) }
+        }
+        assertEquals(2, sent.size)
+    }
+
 }

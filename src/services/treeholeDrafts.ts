@@ -7,12 +7,12 @@ async function operation<T>(id:string,mode:IDBTransactionMode,work:(store:IDBObj
 export const readTreeholeDraft=(id:string)=>operation<TreeholeDraft|undefined>(id,'readonly',s=>s.get(id));
 export const writeTreeholeDraft=(id:string,draft:TreeholeDraft)=>operation(id,'readwrite',s=>s.put(JSON.parse(JSON.stringify(draft)),id));
 export const deleteTreeholeDraft=(id:string)=>operation(id,'readwrite',s=>s.delete(id));
-export async function prepareTreeholeImage(file:File):Promise<DraftImage>{
+export async function prepareTreeholeImage(file:File,avatar=false):Promise<DraftImage>{
  if(file.size>20_000_000)throw Error('image_too_large');
  let bitmap:ImageBitmap;try{bitmap=await createImageBitmap(file);}catch{throw Error('invalid_image');}
  try{
-  const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
-  const ctx=canvas.getContext('2d');if(!ctx)throw Error('invalid_image');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+  const side=Math.min(bitmap.width,bitmap.height),scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));const canvas=document.createElement('canvas');canvas.width=avatar?Math.min(512,side):Math.max(1,Math.round(bitmap.width*scale));canvas.height=avatar?canvas.width:Math.max(1,Math.round(bitmap.height*scale));
+  const ctx=canvas.getContext('2d');if(!ctx)throw Error('invalid_image');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);if(avatar)ctx.drawImage(bitmap,(bitmap.width-side)/2,(bitmap.height-side)/2,side,side,0,0,canvas.width,canvas.height);else ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
   let data='';for(const quality of [.82,.7,.55,.4]){data=canvas.toDataURL('image/jpeg',quality).split(',')[1];if(data.length<=1_600_000)break;}
   if(!data||data.length>1_600_000)throw Error('image_too_large');return {id:crypto.randomUUID(),data,width:canvas.width,height:canvas.height};
  }finally{bitmap.close();}

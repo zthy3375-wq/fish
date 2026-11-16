@@ -344,3 +344,5 @@ to{transform:scaleX(1);opacity:1}
 .th-anon-pill{padding-inline:8px}
 .th-reply-bottom{gap:5px}
 }
+
+.th-avatar-editor{display:flex;flex-direction:column;align-items:center;gap:12px;padding:0 0 24px}.th-avatar-editor>img{width:112px;height:112px;object-fit:cover;border-radius:35%}.th-avatar-editor p{margin:0;font-size:13px}.th-avatar-editor small{color:var(--color-muted);font-size:12px;line-height:1.5;text-align:center}.th-avatar-editor button,.th-avatar-upload{position:relative;min-height:44px;padding:10px 16px;display:inline-flex;gap:7px;align-items:center;border-radius:12px;font-size:14px}.th-avatar-editor>div{display:flex;gap:12px}.th-avatar-upload{background:var(--color-tint);color:var(--color-primary);cursor:pointer;overflow:hidden}.th-avatar-upload input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.th-avatar-upload:focus-within{outline:2px solid var(--color-primary);outline-offset:2px}.th-avatar-upload.disabled{opacity:.5}

@@ -45,12 +45,13 @@ struct TreeholeDraft: Codable, Equatable {
         } catch { message = "草稿保存失败，请保留当前页面" }
     }
     func clear() { pending?.cancel(); value = TreeholeDraft(); flush() }
-    static func prepare(_ bytes: Data) throws -> TreeholeDraftPhoto {
+    static func prepare(_ bytes: Data, avatar: Bool = false) throws -> TreeholeDraftPhoto {
         guard bytes.count <= 20_000_000, let original = UIImage(data: bytes), original.size.width > 0, original.size.height > 0 else { throw TreeholeError(code: "invalid_image") }
         let scale = min(1, 1600 / max(original.size.width, original.size.height))
-        let size = CGSize(width: max(1, (original.size.width * scale).rounded()), height: max(1, (original.size.height * scale).rounded()))
+        let side = min(original.size.width, original.size.height)
+        let size = avatar ? CGSize(width: min(512, side), height: min(512, side)) : CGSize(width: max(1, (original.size.width * scale).rounded()), height: max(1, (original.size.height * scale).rounded()))
         let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
-        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { context in UIColor.white.setFill(); context.fill(CGRect(origin: .zero, size: size)); original.draw(in: CGRect(origin: .zero, size: size)) }
+        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { context in UIColor.white.setFill(); context.fill(CGRect(origin: .zero, size: size)); let ratio = size.width / side; let rect = avatar ? CGRect(x: (size.width - original.size.width * ratio) / 2, y: (size.height - original.size.height * ratio) / 2, width: original.size.width * ratio, height: original.size.height * ratio) : CGRect(origin: .zero, size: size); original.draw(in: rect) }
         for quality in [CGFloat(0.82), 0.7, 0.55, 0.4] {
             if let data = rendered.jpegData(compressionQuality: quality), data.count <= 1_200_000 { return TreeholeDraftPhoto(id: UUID().uuidString, data: data) }
         }

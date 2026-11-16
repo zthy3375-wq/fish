@@ -99,12 +99,56 @@ final class TreeholeTests: XCTestCase {
         XCTAssertEqual(decoded.size.width, 1600); XCTAssertEqual(decoded.size.height, 800); XCTAssertLessThanOrEqual(photo.data.count, 1_200_000); XCTAssertEqual(Array(photo.data.prefix(2)), [255,216])
     }
 
+    @MainActor func testAvatarPreparationCropsSquareAndPreservesOldPhotoPreparation() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 1000, height: 400)).image { context in UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 0, width: 1000, height: 400)) }
+        let source = try XCTUnwrap(image.jpegData(compressionQuality: 0.9))
+        let avatar = try TreeholeDraftStore.prepare(source, avatar: true), photo = try TreeholeDraftStore.prepare(source)
+        let cropped = try XCTUnwrap(UIImage(data: avatar.data)), original = try XCTUnwrap(UIImage(data: photo.data))
+        XCTAssertEqual(cropped.size.width, cropped.size.height); XCTAssertLessThanOrEqual(cropped.size.width, 512); XCTAssertLessThanOrEqual(avatar.data.count, 1_200_000)
+        XCTAssertGreaterThan(original.size.width, original.size.height)
+    }
+    @MainActor func testResponsesRollBackAndClearLateAccountChanges() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.responsesEnabled = true
+        let post = samplePost(); store.posts = [post]; store.current = post
+        TreeholeTestProtocol.handler = { request in XCTAssertEqual(request.url?.lastPathComponent, "responses.set"); return (503, Data("{\"error\":\"network_unavailable\"}".utf8)) }
+        store.respond(post, kind: "hug"); XCTAssertEqual(store.current?.myResponse, "hug"); XCTAssertFalse(store.busy); try await settle(store)
+        XCTAssertNil(store.current?.myResponse); XCTAssertEqual(store.current?.responseCounts, [:])
+        var fresh = post; fresh.myResponse = "same"; fresh.responseCounts = ["same": 1]
+        let response = try JSONSerialization.data(withJSONObject: ["post": JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh))])
+        TreeholeTestProtocol.handler = { _ in (200, response) }
+        let delayed = expectation(description: "response held"); TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { delayed.fulfill() }
+        store.respond(post, kind: "same"); await fulfillment(of: [delayed], timeout: 3); store.clear(); TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil
+        try await Task.sleep(nanoseconds: 30_000_000); XCTAssertNil(store.current); XCTAssertTrue(store.posts.isEmpty); XCTAssertNil(store.restoreResponse(post).myResponse)
+    }
+    @MainActor func testResponseSwitchUpdatesOnlyResponseFieldsAndRouteSnapshot() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.responsesEnabled = true
+        var post = samplePost(); post.myResponse = "same"; post.responseCounts = ["same": 1]; store.posts = [post]; store.current = post; store.profilePosts = [post]
+        var result = post; result.myResponse = "hug"; result.responseCounts = ["hug": 1]
+        let data = try JSONSerialization.data(withJSONObject: ["post": JSONSerialization.jsonObject(with: JSONEncoder().encode(result))])
+        TreeholeTestProtocol.handler = { _ in (200, data) }
+        store.respond(post, kind: "hug"); store.current?.saved = true; try await settle(store)
+        XCTAssertEqual(store.posts[0].responseCounts, ["hug": 1]); XCTAssertEqual(store.profilePosts[0].myResponse, "hug"); XCTAssertEqual(store.restoreResponse(post).myResponse, "hug"); XCTAssertEqual(store.current?.saved, true)
+    }
+    @MainActor func testLateAvatarResultDoesNotRestoreClearedUser() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.avatarsEnabled = true
+        let member = TreeholeMember(id: "member", username: "test", nickname: "测试", role: "member", bannedUntil: nil)
+        store.user = member
+        let data = try JSONSerialization.data(withJSONObject: ["user": JSONSerialization.jsonObject(with: JSONEncoder().encode(member))])
+        TreeholeTestProtocol.handler = { request in XCTAssertEqual(request.url?.lastPathComponent, "avatar.set"); return (200, data) }
+        let delayed = expectation(description: "avatar held"); TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { delayed.fulfill() }
+        let update = Task { try await store.setAvatar(nil) }; await fulfillment(of: [delayed], timeout: 3); store.clear(); TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil
+        do { try await update.value; XCTFail("must discard previous account response") } catch is CancellationError { }
+        XCTAssertNil(store.user)
+    }
     private func samplePost(_ id: String = "post-id", comments: Int = 1) -> TreeholePost {
         TreeholePost(id: id, body: "校园日常", createdAt: "2026-11-15T00:00:00Z", anonymous: false, locked: false, liked: false, saved: false, author: TreeholeAuthor(name: "同学", anonymous: false, mine: false), commentCount: comments, likeCount: 2)
     }
     @MainActor private func settle(_ store: TreeholeStore) async throws {
         for _ in 0..<200 {
-            if store.pendingReactions.isEmpty && store.pendingCommentLikes.isEmpty { return }
+            if store.pendingReactions.isEmpty && store.pendingCommentLikes.isEmpty && store.pendingResponses.isEmpty { return }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTFail("Interaction did not settle")

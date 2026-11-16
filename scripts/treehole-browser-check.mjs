@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 import {createCommunity} from '../cloudbase/functions/community/core.mjs';
 import {createServer} from '../cloudbase/functions/community/server.mjs';
 
-const root=path.resolve('dist'),output='/tmp/handan-community-v7-qa';await mkdir(output,{recursive:true});
+const root=path.resolve('dist'),output='/tmp/handan-community-v8-qa';await mkdir(output,{recursive:true});
 const db=new PGlite();await db.exec(await readFile('cloudbase/community-schema.sql','utf8'));
 const objects=new Map();let mediaOrigin='';
 const storage={put:async(k,v)=>objects.set(k,v),url:async k=>mediaOrigin+'/fixtures/'+k,remove:async k=>objects.delete(k)};
@@ -29,15 +29,16 @@ async function client(width){
  const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
  const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[],requests:[],holdNextPage:false,releasePage:null,failNextPage:false,holdNextDetail:false,releaseDetail:null,failNextDetail:false};
  await context.exposeBinding('__treeholeNative',async(_,options)=>{
-  const {action,body}=options;state.actions.push(action);state.requests.push({action,body});if(action==='posts.get'&&state.failNextDetail){state.failNextDetail=false;return {error:'network_unavailable'};}if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
+  const {action,body}=options;if(action==='media.upload'&&state.failAvatarUpload){state.failAvatarUpload=false;return {error:'network_unavailable'};}if(action==='responses.set'&&state.failResponse){state.failResponse=false;return {error:'network_unavailable'};}state.actions.push(action);state.requests.push({action,body});if(action==='posts.get'&&state.failNextDetail){state.failNextDetail=false;return {error:'network_unavailable'};}if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
   const result=await fetch(endpoint+'/v1/'+action,{method:action==='config'?'GET':'POST',headers,...(action==='config'?{}:{body:JSON.stringify(body)})});
-  const json=await result.json();if(action==='posts.get'&&state.holdNextDetail){state.holdNextDetail=false;await new Promise(resolve=>state.releaseDetail=resolve);}if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
+  const json=await result.json();if(action==='config'&&state.legacyConfig){delete json.avatarsEnabled;delete json.responsesEnabled;}if(action==='posts.get'&&state.holdNextDetail){state.holdNextDetail=false;await new Promise(resolve=>state.releaseDetail=resolve);}if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
   if(json.sessionToken){state.token=json.sessionToken;delete json.sessionToken;}
   if(action==='logout'||action==='account.delete')state.token=null;
   if(action.startsWith('posts.')||action.startsWith('comments.'))state.publicResponses.push(json);
   if(action==='media.url'&&state.breakNextImage){state.breakNextImage=false;json.image.url=mediaOrigin+'/fixtures/expired-image';}
   else if(action==='media.url'&&state.delayImage)await new Promise(r=>setTimeout(r,180));
+  if(action==='avatar.set'&&state.dropAvatarSet){state.dropAvatarSet=false;return {error:'network_unavailable'};}
   if(action==='posts.create'&&state.dropNextPost){state.dropNextPost=false;return {error:'network_unavailable'};}
   return {result:json};
  });
@@ -137,7 +138,7 @@ try{
   assert(!await a.page.locator('.th-focus-context').innerText().then(t=>t.includes('测试同学甲')));
   await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.locator('.th-inbox-item').first().waitFor();
   assert(!await a.page.locator(`[data-notification-id="${noticeId}"]`).getAttribute('class').then(t=>t.includes('is-unread')));
-  await a.page.getByRole('navigation',{name:'互动消息筛选'}).getByRole('button',{name:'收到的赞',exact:true}).click();await a.page.locator('.th-inbox-item').first().waitFor();
+  await a.page.getByRole('navigation',{name:'互动消息筛选'}).getByRole('button',{name:'赞与回应',exact:true}).click();await a.page.locator('.th-inbox-item').first().waitFor();
   assert((await a.page.locator('.th-inbox-item').allTextContents()).every(t=>t.includes('一位同学')));
   await a.page.getByRole('button',{name:'将当前消息标为已读',exact:true}).click();await a.page.waitForFunction(()=>!document.querySelector('.th-inbox-item.is-unread'));
   await a.page.getByRole('button',{name:'返回社区',exact:true}).click();await a.page.locator('.th-return-links').getByRole('button',{name:'我参与的',exact:true}).click();await a.page.locator('.th-post').first().waitFor();
@@ -283,6 +284,35 @@ try{
   await page.getByRole('button',{name:'刷新树洞',exact:true}).click();await count(20);pager.state.holdNextPage=true;await page.locator('.th-page-end').scrollIntoViewIfNeeded();await page.getByText('正在加载更多帖子…',{exact:true}).waitFor();while(!pager.state.releasePage)await new Promise(r=>setTimeout(r,10));
   await page.locator('.th-category-nav').getByRole('button',{name:'提问求助',exact:true}).click();await count(0);pager.state.releasePage();pager.state.releasePage=null;await page.waitForTimeout(120);assert.equal(await card().count(),0);checks.push(`${width}: stale page response cannot append after category changes`);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(pager.errors,[]);await pager.context.close();
+ }
+ for(const width of [360,390,430]){
+  const a=await client(width);const page=a.page;await register(page,'participation_'+width,'头像同学');
+  await page.getByRole('button',{name:'发帖',exact:true}).click();await page.getByLabel('想说的话').fill('头像与轻量回应的合成验收帖子');await page.getByRole('button',{name:'以昵称发布',exact:true}).click();await page.locator('.th-detail').waitFor();
+  const postId=await page.locator('.th-detail').getAttribute('data-post-id');
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.locator('.th-self').click();
+  const file={name:'avatar-fixture.webp',mimeType:'image/webp',buffer:fixture};await page.getByLabel('选择头像图片').setInputFiles(file);await page.getByAltText('新头像预览').waitFor();
+  assert.equal(await page.getByAltText('新头像预览').evaluate(i=>i.naturalWidth===i.naturalHeight&&i.naturalWidth<=512),true);
+  await page.locator('.th-avatar-editor').getByRole('button',{name:'取消',exact:true}).click();assert.equal(a.state.actions.filter(x=>x==='media.upload').length,0);
+  await page.getByLabel('选择头像图片').setInputFiles(file);await page.getByAltText('新头像预览').waitFor();a.state.failAvatarUpload=true;
+  await page.getByRole('button',{name:'使用这张头像',exact:true}).click();await page.getByText('连接失败，请检查网络后重试',{exact:true}).waitFor();assert.equal(await page.getByAltText('新头像预览').count(),1);assert.equal(await page.locator('.th-profile img').count(),0);
+  a.state.dropAvatarSet=true;await page.getByRole('button',{name:'使用这张头像',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.th-avatar-editor button')?.disabled===false);assert.equal(await page.getByAltText('新头像预览').count(),1);
+  await page.getByRole('button',{name:'使用这张头像',exact:true}).click();await page.getByText('头像已更新',{exact:true}).waitFor();await page.waitForFunction(()=>{const img=document.querySelector('.th-profile img');return img?.naturalWidth>0;});
+  assert.equal(a.state.actions.filter(x=>x==='media.upload').length,1);await page.screenshot({path:path.join(output,`avatar-account-${width}.png`),animations:'disabled'});
+  checks.push(`${width}: square avatar preview, cancel, upload failure and lost confirmation retry preserve identity without duplicate uploads`);
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();const card=page.locator(`[data-post-id="${postId}"]`);await card.locator('.treehole-avatar img').waitFor();
+  const response=kind=>card.getByRole('button',{name:kind,exact:true});await response('我也一样').click();await page.waitForFunction(()=>document.querySelector('.th-responses button[aria-label="我也一样"]')?.getAttribute('aria-pressed')==='true');
+  await response('抱抱').click();await page.waitForFunction(()=>document.querySelector('.th-responses button[aria-label="抱抱"]')?.getAttribute('aria-pressed')==='true');assert.equal(await response('我也一样').getAttribute('aria-pressed'),'false');
+  await card.locator('.th-post-body').click();await page.locator('.th-detail').waitFor();assert.equal(await page.locator('.th-detail').getByRole('button',{name:'抱抱',exact:true}).getAttribute('aria-pressed'),'true');
+  a.state.failResponse=true;await page.locator('.th-detail').getByRole('button',{name:'有用',exact:true}).click();await page.getByText('连接失败，请检查网络后重试',{exact:true}).waitFor();assert.equal(await page.locator('.th-detail').getByRole('button',{name:'抱抱',exact:true}).getAttribute('aria-pressed'),'true');
+  await page.locator('.th-detail').getByRole('button',{name:'抱抱',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.th-responses button[aria-pressed="true"]'));
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();assert.equal(await card.locator('.th-responses button[aria-pressed="true"]').count(),0);assert.equal(await page.locator('.th-detail').count(),0);
+  await response('有用').click();await page.waitForFunction(()=>document.querySelector('.th-responses button[aria-label="有用"]')?.getAttribute('aria-pressed')==='true');
+  await page.screenshot({path:path.join(output,`response-feed-${width}.png`),animations:'disabled'});checks.push(`${width}: responses select, switch, cancel, survive detail return and roll back failures without opening cards`);
+  await page.getByRole('button',{name:'发帖',exact:true}).click();await page.getByLabel('想说的话').fill('匿名头像隔离检查');await page.getByRole('checkbox',{name:'匿名发布',exact:true}).check();assert.equal(await page.locator('.th-compose-identity .treehole-avatar img').count(),0);
+  await page.getByRole('button',{name:'匿名发布',exact:true}).click();await page.locator('.th-detail').waitFor();assert.equal(await page.locator('.th-detail header .treehole-avatar img').count(),0);
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.locator('.th-self').click();await page.getByRole('button',{name:'恢复默认头像',exact:true}).click();await page.getByRole('button',{name:'确认',exact:true}).click();await page.getByText('已恢复默认头像',{exact:true}).waitFor();assert.equal(await page.locator('.th-profile img').count(),0);checks.push(`${width}: uploaded avatar never appears on anonymous compose/post and can be removed`);
+  a.state.legacyConfig=true;await page.reload();await page.locator('.th-post').first().waitFor();assert.equal(await page.getByRole('group',{name:'轻量回应'}).count(),0);await page.locator('.th-self').click();assert.equal(await page.getByLabel('选择头像图片').count(),0);checks.push(`${width}: older backend hides new controls and keeps existing reading/account flows`);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(a.errors,[]);await a.context.close();
  }
  await writeFile(path.join(output,'checks.json'),JSON.stringify({backend:'actual PostgreSQL (PGlite), HTTP service',bridge:'test-only native adapter',checks},null,2));
  console.log(JSON.stringify({passed:checks.length,output}));

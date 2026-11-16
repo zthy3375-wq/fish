@@ -2,7 +2,7 @@ import jpeg from 'jpeg-js';
 
 export const MAX_IMAGE_BYTES=1_200_000;
 let decoding=false;
-export function cleanImage(base64){
+export function cleanImage(base64,avatar=false){
  if(decoding)throw Object.assign(Error('too_many_requests'),{status:429,code:'too_many_requests'});
  decoding=true;
  try{
@@ -11,9 +11,16 @@ export function cleanImage(base64){
   const decoded=jpeg.decode(bytes,{useTArray:true,maxResolutionInMP:4,maxMemoryUsageInMB:96,tolerantDecoding:false});
   if(decoded.width>2000||decoded.height>2000||decoded.width*decoded.height>4_000_000)throw Error();
   // Deliberately pass pixels only: EXIF, comments, original filenames and metadata never survive.
-  const output=jpeg.encode({data:decoded.data,width:decoded.width,height:decoded.height},78).data;
+  let pixels=decoded;
+  if(avatar){
+   const size=Math.min(512,decoded.width,decoded.height),side=Math.min(decoded.width,decoded.height),left=(decoded.width-side)/2,top=(decoded.height-side)/2;
+   const data=new Uint8Array(size*size*4);
+   for(let y=0;y<size;y++)for(let x=0;x<size;x++){const src=(Math.min(decoded.height-1,Math.floor(top+(y+.5)*side/size))*decoded.width+Math.min(decoded.width-1,Math.floor(left+(x+.5)*side/size)))*4;data.set(decoded.data.subarray(src,src+4),(y*size+x)*4);}
+   pixels={data,width:size,height:size};
+  }
+  const output=jpeg.encode({data:pixels.data,width:pixels.width,height:pixels.height},78).data;
   if(output.length>MAX_IMAGE_BYTES)throw Error();
-  return {bytes:Buffer.from(output),width:decoded.width,height:decoded.height};
+  return {bytes:Buffer.from(output),width:pixels.width,height:pixels.height};
  }catch(e){if(e.code)throw e;throw Object.assign(Error('invalid_image'),{status:400,code:'invalid_image'});}
  finally{decoding=false;}
 }

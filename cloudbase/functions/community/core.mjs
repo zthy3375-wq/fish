@@ -22,11 +22,12 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get']);
+export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set']);
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
  if(action==='profile.update')return {nickname:text(b.nickname,2,20),...(b.bio!==undefined?{bio:text(b.bio,0,120)}:{})};
+ if(action==='avatar.set'){if(b.imageId===undefined)fail();return {imageId:id(b.imageId,true)};}
  if(action==='profile.get')return {memberId:id(b.memberId)};
  if(action==='notifications.unread')return {};
  if(action==='notifications.read'){
@@ -47,7 +48,8 @@ function sanitize(action,b){
  }
  if(action==='media.upload'){
   if(typeof b.data!=='string'||b.data.length>Math.ceil(MAX_IMAGE_BYTES/3)*4||b.data.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(b.data))fail('invalid_image');
-  return {requestId:id(b.requestId),digest:digest(b.data)};
+  const purpose=b.purpose??'post';if(!['post','avatar'].includes(purpose))fail();
+  return {requestId:id(b.requestId),digest:digest(b.data),purpose};
  }
  if(action==='media.discard')return {imageId:id(b.imageId)};
  if(action==='posts.create'){
@@ -61,6 +63,7 @@ function sanitize(action,b){
  }
  if(['me','logout','password.change','account.delete','blocks.clear','admin.reports'].includes(action))return {};
  const out={postId:id(b.postId)};
+ if(action==='responses.set'){if(b.kind!==null&&!['same','hug','useful'].includes(b.kind))fail();out.kind=b.kind;}
  if(action==='threads.watch')out.enabled=boolean(b.enabled);
  if(action==='comments.context')out.commentId=id(b.commentId);
  if(action==='posts.get')out.threaded=b.threaded===true;
@@ -120,7 +123,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
    const reserved=await call('media.reserve',b,tokenHash);
    if(reserved.ready)r={status:200,image:reserved.image};
    else {
-    let encoded;try{encoded=cleanImage(input.data);}catch(e){fail(e.code||'invalid_image',e.status||400);}
+    let encoded;try{encoded=cleanImage(input.data,b.purpose==='avatar');}catch(e){fail(e.code||'invalid_image',e.status||400);}
     await storage.put(reserved.image.key,encoded.bytes);
     r=await call('media.commit',{imageId:reserved.image.id,width:encoded.width,height:encoded.height,bytes:encoded.bytes.length},tokenHash);
    }
@@ -132,15 +135,18 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(r.notifications){const rows=r.notifications;r.notifications=rows.slice(0,30);r.next=rows.length>30?{beforeTime:r.notifications.at(-1).createdAt,beforeId:r.notifications.at(-1).id}:null;}
   // Internal object keys never leave this service. Signed links expire after ten minutes.
   const images=[...(r.image?[r.image]:[]),...(r.post?.images||[]),...(r.posts||[]).flatMap(p=>p.images||[])];
+  // Only already-projected public avatar fields are signed; anonymous projections contain none.
+  function avatars(value){if(!value||typeof value!=='object')return;if(value.avatar)images.push(value.avatar);for(const [key,child] of Object.entries(value))if(key!=='avatar')avatars(child);}
+  avatars(r);
   const keys=[...new Set(images.map(i=>i.key))];let urls=new Map();
   if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
   for(const image of images){image.url=urls.get(image.key)||null;delete image.key;}
-  if(storage&&['posts.delete','account.delete','admin.resolve','media.discard','media.upload'].includes(action)){
+  if(storage&&['posts.delete','account.delete','admin.resolve','media.discard','media.upload','avatar.set'].includes(action)){
    try {const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}}catch{console.warn('Community image cleanup will retry');}
   }
   if(sessionToken)r.sessionToken=sessionToken;
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories:['daily','help','study','buddies'],schema:3,engagementEnabled:true})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories:['daily','help','study','buddies'],schema:4,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
 }

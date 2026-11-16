@@ -145,7 +145,7 @@ struct TreeholeView: View {
                 else if screen == "feed", let user = tree.user {
                     Button { withAnimation { searchOpen.toggle() } } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索帖子")
                     if tree.engagementEnabled { Button(action: showInbox) { Image(systemName: "bell").overlay(alignment: .topTrailing) { if tree.unreadCount > 0 { Text(tree.unreadCount > 99 ? "99+" : "\(tree.unreadCount)").font(.system(size: 9, weight: .bold)).padding(3).background(TreeholeTheme.primary, in: Capsule()).foregroundStyle(.white).offset(x: 9, y: -9) } } }.accessibilityLabel("互动消息") }
-                    Button { nickname = user.nickname; bio = user.bio ?? ""; password = ""; newPassword = ""; accountPage = "overview"; screen = "account" } label: { TreeholeAvatar(name: user.nickname, size: 32) }.accessibilityLabel("我的树洞")
+                    Button { nickname = user.nickname; bio = user.bio ?? ""; password = ""; newPassword = ""; accountPage = "overview"; screen = "account" } label: { TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 32) }.accessibilityLabel("我的树洞")
                 }
             }
         }
@@ -300,7 +300,7 @@ struct TreeholeView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                TreeholeAvatar(name: anonymous ? "匿名同学" : tree.user?.nickname ?? "", anonymous: anonymous, size: 36)
+                TreeholeAvatar(name: anonymous ? "匿名同学" : tree.user?.nickname ?? "", anonymous: anonymous, avatar: tree.user?.avatar, size: 36)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(anonymous ? "匿名同学" : tree.user?.nickname ?? "").font(.subheadline.weight(.semibold))
                     Text(anonymous ? "本帖使用独立匿名代号" : "使用邯院通账号").font(.caption2).foregroundStyle(.secondary)
@@ -411,7 +411,7 @@ struct TreeholeView: View {
     }
     private func commentRow(_ comment: TreeholeComment, post: TreeholePost, floor: Int) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            TreeholeAvatar(name: comment.author.name, anonymous: comment.author.anonymous, size: 36)
+            TreeholeAvatar(name: comment.author.name, anonymous: comment.author.anonymous, avatar: comment.author.avatar, size: 36)
             VStack(alignment: .leading, spacing: 9) {
                 HStack(alignment: .top, spacing: 4) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -504,6 +504,7 @@ struct TreeholeView: View {
             }
             if let images = post.images, !images.isEmpty { TreeholeImageGrid(postId: post.id, images: images, full: full, api: tree.api) { index in gallery = TreeholeGallerySelection(postId: post.id, images: images, index: index) } }
             if !full, let count = post.newReplyCount, count > 0 { Button("\(count) 条新回复 · 接着聊") { open(post, comments: true) }.font(.caption).frame(minHeight: 40) }
+            if tree.responsesEnabled { TreeholeResponses(post: post, disabled: tree.pendingResponses.contains(post.id)) { tree.respond(post, kind: $0) } }
             if post.locked { Label("已暂停回复", systemImage: "lock").font(.caption2).foregroundStyle(.secondary) }
             HStack {
                 Button { if !replyText.isEmpty { tree.message = "请先发布回复，或返回时选择放弃"; return }; tree.category = post.category ?? "daily"; tree.scope = "all"; screen = "feed"; reloadFeed() } label: { Text("# " + TreeholeCategories.name(post.category)).font(.caption).foregroundStyle(TreeholeTheme.muted).padding(.horizontal, 8).padding(.vertical, 5).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 6)).frame(minHeight: 44) }
@@ -520,7 +521,7 @@ struct TreeholeView: View {
     }
     private func author(_ author: TreeholeAuthor, date: String, full: Bool) -> some View {
         HStack(spacing: 10) {
-            TreeholeAvatar(name: author.name, anonymous: author.anonymous, size: full ? 42 : 36)
+            TreeholeAvatar(name: author.name, anonymous: author.anonymous, avatar: author.avatar, size: full ? 42 : 36)
             VStack(alignment: .leading, spacing: 5) {
                 Text(author.name).font(full ? .body.weight(.semibold) : .subheadline.weight(.semibold))
                 HStack(spacing: 5) { Text(TreeholePresentation.date(date)); if author.mine { Text("我").foregroundStyle(TreeholeTheme.primary).padding(.horizontal, 4).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 3)) } }.font(.caption).foregroundStyle(.secondary)
@@ -550,11 +551,12 @@ struct TreeholeView: View {
     @ViewBuilder private func account(_ user: TreeholeMember) -> some View {
         if accountPage == "overview" {
             VStack(spacing: 12) {
-                TreeholeAvatar(name: user.nickname, size: 66)
+                TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 66)
                 Text(user.nickname).font(.title2.bold())
                 Text("@" + user.username).font(.caption).foregroundStyle(.secondary)
                 Text("用自己的昵称，留下校园里的回声。").font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity).padding(.vertical, 18)
+            if tree.avatarsEnabled { TreeholeAvatarEditor(tree: tree) }
             HStack(spacing: 0) {
                 Button { accountFeed("mine") } label: { VStack(spacing: 10) { Image(systemName: "bubble.left").font(.title3); Text("我的帖子").font(.subheadline) }.frame(maxWidth: .infinity).padding(.vertical, 8) }
                 Divider()
@@ -625,8 +627,8 @@ struct TreeholeView: View {
     }
     private func previousRoute() {
         guard let frame = routes.popLast() else { returnToFeed(); return }
-        tree.leaveDetail(); tree.current = frame.post; tree.comments = frame.comments; tree.commentNext = frame.next; tree.focusedThread = frame.context
-        tree.publicProfile = frame.profile; tree.profilePosts = frame.profilePosts; tree.profileNext = frame.profileNext
+        tree.leaveDetail(); tree.current = frame.post.map { tree.restoreResponse($0) }; tree.comments = frame.comments; tree.commentNext = frame.next; tree.focusedThread = frame.context
+        tree.publicProfile = frame.profile; tree.profilePosts = frame.profilePosts.map { tree.restoreResponse($0) }; tree.profileNext = frame.profileNext
         initialDetailTarget = frame.context == nil ? "post" : "context"; screen = frame.screen
         if screen == "feed" && tree.feedNeedsRefresh { reloadFeed() }
     }
@@ -651,7 +653,7 @@ struct TreeholeView: View {
     @ViewBuilder private var publicProfile: some View {
         if let profile = tree.publicProfile {
             VStack(spacing: 12) {
-                TreeholeAvatar(name: profile.nickname, size: 64)
+                TreeholeAvatar(name: profile.nickname, avatar: profile.avatar, size: 64)
                 Text(profile.nickname).font(.title2.bold())
                 Text(profile.bio.isEmpty ? "还没有填写简介" : profile.bio).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Text("\(profile.postCount) 条公开帖子").font(.caption).foregroundStyle(.secondary)
@@ -691,9 +693,10 @@ private struct TreeholeRouteFrame {
     let profileNext: [String: String]?
 }
 // Derive presentation only from the public alias, never an account identifier.
-private struct TreeholeAvatar: View {
+struct TreeholeAvatar: View {
     let name: String
     var anonymous = false
+    var avatar: TreeholeImage? = nil
     var size: CGFloat = 42
     private var tone: Color {
         let palette = ["green", "blue", "purple", "orange"]
@@ -703,7 +706,9 @@ private struct TreeholeAvatar: View {
     var body: some View {
         Group {
             if anonymous { Image(systemName: "theatermasks").font(.system(size: size * 0.43, weight: .medium)) }
-            else { Text(String(name.prefix(1))).font(.system(size: size * 0.43, weight: .medium)) }
+            else if let source = avatar?.url, let url = URL(string: source) {
+                AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Text(String(name.prefix(1))).font(.system(size: size * 0.43, weight: .medium)) }.frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.34))
+            } else { Text(String(name.prefix(1))).font(.system(size: size * 0.43, weight: .medium)) }
         }.foregroundStyle(tone).frame(width: size, height: size).background(tone.opacity(0.13), in: RoundedRectangle(cornerRadius: anonymous ? size / 2 : size * 0.34)).accessibilityHidden(true)
     }
 }

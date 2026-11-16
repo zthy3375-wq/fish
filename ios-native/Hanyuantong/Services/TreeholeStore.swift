@@ -19,6 +19,10 @@ import Combine
     @Published var category = "all"
     @Published var sort = "latest"
     @Published var imagesEnabled = false
+    @Published var avatarsEnabled = false
+    @Published var responsesEnabled = false
+    @Published var pendingResponses: Set<String> = []
+    private var responseSnapshots: [String: TreeholePost] = [:]
     @Published var engagementEnabled = false
     @Published var unreadCount = 0
     @Published var notifications: [TreeholeNotification] = []
@@ -60,12 +64,13 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
             self.engagementEnabled = config.engagementEnabled == true
+            self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
             do { self.user = try await self.api.request("me").user; try await self.feed() }
             catch let error as TreeholeError where error.code == "session_expired" { self.clear() }
             self.ready = true
@@ -106,6 +111,7 @@ import Combine
         var updated = fresh
         if pendingReactions.contains(fresh.id + ":like") { updated.liked = posts[index].liked; updated.likeCount = posts[index].likeCount }
         if pendingReactions.contains(fresh.id + ":save") { updated.saved = posts[index].saved }
+        if pendingResponses.contains(fresh.id) { updated.myResponse = posts[index].myResponse; updated.responseCounts = posts[index].responseCounts }
         posts[index] = updated
     }
     func leaveDetail() {
@@ -209,6 +215,7 @@ import Combine
             if pendingReactions.contains(post.id + ":like"), let cached = current { fresh.liked = cached.liked; fresh.likeCount = cached.likeCount }
             if pendingReactions.contains(post.id + ":save"), let cached = current { fresh.saved = cached.saved }
             if !more { discussion += 1; expandedReplies = []; replyPages = [:]; loadedThreads = [] }
+            if pendingResponses.contains(post.id), let cached = current { fresh.myResponse = cached.myResponse; fresh.responseCounts = cached.responseCounts }
             current = fresh; syncFeedPost(fresh)
             var ids = Set(comments.map(\.id))
             comments = more ? comments + (r.comments ?? []).filter { ids.insert($0.id).inserted } : r.comments ?? []; commentNext = r.next
@@ -274,6 +281,54 @@ import Combine
         if let index = posts.firstIndex(where: { $0.id == id }) { apply(&posts[index]) }
         if let index = profilePosts.firstIndex(where: { $0.id == id }) { apply(&profilePosts[index]) }
         if var post = current, post.id == id { apply(&post); current = post }
+    }
+    func restoreResponse(_ post: TreeholePost) -> TreeholePost {
+        guard let response = responseSnapshots[post.id] else { return post }; var restored = post
+        restored.myResponse = response.myResponse; restored.responseCounts = response.responseCounts; return restored
+    }
+    private func updateResponse(_ id: String, kind: String?, counts: [String: Int], source: TreeholePost) {
+        var snapshot = source; snapshot.myResponse = kind; snapshot.responseCounts = counts; responseSnapshots[id] = snapshot
+        if let i = posts.firstIndex(where: { $0.id == id }) { posts[i].myResponse = kind; posts[i].responseCounts = counts }
+        if let i = profilePosts.firstIndex(where: { $0.id == id }) { profilePosts[i].myResponse = kind; profilePosts[i].responseCounts = counts }
+        if current?.id == id { current?.myResponse = kind; current?.responseCounts = counts }
+    }
+    func respond(_ post: TreeholePost, kind: String) {
+        guard responsesEnabled, !busy, ["same", "hug", "useful"].contains(kind), !pendingResponses.contains(post.id) else { return }
+        let generation = epoch, next: String? = post.myResponse == kind ? nil : kind
+        var counts = post.responseCounts ?? [:]
+        if let old = post.myResponse { counts[old] = max(0, (counts[old] ?? 0) - 1) }; if let next { counts[next, default: 0] += 1 }
+        pendingResponses.insert(post.id); message = nil; updateResponse(post.id, kind: next, counts: counts, source: post)
+        Task {
+            defer { if generation == epoch { pendingResponses.remove(post.id) } }
+            do {
+                let result = try await api.request("responses.set", ["postId": post.id, "kind": next as Any? ?? NSNull()])
+                guard generation == epoch, let fresh = result.post else { return }
+                updateResponse(post.id, kind: fresh.myResponse, counts: fresh.responseCounts ?? [:], source: fresh)
+            } catch {
+                if generation == epoch { updateResponse(post.id, kind: post.myResponse, counts: post.responseCounts ?? [:], source: post) }
+                actionError(error, generation: generation)
+            }
+        }
+    }
+    func setAvatar(_ photo: TreeholeDraftPhoto?) async throws {
+        guard avatarsEnabled, user != nil else { return }
+        let generation = epoch
+        var imageId: String?
+        if let photo {
+            let uploaded = try await api.request("media.upload", ["data": photo.data.base64EncodedString(), "requestId": photo.id, "purpose": "avatar"])
+            guard generation == epoch else { throw CancellationError() }
+            guard let image = uploaded.image else { throw TreeholeError(code: "invalid_response") }; imageId = image.id
+        }
+        let result = try await api.request("avatar.set", ["imageId": imageId as Any? ?? NSNull()])
+        guard generation == epoch else { throw CancellationError() }
+        guard let updated = result.user else { throw TreeholeError(code: "invalid_response") }
+        user = updated; feedNeedsRefresh = true
+        func author(_ value: TreeholeAuthor) -> TreeholeAuthor { var value = value; if !value.anonymous && value.id == updated.id { value.avatar = updated.avatar }; return value }
+        for i in posts.indices { posts[i].author = author(posts[i].author) }
+        for i in profilePosts.indices { profilePosts[i].author = author(profilePosts[i].author) }
+        if let value = current { current?.author = author(value.author) }
+        for i in comments.indices { comments[i].author = author(comments[i].author); for j in comments[i].replies?.indices ?? 0..<0 { if let value = comments[i].replies?[j].author { comments[i].replies?[j].author = author(value) } } }
+        if publicProfile?.id == updated.id { publicProfile?.avatar = updated.avatar }
     }
     func react(_ post: TreeholePost, kind: String) {
         let key = post.id + ":" + kind

@@ -5,17 +5,17 @@ import {treeholeTimestamp} from '../domain/treeholePresentation';
 import type {TreeholeNotification} from '../services/treehole';
 defineProps<{items:TreeholeNotification[];filter:string;loading:boolean;error:string;more:boolean;unread:number}>();
 defineEmits<{filter:[value:string];open:[item:TreeholeNotification];refresh:[];more:[];read:[]}>();
-const labels={reply:'回复了你',post_reply:'评论了你的帖子',thread_reply:'更新了你关注的讨论',post_like:'赞了你的帖子',comment_like:'赞了你的回复'};
+const labels={reply:'回复了你',post_reply:'评论了你的帖子',thread_reply:'更新了你关注的讨论',post_like:'赞了你的帖子',comment_like:'赞了你的回复',post_response:'回应了你的帖子'};
 </script>
 <template>
  <div class="th-inbox">
   <div class="th-inbox-heading"><div><p class="th-eyebrow">每一份回应，都在这里</p><p class="th-muted">{{unread?unread+' 条未读互动':'看看之前的交流，也可以继续聊聊'}}</p></div><button aria-label="刷新互动消息" :disabled="loading" @click="$emit('refresh')"><RefreshCw :size="19"/></button></div>
-  <nav class="th-inbox-filters" aria-label="互动消息筛选"><button v-for="tab in [{id:'all',label:'全部'},{id:'replies',label:'回复'},{id:'likes',label:'收到的赞'}]" :key="tab.id" :aria-pressed="filter===tab.id" :disabled="loading" @click="$emit('filter',tab.id)">{{tab.label}}</button><button class="th-read-visible" aria-label="将当前消息标为已读" :disabled="loading||!items.some(n=>!n.readAt)" @click="$emit('read')"><CheckCheck :size="18"/></button></nav>
+  <nav class="th-inbox-filters" aria-label="互动消息筛选"><button v-for="tab in [{id:'all',label:'全部'},{id:'replies',label:'回复'},{id:'likes',label:'赞与回应'}]" :key="tab.id" :aria-pressed="filter===tab.id" :disabled="loading" @click="$emit('filter',tab.id)">{{tab.label}}</button><button class="th-read-visible" aria-label="将当前消息标为已读" :disabled="loading||!items.some(n=>!n.readAt)" @click="$emit('read')"><CheckCheck :size="18"/></button></nav>
   <div v-if="error" class="th-detail-error" role="alert"><p>{{error}}</p><button :disabled="loading" @click="more&&items.length?$emit('more'):$emit('refresh')">重试</button></div>
   <div v-if="loading&&!items.length" class="th-skeleton" role="status" aria-label="正在加载互动消息"><span/><span/><span/></div>
   <div v-else-if="!items.length&&!error" class="th-empty"><Bell :size="32"/><h3>回应会来到这里</h3><p>有人回复你、点赞，或关注的讨论有新回复时，就能在这里找到。</p></div>
   <button v-for="item in items" :key="item.id" class="th-inbox-item" :class="{'is-unread':!item.readAt}" :data-notification-id="item.id" :disabled="loading" @click="$emit('open',item)">
-   <span class="th-inbox-avatar"><TreeholeAvatar :name="item.actor.name" :anonymous="item.actor.anonymous" :size="40"/><span class="th-notice-kind"><ThumbsUp v-if="item.kind.endsWith('like')" :size="11"/><MessageCircle v-else :size="11"/></span></span>
+   <span class="th-inbox-avatar"><TreeholeAvatar :name="item.actor.name" :url="item.actor.avatar?.url" :anonymous="item.actor.anonymous" :size="40"/><span class="th-notice-kind"><ThumbsUp v-if="item.kind.endsWith('like')" :size="11"/><MessageCircle v-else :size="11"/></span></span>
    <span class="th-inbox-body"><span class="th-inbox-byline"><strong>{{item.actor.name}}</strong><small>{{treeholeTimestamp(item.createdAt)}}</small></span><span class="th-notice-action">{{labels[item.kind]}}</span><span v-if="!item.kind.endsWith('like')" class="th-notice-excerpt">{{item.excerpt}}</span><span class="th-notice-post">{{item.postTitle||'图片分享'}}</span></span><span v-if="!item.readAt" class="th-unread-dot" aria-label="未读"/><ChevronRight v-else :size="15" class="th-inbox-chevron"/>
   </button>
   <button v-if="more" class="th-more" :disabled="loading" @click="$emit('more')">{{loading?'正在加载…':'更早的互动'}}</button>

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import {ref} from 'vue';
 import {ThumbsUp,MessageCircle,MoreHorizontal,LockKeyhole} from 'lucide-vue-next';
+import TreeholeResponses from './TreeholeResponses.vue';
 import TreeholeAvatar from './TreeholeAvatar.vue';
 import TreeholeImages from './TreeholeImages.vue';
 import {treeholeTimestamp} from '../domain/treeholePresentation';
 import {treeholeCategoryName} from '../domain/treeholeCategories';
-import type {TreeholePost} from '../services/treehole';
-const props=withDefaults(defineProps<{post:TreeholePost;full?:boolean;busy?:boolean;reacting?:boolean}>(),{full:false,busy:false,reacting:false});
-const emit=defineEmits<{open:[];discussion:[];react:[kind:'like'|'save'];menu:[];image:[index:number];category:[id:string];author:[id:string]}>();
+import type {TreeholePost,TreeholeResponseKind} from '../services/treehole';
+const props=withDefaults(defineProps<{post:TreeholePost;full?:boolean;busy?:boolean;reacting?:boolean;responsesEnabled?:boolean;responding?:boolean}>(),{full:false,busy:false,reacting:false});
+const emit=defineEmits<{open:[];discussion:[];react:[kind:'like'|'save'];menu:[];image:[index:number];category:[id:string];author:[id:string];response:[kind:TreeholeResponseKind]}>();
 const pressed=ref(false);
 let pointer:{x:number;y:number;at:number;moved:boolean}|undefined;
 function down(event:PointerEvent){if(props.full||props.busy)return;pointer={x:event.clientX,y:event.clientY,at:performance.now(),moved:false};pressed.value=!(event.target as Element).closest('button');}
@@ -21,11 +22,12 @@ function openCard(event:MouseEvent){if(!props.full&&!props.busy&&!(event.target 
 </script>
 <template>
  <article class="th-post-card" :class="[full?'th-detail':'th-post',{'is-pressed':pressed}]" :data-post-id="post.id" @pointerdown="down" @pointermove="move" @pointerup="pressed=false" @pointercancel="pointer&&(pointer.moved=true);pressed=false" @click.capture="capture" @click="openCard">
-  <header><button v-if="post.author.id&&!post.anonymous" class="th-author-avatar" :aria-label="'查看 '+post.author.name+' 的主页'" :disabled="busy" @click="$emit('author',post.author.id)"><TreeholeAvatar :name="post.author.name" :size="full?42:36"/></button><TreeholeAvatar v-else :name="post.author.name" :anonymous="post.anonymous" :size="full?42:36"/><div class="th-post-byline"><button v-if="post.author.id&&!post.anonymous" class="th-author-name" :disabled="busy" @click="$emit('author',post.author.id)">{{post.author.name}}</button><strong v-else>{{post.author.name}}</strong><span v-if="post.author.mine" class="th-owner">我</span><small>{{treeholeTimestamp(post.createdAt)}}<span v-if="post.anonymous"> · 匿名发布</span></small></div><button class="th-post-menu" aria-label="帖子操作" :disabled="busy" @click="$emit('menu')"><MoreHorizontal :size="21"/></button></header>
+  <header><button v-if="post.author.id&&!post.anonymous" class="th-author-avatar" :aria-label="'查看 '+post.author.name+' 的主页'" :disabled="busy" @click="$emit('author',post.author.id)"><TreeholeAvatar :name="post.author.name" :url="post.author.avatar?.url" :size="full?42:36"/></button><TreeholeAvatar v-else :name="post.author.name" :url="post.author.avatar?.url" :anonymous="post.anonymous" :size="full?42:36"/><div class="th-post-byline"><button v-if="post.author.id&&!post.anonymous" class="th-author-name" :disabled="busy" @click="$emit('author',post.author.id)">{{post.author.name}}</button><strong v-else>{{post.author.name}}</strong><span v-if="post.author.mine" class="th-owner">我</span><small>{{treeholeTimestamp(post.createdAt)}}<span v-if="post.anonymous"> · 匿名发布</span></small></div><button class="th-post-menu" aria-label="帖子操作" :disabled="busy" @click="$emit('menu')"><MoreHorizontal :size="21"/></button></header>
   <div v-if="full" class="th-full-body"><h2 v-if="post.title">{{post.title}}</h2><p v-if="post.body">{{post.body}}</p></div>
   <button v-else class="th-post-body" :disabled="busy" @click="$emit('open')"><h2 v-if="post.title">{{post.title}}</h2><span v-if="post.body">{{post.body}}</span></button>
   <TreeholeImages :images="post.images||[]" :post-id="post.id" :full="full" @open="$emit('image',$event)"/>
   <button v-if="!full&&(post.newReplyCount||0)>0" class="th-new-replies" :disabled="busy" @click="$emit('discussion')">{{post.newReplyCount}} 条新回复 · 接着聊 <MessageCircle :size="13"/></button>
+  <TreeholeResponses v-if="responsesEnabled" :post="post" :disabled="busy||responding" @choose="$emit('response',$event)"/>
   <footer class="th-post-actions"><button class="th-category-tag" :disabled="busy" @click="$emit('category',post.category||'daily')"><span>#</span>{{treeholeCategoryName(post.category)}}</button><span class="th-action-spacer"/><span v-if="post.locked" class="th-locked-tag" aria-label="已暂停回复"><LockKeyhole :size="13"/></span><template v-if="!full"><button :aria-label="'查看评论，共 '+post.commentCount+' 条'" :disabled="busy" @click="$emit('discussion')"><MessageCircle :size="19"/><span>{{post.commentCount||'评论'}}</span></button><button :aria-label="post.liked?'取消点赞':'点赞'" :aria-pressed="post.liked" :disabled="busy||reacting" @click="$emit('react','like')"><ThumbsUp :size="19" :fill="post.liked?'currentColor':'none'"/><span>{{post.likeCount||'赞'}}</span></button></template></footer>
  </article>
 </template>
