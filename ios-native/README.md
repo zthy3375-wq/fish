@@ -4,7 +4,7 @@
 
 ## 2026-11-16 社区测试基线
 
-当前分支 `feat/community-polls-comments-20261116` / 草稿 PR #72，与 Android test.11 同步。原生社区已包含独立邯院通账号、图文与匿名发言、楼中楼、点赞收藏、消息与讨论关注、头像与轻量回应、四分区与兴趣标签，以及公开主页关注、关注动态、本人关注名单、单选投票和评论/楼中楼配图。学校账号与社区账号保持分离。实现及交付边界见 [test.11 记录](../docs/COMMUNITY-POLLS-COMMENTS.md)，原生编译和测试证据见 [VALIDATION.md](VALIDATION.md)。没有可分发 IPA/TestFlight。
+当前分支 `feat/community-buddies-20261116`，基于草稿 PR #72，与 Android test.12 同步。原生社区已包含独立邯院通账号、图文与匿名发言、楼中楼、点赞收藏、消息与讨论关注、头像与轻量回应、四分区与兴趣标签，以及公开主页关注、关注动态、本人关注名单、单选投票、评论/楼中楼配图，以及搭子招募与私人报名管理。学校账号与社区账号保持分离。实现及交付边界见 [test.12 记录](../docs/COMMUNITY-BUDDIES.md)，原生编译和测试证据见 [VALIDATION.md](VALIDATION.md)。没有可分发 IPA/TestFlight。
 
 ## 2026-11-14 联合维护
 

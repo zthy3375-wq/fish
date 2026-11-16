@@ -10,7 +10,7 @@ const envId='hanyuantong-d8gjzt1jh12370215',region='ap-shanghai';
 const base=`https://${envId}-1527874185.${region}.app.tcloudbase.com/hyt-community`;
 const activation=JSON.parse(readFileSync('cloudbase/community-test-deploy.json','utf8'));
 if(activation.mode!=='private-treehole-test'||activation.service!=='hyt-community'||activation.registration!=='invite'||!/^[0-9a-f]{64}$/.test(activation.inviteHash))throw Error('Invalid private-test activation');
-if(process.env.GITHUB_REF&&!['refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test11-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
+if(process.env.GITHUB_REF&&!['refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test12-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
 const key=process.env.CLOUDBASE_API_KEY?.trim();if(!key)throw Error('CloudBase deployment key unavailable');
 const response=await fetch(`https://${envId}.${region}.tcb-api.tencentcloudapi.com/capi/credential`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({env:envId}),signal:AbortSignal.timeout(25000)});
 const envelope=await response.json();if(envelope.code!==0)throw Error('CloudBase credential exchange failed');const credentials=envelope.data;
@@ -27,10 +27,10 @@ if(!/^[a-zA-Z0-9_-]{1,120}$/.test(dbRole||'')||['anon','authenticated','public']
 const schema=readFileSync('cloudbase/community-schema.sql','utf8');
 cli(['db','execute','--sql','BEGIN;\n'+schema+`\nDO $$ DECLARE obj record; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN
- ('hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes') LOOP
+ ('hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
  EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,'${dbRole}'); END LOOP;
  FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
- ('hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible') LOOP
+ ('hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\nCOMMIT;`,'--json']);
 console.log('Community schema installed with direct-client access denied');
 await cloudMedia({env:envId,key}).ensureBucket();
@@ -47,10 +47,10 @@ try{cli(['fn','deploy','hyt-community','--httpFn','--dir','cloudbase/functions/c
 let configuration;
 for(let attempt=0;attempt<12;attempt++){
  try{configuration=await fetch(base+'/v1/config',{signal:AbortSignal.timeout(10000)}).then(async r=>({ok:r.ok,value:await r.json()}));}catch{configuration=null;}
- if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite&&configuration.value.imagesEnabled&&configuration.value.schema===7&&configuration.value.engagementEnabled===true&&configuration.value.avatarsEnabled===true&&configuration.value.responsesEnabled===true&&configuration.value.discoveryEnabled===true&&configuration.value.followingEnabled===true&&configuration.value.pollsEnabled===true&&configuration.value.commentImagesEnabled===true)break;
+ if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite&&configuration.value.imagesEnabled&&configuration.value.schema===8&&configuration.value.engagementEnabled===true&&configuration.value.avatarsEnabled===true&&configuration.value.responsesEnabled===true&&configuration.value.discoveryEnabled===true&&configuration.value.followingEnabled===true&&configuration.value.pollsEnabled===true&&configuration.value.commentImagesEnabled===true&&configuration.value.buddiesEnabled===true)break;
  await new Promise(resolve=>setTimeout(resolve,2500));
 }
-if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite||!configuration.value.imagesEnabled||configuration.value.schema!==7||configuration.value.engagementEnabled!==true||configuration.value.avatarsEnabled!==true||configuration.value.responsesEnabled!==true||configuration.value.discoveryEnabled!==true||configuration.value.followingEnabled!==true||configuration.value.pollsEnabled!==true||configuration.value.commentImagesEnabled!==true)throw Error('Invite gate did not activate');
+if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite||!configuration.value.imagesEnabled||configuration.value.schema!==8||configuration.value.engagementEnabled!==true||configuration.value.avatarsEnabled!==true||configuration.value.responsesEnabled!==true||configuration.value.discoveryEnabled!==true||configuration.value.followingEnabled!==true||configuration.value.pollsEnabled!==true||configuration.value.commentImagesEnabled!==true||configuration.value.buddiesEnabled!==true)throw Error('Invite gate did not activate');
 const http=async(action,body={},token='')=>{const r=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});return {status:r.status,body:await r.json()};};
 if((await http('posts.list')).status!==401)throw Error('Anonymous read access unexpectedly enabled');
 if((await http('credentials',{username:'test'})).status!==404)throw Error('Internal endpoint was exposed');
@@ -61,11 +61,11 @@ const db=async(a,b,t)=>(await sql('SELECT hyt_community($1,$2::jsonb,$3) AS resu
 const local=createCommunity({db,storage:cloudMedia({env:envId,key}),registrationEnabled:true,rateSalt});
 const testAccounts=[];const testPosts=[];
 try{
- for(let i=0;i<2;i++){
+ for(let i=0;i<3;i++){
   const password=randomBytes(24).toString('base64url');const r=await local.execute('register',{username:'smoke_'+randomBytes(6).toString('hex'),nickname:'联调测试'+i,password,agreed:true},'','deployment');
   testAccounts.push({...r,password});
  }
- const [author,reader]=testAccounts;
+ const [author,reader,other]=testAccounts;
  const fixture=jpeg.encode({width:4,height:4,data:Buffer.alloc(4*4*4,125)},75).data;
  const uploaded=await http('media.upload',{data:fixture.toString('base64'),requestId:randomUUID()},author.sessionToken);
  if(uploaded.status!==200||!uploaded.body.image?.url)throw Error('Live image upload failed');
@@ -161,6 +161,28 @@ try{
  const deletedImageComment=await http('comments.delete',{postId:pollId,commentId:imageComment.body.comment.id},reader.sessionToken);
  if(deletedImageComment.status!==200)throw Error('Live comment delete request failed');
  if((await http('media.url',{postId:pollId,imageId:commentImage.body.image.id},author.sessionToken)).status===200)throw Error('Deleted comment image remained accessible');
+ const buddyBody={category:'buddies',body:'[搭子联调，完成即清理]',anonymous:true,requestId:randomUUID(),buddy:{location:'合成集合点',startsAt:new Date(Date.now()+3600000).toISOString(),capacity:1}};
+ const buddyCreated=await http('posts.create',buddyBody,author.sessionToken);
+ if(buddyCreated.status!==201||buddyCreated.body.post.buddy?.count!==0)throw Error('Live buddy creation failed');
+ const buddyId=buddyCreated.body.post.id;testPosts.push(buddyId);
+ if((await http('posts.create',buddyBody,author.sessionToken)).body.post?.id!==buddyId)throw Error('Live buddy publish retry failed');
+ const racers=await Promise.all([reader,other].map(u=>http('buddies.join',{postId:buddyId,enabled:true},u.sessionToken)));
+ if(racers.filter(r=>r.status===200).length!==1||racers.filter(r=>r.body.error==='buddy_full').length!==1)throw Error('Live buddy last-seat race failed');
+ const winner=racers[0].status===200?reader:other;
+ const joined=await http('buddies.join',{postId:buddyId,enabled:true},winner.sessionToken);
+ if(joined.body.post?.buddy?.count!==1||!joined.body.post.buddy.joined)throw Error('Live buddy join retry failed');
+ const roster=await http('buddies.members',{postId:buddyId},author.sessionToken);
+ if(roster.body.participants?.length!==1||roster.body.participants[0].id!==winner.user.id||'username' in roster.body.participants[0])throw Error('Live buddy roster failed');
+ if((await http('buddies.members',{postId:buddyId},winner.sessionToken)).status!==403)throw Error('Live buddy roster privacy failed');
+ if(!(await http('posts.list',{scope:'joined'},winner.sessionToken)).body.posts?.some(p=>p.id===buddyId))throw Error('Live joined feed failed');
+ const closed=await http('buddies.close',{postId:buddyId,closed:true},author.sessionToken);
+ if(!closed.body.post?.buddy?.closed)throw Error('Live buddy close failed');
+ const buddyNotices=(await http('notifications.list',{filter:'replies'},winner.sessionToken)).body.notifications?.filter(n=>n.kind==='buddy'&&n.postId===buddyId);
+ if(buddyNotices?.length!==1||'id' in buddyNotices[0].actor||'avatar' in buddyNotices[0].actor)throw Error('Live buddy notification privacy failed');
+ const left=await http('buddies.join',{postId:buddyId,enabled:false},winner.sessionToken);
+ if(left.body.post?.buddy?.count!==0||left.body.post.buddy.joined)throw Error('Live buddy cancellation failed');
+ if((await http('buddies.close',{postId:buddyId,closed:false},author.sessionToken)).body.post?.buddy?.closed!==false)throw Error('Live buddy reopen failed');
+ console.log('Live test.12 buddy checks passed: immutable publish retry, simultaneous last seat, private roster, joined feed, notifications, close/reopen and cancellation');
  console.log('Live test.11 checks passed: poll-only publish/retry, immutable deadline, select/switch/cancel, voter privacy, image-only comment/retry/projection/URL and delete');
  console.log('Live test.10 checks passed: follow/unfollow, viewer-owned list, public following feed and anonymous exclusion');
  console.log('Live test.9 checks passed: interest publication/filter/search, legacy study category and identity preserved, anonymous section guard');
@@ -176,7 +198,7 @@ try{
   await sql('DELETE FROM hyt_media WHERE member_id=$1::uuid',[u.user.id]);
  }
  // Remove only these generated test identities/content, never real user rows.
- for(const pid of testPosts){await sql('DELETE FROM hyt_poll_votes WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_polls WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_responses WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_notifications WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_watches WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_visits WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comment_likes WHERE comment_id IN (SELECT id FROM hyt_comments WHERE post_id=$1::uuid)',[pid]);await sql('DELETE FROM hyt_media WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_aliases WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comments WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_posts WHERE id=$1::uuid',[pid]);}
+ for(const pid of testPosts){await sql('DELETE FROM hyt_buddy_members WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_buddies WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_poll_votes WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_polls WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_responses WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_notifications WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_watches WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_visits WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comment_likes WHERE comment_id IN (SELECT id FROM hyt_comments WHERE post_id=$1::uuid)',[pid]);await sql('DELETE FROM hyt_media WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_aliases WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comments WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_posts WHERE id=$1::uuid',[pid]);}
  for(const u of testAccounts)await sql('DELETE FROM hyt_members WHERE id=$1::uuid AND deleted_at IS NOT NULL',[u.user.id]);
 }
 console.log('Disposable accounts, posts, comments, poll votes and media cleared');

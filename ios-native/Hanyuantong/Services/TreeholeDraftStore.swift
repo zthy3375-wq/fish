@@ -15,8 +15,9 @@ struct TreeholeDraft: Codable, Equatable {
     var anonymous = false
     var requestId = UUID().uuidString
     var photos: [TreeholeDraftPhoto] = []
+    var buddy: TreeholeBuddyDraft? = nil
     var poll: TreeholePollDraft? = nil
-    var hasContent: Bool { !title.isEmpty || !body.isEmpty || !photos.isEmpty || poll != nil }
+    var hasContent: Bool { !title.isEmpty || !body.isEmpty || !photos.isEmpty || poll != nil || buddy != nil }
 }
 @MainActor final class TreeholeDraftStore: ObservableObject {
     @Published var value = TreeholeDraft() { didSet { scheduleSave() } }

@@ -8,6 +8,7 @@
 - [兴趣分区与社区首页（test.9）](COMMUNITY-DISCOVERY.md)
 - [头像上传与轻量回应（test.8）](COMMUNITY-PARTICIPATION.md)
 - [互动消息与讨论回访（test.7）](COMMUNITY-RETURN.md)
+- [搭子招募（test.12）](COMMUNITY-BUDDIES.md)
 - [投票帖与评论配图（test.11）](COMMUNITY-POLLS-COMMENTS.md)
 - [校园泛娱乐社区方向与后续范围](COMMUNITY-DIRECTION.md)
 - [树洞账号、匿名规则与内测验证](TREEHOLE.md)

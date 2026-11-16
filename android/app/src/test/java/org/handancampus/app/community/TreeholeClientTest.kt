@@ -103,4 +103,22 @@ class TreeholeClientTest {
         assertFalse(client.request("polls.vote", JSONObject().put("postId", "post").put("optionId", JSONObject.NULL)).has("sessionToken")); assertEquals(1, sent)
     }
 
+    @Test fun buddyActionsPreserveExplicitStateAndRequireNativeSession() {
+        val vault = Vault(); var sent = 0
+        val client = TreeholeClient(vault) { action, body, token ->
+            assertEquals(vault.token, token); sent++
+            if (action == "buddies.join") assertEquals(false, body.getBoolean("enabled"))
+            if (action == "buddies.close") assertEquals(false, body.getBoolean("closed"))
+            TreeholeResponse(200, JSONObject().put("sessionToken", "private"))
+        }
+        for (action in listOf("buddies.join", "buddies.close", "buddies.members")) {
+            try { client.request(action, JSONObject()); fail() } catch (e: TreeholeFailure) { assertEquals("session_expired", e.code) }
+        }
+        assertEquals(0, sent); vault.token = "a".repeat(43)
+        for (action in listOf("buddies.join", "buddies.close", "buddies.members")) {
+            assertFalse(client.request(action, JSONObject().put("postId", "post").put("enabled", false).put("closed", false)).has("sessionToken"))
+        }
+        assertEquals(3, sent)
+    }
+
 }

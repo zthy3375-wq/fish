@@ -14,7 +14,7 @@ struct TreeholeInboxView: View {
                 Button { Task { await tree.loadInbox() } } label: { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }.accessibilityLabel("刷新互动消息")
             }.padding(.vertical, 16)
             HStack(spacing: 24) {
-                ForEach([("all", "全部"), ("replies", "回复"), ("likes", "赞与回应")], id: \.0) { id, label in
+                ForEach([("all", "全部"), ("replies", "回复与招募"), ("likes", "赞与回应")], id: \.0) { id, label in
                     Button { tree.inboxFilter = id; tree.notifications = []; tree.inboxNext = nil; Task { await tree.loadInbox() } } label: {
                         Text(label).font(.subheadline.weight(tree.inboxFilter == id ? .semibold : .regular)).frame(minHeight: 44)
                     }.foregroundStyle(tree.inboxFilter == id ? TreeholeTheme.text : TreeholeTheme.muted)

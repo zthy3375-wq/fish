@@ -506,4 +506,59 @@ final class TreeholeTests: XCTestCase {
         let r = try await api.request("polls.vote", ["postId":"p", "optionId":NSNull()]); XCTAssertNil(r.sessionToken)
     }
 
+    private func sampleBuddy(version: Int = 0, joined: Bool = false, closed: Bool = false) -> TreeholeBuddy {
+        TreeholeBuddy(version: version, location: "东操场", startsAt: "2099-01-01T12:00:00Z", capacity: 2, count: joined ? 1 : 0, joined: joined, closed: closed, expired: false)
+    }
+    func testBuddyDateValidationCampusTimeAndLegacyDraft() throws {
+        let now = Date(timeIntervalSince1970: 1800000000)
+        var buddy = TreeholeBuddyDraft(location: "东操场", startsAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(3600)), capacity: 1)
+        XCTAssertTrue(buddy.valid(at: now)); buddy.capacity = 0; XCTAssertFalse(buddy.valid(at: now)); buddy.capacity = 20; XCTAssertTrue(buddy.valid(at: now))
+        buddy.startsAt = ISO8601DateFormatter().string(from: now.addingTimeInterval(91 * 86400)); XCTAssertFalse(buddy.valid(at: now))
+        buddy.startsAt = "invalid"; XCTAssertFalse(buddy.valid(at: now))
+        XCTAssertTrue(sampleBuddy().timeLabel.contains("2099-01-01 20:00")); XCTAssertFalse(sampleBuddy().ended(at: now)); XCTAssertTrue(sampleBuddy().ended(at: .distantFuture))
+        let legacy = Data(#"{"title":"旧草稿","body":"","category":"buddies","anonymous":false,"requestId":"old","photos":[]}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(TreeholeDraft.self, from: legacy).buddy)
+        var draft = TreeholeDraft(); draft.buddy = buddy; XCTAssertTrue(draft.hasContent); XCTAssertEqual(try JSONDecoder().decode(TreeholeDraft.self, from: JSONEncoder().encode(draft)).buddy, buddy)
+    }
+    @MainActor func testBuddyJoinFailureAndRevisionMergeKeepUnrelatedPostState() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.buddiesEnabled = true
+        var post = samplePost(); post.buddy = sampleBuddy(); store.posts = [post]; store.profilePosts = [post]; store.current = post
+        TreeholeTestProtocol.handler = { _ in (503, Data(#"{"error":"network_unavailable"}"#.utf8)) }
+        await store.buddyAction(post, action: "join", enabled: true); XCTAssertEqual(store.current?.buddy?.count, 0); XCTAssertNotNil(store.message)
+        var fresh = post; fresh.buddy = sampleBuddy(version: 2, joined: true)
+        let data = try JSONSerialization.data(withJSONObject: ["post": JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh))])
+        TreeholeTestProtocol.handler = { request in XCTAssertEqual(request.url?.lastPathComponent, "buddies.join"); return (200, data) }; store.current?.saved = true
+        await store.buddyAction(post, action: "join", enabled: true)
+        XCTAssertEqual(store.current?.saved, true); XCTAssertEqual(store.posts[0].buddy, fresh.buddy); XCTAssertEqual(store.profilePosts[0].buddy, fresh.buddy); XCTAssertEqual(store.restoreResponse(post).buddy, fresh.buddy)
+        let stale = page([post]); TreeholeTestProtocol.handler = { _ in (200, stale) }; try await store.feed(); XCTAssertEqual(store.posts[0].buddy?.version, 2)
+    }
+    @MainActor func testBuddyLateJoinCannotRestoreExpiredAccount() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.buddiesEnabled = true
+        var post = samplePost(); post.buddy = sampleBuddy(); store.current = post
+        var fresh = post; fresh.buddy = sampleBuddy(version: 1, joined: true)
+        let data = try JSONSerialization.data(withJSONObject: ["post": JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh))])
+        TreeholeTestProtocol.handler = { _ in (200, data) }
+        let paused = expectation(description: "join held"); TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { paused.fulfill() }
+        let task = Task { await store.buddyAction(post, action: "join", enabled: true) }; await fulfillment(of: [paused], timeout: 3)
+        store.clear(); TreeholeTestProtocol.resume?(); await task.value
+        XCTAssertNil(store.current); XCTAssertTrue(store.pendingBuddies.isEmpty); XCTAssertEqual(store.restorePoll(post).buddy?.version, 0)
+    }
+    @MainActor func testBuddyFullRefreshAndNativeRosterPrivacy() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let api = service(vault), store = TreeholeStore(api: service(vault)); store.buddiesEnabled = true
+        var post = samplePost(); post.buddy = sampleBuddy(); store.current = post
+        var fresh = post; fresh.buddy = sampleBuddy(version: 3, closed: true)
+        let data = try JSONSerialization.data(withJSONObject: ["post": JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh))])
+        TreeholeTestProtocol.handler = { request in request.url?.lastPathComponent == "buddies.join" ? (409, Data(#"{"error":"buddy_full"}"#.utf8)) : (200, data) }
+        await store.buddyAction(post, action: "join", enabled: true); XCTAssertEqual(store.current?.buddy?.closed, true); XCTAssertNotNil(store.message)
+        TreeholeTestProtocol.handler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer " + String(repeating: "a", count: 43))
+            return (200, Data(#"{"sessionToken":"private","participants":[{"id":"public-id","nickname":"同学","joinedAt":"now","avatar":null}]}"#.utf8))
+        }
+        let response = try await api.request("buddies.members", ["postId":"p"]); XCTAssertNil(response.sessionToken); XCTAssertEqual(response.participants?.first?.nickname, "同学")
+        _ = try await api.request("buddies.close", ["postId":"p", "closed":false])
+    }
+
 }

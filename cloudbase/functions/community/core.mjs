@@ -25,7 +25,7 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote']);
+export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members']);
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
@@ -44,7 +44,7 @@ function sanitize(action,b){
   return {filter,...(b.beforeTime!=null||b.beforeId!=null?{beforeTime:time(b.beforeTime),beforeId:id(b.beforeId)}:{})};
  }
  if(action==='posts.list'){
-  const scope=b.scope??'all';if(!['all','mine','saved','participated','watching','author','following'].includes(scope))fail();
+  const scope=b.scope??'all';if(!['all','mine','saved','participated','watching','author','following','joined'].includes(scope))fail();
   const category=b.category??'all',sort=b.sort??'latest';if(!['all',...categories].includes(category)||!['latest','hot'].includes(sort))fail();
   const section=b.section??'all',interest=b.interest??'';if(!['all',...sections].includes(section)||(interest!==''&&!interests.includes(interest)))fail();
   if(interest&&section!=='entertainment')fail();
@@ -67,7 +67,11 @@ function sanitize(action,b){
   let poll=null;
   if(b.poll!=null){const d=b.poll;if(typeof d!=='object'||Array.isArray(d)||!Array.isArray(d.options)||d.options.length<2||d.options.length>6||![24,72,168].includes(d.durationHours))fail();
    const options=d.options.map(x=>text(x,1,40));if(new Set(options.map(x=>x.toLowerCase())).size!==options.length)fail();poll={question:text(d.question,1,80),options,durationHours:d.durationHours};}
-  return {poll,body:text(b.body,images.length||poll?0:1,3000),title:text(b.title??'',0,40),category,interest,images,anonymous,requestId:id(b.requestId)};
+  let buddy=null;
+  if(b.buddy!=null){const d=b.buddy;if(typeof d!=='object'||Array.isArray(d)||category!=='buddies'||poll||!Number.isInteger(d.capacity)||d.capacity<1||d.capacity>20)fail();
+   if(typeof d.startsAt!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/.test(d.startsAt)||!Number.isFinite(Date.parse(d.startsAt)))fail();
+   buddy={location:text(d.location,1,60),startsAt:new Date(d.startsAt).toISOString(),capacity:d.capacity};}
+  return {buddy,poll,body:text(b.body,buddy?1:images.length||poll?0:1,3000),title:text(b.title??'',0,40),category,interest,images,anonymous,requestId:id(b.requestId)};
  }
  if(action==='admin.resolve'){
   if(!['remove','lock','ban','dismiss'].includes(b.decision))fail();
@@ -75,6 +79,8 @@ function sanitize(action,b){
  }
  if(['me','logout','password.change','account.delete','blocks.clear','admin.reports'].includes(action))return {};
  const out={postId:id(b.postId)};
+ if(action==='buddies.join')out.enabled=boolean(b.enabled);
+ if(action==='buddies.close')out.closed=boolean(b.closed);
  if(action==='polls.vote'){if(b.optionId!==null&&(typeof b.optionId!=='string'||! /^[0-5]$/.test(b.optionId)))fail();out.optionId=b.optionId;}
  if(action==='responses.set'){if(b.kind!==null&&!['same','hug','useful'].includes(b.kind))fail();out.kind=b.kind;}
  if(action==='threads.watch')out.enabled=boolean(b.enabled);
@@ -161,5 +167,5 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:7,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:8,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
 }

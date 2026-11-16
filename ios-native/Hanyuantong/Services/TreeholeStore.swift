@@ -31,6 +31,9 @@ import Combine
     @Published var sort = "latest"
     @Published var imagesEnabled = false
     @Published var avatarsEnabled = false
+    @Published var buddiesEnabled = false
+    @Published var pendingBuddies: Set<String> = []
+    private var buddySnapshots: [String: TreeholeBuddy] = [:]
     @Published var pollsEnabled = false
     @Published var commentImagesEnabled = false
     @Published var pendingVotes: Set<String> = []
@@ -79,12 +82,12 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
-            self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
+            self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.buddiesEnabled = config.buddiesEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
             self.followingEnabled = config.followingEnabled == true; self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
             do { self.user = try await self.api.request("me").user; try await self.feed() }
             catch let error as TreeholeError where error.code == "session_expired" { self.clear() }
@@ -365,6 +368,7 @@ import Combine
         if var post = current, post.id == id { apply(&post); current = post }
     }
     private func rememberResponses(_ fresh: [TreeholePost]) {
+        for post in fresh { if let buddy = post.buddy, buddy.version >= (buddySnapshots[post.id]?.version ?? -1) { buddySnapshots[post.id] = buddy } }
         for post in fresh { if let poll = post.poll, poll.version >= (pollSnapshots[post.id]?.version ?? -1) { pollSnapshots[post.id] = poll } }
         for post in fresh where responseSnapshots[post.id] != nil && !pendingResponses.contains(post.id) { responseSnapshots[post.id] = post }
     }
@@ -374,8 +378,32 @@ import Combine
     }
     func restorePoll(_ post: TreeholePost) -> TreeholePost {
         var result = post
+        if let buddy = buddySnapshots[post.id], buddy.version >= (post.buddy?.version ?? -1) { result.buddy = buddy }
         if let poll = pollSnapshots[post.id], poll.version >= (post.poll?.version ?? -1) { result.poll = poll }
         return result
+    }
+    func applyBuddy(_ id: String, buddy: TreeholeBuddy) {
+        guard buddy.version >= (buddySnapshots[id]?.version ?? -1) else { return }
+        buddySnapshots[id] = buddy
+        if let index = posts.firstIndex(where: { $0.id == id }) { posts[index].buddy = buddy }
+        if let index = profilePosts.firstIndex(where: { $0.id == id }) { profilePosts[index].buddy = buddy }
+        if current?.id == id { current?.buddy = buddy }
+    }
+    func buddyAction(_ post: TreeholePost, action: String, enabled: Bool) async {
+        guard buddiesEnabled, ["join", "close"].contains(action), !pendingBuddies.contains(post.id) else { return }
+        let generation = epoch; pendingBuddies.insert(post.id); message = nil
+        defer { if generation == epoch { pendingBuddies.remove(post.id) } }
+        do {
+            let result = try await api.request("buddies." + action, ["postId": post.id, action == "join" ? "enabled" : "closed": enabled])
+            guard generation == epoch, let fresh = result.post?.buddy else { return }
+            applyBuddy(post.id, buddy: fresh); feedNeedsRefresh = true
+            message = action == "join" ? (enabled ? "报名成功，可在「我报名的」找到这条讨论" : "已退出报名") : (enabled ? "已结束招募" : "已重新开放招募")
+        } catch {
+            if generation == epoch, let failure = error as? TreeholeError, ["buddy_full", "buddy_closed", "post_locked"].contains(failure.code) {
+                if let fresh = try? await api.request("posts.get", ["postId": post.id]).post?.buddy, generation == epoch { applyBuddy(post.id, buddy: fresh) }
+            }
+            actionError(error, generation: generation)
+        }
     }
     private func applyPoll(_ id: String, poll: TreeholePoll) {
         guard poll.version >= (pollSnapshots[id]?.version ?? -1) else { return }

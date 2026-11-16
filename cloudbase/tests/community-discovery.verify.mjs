@@ -59,5 +59,5 @@ test('repeat schema upgrade preserves legacy content, saved state and notificati
  const p=await post('study',{anonymous:true});await call(b,'reactions.set',{postId:p.id,kind:'save',enabled:true});await call(b,'responses.set',{postId:p.id,kind:'useful'});
  const n=(await call(a,'notifications.list')).notifications[0];await call(a,'notifications.read',{ids:[n.id]});await pg.exec('ALTER TABLE hyt_posts DROP COLUMN interest');await pg.exec(schema);
  const saved=(await call(b,'posts.list',{section:'daily',scope:'saved'})).posts[0];assert.equal(saved.id,p.id);assert.equal(saved.category,'study');assert.equal(saved.interest,'');assert(saved.anonymous);assert((await call(a,'notifications.list')).notifications[0].readAt);
- assert.equal(api.config().schema,7);assert.equal(api.config().discoveryEnabled,true);
+ assert.equal(api.config().schema,8);assert.equal(api.config().discoveryEnabled,true);
 });

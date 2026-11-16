@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {ref,computed} from 'vue';
 import {ThumbsUp,MessageCircle,MoreHorizontal,LockKeyhole} from 'lucide-vue-next';
+import TreeholeBuddy from './TreeholeBuddy.vue';
 import TreeholePoll from './TreeholePoll.vue';
 import TreeholeResponses from './TreeholeResponses.vue';
 import TreeholeAvatar from './TreeholeAvatar.vue';
@@ -8,8 +9,8 @@ import TreeholeImages from './TreeholeImages.vue';
 import {treeholeTimestamp} from '../domain/treeholePresentation';
 import {treeholeCategoryName,treeholeInterestName} from '../domain/treeholeCategories';
 import type {TreeholePost,TreeholeResponseKind} from '../services/treehole';
-const props=withDefaults(defineProps<{post:TreeholePost;full?:boolean;busy?:boolean;reacting?:boolean;responsesEnabled?:boolean;responding?:boolean;pollsEnabled?:boolean;voting?:boolean}>(),{full:false,busy:false,reacting:false});
-const emit=defineEmits<{vote:[optionId:string|null];open:[];discussion:[];react:[kind:'like'|'save'];menu:[];image:[index:number];category:[id:string];interest:[id:string];author:[id:string];response:[kind:TreeholeResponseKind]}>();
+const props=withDefaults(defineProps<{post:TreeholePost;full?:boolean;busy?:boolean;reacting?:boolean;responsesEnabled?:boolean;responding?:boolean;buddiesEnabled?:boolean;buddyPending?:boolean;pollsEnabled?:boolean;voting?:boolean}>(),{full:false,busy:false,reacting:false});
+const emit=defineEmits<{buddyJoin:[enabled:boolean];buddyClose:[closed:boolean];buddyMembers:[];vote:[optionId:string|null];open:[];discussion:[];react:[kind:'like'|'save'];menu:[];image:[index:number];category:[id:string];interest:[id:string];author:[id:string];response:[kind:TreeholeResponseKind]}>();
 const pressed=ref(false);
 const displayBody=computed(()=>props.post.poll&&props.post.body==='[投票] '+props.post.poll.question?'':props.post.body);
 let pointer:{x:number;y:number;at:number;moved:boolean}|undefined;
@@ -27,6 +28,7 @@ function openCard(event:MouseEvent){if(!props.full&&!props.busy&&!(event.target 
   <header><button v-if="post.author.id&&!post.anonymous" class="th-author-avatar" :aria-label="'查看 '+post.author.name+' 的主页'" :disabled="busy" @click="$emit('author',post.author.id)"><TreeholeAvatar :name="post.author.name" :url="post.author.avatar?.url" :size="full?42:36"/></button><TreeholeAvatar v-else :name="post.author.name" :url="post.author.avatar?.url" :anonymous="post.anonymous" :size="full?42:36"/><div class="th-post-byline"><button v-if="post.author.id&&!post.anonymous" class="th-author-name" :disabled="busy" @click="$emit('author',post.author.id)">{{post.author.name}}</button><strong v-else>{{post.author.name}}</strong><span v-if="post.author.mine" class="th-owner">我</span><small>{{treeholeTimestamp(post.createdAt)}}<span v-if="post.anonymous"> · 匿名发布</span></small></div><button class="th-post-menu" aria-label="帖子操作" :disabled="busy" @click="$emit('menu')"><MoreHorizontal :size="21"/></button></header>
   <div v-if="full" class="th-full-body"><h2 v-if="post.title">{{post.title}}</h2><p v-if="displayBody">{{displayBody}}</p></div>
   <button v-else class="th-post-body" :disabled="busy" @click="$emit('open')"><h2 v-if="post.title">{{post.title}}</h2><span v-if="displayBody">{{displayBody}}</span></button>
+  <TreeholeBuddy v-if="post.buddy" :buddy="post.buddy" :mine="post.author.mine" :locked="post.locked" :disabled="busy||!buddiesEnabled" :pending="buddyPending" @join="$emit('buddyJoin',$event)" @close="$emit('buddyClose',$event)" @members="$emit('buddyMembers')"/>
   <TreeholePoll v-if="post.poll" :poll="post.poll" :locked="post.locked" :disabled="busy||!pollsEnabled" :pending="voting" @vote="$emit('vote',$event)"/>
   <TreeholeImages :images="post.images||[]" :post-id="post.id" :full="full" @open="$emit('image',$event)"/>
   <button v-if="!full&&(post.newReplyCount||0)>0" class="th-new-replies" :disabled="busy" @click="$emit('discussion')">{{post.newReplyCount}} 条新回复 · 接着聊 <MessageCircle :size="13"/></button>
