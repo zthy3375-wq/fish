@@ -1,0 +1,82 @@
+/* Shared reading and interaction primitives; domain layouts retain their owners. */
+:root{--control-height:44px;--page-gutter:20px;--color-focus:var(--color-primary)}
+html{scrollbar-color:var(--color-border) var(--color-bg);scrollbar-width:thin}
+::selection{background:var(--color-tint);color:var(--color-text)}
+:where(input,textarea){caret-color:var(--color-primary)}
+:where(input,textarea)::placeholder{color:var(--color-muted);opacity:1}
+:where(input,textarea,select){color:var(--color-text);accent-color:var(--color-primary)}
+:where(button,a,input,textarea,select,summary):focus-visible{outline:2px solid var(--color-focus);outline-offset:3px}
+textarea{font:inherit;resize:vertical;scroll-margin-block:24px}
+button:disabled{cursor:default;transform:none}
+button:active:disabled{transform:none}
+.primary,.secondary{min-height:var(--control-height);font-size:14px;font-weight:600;border-radius:var(--radius-sm)}
+.text-button{min-height:var(--control-height);font-size:12px}
+.app-header{padding-inline:var(--page-gutter)}
+.header-leading h1{font-size:24px;font-weight:700;letter-spacing:-.02em}
+.header-leading p{font-size:12px;line-height:1.6}
+.section-heading h2{font-size:16px;letter-spacing:0}
+.section-meta,.footnote{font-size:12px}
+/* Five destinations anchored above the system gesture area. */
+.navigation-dock,.home-active .navigation-dock{background:var(--color-surface);border-top:1px solid var(--color-divider);padding-top:3px}
+.floating-nav{width:100%;border:0;border-radius:0!important;box-shadow:none;background:transparent;padding:4px 8px}
+.floating-nav button{min-height:52px;gap:4px;border-radius:12px}
+.floating-nav button span{font-size:11px;font-weight:500}
+.floating-nav button.active span{font-weight:650}
+.floating-nav .nav-indicator{top:5px;bottom:5px;left:8px;width:calc((100% - 16px)/var(--nav-count,5));border-radius:12px!important}
+.floating-nav button svg{stroke-width:1.8}
+.home-body{gap:16px;padding-top:14px}
+.home-course-panel,.home-body .today-tasks{border-radius:var(--radius-md);box-shadow:none}
+.home-next{padding:16px}
+.home-next-title{border:0;padding-left:0;font-size:22px;line-height:1.4}
+.home-next-meta{font-size:12px;line-height:1.5}
+.home-timeline-head{font-size:12px}
+.home-course-panel .home-study-links strong{font-size:13px}
+.home-course-panel .home-study-links small{font-size:11px}
+.home-service-heading h2{font-size:16px}
+.home-service-heading span{font-size:12px}
+.home-active .life-card{border-radius:var(--radius-md);min-height:104px;padding:14px}
+.home-body .today-tasks .section-heading h2{font-size:16px}
+.profile-page .profile-strip{padding:8px 0 22px;gap:14px}
+.profile-page .avatar{width:56px;height:56px;border-radius:18px}
+.profile-page .profile-copy strong{font-size:21px}
+.profile-page .profile-copy small{font-size:12px}
+.profile-page .section-heading{margin:22px 2px 8px}
+.profile-page .section-heading h2{font-size:13px;color:var(--color-muted)}
+.profile-page .service-row{min-height:60px;padding:14px 16px}
+.profile-page .service-row .row-copy strong{font-size:14px}
+.profile-page .service-row .row-copy small,.profile-page .setting-row small{font-size:12px;line-height:1.6}
+.profile-page .setting-row{min-height:64px;padding:14px 16px}
+.profile-page .theme-options button{min-height:40px;font-size:12px}
+/* Leave period-grid geometry intact. */
+.schedule-toolbar .segmented button,.schedule-toolbar>.text-button,.week-toolbar select{min-height:44px}
+.schedule-active .app-header{padding-top:calc(10px + var(--safe-top));padding-bottom:6px}
+.schedule-active .header-leading h1{font-size:21px}
+.schedule-active .header-leading p{font-size:12px}
+.schedule-toolbar{margin-block:6px;gap:6px}
+.daily-task-row .task-copy strong{font-size:15px}
+.daily-task-row .task-copy>span,.work-open small{font-size:12px}
+.row-menu>summary{width:44px;height:44px}
+.learning-state{font-size:12px}
+.lc-topbar{font-size:13px}
+.overlay-surface{border-radius:var(--radius-lg) var(--radius-lg) 0 0;box-shadow:0 -8px 32px #26223312;padding-inline:20px}
+.overlay-surface>h2,.overlay-surface>form>h2{font-size:22px;font-weight:650}
+.overlay-surface p{font-size:13px;line-height:1.8}
+.overlay-surface :where(input:not([type=checkbox]),select,textarea){font-size:16px;min-height:44px;border-radius:var(--radius-sm)}
+.overlay-surface button{touch-action:manipulation}
+.toast{border-radius:12px;font-size:13px;bottom:calc(88px + var(--safe-bottom));padding:12px 16px}
+.keyboard-open .toast{bottom:calc(12px + var(--safe-bottom))}
+.keyboard-open .navigation-dock{display:none}
+.treehole .th-nav{background:var(--color-surface)}
+.treehole .th-card{border-radius:var(--radius-md);box-shadow:none}
+.treehole .th-muted,.treehole .th-compose-note{font-size:13px}
+.treehole .th-primary,.treehole .th-send{border-radius:var(--radius-sm);font-weight:600}
+.treehole .th-publish{min-height:44px!important}
+.treehole .th-search{background:var(--color-bg);border-radius:var(--radius-sm)}
+.treehole .th-post-card{padding-top:18px;padding-bottom:12px}
+.treehole .th-profile-privacy{font-size:12px}
+.treehole .th-moderation-actions button{min-height:44px;border-radius:var(--radius-sm);padding-inline:12px}
+.treehole .th-social-stats{padding-block:10px}
+.treehole .dm-message p{max-width:85%;line-height:1.65}
+@media(max-width:374px){:root{--page-gutter:16px}.profile-page .theme-row{flex-wrap:wrap}.profile-page .theme-options{margin-left:auto}.home-next-title{font-size:21px}}
+@media(min-width:768px){.overlay-surface{border-radius:var(--radius-lg)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

@@ -1,6 +1,4 @@
 /* Campus identity: readable lavender surfaces, compact service-first home. */
-:root{--color-bg:#f6f3fc;--color-text:#29243a;--color-muted:#716b80;--color-faint:#787183;--color-primary:#7041ce;--color-primary-strong:#53249d;--color-tint:#eee6fb;--color-highlight:#f4effc;--color-border:#e6dff0;--color-divider:#ebe5f2;--color-nav:#fcfaff;--shadow-card:0 4px 18px #58358a08;--color-raised:#fff}
-:root[data-theme=dark]{--color-bg:#1e1b28;--color-text:#eee8f8;--color-muted:#b9b0c9;--color-faint:#aaa0bc;--color-primary:#c5a6ff;--color-primary-strong:#dfcaff;--color-tint:#352b49;--color-highlight:#292334;--color-border:#493e59;--color-divider:#3b3249;--color-nav:#282232;--color-raised:#fff}
 .home-active main{padding-inline:16px;padding-bottom:20px;scrollbar-gutter:auto}
 .campus-hero{position:relative;isolation:isolate;height:calc(240px + var(--safe-top));margin:0 -16px;padding:calc(24px + var(--safe-top)) 25px 0;overflow:hidden;color:#302044}
 .campus-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 70%;z-index:-2}

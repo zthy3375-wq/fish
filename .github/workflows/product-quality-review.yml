@@ -1,0 +1,78 @@
+name: Product quality review (no publication)
+on:
+  push:
+    branches: [feat/product-quality-20261117]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: product-quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        snapshot: [before, after]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.snapshot == 'before' && '62e6d80df085170d1d80e67c0a64ef634552515c' || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get install -y fonts-noto-cjk fonts-noto-color-emoji
+      - run: npm run build
+      - name: Academic, tasks, services and settings
+        run: node scripts/academic-browser-check.mjs
+      - name: Community, comments and moderation
+        if: ${{ !cancelled() }}
+        run: node scripts/treehole-browser-check.mjs
+      - name: Messages and followers
+        if: ${{ !cancelled() }}
+        run: node scripts/community-messages-browser-check.mjs
+      - name: Touch and short-screen editing
+        if: ${{ !cancelled() }}
+        run: |
+          node scripts/treehole-preview.mjs /tmp/community-review-preview.html
+          node scripts/treehole-preview-check.mjs /tmp/community-review-preview.html
+          node scripts/treehole-touch-check.mjs /tmp/community-review-preview.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-quality-${{ matrix.snapshot }}
+          path: |
+            /tmp/handan-v050-qa
+            /tmp/handan-treehole-*-qa
+            /tmp/handan-community-*-qa
+            /tmp/handan-community-*-preview
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - run: npm ci
+      - run: npm run android:check
+      - run: ./gradlew --no-daemon :app:compileReleaseKotlin :app:compileReleaseJavaWithJavac
+        working-directory: android
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-quality-native-tests
+          path: android/app/build/test-results
