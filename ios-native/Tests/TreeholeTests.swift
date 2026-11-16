@@ -144,6 +144,45 @@ final class TreeholeTests: XCTestCase {
         do { try await update.value; XCTFail("must discard previous account response") } catch is CancellationError { }
         XCTAssertNil(store.user)
     }
+    func testDiscoveryLegacyDraftAndSectionMapping() throws {
+        let old = Data("{\"title\":\"旧草稿\",\"body\":\"保留文字\",\"category\":\"study\",\"anonymous\":true,\"requestId\":\"old-key\",\"photos\":[]}".utf8)
+        let draft = try JSONDecoder().decode(TreeholeDraft.self, from: old)
+        XCTAssertEqual(draft.category, "study"); XCTAssertTrue(draft.anonymous); XCTAssertNil(draft.interest)
+        XCTAssertEqual(TreeholeCategories.filters("study", interest: "games", enabled: true), ["section": "daily", "category": "study", "interest": ""])
+        XCTAssertEqual(TreeholeCategories.filters("daily", interest: "", enabled: false), ["category": "daily"])
+        XCTAssertEqual(TreeholeCategories.filters("entertainment", interest: "music", enabled: true)["interest"], "music")
+    }
+    @MainActor func testDiscoveryFailureRestoresSelectionAndRetainsPreviousPosts() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.discoveryEnabled = true
+        TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("kept")])) }
+        try await store.selectDiscovery("study")
+        TreeholeTestProtocol.handler = { _ in (503, Data("{\"error\":\"network_unavailable\"}".utf8)) }
+        do { try await store.selectDiscovery("entertainment", interest: "games"); XCTFail() } catch { }
+        XCTAssertEqual(store.category, "study"); XCTAssertEqual(store.interest, ""); XCTAssertEqual(store.posts.map(\.id), ["kept"])
+        store.clear(); XCTAssertEqual(store.category, "all"); XCTAssertEqual(store.interest, "")
+    }
+    @MainActor func testLateInterestPageCannotEnterAnotherTag() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.discoveryEnabled = true
+        TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("games")], next: ["beforeId": "games"])) }
+        try await store.selectDiscovery("entertainment", interest: "games")
+        let held = expectation(description: "interest page held")
+        TreeholeTestProtocol.handler = { _ in (200, self.page([self.samplePost("old-games-page")])) }
+        TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { held.fulfill() }
+        let loading = Task { await store.loadMoreFeed() }; await fulfillment(of: [held], timeout: 3)
+        TreeholeTestProtocol.handler = { request in
+            var bytes = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream { stream.open(); defer { stream.close() }; var chunk = [UInt8](repeating: 0, count: 1024); while stream.hasBytesAvailable { let n = stream.read(&chunk, maxLength: chunk.count); if n <= 0 { break }; bytes.append(contentsOf: chunk.prefix(n)) } }
+            let body = try! JSONSerialization.jsonObject(with: bytes) as! [String: String]
+            XCTAssertEqual(body["section"], "entertainment"); XCTAssertEqual(body["interest"], "music")
+            return (200, self.page([self.samplePost("music")]))
+        }
+        try await store.selectDiscovery("entertainment", interest: "music")
+        TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil; await loading.value
+        XCTAssertEqual(store.posts.map(\.id), ["music"]); XCTAssertNil(store.feedNext)
+    }
+
     private func samplePost(_ id: String = "post-id", comments: Int = 1) -> TreeholePost {
         TreeholePost(id: id, body: "校园日常", createdAt: "2026-11-15T00:00:00Z", anonymous: false, locked: false, liked: false, saved: false, author: TreeholeAuthor(name: "同学", anonymous: false, mine: false), commentCount: comments, likeCount: 2)
     }

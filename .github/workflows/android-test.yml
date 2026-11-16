@@ -144,4 +144,5 @@ jobs:
           path: |
             /tmp/handan-v050-qa
             /tmp/handan-treehole-*-qa
+            /tmp/handan-community-*-qa
           if-no-files-found: warn

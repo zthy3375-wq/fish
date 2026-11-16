@@ -18,6 +18,7 @@ struct TreeholePost: Codable, Identifiable, Equatable {
     var likeCount: Int
     var title: String? = nil
     var category: String? = nil
+    var interest: String? = nil
     var images: [TreeholeImage]? = nil
     var watching: Bool? = nil
     var newReplyCount: Int? = nil
@@ -53,6 +54,7 @@ struct TreeholeEnvelope: Decodable {
     var posts: [TreeholePost]?; var comments: [TreeholeComment]?; var reports: [TreeholeReport]?
     var next: [String: String]?; var recoveryCode: String?
     var registrationEnabled: Bool?; var requiresInvite: Bool?
+    var discoveryEnabled: Bool?
     var avatarsEnabled: Bool?; var responsesEnabled: Bool?
     var engagementEnabled: Bool?; var unreadCount: Int?; var notifications: [TreeholeNotification]?
     var context: TreeholeComment?; var focusCommentId: String?; var profile: TreeholePublicProfile?

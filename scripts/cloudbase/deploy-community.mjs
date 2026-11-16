@@ -10,7 +10,7 @@ const envId='hanyuantong-d8gjzt1jh12370215',region='ap-shanghai';
 const base=`https://${envId}-1527874185.${region}.app.tcloudbase.com/hyt-community`;
 const activation=JSON.parse(readFileSync('cloudbase/community-test-deploy.json','utf8'));
 if(activation.mode!=='private-treehole-test'||activation.service!=='hyt-community'||activation.registration!=='invite'||!/^[0-9a-f]{64}$/.test(activation.inviteHash))throw Error('Invalid private-test activation');
-if(process.env.GITHUB_REF&&!['refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test8-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
+if(process.env.GITHUB_REF&&!['refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test9-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
 const key=process.env.CLOUDBASE_API_KEY?.trim();if(!key)throw Error('CloudBase deployment key unavailable');
 const response=await fetch(`https://${envId}.${region}.tcb-api.tencentcloudapi.com/capi/credential`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({env:envId}),signal:AbortSignal.timeout(25000)});
 const envelope=await response.json();if(envelope.code!==0)throw Error('CloudBase credential exchange failed');const credentials=envelope.data;
@@ -47,10 +47,10 @@ try{cli(['fn','deploy','hyt-community','--httpFn','--dir','cloudbase/functions/c
 let configuration;
 for(let attempt=0;attempt<12;attempt++){
  try{configuration=await fetch(base+'/v1/config',{signal:AbortSignal.timeout(10000)}).then(async r=>({ok:r.ok,value:await r.json()}));}catch{configuration=null;}
- if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite&&configuration.value.imagesEnabled&&configuration.value.schema===4&&configuration.value.engagementEnabled===true&&configuration.value.avatarsEnabled===true&&configuration.value.responsesEnabled===true)break;
+ if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite&&configuration.value.imagesEnabled&&configuration.value.schema===5&&configuration.value.engagementEnabled===true&&configuration.value.avatarsEnabled===true&&configuration.value.responsesEnabled===true&&configuration.value.discoveryEnabled===true)break;
  await new Promise(resolve=>setTimeout(resolve,2500));
 }
-if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite||!configuration.value.imagesEnabled||configuration.value.schema!==4||configuration.value.engagementEnabled!==true||configuration.value.avatarsEnabled!==true||configuration.value.responsesEnabled!==true)throw Error('Invite gate did not activate');
+if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite||!configuration.value.imagesEnabled||configuration.value.schema!==5||configuration.value.engagementEnabled!==true||configuration.value.avatarsEnabled!==true||configuration.value.responsesEnabled!==true||configuration.value.discoveryEnabled!==true)throw Error('Invite gate did not activate');
 const http=async(action,body={},token='')=>{const r=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});return {status:r.status,body:await r.json()};};
 if((await http('posts.list')).status!==401)throw Error('Anonymous read access unexpectedly enabled');
 if((await http('credentials',{username:'test'})).status!==404)throw Error('Internal endpoint was exposed');
@@ -117,6 +117,18 @@ try{
  if((await http('notifications.list',{filter:'likes'},author.sessionToken)).body.notifications.some(n=>n.kind==='post_response'))throw Error('Cancelled response notice remains visible');
  await http('avatar.set',{imageId:null},reader.sessionToken);
  if((await http('me',{},reader.sessionToken)).body.user?.avatar!==null)throw Error('Live avatar removal failed');
+ const discovery=await http('posts.create',{category:'entertainment',interest:'games',body:'[兴趣筛选联调，完成即清理]',anonymous:false,requestId:randomUUID()},author.sessionToken);
+ if(discovery.status!==201||discovery.body.post.interest!=='games')throw Error('Live discovery publish failed');testPosts.push(discovery.body.post.id);
+ const games=await http('posts.list',{scope:'mine',section:'entertainment',interest:'games',query:'兴趣筛选'},author.sessionToken);
+ if(games.body.posts?.length!==1||games.body.posts[0].id!==discovery.body.post.id)throw Error('Live discovery filter failed');
+ const oldStudy=await http('posts.list',{scope:'mine',section:'daily',category:'study'},author.sessionToken);
+ if(!oldStudy.body.posts?.some(p=>p.id===created.body.post.id&&p.category==='study'&&p.anonymous))throw Error('Live legacy study preservation failed');
+ if((await http('posts.create',{category:'treehole',body:'[不得创建的实名树洞]',anonymous:false,requestId:randomUUID()},author.sessionToken)).status!==400)throw Error('Anonymous section identity guard failed');
+ const quiet=await http('posts.create',{category:'treehole',body:'[匿名分区联调，完成即清理]',anonymous:true,requestId:randomUUID()},author.sessionToken);
+ if(quiet.status!==201||'id' in quiet.body.post.author||'avatar' in quiet.body.post.author)throw Error('Live anonymous section failed');testPosts.push(quiet.body.post.id);
+ const quietReply=await http('comments.create',{postId:quiet.body.post.id,body:'[树洞匿名回复联调]',anonymous:false,requestId:randomUUID()},reader.sessionToken);
+ if(quietReply.status!==201||!quietReply.body.comment.author.anonymous||'id' in quietReply.body.comment.author)throw Error('Live anonymous section reply failed');
+ console.log('Live test.9 checks passed: interest publication/filter/search, legacy study category and identity preserved, anonymous section guard');
  console.log('Live test.8 checks passed: avatar upload/confirmation/public projection/ownership/removal, anonymous avatar isolation, response select/switch/cancel/retry, generic notice/read state');
  console.log('Live HTTP/PG checks passed: inbox, notification context, read-state, private profile, images, categories, threads, invite gate, login boundary, posts, cross-account anonymity, deletion ownership, comments');
 }finally{

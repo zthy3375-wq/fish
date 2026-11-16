@@ -17,6 +17,8 @@ import Combine
     @Published var message: String?
     @Published var recovery: String?
     @Published var category = "all"
+    @Published var interest = ""
+    @Published var discoveryEnabled = false
     @Published var sort = "latest"
     @Published var imagesEnabled = false
     @Published var avatarsEnabled = false
@@ -64,20 +66,29 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
             self.engagementEnabled = config.engagementEnabled == true
-            self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
+            self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
             do { self.user = try await self.api.request("me").user; try await self.feed() }
             catch let error as TreeholeError where error.code == "session_expired" { self.clear() }
             self.ready = true
             await self.refreshUnread()
         }
     }
-    private var feedIdentity: [String: String] { ["scope": scope, "query": query, "category": category, "sort": sort] }
+    private var feedIdentity: [String: String] { ["scope": scope, "query": query, "sort": sort].merging(TreeholeCategories.filters(category, interest: interest, enabled: discoveryEnabled)) { _, new in new } }
+    func selectDiscovery(_ selected: String, interest selectedInterest: String = "") async throws {
+        let old = (category, interest, scope), generation = epoch
+        category = selected; interest = selectedInterest; scope = "all"
+        let requested = feedIdentity
+        do { try await feed() } catch {
+            if generation == epoch, feedIdentity == requested { category = old.0; interest = old.1; scope = old.2 }
+            throw error
+        }
+    }
     private func cursorKey(_ cursor: [String: String]) -> String { cursor.sorted { $0.key < $1.key }.map { $0.key + "=" + $0.value }.joined(separator: "|") }
     func feed() async throws {
         feedRevision += 1

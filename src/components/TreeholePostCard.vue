@@ -5,10 +5,10 @@ import TreeholeResponses from './TreeholeResponses.vue';
 import TreeholeAvatar from './TreeholeAvatar.vue';
 import TreeholeImages from './TreeholeImages.vue';
 import {treeholeTimestamp} from '../domain/treeholePresentation';
-import {treeholeCategoryName} from '../domain/treeholeCategories';
+import {treeholeCategoryName,treeholeInterestName} from '../domain/treeholeCategories';
 import type {TreeholePost,TreeholeResponseKind} from '../services/treehole';
 const props=withDefaults(defineProps<{post:TreeholePost;full?:boolean;busy?:boolean;reacting?:boolean;responsesEnabled?:boolean;responding?:boolean}>(),{full:false,busy:false,reacting:false});
-const emit=defineEmits<{open:[];discussion:[];react:[kind:'like'|'save'];menu:[];image:[index:number];category:[id:string];author:[id:string];response:[kind:TreeholeResponseKind]}>();
+const emit=defineEmits<{open:[];discussion:[];react:[kind:'like'|'save'];menu:[];image:[index:number];category:[id:string];interest:[id:string];author:[id:string];response:[kind:TreeholeResponseKind]}>();
 const pressed=ref(false);
 let pointer:{x:number;y:number;at:number;moved:boolean}|undefined;
 function down(event:PointerEvent){if(props.full||props.busy)return;pointer={x:event.clientX,y:event.clientY,at:performance.now(),moved:false};pressed.value=!(event.target as Element).closest('button');}
@@ -28,7 +28,7 @@ function openCard(event:MouseEvent){if(!props.full&&!props.busy&&!(event.target 
   <TreeholeImages :images="post.images||[]" :post-id="post.id" :full="full" @open="$emit('image',$event)"/>
   <button v-if="!full&&(post.newReplyCount||0)>0" class="th-new-replies" :disabled="busy" @click="$emit('discussion')">{{post.newReplyCount}} 条新回复 · 接着聊 <MessageCircle :size="13"/></button>
   <TreeholeResponses v-if="responsesEnabled" :post="post" :disabled="busy||responding" @choose="$emit('response',$event)"/>
-  <footer class="th-post-actions"><button class="th-category-tag" :disabled="busy" @click="$emit('category',post.category||'daily')"><span>#</span>{{treeholeCategoryName(post.category)}}</button><span class="th-action-spacer"/><span v-if="post.locked" class="th-locked-tag" aria-label="已暂停回复"><LockKeyhole :size="13"/></span><template v-if="!full"><button :aria-label="'查看评论，共 '+post.commentCount+' 条'" :disabled="busy" @click="$emit('discussion')"><MessageCircle :size="19"/><span>{{post.commentCount||'评论'}}</span></button><button :aria-label="post.liked?'取消点赞':'点赞'" :aria-pressed="post.liked" :disabled="busy||reacting" @click="$emit('react','like')"><ThumbsUp :size="19" :fill="post.liked?'currentColor':'none'"/><span>{{post.likeCount||'赞'}}</span></button></template></footer>
+  <footer class="th-post-actions"><button class="th-category-tag" :disabled="busy" @click="post.interest?$emit('interest',post.interest):$emit('category',post.category||'daily')"><span>#</span>{{post.interest?'兴趣 · '+treeholeInterestName(post.interest):treeholeCategoryName(post.category)}}</button><span class="th-action-spacer"/><span v-if="post.locked" class="th-locked-tag" aria-label="已暂停回复"><LockKeyhole :size="13"/></span><template v-if="!full"><button :aria-label="'查看评论，共 '+post.commentCount+' 条'" :disabled="busy" @click="$emit('discussion')"><MessageCircle :size="19"/><span>{{post.commentCount||'评论'}}</span></button><button :aria-label="post.liked?'取消点赞':'点赞'" :aria-pressed="post.liked" :disabled="busy||reacting" @click="$emit('react','like')"><ThumbsUp :size="19" :fill="post.liked?'currentColor':'none'"/><span>{{post.likeCount||'赞'}}</span></button></template></footer>
  </article>
 </template>
 <style scoped>

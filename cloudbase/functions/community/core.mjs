@@ -2,6 +2,9 @@ import {cleanImage,MAX_IMAGE_BYTES} from './media.mjs';
 import {randomBytes,createHash,createHmac,scrypt,timingSafeEqual} from 'node:crypto';
 import {promisify} from 'node:util';
 
+const categories=['daily','help','study','buddies','entertainment','treehole'];
+const sections=['daily','entertainment','buddies','treehole'];
+const interests=['games','anime','film','music','photo','sports'];
 const derive=promisify(scrypt);
 let activeKDF=0;
 async function deriveBounded(value,salt){if(activeKDF>=2)throw new CommunityError(429,'too_many_requests');activeKDF++;try{return await derive(value,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024});}finally{activeKDF--;}}
@@ -40,8 +43,10 @@ function sanitize(action,b){
  }
  if(action==='posts.list'){
   const scope=b.scope??'all';if(!['all','mine','saved','participated','watching','author'].includes(scope))fail();
-  const category=b.category??'all',sort=b.sort??'latest';if(!['all','daily','help','study','buddies'].includes(category)||!['latest','hot'].includes(sort))fail();
-  const out={scope,category,sort,query:b.query?text(b.query,1,80):'',...(scope==='author'?{memberId:id(b.memberId)}:{})};
+  const category=b.category??'all',sort=b.sort??'latest';if(!['all',...categories].includes(category)||!['latest','hot'].includes(sort))fail();
+  const section=b.section??'all',interest=b.interest??'';if(!['all',...sections].includes(section)||(interest!==''&&!interests.includes(interest)))fail();
+  if(interest&&section!=='entertainment')fail();
+  const out={scope,category,section,interest,sort,query:b.query?text(b.query,1,80):'',...(scope==='author'?{memberId:id(b.memberId)}:{})};
   if(b.snapshotTime!=null)out.snapshotTime=time(b.snapshotTime);
   if(b.beforeRank!=null){if(typeof b.beforeRank!=='string'||!/^\d{1,12}(\.\d{1,8})?$/.test(b.beforeRank))fail();out.beforeRank=b.beforeRank;}
   if(b.beforeTime!=null||b.beforeId!=null){out.beforeTime=time(b.beforeTime);out.beforeId=id(b.beforeId);}return out;
@@ -54,8 +59,10 @@ function sanitize(action,b){
  if(action==='media.discard')return {imageId:id(b.imageId)};
  if(action==='posts.create'){
   const images=b.images??[];if(!Array.isArray(images)||images.length>9||new Set(images).size!==images.length)fail();images.forEach(x=>id(x));
-  const category=b.category??'daily';if(!['daily','help','study','buddies'].includes(category))fail();
-  return {body:text(b.body,images.length?0:1,3000),title:text(b.title??'',0,40),category,images,anonymous:boolean(b.anonymous),requestId:id(b.requestId)};
+  const category=b.category??'daily';if(!categories.includes(category))fail();
+  const interest=b.interest??'';if(typeof interest!=='string'||interest&&(!interests.includes(interest)||category!=='entertainment'))fail();
+  const anonymous=boolean(b.anonymous);if(category==='treehole'&&!anonymous)fail();
+  return {body:text(b.body,images.length?0:1,3000),title:text(b.title??'',0,40),category,interest,images,anonymous,requestId:id(b.requestId)};
  }
  if(action==='admin.resolve'){
   if(!['remove','lock','ban','dismiss'].includes(b.decision))fail();
@@ -148,5 +155,5 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories:['daily','help','study','buddies'],schema:4,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:5,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
 }
