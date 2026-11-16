@@ -301,7 +301,7 @@ async function respond(post:TreeholePost,kind:TreeholeResponseKind){
  try{const r=await api('responses.set',{postId:post.id,kind:next});if(!alive||epoch!==accountEpoch||!r.post)return;apply({myResponse:r.post.myResponse,responseCounts:r.post.responseCounts});}
  catch(e){if(epoch===accountEpoch)apply(before);actionError(e,epoch);}finally{if(epoch===accountEpoch)delete pendingResponses.value[post.id];}
 }
-async function chooseAvatar(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];input.value='';if(!file)return;await run(async()=>{avatarCandidate.value=await prepareTreeholeImage(file,true);});}
+async function chooseAvatar(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];input.value='';if(!file)return;await run(async()=>{const epoch=accountEpoch,prepared=await prepareTreeholeImage(file,true);if(alive&&epoch===accountEpoch)avatarCandidate.value=prepared;});}
 function applyAvatar(updated:TreeholeUser){
  user.value=updated;feedNeedsRefresh=true;
  const update=(author:TreeholePost['author'])=>{if(!author.anonymous&&author.id===updated.id)author.avatar=updated.avatar;};
@@ -312,13 +312,13 @@ function applyAvatar(updated:TreeholeUser){
  // Previous route snapshots may include public authors. Refresh those projections on return.
  for(const route of routeHistory){if(route.profile?.id===updated.id)route.profile.avatar=updated.avatar;for(const p of [...route.profilePosts,...(route.detail?[route.detail]:[])])update(p.author);for(const c of route.comments){update(c.author);for(const reply of c.replies||[])update(reply.author);}}
 }
-function saveAvatar(){void run(async()=>{const candidate=avatarCandidate.value;if(!candidate)return;
+function saveAvatar(){void run(async()=>{const candidate=avatarCandidate.value,epoch=accountEpoch;if(!candidate)return;
  if(!candidate.remote)candidate.remote=(await api('media.upload',{data:candidate.data,requestId:candidate.id,purpose:'avatar'})).image;
- if(!candidate.remote)throw Error('invalid_response');
- const result=await api('avatar.set',{imageId:candidate.remote.id});if(!result.user)throw Error('invalid_response');applyAvatar(result.user);avatarCandidate.value=null;notice.value='头像已更新';
+ if(!alive||epoch!==accountEpoch)return;if(!candidate.remote)throw Error('invalid_response');
+ const result=await api('avatar.set',{imageId:candidate.remote.id});if(!alive||epoch!==accountEpoch)return;if(!result.user)throw Error('invalid_response');applyAvatar(result.user);avatarCandidate.value=null;notice.value='头像已更新';
 });}
 function cancelAvatar(){const old=avatarCandidate.value;avatarCandidate.value=null;if(old?.remote)void api('media.discard',{imageId:old.remote.id}).catch(()=>{});}
-function removeAvatar(){confirmAction.value={title:'恢复默认头像？',run:async()=>{const r=await api('avatar.set',{imageId:null});if(r.user)applyAvatar(r.user);cancelAvatar();confirmAction.value=null;notice.value='已恢复默认头像';}};}
+function removeAvatar(){confirmAction.value={title:'恢复默认头像？',run:async()=>{const epoch=accountEpoch,r=await api('avatar.set',{imageId:null});if(!alive||epoch!==accountEpoch)return;if(r.user)applyAvatar(r.user);cancelAvatar();confirmAction.value=null;notice.value='已恢复默认头像';}};}
 function askDelete(post:TreeholePost,comment?:TreeholeComment){menu.value=null;confirmAction.value={title:comment?'删除这条评论？':'删除这条帖子和它的讨论？',run:async()=>{
  await api(comment?'comments.delete':'posts.delete',{postId:post.id,commentId:comment?.id});confirmAction.value=null;
  if(comment)await loadDetail(post);else{posts.value=posts.value.filter(p=>p.id!==post.id);screen.value='feed';detail.value=null;}

@@ -130,6 +130,7 @@ final class TreeholeTests: XCTestCase {
         TreeholeTestProtocol.handler = { _ in (200, data) }
         store.respond(post, kind: "hug"); store.current?.saved = true; try await settle(store)
         XCTAssertEqual(store.posts[0].responseCounts, ["hug": 1]); XCTAssertEqual(store.profilePosts[0].myResponse, "hug"); XCTAssertEqual(store.restoreResponse(post).myResponse, "hug"); XCTAssertEqual(store.current?.saved, true)
+        result.responseCounts = ["hug": 3]; let refreshed = page([result]); TreeholeTestProtocol.handler = { _ in (200, refreshed) }; try await store.feed(); XCTAssertEqual(store.restoreResponse(post).responseCounts, ["hug": 3])
     }
     @MainActor func testLateAvatarResultDoesNotRestoreClearedUser() async throws {
         let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)

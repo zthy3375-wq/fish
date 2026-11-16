@@ -85,7 +85,7 @@ import Combine
         feedLoadingMore = false; feedPageError = nil; lastAutomaticCursor = ""
         let result = try await api.request("posts.list", identity)
         guard revision == feedRevision, generation == epoch else { return }
-        posts = result.posts ?? []; feedNext = result.next; loadedFeedIdentity = identity; feedNeedsRefresh = false
+        rememberResponses(result.posts ?? []); posts = result.posts ?? []; feedNext = result.next; loadedFeedIdentity = identity; feedNeedsRefresh = false
     }
     func loadMoreFeed(automatic: Bool = true) async {
         guard !busy, !feedLoadingMore, let cursor = feedNext, loadedFeedIdentity == feedIdentity else { return }
@@ -97,6 +97,7 @@ import Combine
         do {
             let result = try await api.request("posts.list", body)
             guard revision == feedRevision, generation == epoch, identity == feedIdentity else { return }
+            rememberResponses(result.posts ?? [])
             var ids = Set(posts.map(\.id))
             posts += (result.posts ?? []).filter { ids.insert($0.id).inserted }; feedNext = result.next
             if let next = result.next, cursorKey(next) == key { feedPageError = "暂时无法继续加载，请刷新后重试" }
@@ -161,7 +162,7 @@ import Combine
             catch let e as TreeholeError where e.code == "not_found" { message = "这条回复已不可用，可以继续查看讨论" }
         }
         guard generation == epoch else { throw CancellationError() }
-        leaveDetail(); current = post; syncFeedPost(post); comments = r.comments ?? []; commentNext = r.next; focusedThread = context
+        rememberResponses([post]); leaveDetail(); current = post; syncFeedPost(post); comments = r.comments ?? []; commentNext = r.next; focusedThread = context
         do { try await readNotifications([item.id]) } catch { message = "已打开讨论，消息已读状态暂未同步" }
     }
     func profile(_ id: String, more: Bool = false) async throws {
@@ -173,7 +174,7 @@ import Combine
         let r = try await api.request("posts.list", body)
         guard generation == epoch else { throw CancellationError() }
         if more && publicProfile?.id != id { return }
-        publicProfile = person
+        publicProfile = person; rememberResponses(r.posts ?? [])
         var ids = Set(profilePosts.map(\.id))
         profilePosts = more ? profilePosts + (r.posts ?? []).filter { ids.insert($0.id).inserted } : r.posts ?? []; profileNext = r.next
     }
@@ -216,7 +217,7 @@ import Combine
             if pendingReactions.contains(post.id + ":save"), let cached = current { fresh.saved = cached.saved }
             if !more { discussion += 1; expandedReplies = []; replyPages = [:]; loadedThreads = [] }
             if pendingResponses.contains(post.id), let cached = current { fresh.myResponse = cached.myResponse; fresh.responseCounts = cached.responseCounts }
-            current = fresh; syncFeedPost(fresh)
+            rememberResponses([fresh]); current = fresh; syncFeedPost(fresh)
             var ids = Set(comments.map(\.id))
             comments = more ? comments + (r.comments ?? []).filter { ids.insert($0.id).inserted } : r.comments ?? []; commentNext = r.next
         } catch {
@@ -281,6 +282,9 @@ import Combine
         if let index = posts.firstIndex(where: { $0.id == id }) { apply(&posts[index]) }
         if let index = profilePosts.firstIndex(where: { $0.id == id }) { apply(&profilePosts[index]) }
         if var post = current, post.id == id { apply(&post); current = post }
+    }
+    private func rememberResponses(_ fresh: [TreeholePost]) {
+        for post in fresh where responseSnapshots[post.id] != nil && !pendingResponses.contains(post.id) { responseSnapshots[post.id] = post }
     }
     func restoreResponse(_ post: TreeholePost) -> TreeholePost {
         guard let response = responseSnapshots[post.id] else { return post }; var restored = post

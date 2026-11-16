@@ -16,7 +16,9 @@ export function adapter(campus){
  async function request(action,b={}){
   await new Promise(r=>setTimeout(r,action==='posts.get'?650:100));
   const p=posts.find(p=>p.id===b.postId);
-  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:3};
+  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:4,avatarsEnabled:true,responsesEnabled:true};
+  if(action==='avatar.set'){user.avatar=b.imageId?uploaded.get(b.imageId):null;for(const p of posts)if(!p.anonymous&&p.author.id===user.id)p.author.avatar=user.avatar;return {user:copy(user)};}
+  if(action==='responses.set'){p.responseCounts||={};if(p.myResponse)p.responseCounts[p.myResponse]=Math.max(0,(p.responseCounts[p.myResponse]||0)-1);p.myResponse=b.kind;if(b.kind)p.responseCounts[b.kind]=(p.responseCounts[b.kind]||0)+1;return {post:copy(p)};}
   if(action==='me')return {user};
   if(action==='posts.list')return {posts:copy(posts.filter(p=>(!b.category||b.category==='all'||p.category===b.category)&&(!b.query||(p.title+p.body).includes(b.query))&&(b.scope!=='saved'||p.saved)&&(b.scope!=='mine'||p.author.mine)&&(b.scope!=='participated'||p.id==='post-1'||p.author.mine)&&(b.scope!=='watching'||p.watching)&&(b.scope!=='author'||!p.anonymous&&p.author.id===b.memberId))),next:null};
   if(action==='posts.get'){p.newReplyCount=0;return {post:copy(p),comments:copy(comments.filter(c=>c.postId===b.postId)),next:null};}
@@ -31,9 +33,9 @@ export function adapter(campus){
   if(action==='comments.replies')return {comments:copy(comments.find(c=>c.id===b.rootId)?.replies||[]),next:null};
   if(action==='comments.like'){const c=comments.flatMap(c=>[c,...c.replies||[]]).find(c=>c.id===b.commentId);c.likeCount+=b.enabled===c.liked?0:b.enabled?1:-1;c.liked=b.enabled;return {comment:copy(c)};}
   if(action==='comments.create'){const c={id:crypto.randomUUID(),postId:b.postId,body:b.body,author:{name:b.anonymous?'匿名同学 · 晴天':user.nickname,anonymous:!!b.anonymous,mine:true},createdAt:new Date().toISOString(),replyTo:b.replyTo,rootId:null,deleted:false,isOriginalPoster:p.author.mine,likeCount:0,liked:false,replyCount:0,replies:[]};if(b.replyTo){const root=comments.find(c=>c.id===b.replyTo||c.replies.some(r=>r.id===b.replyTo));c.rootId=root.id;root.replies.push(c);root.replyCount++;}else comments.push(c);p.commentCount++;return {comment:copy(c)};}
-  if(action==='media.upload'){const image={id:b.requestId,url:'data:image/jpeg;base64,'+b.data,width:1200,height:800};uploaded.set(image.id,image);return {image};}
+  if(action==='media.upload'){const image={id:b.requestId,url:'data:image/jpeg;base64,'+b.data,width:b.purpose==='avatar'?512:1200,height:b.purpose==='avatar'?512:800};uploaded.set(image.id,image);return {image};}
   if(action==='media.discard')return {};
-  if(action==='posts.create'){const p=post(crypto.randomUUID(),b.anonymous?'匿名同学 · 晴天':user.nickname,b.title,b.body,b.category,b.anonymous,b.images.map(id=>uploaded.get(id)));p.createdAt=new Date().toISOString();p.author.mine=true;if(!p.anonymous)p.author.id=user.id;p.watching=true;p.likeCount=0;posts.unshift(p);return {post:copy(p)};}
+  if(action==='posts.create'){const p=post(crypto.randomUUID(),b.anonymous?'匿名同学 · 晴天':user.nickname,b.title,b.body,b.category,b.anonymous,b.images.map(id=>uploaded.get(id)));p.createdAt=new Date().toISOString();p.author.mine=true;if(!p.anonymous){p.author.id=user.id;p.author.avatar=user.avatar;}p.watching=true;p.likeCount=0;posts.unshift(p);return {post:copy(p)};}
   if(action==='posts.delete'){posts.splice(posts.findIndex(p=>p.id===b.postId),1);return {};}
   if(action==='reports.create'||action==='blocks.clear')return {};
   if(action==='profile.update'){user.nickname=b.nickname;user.bio=b.bio||'';return {user};}
