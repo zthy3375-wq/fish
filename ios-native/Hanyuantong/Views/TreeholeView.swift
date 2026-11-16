@@ -61,7 +61,9 @@ struct TreeholeView: View {
     }
     private var forceAnonymous: Bool { tree.current?.category == "treehole" || tree.current?.anonymous == true && tree.current?.author.mine == true }
     var body: some View {
-        ScrollViewReader { proxy in
+        ScrollViewReader { proxy in lifecycle(scrolling(proxy)) }
+    }
+    private func scrolling(_ proxy: ScrollViewProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if tree.busy { ProgressView("正在处理…").frame(maxWidth: .infinity) }
@@ -164,6 +166,9 @@ struct TreeholeView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if screen == "detail", let post = tree.current, tree.user != nil { replyBar(post) { scrollIntentUntil = Date().addingTimeInterval(0.65); detailTab = "comments"; withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }.disabled(tree.busy) }
         }
+    }
+    private func lifecycle<Content: View>(_ content: Content) -> some View {
+        content
         .task { draft.bind(tree.user?.id); if !tree.ready { tree.enter() } }
         .onDisappear { draft.flush() }
         .onChange(of: scenePhase) { if $0 != .active { draft.flush() } else { Task { await tree.refreshUnread() } } }
@@ -200,7 +205,6 @@ struct TreeholeView: View {
             Button("放弃并返回", role: .destructive) { if screen == "compose" { draft.clear() }; replyText = ""; replyPhotos = []; pickedReplyPhotos = []; replyTo = nil; returnToFeed() }
             Button("继续编辑", role: .cancel) { }
         }
-    }
     }
     private var authentication: some View {
         VStack(alignment: .leading, spacing: 16) {
