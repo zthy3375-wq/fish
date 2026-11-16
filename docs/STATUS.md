@@ -1,6 +1,8 @@
-## 头像与轻量回应（test.8，验证中）
+## 头像与轻量回应（test.8）
 
-基于 PR #68 / `cbe9e3e`，新分支 `feat/community-avatar-responses-20261116`。新增双端头像预览上传/移除、三种轻量回应、匿名隔离与泛化通知；schema 4 兼容门控。详见 [本轮进度](COMMUNITY-PARTICIPATION.md)。正式渠道不变，在线服务暂未升级，原生与浏览器验收进行中。
+基于 PR #68 / `cbe9e3e`，新分支 `feat/community-avatar-responses-20261116`、草稿 PR #69。双端新增头像预览上传/移除、三种轻量回应、匿名隔离与泛化通知。现有邀请码内测服务已升级 schema 4，真实接口联调通过，临时数据已清理。Android 原签名测试包 `1.3.0-test.8 /158` 与离线预览已交付；正式 1.2.4 /150、蒲公英和 main 不变。
+
+产品源码 `c487469`：前端 484、共享 78、后端 39、社区浏览器 123、最终预览触控 18 项通过；Android Debug/Release 各 189 项通过，原正式证书、包身份和 30 项内嵌资源核验通过。iOS 357 项单测通过、1 项真机专用检查跳过，5 项 UI 流程及模拟器/未签名 iPhone Release 构建通过，见 [原生验证](../ios-native/VALIDATION.md)。详见 [实现、证据与交付包](COMMUNITY-PARTICIPATION.md)。实体手机覆盖、真实相册/输入法与 iPhone 真机流程仍待验收。
 
 ---
 

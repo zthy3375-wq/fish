@@ -16,8 +16,27 @@ schema 4 为附加迁移：媒体用途、成员头像引用、新回应表及�
 
 头像引用由服务端事务验证所属人、用途、就绪与删除状态；活跃头像不进入过期图片清理。新表与辅助函数沿用私有数据库权限。测试合成数据不会进入线上服务。
 
-## 验证进度
+## 验证
 
-本地前端、共享脚本、后端及生产构建已经通过；新增 9 项后端用例覆盖归属、匿名投影、重试、清理、回应计数与通知、迁移与权限。浏览器三屏宽、Android 原生和 Swift 编译/回归正在验证，最终数量与结果将在完成后补齐。
+产品源码 `c4874693259ac5d42831cc96d32dca2e2b651a9e`，tree `fa8642b59fd0ddf050fbadc66b6e83fca9bed18a`。CI 合并提交 `39986089308cda40b9a4f63e4aa5a424c3c9f61d` 与源码 tree 相同。
 
-尚未更新在线服务、生成本轮签名交付包、合并 main 或发布正式更新。实体手机覆盖安装、真实相册/输入法与 iPhone 真机流程需设备实测。
+- 前端 484 项、共享解析 78 项、后端 39 项、TypeScript 和生产构建通过；[Quality 43805152717](https://github.com/zthy3375-wq/fish/actions/runs/43805152717) 成功。新增 9 项后端检查覆盖头像归属、匿名投影、重试、清理、回应计数/通知、迁移与权限。
+- [Android 43805152745](https://github.com/zthy3375-wq/fish/actions/runs/43805152745) 的 APK 与浏览器任务均成功，Debug/Release 各 189 项原生测试和构建通过。
+- 360/390/430 px 的社区浏览器检查 123 项在本地和 CI 通过；包括头像预览/取消、上传失败/丢失响应重试、登录失效后的迟到响应、回应选择/切换/取消/失败回退、匿名隔离和旧后台门控。
+- 最终离线 HTML 的 18 项触控检查通过；录制路径覆盖详情、大图、回复、返回和匿名发帖，没有外部网络请求。
+- iOS [43805152701](https://github.com/zthy3375-wq/fish/actions/runs/43805152701) 整体成功：357 项单测通过、1 项真机数据保护检查按设计跳过，包含全部 26 项 TreeholeTests；5 项 UI 流程、模拟器编译、未签名 iPhone Release 编译和模拟器打包均成功，见 [原生验证](../ios-native/VALIDATION.md)。
+
+实体手机覆盖安装、真实相册/输入法与 iPhone 真机流程仍需设备实测；没有签名 IPA 或 TestFlight。
+
+## 内测服务
+
+单独激活 `deploy/community-test8-20261116`，部署提交 `533ef8a8d748070bd6f5c46b69d030ed03c31b16`；只改变测试部署入口和 revision，产品源码与上述通过验证的提交一致。[43805859715](https://github.com/zthy3375-wq/fish/actions/runs/43805859715) 整体成功：39 项后端检查和真实 HTTP/数据库联调通过，覆盖头像上传/确认/公开投影/归属/移除、匿名头像隔离、回应选择/切换/取消/重试、泛化消息和已读，并回归原消息/评论/分区图文/登录权限。临时测试账号、帖子、评论及媒体已清理。
+
+部署后再次读取 `/v1/config`：`schema=4`、`requiresInvite=true`、`engagementEnabled=true`、`avatarsEnabled=true`、`responsesEnabled=true`。邀请码和既有帖子/评论保持，未补造历史互动。一次性部署入口已撤销，后续普通 PR/测试提交不触发该服务升级。没有合并 main、上传蒲公英或修改正式更新渠道；正式版仍为 1.2.4 /150。
+
+## 交付
+
+- `Hanyuantong-v1.3.0-test.8-Community.apk`：12,471,502 bytes；SHA-256 `c0e82ba87036763d43b3e12fa4993d9643491bac6011bafa5bf8ed6d68b4c80a`。
+- 包名 `org.handancampus.app`，`1.3.0-test.8 /158`，非 debug；原正式证书 SHA-256 `4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9`，v1/v2/v3 签名、4 字节/16 KB ZIP 对齐和 30 个内嵌 Web 资源逐字节核验通过。满足覆盖正式 1.2.4 /150 和 test.7 /157 的包身份条件，实际覆盖安装和数据保留仍待手机验收。
+- `Hanyuantong-Community-test8-Preview.html`：真实 Vue 组件、完全离线的合成演示，已验证触控选择/取消回应。
+- 草稿 [PR #69](https://github.com/zthy3375-wq/fish/pull/69) 基于 PR #68 的较新开发分支；最终记录提交仅修改文档，产品源码与上述通过验证的 `c487469` 一致。

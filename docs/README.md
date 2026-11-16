@@ -4,6 +4,9 @@
 
 ## 当前维护入口
 
+- [头像上传与轻量回应（test.8）](COMMUNITY-PARTICIPATION.md)
+- [互动消息与讨论回访（test.7）](COMMUNITY-RETURN.md)
+- [校园泛娱乐社区方向与后续范围](COMMUNITY-DIRECTION.md)
 - [树洞账号、匿名规则与内测验证](TREEHOLE.md)
 
 - [两端整理与验收清单](ANDROID-IOS-REVIEW-20261114.md)
