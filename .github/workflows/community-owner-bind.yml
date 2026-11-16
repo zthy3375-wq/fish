@@ -2,7 +2,7 @@ name: Bind owner community moderator
 on:
   push:
     branches: ['ops/community-owner-bind-20261116']
-    paths: ['.github/workflows/community-owner-bind.yml']
+    paths: ['.github/workflows/community-owner-bind.yml', 'scripts/cloudbase/bind-community-moderator.mjs']
 permissions:
   contents: read
 concurrency:
