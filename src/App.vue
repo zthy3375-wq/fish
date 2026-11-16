@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {foregroundRefresh} from './services/foreground-refresh';
+import {keyboardViewport} from './services/keyboard-viewport';
 import {widgetSupported,widgetSnapshot,publishWidget,widgetTarget} from './services/course-widget';
 import CourseWidgetSetup from './components/CourseWidgetSetup.vue';
 import HomeCourseTimeline from './components/HomeCourseTimeline.vue';
@@ -448,7 +450,6 @@ async function load() {
     await initAcademic();
     void autoSyncAcademic();
     await reconcileReminders(schedule.value);
-    void autoSyncAcademic();
   } catch (e) {
     error.value = storageError.value || "教务信息加载失败：" + String(e);
   } finally {
@@ -503,7 +504,7 @@ watch(
     document.documentElement.dataset.theme = dark.value ? "dark" : "light";
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", dark.value ? "#171c24" : "#f7f8fb");
+      ?.setAttribute("content", getComputedStyle(document.documentElement).getPropertyValue("--color-bg").trim());
     nativeTheme();
   },
   { immediate: true },
@@ -546,19 +547,17 @@ function escape(e: KeyboardEvent) {
   if(updatesOpen.value){if(e.key==='Escape')dismissUpdate();return;}
   if(e.key === "Escape"){if(modal.value)requestClose();else if(agendaView.editor)taskDetailRef.value?.requestBack();}
 }
-async function recalibrate() {
-  void flushAnalytics();void refreshAnalytics();
-  if(document.visibilityState==='visible')void checkUpdates();
-  void syncLearning().catch(()=>{});
-  void reloadTasks();
+const recalibrate = foregroundRefresh(async () => {
+  await Promise.allSettled([flushAnalytics(), refreshAnalytics(), checkUpdates(), syncLearning(), reloadTasks()]);
   now.value = campusNow();
   if (document.visibilityState === "visible") {
     await refreshSchedule();
     await openWidgetTarget();
     await reconcileReminders(schedule.value);
-    void autoSyncAcademic();
+    await autoSyncAcademic();
   }
-}
+}, () => !disposed && document.visibilityState === "visible");
+function resumeRefresh(){void recalibrate().catch(()=>{/* Existing feature-specific errors preserve cached data. */});}
 watch(schedule, (s) => reconcileReminders(s));
 let pullY=0;
 function pullStart(e:TouchEvent){if(page.value==='community'&&window.scrollY>0){pullY=-1;return;}pullY=(content.value?.scrollTop??0)<=0&&!((e.target as HTMLElement).closest('.schedule-page,button,select,input,textarea'))?e.changedTouches[0].clientY:-1}
@@ -567,7 +566,7 @@ function viewportChange() {
   const v = window.visualViewport;
   document.documentElement.classList.toggle(
     "keyboard-open",
-    !!v && window.innerHeight - v.height > 150,
+    keyboardViewport(window.innerHeight, v, document.activeElement),
   );
 }
 watch(()=>[modal.value,agendaView.editor,pgBusy.value,pangguai.value.water?.phase] as const,()=>{
@@ -589,12 +588,15 @@ onMounted(async () => {
   clockTimer = setInterval(() => {if(document.visibilityState!=='hidden')now.value=campusNow()}, 1000);
   media.addEventListener("change", systemChange);
   window.addEventListener("keydown", escape);
-  document.addEventListener("visibilitychange", recalibrate);
-  window.addEventListener("focus", recalibrate);
+  document.addEventListener("visibilitychange", resumeRefresh);
+  window.addEventListener("focus", resumeRefresh);
   window.visualViewport?.addEventListener("resize", viewportChange);
+  document.addEventListener("focusin", viewportChange);
+  document.addEventListener("focusout", viewportChange);
+  viewportChange();
   if (Capacitor.isNativePlatform()) {
     const h = await NativeApp.addListener("appStateChange", ({ isActive }) => {
-      if (isActive) recalibrate();
+      if (isActive) resumeRefresh();
     });
     if (disposed) h.remove();
     else nativeForeground = h;
@@ -619,9 +621,12 @@ onUnmounted(() => {
   nativeForeground?.remove();
   media.removeEventListener("change", systemChange);
   window.removeEventListener("keydown", escape);
-  document.removeEventListener("visibilitychange", recalibrate);
-  window.removeEventListener("focus", recalibrate);
+  document.removeEventListener("visibilitychange", resumeRefresh);
+  window.removeEventListener("focus", resumeRefresh);
   window.visualViewport?.removeEventListener("resize", viewportChange);
+  document.removeEventListener("focusin", viewportChange);
+  document.removeEventListener("focusout", viewportChange);
+  document.documentElement.classList.remove("keyboard-open");
   document.body.style.overflow = "";
 });
 </script>
