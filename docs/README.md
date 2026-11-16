@@ -4,6 +4,10 @@
 
 ## 当前维护入口
 
+- [Android test.15 浏览器与触控复核](COMMUNITY-TEST15-REVIEW.md)
+- [schema 10 内测后台启用](COMMUNITY-ACTIVATION-20261116.md)
+- [社区阅读与发帖设计（test.15）](COMMUNITY-READING-DESIGN.md)
+- [关注、粉丝与文字私信（test.14）](COMMUNITY-MESSAGES.md)
 - [关注用户与关注动态（test.10）](COMMUNITY-FOLLOWING.md)
 - [兴趣分区与社区首页（test.9）](COMMUNITY-DISCOVERY.md)
 - [头像上传与轻量回应（test.8）](COMMUNITY-PARTICIPATION.md)

@@ -15,6 +15,8 @@
 
 ## 功能与架构
 
+最新 [test.15 浏览器与触控复核](docs/COMMUNITY-TEST15-REVIEW.md)：社区 209、私信/粉丝 27、触控 72 项通过，客户端未改，已交付测试包继续有效。
+
 | 模块 | Android | iPhone |
 | --- | --- | --- |
 | 界面 | Vue 3 / TypeScript / Capacitor；原生 Kotlin 服务 | SwiftUI 原生界面，官方认证使用 WKWebView |
