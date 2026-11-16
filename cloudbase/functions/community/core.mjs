@@ -25,13 +25,15 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set']);
+export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list']);
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
  if(action==='profile.update')return {nickname:text(b.nickname,2,20),...(b.bio!==undefined?{bio:text(b.bio,0,120)}:{})};
  if(action==='avatar.set'){if(b.imageId===undefined)fail();return {imageId:id(b.imageId,true)};}
  if(action==='profile.get')return {memberId:id(b.memberId)};
+ if(action==='follows.set')return {memberId:id(b.memberId),enabled:boolean(b.enabled)};
+ if(action==='follows.list')return b.beforeTime!=null||b.beforeId!=null?{beforeTime:time(b.beforeTime),beforeId:id(b.beforeId)}:{};
  if(action==='notifications.unread')return {};
  if(action==='notifications.read'){
   if(!Array.isArray(b.ids)||b.ids.length<1||b.ids.length>50)fail();
@@ -42,7 +44,7 @@ function sanitize(action,b){
   return {filter,...(b.beforeTime!=null||b.beforeId!=null?{beforeTime:time(b.beforeTime),beforeId:id(b.beforeId)}:{})};
  }
  if(action==='posts.list'){
-  const scope=b.scope??'all';if(!['all','mine','saved','participated','watching','author'].includes(scope))fail();
+  const scope=b.scope??'all';if(!['all','mine','saved','participated','watching','author','following'].includes(scope))fail();
   const category=b.category??'all',sort=b.sort??'latest';if(!['all',...categories].includes(category)||!['latest','hot'].includes(sort))fail();
   const section=b.section??'all',interest=b.interest??'';if(!['all',...sections].includes(section)||(interest!==''&&!interests.includes(interest)))fail();
   if(interest&&section!=='entertainment')fail();
@@ -140,6 +142,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(r.posts){const rows=r.posts;r.posts=rows.slice(0,20);r.next=rows.length>20?{beforeTime:r.posts.at(-1).createdAt,beforeId:r.posts.at(-1).id,beforeRank:r.posts.at(-1).rank,snapshotTime:r.snapshotTime}:null;}
   if(r.comments){const rows=r.comments,limit=action==='posts.get'&&b.threaded?20:50;r.comments=rows.slice(0,limit);r.next=rows.length>limit?{afterTime:r.comments.at(-1).createdAt,afterId:r.comments.at(-1).id}:null;}
   if(r.notifications){const rows=r.notifications;r.notifications=rows.slice(0,30);r.next=rows.length>30?{beforeTime:r.notifications.at(-1).createdAt,beforeId:r.notifications.at(-1).id}:null;}
+  if(r.following){const rows=r.following;r.following=rows.slice(0,20);r.next=rows.length>20?{beforeTime:r.following.at(-1).followedAt,beforeId:r.following.at(-1).id}:null;}
   // Internal object keys never leave this service. Signed links expire after ten minutes.
   const images=[...(r.image?[r.image]:[]),...(r.post?.images||[]),...(r.posts||[]).flatMap(p=>p.images||[])];
   // Only already-projected public avatar fields are signed; anonymous projections contain none.
@@ -155,5 +158,5 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:5,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:6,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
 }

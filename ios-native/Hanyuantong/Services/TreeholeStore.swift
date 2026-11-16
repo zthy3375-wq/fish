@@ -18,6 +18,15 @@ import Combine
     @Published var recovery: String?
     @Published var category = "all"
     @Published var interest = ""
+    @Published var followingEnabled = false
+    @Published var following: [TreeholeFollow] = []
+    @Published var followingNext: [String: String]?
+    @Published var followingLoading = false
+    @Published var followingError: String?
+    @Published var pendingFollows: Set<String> = []
+    var followingRetryMore = false
+    private var followingRevision = 0
+    private var followStates: [String: Bool] = [:]
     @Published var discoveryEnabled = false
     @Published var sort = "latest"
     @Published var imagesEnabled = false
@@ -66,13 +75,13 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
             self.engagementEnabled = config.engagementEnabled == true
-            self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
+            self.followingEnabled = config.followingEnabled == true; self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
             do { self.user = try await self.api.request("me").user; try await self.feed() }
             catch let error as TreeholeError where error.code == "session_expired" { self.clear() }
             self.ready = true
@@ -82,11 +91,68 @@ import Combine
     private var feedIdentity: [String: String] { ["scope": scope, "query": query, "sort": sort].merging(TreeholeCategories.filters(category, interest: interest, enabled: discoveryEnabled)) { _, new in new } }
     func selectDiscovery(_ selected: String, interest selectedInterest: String = "") async throws {
         let old = (category, interest, scope), generation = epoch
-        category = selected; interest = selectedInterest; scope = "all"
+        category = selected; interest = selectedInterest; if scope != "following" { scope = "all" }
         let requested = feedIdentity
         do { try await feed() } catch {
             if generation == epoch, feedIdentity == requested { category = old.0; interest = old.1; scope = old.2 }
             throw error
+        }
+    }
+    func selectScope(_ selected: String) async throws {
+        let old = (scope, query, category, interest, sort), generation = epoch
+        scope = selected; query = ""; category = "all"; interest = ""; sort = "latest"
+        let requested = feedIdentity
+        do { try await feed() } catch {
+            if generation == epoch, feedIdentity == requested { scope = old.0; query = old.1; category = old.2; interest = old.3; sort = old.4 }
+            throw error
+        }
+    }
+    func didBlockPublicAuthor(_ id: String) {
+        followStates[id] = false; followingRevision += 1; followingLoading = false
+        following.removeAll { $0.id == id }
+        if publicProfile?.id == id { publicProfile?.following = false }
+    }
+    func restoreProfile(_ profile: TreeholePublicProfile) -> TreeholePublicProfile {
+        var result = profile
+        if let state = followStates[profile.id] { result.following = state }
+        return result
+    }
+    func loadFollowing(more: Bool = false) async {
+        guard followingEnabled, !followingLoading, !more || followingNext != nil else { return }
+        let generation = epoch; followingRevision += 1; let revision = followingRevision
+        followingLoading = true; followingError = nil; followingRetryMore = more
+        defer { if generation == epoch, revision == followingRevision { followingLoading = false } }
+        do {
+            let r = try await api.request("follows.list", more ? followingNext ?? [:] : [:])
+            guard generation == epoch, revision == followingRevision else { return }
+            var ids = Set(following.map(\.id))
+            following = more ? following + (r.following ?? []).filter { ids.insert($0.id).inserted } : r.following ?? []
+            followingNext = r.next
+        } catch {
+            guard generation == epoch, revision == followingRevision else { return }
+            if let e = error as? TreeholeError, e.code == "session_expired" { clear(); message = e.errorDescription }
+            else { followingError = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试" }
+        }
+    }
+    func setFollow(_ id: String, enabled: Bool) async {
+        guard followingEnabled, !pendingFollows.contains(id), id != user?.id else { return }
+        let generation = epoch; message = nil; pendingFollows.insert(id)
+        defer { if generation == epoch { pendingFollows.remove(id) } }
+        do {
+            let r = try await api.request("follows.set", ["memberId": id, "enabled": enabled])
+            guard generation == epoch else { return }
+            followStates[id] = enabled
+            if publicProfile?.id == id { if let profile = r.profile { publicProfile = profile }; publicProfile?.following = enabled }
+            followingRevision += 1; followingLoading = false
+            if !enabled { following.removeAll { $0.id == id } }
+            if scope == "following" {
+                feedRevision += 1; feedLoadingMore = false; feedNext = nil; feedNeedsRefresh = true
+                if !enabled { posts.removeAll { $0.author.id == id } }
+            }
+        } catch {
+            guard generation == epoch else { return }
+            if let e = error as? TreeholeError, e.code == "session_expired" { clear() }
+            message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         }
     }
     private func cursorKey(_ cursor: [String: String]) -> String { cursor.sorted { $0.key < $1.key }.map { $0.key + "=" + $0.value }.joined(separator: "|") }
@@ -185,7 +251,7 @@ import Combine
         let r = try await api.request("posts.list", body)
         guard generation == epoch else { throw CancellationError() }
         if more && publicProfile?.id != id { return }
-        publicProfile = person; rememberResponses(r.posts ?? [])
+        publicProfile = person; if let person { followStates[person.id] = person.following }; rememberResponses(r.posts ?? [])
         var ids = Set(profilePosts.map(\.id))
         profilePosts = more ? profilePosts + (r.posts ?? []).filter { ids.insert($0.id).inserted } : r.posts ?? []; profileNext = r.next
     }

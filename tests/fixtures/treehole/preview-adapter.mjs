@@ -12,23 +12,26 @@ export function adapter(campus){
   {id:'notice-2',kind:'thread_reply',postId:'post-1',commentId:'comment-2',rootId:null,actor:comments[1].author,excerpt:comments[1].body,postTitle:posts[0].title,createdAt:new Date(Date.now()-900000).toISOString(),readAt:null},
   {id:'notice-3',kind:'post_like',postId:'post-3',commentId:null,rootId:null,actor:{name:'一位同学',anonymous:true,mine:false},excerpt:'',postTitle:posts[2].title,createdAt:new Date(Date.now()-3600000).toISOString(),readAt:null}
  ];
+ const followed=new Map();
  const unread=()=>notifications.filter(n=>!n.readAt).length;
  const copy=x=>JSON.parse(JSON.stringify(x));
  async function request(action,b={}){
   await new Promise(r=>setTimeout(r,action==='posts.get'?650:100));
   const p=posts.find(p=>p.id===b.postId);
-  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:5,discoveryEnabled:true,avatarsEnabled:true,responsesEnabled:true};
+  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:6,followingEnabled:true,discoveryEnabled:true,avatarsEnabled:true,responsesEnabled:true};
   if(action==='avatar.set'){user.avatar=b.imageId?uploaded.get(b.imageId):null;for(const p of posts)if(!p.anonymous&&p.author.id===user.id)p.author.avatar=user.avatar;return {user:copy(user)};}
   if(action==='responses.set'){p.responseCounts||={};if(p.myResponse)p.responseCounts[p.myResponse]=Math.max(0,(p.responseCounts[p.myResponse]||0)-1);p.myResponse=b.kind;if(b.kind)p.responseCounts[b.kind]=(p.responseCounts[b.kind]||0)+1;return {post:copy(p)};}
   if(action==='me')return {user};
-  if(action==='posts.list')return {posts:copy(posts.filter(p=>(!b.category||b.category==='all'||p.category===b.category)&&(!b.section||b.section==='all'||(['help','study'].includes(p.category)?'daily':p.category)===b.section)&&(!b.interest||p.interest===b.interest)&&(!b.query||(p.title+p.body).includes(b.query))&&(b.scope!=='saved'||p.saved)&&(b.scope!=='mine'||p.author.mine)&&(b.scope!=='participated'||p.id==='post-1'||p.author.mine)&&(b.scope!=='watching'||p.watching)&&(b.scope!=='author'||!p.anonymous&&p.author.id===b.memberId))),next:null};
+  if(action==='posts.list')return {posts:copy(posts.filter(p=>(!b.category||b.category==='all'||p.category===b.category)&&(!b.section||b.section==='all'||(['help','study'].includes(p.category)?'daily':p.category)===b.section)&&(!b.interest||p.interest===b.interest)&&(!b.query||(p.title+p.body).includes(b.query))&&(b.scope!=='saved'||p.saved)&&(b.scope!=='mine'||p.author.mine)&&(b.scope!=='participated'||p.id==='post-1'||p.author.mine)&&(b.scope!=='watching'||p.watching)&&(b.scope!=='following'||!p.anonymous&&followed.has(p.author.id))&&(b.scope!=='author'||!p.anonymous&&p.author.id===b.memberId))),next:null};
   if(action==='posts.get'){p.newReplyCount=0;return {post:copy(p),comments:copy(comments.filter(c=>c.postId===b.postId)),next:null};}
   if(action==='notifications.unread')return {unreadCount:unread()};
   if(action==='notifications.list')return {notifications:copy(notifications.filter(n=>!b.filter||b.filter==='all'||(b.filter==='likes'?n.kind.endsWith('like'):!n.kind.endsWith('like')))),next:null,unreadCount:unread()};
   if(action==='notifications.read'){for(const n of notifications)if(b.ids.includes(n.id))n.readAt||=new Date().toISOString();return {unreadCount:unread()};}
   if(action==='threads.watch'){p.watching=!!b.enabled;return {post:copy(p)};}
   if(action==='comments.context'){return {context:copy(comments.find(c=>c.postId===b.postId&&(c.id===b.commentId||c.replies.some(r=>r.id===b.commentId))))};}
-  if(action==='profile.get'){const a=posts.find(p=>p.author.id===b.memberId)?.author;return {profile:{id:b.memberId,nickname:a?.name||user.nickname,bio:'把校园里的小事，留在这里。',postCount:posts.filter(p=>!p.anonymous&&p.author.id===b.memberId).length}};}
+  if(action==='follows.set'){if(b.enabled)followed.set(b.memberId,followed.get(b.memberId)||new Date().toISOString());else followed.delete(b.memberId);return request('profile.get',b);}
+  if(action==='follows.list')return {following:[...followed].map(([id,followedAt])=>({id,nickname:posts.find(p=>p.author.id===id)?.author.name||'同学',bio:'把校园里的小事，留在这里。',followedAt})),next:null};
+  if(action==='profile.get'){const a=posts.find(p=>p.author.id===b.memberId)?.author;return {profile:{id:b.memberId,following:followed.has(b.memberId),nickname:a?.name||user.nickname,bio:'把校园里的小事，留在这里。',postCount:posts.filter(p=>!p.anonymous&&p.author.id===b.memberId).length}};}
   if(action==='media.url')return {image:copy(p?.images.find(i=>i.id===b.imageId)||posts.flatMap(p=>p.images).find(i=>i.id===b.imageId))};
   if(action==='reactions.set'){if(b.kind==='like'){p.likeCount+=b.enabled===p.liked?0:b.enabled?1:-1;p.liked=b.enabled;}else p.saved=b.enabled;return {post:copy(p)};}
   if(action==='comments.replies')return {comments:copy(comments.find(c=>c.id===b.rootId)?.replies||[]),next:null};

@@ -57,6 +57,15 @@ CREATE TABLE IF NOT EXISTS public.hyt_community_rate (
 
 CREATE INDEX IF NOT EXISTS hyt_rate_expiration ON public.hyt_community_rate(until_at);
 
+-- v6: viewer-owned follow edges; no public follower graph or anonymous projections.
+CREATE TABLE IF NOT EXISTS public.hyt_follows (
+ member_id uuid NOT NULL REFERENCES public.hyt_members(id),
+ followed_id uuid NOT NULL REFERENCES public.hyt_members(id),
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(member_id,followed_id), CHECK(member_id<>followed_id)
+);
+CREATE INDEX IF NOT EXISTS hyt_follows_page ON public.hyt_follows(member_id,created_at DESC,followed_id DESC);
+CREATE INDEX IF NOT EXISTS hyt_follows_target ON public.hyt_follows(followed_id);
+
 -- Additive v2 migration. Old clients/posts retain their original identity and content.
 ALTER TABLE public.hyt_posts ADD COLUMN IF NOT EXISTS title text NOT NULL DEFAULT '';
 ALTER TABLE public.hyt_posts ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'daily';
@@ -206,6 +215,14 @@ LANGUAGE sql SET search_path=pg_catalog,public AS $$
  WHERE recipient<>c.author_id GROUP BY recipient ON CONFLICT(recipient_id,event_key) DO NOTHING;
 $$;
 
+CREATE OR REPLACE FUNCTION public.hyt_profile_json(u public.hyt_members,viewer uuid) RETURNS jsonb
+LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
+ SELECT jsonb_build_object('id',u.id,'nickname',u.nickname,'bio',u.bio,'avatar',public.hyt_avatar_json(u.id),
+ 'following',EXISTS(SELECT 1 FROM public.hyt_follows f WHERE f.member_id=viewer AND f.followed_id=u.id),
+ 'postCount',(SELECT count(*) FROM public.hyt_posts p WHERE p.author_id=u.id AND NOT p.anonymous AND p.deleted_at IS NULL
+ AND NOT EXISTS(SELECT 1 FROM public.hyt_hidden_threads h WHERE h.member_id=viewer AND h.post_id=p.id)));
+$$;
+
 -- Each call is a PostgreSQL transaction. The HTTP server is the only caller.
 CREATE OR REPLACE FUNCTION public.hyt_community(a text,b jsonb,th text) RETURNS jsonb
 LANGUAGE plpgsql SET search_path=pg_catalog,public AS $fn$
@@ -252,6 +269,17 @@ BEGIN
   DELETE FROM public.hyt_sessions WHERE hash IN (SELECT hash FROM public.hyt_sessions WHERE member_id=m.id ORDER BY created_at DESC OFFSET 9);
   INSERT INTO public.hyt_sessions(hash,member_id,expires_at) VALUES(th,m.id,now()+interval '30 days');
   RETURN jsonb_build_object('status',200,'user',public.hyt_member_json(m));
+ END IF;
+ -- Serialize follow/block changes for the same pair before locking either caller.
+ IF a IN ('follows.set','blocks.set') THEN
+  SELECT s.member_id INTO target FROM public.hyt_sessions s JOIN public.hyt_members u ON u.id=s.member_id
+   WHERE s.hash=th AND s.expires_at>now() AND u.deleted_at IS NULL;
+  IF target IS NOT NULL THEN
+   IF a='follows.set' THEN k=b->>'memberId';
+   ELSIF b->>'commentId' IS NOT NULL THEN SELECT author_id::text INTO k FROM public.hyt_comments WHERE id=(b->>'commentId')::uuid AND post_id=(b->>'postId')::uuid AND NOT anonymous;
+   ELSE SELECT author_id::text INTO k FROM public.hyt_posts WHERE id=(b->>'postId')::uuid AND NOT anonymous; END IF;
+   IF k IS NOT NULL THEN PERFORM pg_advisory_xact_lock(hashtextextended(least(target::text,k)||greatest(target::text,k),0)); END IF;
+  END IF;
  END IF;
  SELECT u.* INTO m FROM public.hyt_sessions s JOIN public.hyt_members u ON u.id=s.member_id
  WHERE s.hash=th AND s.expires_at>now() AND u.deleted_at IS NULL FOR UPDATE OF u;
@@ -300,12 +328,32 @@ BEGIN
  END IF;
  IF a='profile.update'  THEN UPDATE public.hyt_members SET nickname=b->>'nickname',bio=coalesce(b->>'bio',bio) WHERE id=m.id RETURNING * INTO m; RETURN jsonb_build_object('status',200,'user',public.hyt_member_json(m)); END IF;
  IF a='profile.get' THEN
-  SELECT jsonb_build_object('id',u.id,'nickname',u.nickname,'bio',u.bio,'avatar',public.hyt_avatar_json(u.id),
-   'postCount',(SELECT count(*) FROM public.hyt_posts p WHERE p.author_id=u.id AND NOT p.anonymous AND p.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM public.hyt_hidden_threads h WHERE h.member_id=m.id AND h.post_id=p.id))) INTO result
-  FROM public.hyt_members u WHERE u.id=(b->>'memberId')::uuid AND u.deleted_at IS NULL
+  SELECT public.hyt_profile_json(u,m.id) INTO result FROM public.hyt_members u WHERE u.id=(b->>'memberId')::uuid AND u.deleted_at IS NULL
   AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=u.id);
   IF result IS NULL THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
   RETURN jsonb_build_object('status',200,'profile',result);
+ END IF;
+ IF a='follows.set' THEN
+  target=(b->>'memberId')::uuid;
+  IF target=m.id THEN RETURN '{"status":400,"error":"invalid_request"}'::jsonb; END IF;
+  IF (b->>'enabled')::boolean THEN
+   PERFORM id FROM public.hyt_members WHERE id=target AND deleted_at IS NULL FOR KEY SHARE;
+   IF NOT FOUND OR EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE (bl.member_id=m.id AND bl.blocked_id=target) OR (bl.member_id=target AND bl.blocked_id=m.id)) THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
+   IF NOT EXISTS(SELECT 1 FROM public.hyt_follows WHERE member_id=m.id AND followed_id=target) AND (SELECT count(*) FROM public.hyt_follows WHERE member_id=m.id)>=1000 THEN RETURN '{"status":400,"error":"following_limit"}'::jsonb; END IF;
+   INSERT INTO public.hyt_follows(member_id,followed_id) VALUES(m.id,target) ON CONFLICT DO NOTHING;
+  ELSE DELETE FROM public.hyt_follows WHERE member_id=m.id AND followed_id=target; END IF;
+  SELECT public.hyt_profile_json(u,m.id) INTO result FROM public.hyt_members u WHERE id=target AND deleted_at IS NULL
+   AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE (bl.member_id=m.id AND bl.blocked_id=u.id) OR (bl.member_id=u.id AND bl.blocked_id=m.id));
+  RETURN jsonb_build_object('status',200,'profile',result);
+ END IF;
+ IF a='follows.list' THEN
+  SELECT coalesce(jsonb_agg(q.person ORDER BY q.created_at DESC,q.followed_id DESC),'[]'::jsonb) INTO result FROM (
+   SELECT f.created_at,f.followed_id,jsonb_build_object('id',u.id,'nickname',u.nickname,'bio',u.bio,'avatar',public.hyt_avatar_json(u.id),'followedAt',f.created_at) AS person
+   FROM public.hyt_follows f JOIN public.hyt_members u ON u.id=f.followed_id AND u.deleted_at IS NULL
+   WHERE f.member_id=m.id AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE (bl.member_id=m.id AND bl.blocked_id=u.id) OR (bl.member_id=u.id AND bl.blocked_id=m.id))
+   AND (b->>'beforeTime' IS NULL OR (f.created_at,f.followed_id)<((b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid))
+   ORDER BY f.created_at DESC,f.followed_id DESC LIMIT 21) q;
+  RETURN jsonb_build_object('status',200,'following',result);
  END IF;
  IF a='notifications.read' THEN
   UPDATE public.hyt_notifications SET read_at=coalesce(read_at,now()) WHERE recipient_id=m.id AND id IN (SELECT value::uuid FROM jsonb_array_elements_text(b->'ids'));
@@ -335,6 +383,7 @@ BEGIN
    DELETE FROM public.hyt_sessions WHERE member_id=m.id;
    DELETE FROM public.hyt_reactions WHERE member_id=m.id;
    DELETE FROM public.hyt_responses WHERE member_id=m.id;
+   DELETE FROM public.hyt_follows WHERE member_id=m.id OR followed_id=m.id;
    DELETE FROM public.hyt_blocks WHERE member_id=m.id OR blocked_id=m.id;
    DELETE FROM public.hyt_hidden_threads WHERE member_id=m.id;
    DELETE FROM public.hyt_notifications WHERE recipient_id=m.id OR actor_id=m.id;
@@ -359,6 +408,7 @@ BEGIN
     AND (coalesce(b->>'scope','all')<>'saved' OR EXISTS(SELECT 1 FROM public.hyt_reactions r WHERE r.post_id=p.id AND r.member_id=m.id AND r.kind='save'))
     AND (coalesce(b->>'scope','all')<>'participated' OR p.author_id=m.id OR EXISTS(SELECT 1 FROM public.hyt_comments c WHERE c.post_id=p.id AND c.author_id=m.id AND c.deleted_at IS NULL))
     AND (coalesce(b->>'scope','all')<>'watching' OR EXISTS(SELECT 1 FROM public.hyt_thread_watches w WHERE w.post_id=p.id AND w.member_id=m.id AND w.enabled))
+    AND (coalesce(b->>'scope','all')<>'following' OR (NOT p.anonymous AND EXISTS(SELECT 1 FROM public.hyt_follows f JOIN public.hyt_members u ON u.id=f.followed_id AND u.deleted_at IS NULL WHERE f.member_id=m.id AND f.followed_id=p.author_id) AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=p.author_id AND bl.blocked_id=m.id)))
     AND (coalesce(b->>'scope','all')<>'author' OR (p.author_id=(b->>'memberId')::uuid AND NOT p.anonymous))
     AND (coalesce(b->>'query','')='' OR strpos(lower(p.title||' '||p.body),lower(b->>'query'))>0)) ranked
     WHERE b->>'beforeTime' IS NULL OR (ranked.rank,ranked.created_at,ranked.id)<(coalesce((b->>'beforeRank')::numeric,0),(b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid)
@@ -518,7 +568,10 @@ BEGIN
   IF a='blocks.set' THEN
    IF target=m.id THEN RETURN '{"status":400,"error":"cannot_block_self"}'::jsonb; END IF;
    IF anon THEN INSERT INTO public.hyt_hidden_threads VALUES(m.id,p.id) ON CONFLICT DO NOTHING;
-   ELSE INSERT INTO public.hyt_blocks VALUES(m.id,target) ON CONFLICT DO NOTHING; END IF;
+   ELSE
+    INSERT INTO public.hyt_blocks VALUES(m.id,target) ON CONFLICT DO NOTHING;
+    DELETE FROM public.hyt_follows WHERE (member_id=m.id AND followed_id=target) OR (member_id=target AND followed_id=m.id);
+   END IF;
   ELSE
    IF (SELECT count(*) FROM public.hyt_reports WHERE reporter_id=m.id AND created_at>now()-interval '1 hour')>=20 THEN RETURN '{"status":429,"error":"too_many_requests"}'::jsonb; END IF;
    IF NOT EXISTS(SELECT 1 FROM public.hyt_reports WHERE reporter_id=m.id AND post_id=p.id AND comment_id IS NOT DISTINCT FROM (b->>'commentId')::uuid AND status='open') THEN
@@ -533,14 +586,14 @@ END $fn$;
 -- No direct client role may query author mappings, credentials, or bypass server validation.
 DO $$ DECLARE obj record; role_name text; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN
- ('hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses') LOOP
+ ('hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows') LOOP
   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',obj.tablename);
   EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC',obj.tablename);
   FOREACH role_name IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
    IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname=role_name) THEN EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,role_name); END IF;
   END LOOP;
  END LOOP;
- FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN ('hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json') LOOP
+ FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN ('hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json') LOOP
   EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC',obj.signature);
   FOREACH role_name IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
    IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname=role_name) THEN EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,role_name); END IF;

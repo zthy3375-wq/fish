@@ -7,10 +7,11 @@ export interface TreeholePost {title?:string;category?:string;interest?:string;i
 export interface TreeholeComment {rootId?:string|null;replies?:TreeholeComment[];replyCount?:number;likeCount?:number;liked?:boolean;id:string;postId:string;body:string;author:TreeholeAuthor;createdAt:string;replyTo:string|null;deleted:boolean;isOriginalPoster:boolean}
 export interface TreeholeReport {id:string;postId:string;commentId:string|null;body:string;reason:string;createdAt:string}
 export interface TreeholeNotification {id:string;kind:'reply'|'post_reply'|'thread_reply'|'post_like'|'comment_like'|'post_response';postId:string;commentId:string|null;rootId:string|null;actor:TreeholeAuthor;postTitle:string;excerpt:string;createdAt:string;readAt:string|null}
-export interface TreeholeProfile {id:string;nickname:string;bio:string;postCount:number;avatar?:TreeholeImage|null}
-export interface TreeholeResult {discoveryEnabled?:boolean;avatarsEnabled?:boolean;responsesEnabled?:boolean;image?:TreeholeImage;imagesEnabled?:boolean;user?:TreeholeUser;post?:TreeholePost;comment?:TreeholeComment;posts?:TreeholePost[];comments?:TreeholeComment[];reports?:TreeholeReport[];next?:Record<string,string>|null;recoveryCode?:string;registrationEnabled?:boolean;requiresInvite?:boolean;engagementEnabled?:boolean;notifications?:TreeholeNotification[];unreadCount?:number;context?:TreeholeComment;focusCommentId?:string;profile?:TreeholeProfile}
+export interface TreeholeProfile {id:string;nickname:string;bio:string;postCount:number;following?:boolean;avatar?:TreeholeImage|null}
+export interface TreeholeFollow {id:string;nickname:string;bio:string;followedAt:string;avatar?:TreeholeImage|null}
+export interface TreeholeResult {followingEnabled?:boolean;following?:TreeholeFollow[];discoveryEnabled?:boolean;avatarsEnabled?:boolean;responsesEnabled?:boolean;image?:TreeholeImage;imagesEnabled?:boolean;user?:TreeholeUser;post?:TreeholePost;comment?:TreeholeComment;posts?:TreeholePost[];comments?:TreeholeComment[];reports?:TreeholeReport[];next?:Record<string,string>|null;recoveryCode?:string;registrationEnabled?:boolean;requiresInvite?:boolean;engagementEnabled?:boolean;notifications?:TreeholeNotification[];unreadCount?:number;context?:TreeholeComment;focusCommentId?:string;profile?:TreeholeProfile}
 const native=registerPlugin<{request(options:{action:string;body:Record<string,unknown>}):Promise<TreeholeResult>}>('Treehole');
-const messages:Record<string,string>={
+const messages:Record<string,string>={following_limit:'关注已达到上限，请先整理关注名单',
  invalid_image:'这张图片暂不支持，请换一张 JPG、PNG 或截图',image_too_large:'图片较大，请缩小后再添加',images_unavailable:'图片服务暂时不可用，请稍后重试',image_unavailable:'图片已过期或不可用，请移除后重新添加',upload_limit:'今天上传的图片较多，请明天再试',
  session_expired:'请登录邯院通账号',invalid_credentials:'账号、密码或恢复码不正确',username_unavailable:'这个登录账号已被使用，请换一个',
  invalid_username:'登录账号需以字母开头，使用 4–24 位字母、数字或下划线',password_length:'密码需为 10–128 位',

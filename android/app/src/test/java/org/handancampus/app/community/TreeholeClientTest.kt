@@ -78,4 +78,17 @@ class TreeholeClientTest {
         assertEquals(2, sent.size)
     }
 
+    @Test fun followActionsRequireNativeSessionAndNeverReturnSessionMaterial() {
+        val vault = Vault(); var sent = 0
+        val client = TreeholeClient(vault) { action, body, token ->
+            assertEquals(vault.token, token); assertTrue(action in setOf("follows.set", "follows.list")); sent++
+            if (action == "follows.set") assertEquals(false, body.getBoolean("enabled"))
+            TreeholeResponse(200, JSONObject().put("sessionToken", "private").put("following", org.json.JSONArray()))
+        }
+        try { client.request("follows.list", JSONObject()); fail() } catch (e: TreeholeFailure) { assertEquals("session_expired", e.code) }
+        assertEquals(0, sent); vault.token = "a".repeat(43)
+        assertFalse(client.request("follows.set", JSONObject().put("memberId", "public-id").put("enabled", false)).has("sessionToken"))
+        assertFalse(client.request("follows.list", JSONObject()).has("sessionToken")); assertEquals(2, sent)
+    }
+
 }

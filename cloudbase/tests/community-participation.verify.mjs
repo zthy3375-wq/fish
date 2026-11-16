@@ -78,5 +78,5 @@ test('repeat migration preserves old ids, avatar, response, read status and priv
  const image=await upload();await call(a,'avatar.set',{imageId:image.id});const p=await post();await call(b,'responses.set',{postId:p.id,kind:'useful'});const n=(await call(a,'notifications.list')).notifications[0];await call(a,'notifications.read',{ids:[n.id]});
  await pg.exec(schema);assert.equal((await call(a,'me')).user.avatar.id,image.id);assert.equal((await call(b,'posts.get',{postId:p.id})).post.myResponse,'useful');assert((await call(a,'notifications.list')).notifications[0].readAt);
  await pg.exec('CREATE ROLE participation_client; SET ROLE participation_client;');await assert.rejects(pg.query('SELECT * FROM hyt_responses'));await assert.rejects(pg.query('SELECT hyt_avatar_json($1)',[a.user.id]));await pg.exec('RESET ROLE;');
- assert.equal(api.config().schema,5);assert.equal(api.config().responsesEnabled,true);assert.equal(createCommunity({db:rpc}).config().avatarsEnabled,false);
+ assert.equal(api.config().schema,6);assert.equal(api.config().responsesEnabled,true);assert.equal(createCommunity({db:rpc}).config().avatarsEnabled,false);
 });

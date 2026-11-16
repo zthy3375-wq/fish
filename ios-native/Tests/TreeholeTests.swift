@@ -394,4 +394,58 @@ final class TreeholeTests: XCTestCase {
         try await store.detail(post); XCTAssertNil(store.detailError); XCTAssertEqual(store.current?.id, post.id)
     }
 
+    @MainActor func testFollowingFailureRetainsStateAndSuccessUpdatesReturnSnapshotAndFeed() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.followingEnabled = true; store.scope = "following"
+        let profile = TreeholePublicProfile(id: "author", nickname: "公开同学", bio: "", postCount: 1, following: true)
+        store.publicProfile = profile; var post = samplePost(); post.author.id = "author"; store.posts = [post]
+        store.following = [TreeholeFollow(id: "author", nickname: "公开同学", bio: "", followedAt: post.createdAt)]
+        TreeholeTestProtocol.handler = { _ in (503, Data(#"{"error":"network_unavailable"}"#.utf8)) }
+        await store.setFollow("author", enabled: false)
+        XCTAssertEqual(store.publicProfile?.following, true); XCTAssertEqual(store.posts.count, 1); XCTAssertTrue(store.pendingFollows.isEmpty)
+        TreeholeTestProtocol.handler = { request in
+            XCTAssertEqual(request.url?.lastPathComponent, "follows.set")
+            return (200, Data(#"{"profile":{"id":"author","nickname":"公开同学","bio":"","postCount":1,"following":false}}"#.utf8))
+        }
+        await store.setFollow("author", enabled: false)
+        XCTAssertEqual(store.publicProfile?.following, false); XCTAssertEqual(store.restoreProfile(profile).following, false)
+        XCTAssertTrue(store.following.isEmpty); XCTAssertTrue(store.posts.isEmpty); XCTAssertTrue(store.feedNeedsRefresh)
+    }
+    @MainActor func testLateFollowResponseCannotRestorePreviousAccountState() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.followingEnabled = true
+        store.publicProfile = TreeholePublicProfile(id: "author", nickname: "公开同学", bio: "", postCount: 0, following: false)
+        TreeholeTestProtocol.handler = { _ in (200, Data(#"{"profile":{"id":"author","nickname":"公开同学","bio":"","postCount":0,"following":true}}"#.utf8)) }
+        let held = expectation(description: "follow response held"); TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { held.fulfill() }
+        let task = Task { await store.setFollow("author", enabled: true) }; await fulfillment(of: [held], timeout: 3)
+        store.clear(); TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil; await task.value
+        XCTAssertNil(store.publicProfile); XCTAssertTrue(store.pendingFollows.isEmpty); XCTAssertTrue(store.following.isEmpty)
+        XCTAssertNil(store.restoreProfile(TreeholePublicProfile(id: "author", nickname: "同学", bio: "", postCount: 0)).following)
+    }
+    @MainActor func testFollowingListFailureRetryDeduplicationAndLogoutIsolation() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.followingEnabled = true
+        let one = TreeholeFollow(id: "one", nickname: "同学一", bio: "", followedAt: "2026-01-01"), two = TreeholeFollow(id: "two", nickname: "同学二", bio: "", followedAt: "2026-01-01")
+        let initial = Data(#"{"following":[{"id":"one","nickname":"同学一","bio":"","followedAt":"2026-01-01"}],"next":{"beforeTime":"2026-01-01","beforeId":"one"}}"#.utf8)
+        TreeholeTestProtocol.handler = { _ in (200, initial) }; await store.loadFollowing(); XCTAssertEqual(store.following, [one])
+        TreeholeTestProtocol.handler = { _ in (503, Data(#"{"error":"network_unavailable"}"#.utf8)) }; await store.loadFollowing(more: true)
+        XCTAssertEqual(store.following, [one]); XCTAssertNotNil(store.followingError); XCTAssertTrue(store.followingRetryMore)
+        let page = Data("{\"following\":".utf8) + (try JSONEncoder().encode([one, two])) + Data("}".utf8)
+        TreeholeTestProtocol.handler = { _ in (200, page) }; await store.loadFollowing(more: true)
+        XCTAssertEqual(store.following, [one, two]); XCTAssertNil(store.followingNext); XCTAssertNil(store.followingError)
+        let held = expectation(description: "following list held"); TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { held.fulfill() }
+        let loading = Task { await store.loadFollowing() }; await fulfillment(of: [held], timeout: 3)
+        store.clear(); TreeholeTestProtocol.resume?(); TreeholeTestProtocol.resume = nil; await loading.value
+        XCTAssertTrue(store.following.isEmpty); XCTAssertFalse(store.followingLoading)
+    }
+    @MainActor func testFollowingScopeFailureRestoresCriteriaAndDiscoveryKeepsFollowingScope() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.discoveryEnabled = true; store.scope = "saved"; store.query = "保留"; store.category = "study"; store.posts = [samplePost()]
+        TreeholeTestProtocol.handler = { _ in (503, Data(#"{"error":"network_unavailable"}"#.utf8)) }
+        do { try await store.selectScope("following"); XCTFail() } catch { }
+        XCTAssertEqual(store.scope, "saved"); XCTAssertEqual(store.query, "保留"); XCTAssertEqual(store.category, "study"); XCTAssertEqual(store.posts.count, 1)
+        TreeholeTestProtocol.handler = { _ in (200, Data(#"{"posts":[]}"#.utf8)) }; try await store.selectScope("following"); try await store.selectDiscovery("entertainment", interest: "games")
+        XCTAssertEqual(store.scope, "following"); XCTAssertEqual(store.interest, "games"); XCTAssertEqual(store.query, "")
+    }
+
 }
