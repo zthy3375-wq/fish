@@ -158,7 +158,8 @@ try{
  if(projected.body.post.images?.length!==0||projected.body.comments?.[0]?.images?.length!==1)throw Error('Live comment attachment projection failed');
  const renewed=await http('media.url',{postId:pollId,imageId:commentImage.body.image.id},author.sessionToken);
  if(renewed.status!==200||!(await fetch(renewed.body.image.url)).ok)throw Error('Live comment image URL failed');
- await http('comments.delete',{commentId:imageComment.body.comment.id},reader.sessionToken);
+ const deletedImageComment=await http('comments.delete',{postId:pollId,commentId:imageComment.body.comment.id},reader.sessionToken);
+ if(deletedImageComment.status!==200)throw Error('Live comment delete request failed');
  if((await http('media.url',{postId:pollId,imageId:commentImage.body.image.id},author.sessionToken)).status===200)throw Error('Deleted comment image remained accessible');
  console.log('Live test.11 checks passed: poll-only publish/retry, immutable deadline, select/switch/cancel, voter privacy, image-only comment/retry/projection/URL and delete');
  console.log('Live test.10 checks passed: follow/unfollow, viewer-owned list, public following feed and anonymous exclusion');
