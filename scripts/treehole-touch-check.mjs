@@ -6,6 +6,10 @@ const browser=await chromium.launch({args:['--no-sandbox']}),checks=[];
 try{
  for(const width of [360,390,430]){
   const context=await browser.newContext({viewport:{width,height:844},hasTouch:true});const page=await context.newPage();await page.goto(pathToFileURL(process.argv[2]).href);await page.locator('.th-post').first().waitFor();
+  const sections=page.getByRole('navigation',{name:'帖子分区'}),tags=page.getByRole('group',{name:'兴趣标签'});
+  await sections.getByRole('button',{name:'兴趣娱乐',exact:true}).tap();await tags.getByRole('button',{name:'游戏',exact:true}).tap();await page.getByRole('heading',{name:'最近在玩什么？',exact:true}).waitFor();assert.equal(await page.locator('.th-post').count(),1);checks.push(`${width}: touch section and interest chips filter the real component preview`);
+  await page.locator('.th-post-body').tap();await page.locator('.th-detail').waitFor();await page.getByRole('button',{name:'返回社区',exact:true}).tap();assert.equal(await tags.getByRole('button',{name:'游戏',exact:true}).getAttribute('aria-pressed'),'true');checks.push(`${width}: touch detail return preserves the selected interest`);
+  await sections.getByRole('button',{name:'全部',exact:true}).tap();await page.locator('.th-post').nth(3).waitFor();
   const four=page.locator('.th-post').filter({hasText:'第一次做校园项目'});assert.equal(await four.locator('.th-images button').count(),4);assert.equal(await four.locator('.th-images').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2);checks.push(`${width}: four images use a two by two grid`);
   const first=page.locator('.th-post').first();await first.getByRole('button',{name:'抱抱',exact:true}).tap();await page.waitForFunction(()=>document.querySelector('.th-responses button[aria-label="抱抱"]')?.getAttribute('aria-pressed')==='true');assert.equal(await page.locator('.th-detail').count(),0);await first.getByRole('button',{name:'抱抱',exact:true}).tap();await page.waitForFunction(()=>!document.querySelector('.th-responses button[aria-pressed="true"]'));checks.push(`${width}: real touch response selects and cancels without opening the post`);
   const cdp=await context.newCDPSession(page);
