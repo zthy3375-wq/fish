@@ -545,7 +545,7 @@ BEGIN
    IF (b->>'enabled')::boolean THEN
     IF p.locked THEN RETURN '{"status":403,"error":"post_locked"}'::jsonb; END IF;
     IF m.banned_until>now() THEN RETURN '{"status":403,"error":"account_muted"}'::jsonb; END IF;
-    IF EXISTS(SELECT 1 FROM public.hyt_blocks WHERE (member_id=m.id AND blocked_id=p.author_id) OR (member_id=p.author_id AND blocked_id=m.id)) THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
+    IF NOT p.anonymous AND EXISTS(SELECT 1 FROM public.hyt_blocks WHERE (member_id=m.id AND blocked_id=p.author_id) OR (member_id=p.author_id AND blocked_id=m.id)) THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
     IF (SELECT closed OR starts_at<=now() FROM public.hyt_buddies WHERE post_id=p.id) THEN RETURN '{"status":409,"error":"buddy_closed"}'::jsonb; END IF;
     IF (SELECT count(*) FROM public.hyt_buddy_members WHERE post_id=p.id)>=(SELECT capacity FROM public.hyt_buddies WHERE post_id=p.id) THEN RETURN '{"status":409,"error":"buddy_full"}'::jsonb; END IF;
     INSERT INTO public.hyt_buddy_members(post_id,member_id) VALUES(p.id,m.id);
@@ -687,8 +687,8 @@ BEGIN
     DELETE FROM public.hyt_buddy_members WHERE post_id=p.id AND member_id=m.id;
    ELSE
     INSERT INTO public.hyt_blocks VALUES(m.id,target) ON CONFLICT DO NOTHING;
-    UPDATE public.hyt_buddies SET revision=revision+1 WHERE post_id IN (SELECT j.post_id FROM public.hyt_buddy_members j JOIN public.hyt_posts bp ON bp.id=j.post_id WHERE (j.member_id=m.id AND bp.author_id=target) OR (j.member_id=target AND bp.author_id=m.id));
-    DELETE FROM public.hyt_buddy_members j USING public.hyt_posts bp WHERE bp.id=j.post_id AND ((j.member_id=m.id AND bp.author_id=target) OR (j.member_id=target AND bp.author_id=m.id));
+    UPDATE public.hyt_buddies SET revision=revision+1 WHERE post_id IN (SELECT j.post_id FROM public.hyt_buddy_members j JOIN public.hyt_posts bp ON bp.id=j.post_id WHERE NOT bp.anonymous AND ((j.member_id=m.id AND bp.author_id=target) OR (j.member_id=target AND bp.author_id=m.id)));
+    DELETE FROM public.hyt_buddy_members j USING public.hyt_posts bp WHERE bp.id=j.post_id AND NOT bp.anonymous AND ((j.member_id=m.id AND bp.author_id=target) OR (j.member_id=target AND bp.author_id=m.id));
     DELETE FROM public.hyt_follows WHERE (member_id=m.id AND followed_id=target) OR (member_id=target AND followed_id=m.id);
    END IF;
   ELSE

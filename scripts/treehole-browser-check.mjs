@@ -417,6 +417,9 @@ try{
   assert.deepEqual(a.errors,[]);await a.context.close();
  }
 }
+ // Isolate the added scenarios from the earlier groups' synthetic auth-IP budget.
+ // Production authentication limits remain unchanged and have dedicated backend tests.
+ await db.query('DELETE FROM hyt_community_rate');
  // Buddy registration uses the real SQL transaction, not preview fixture behavior.
  for(const width of [360,390,430]){
   const a=await client(width),b=await client(width),page=a.page;await register(page,'buddy_author_'+width,'搭子发起人'+width);await register(b.page,'buddy_reader_'+width,'报名同学'+width);
