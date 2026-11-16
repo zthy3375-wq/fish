@@ -1,7 +1,7 @@
 name: Treehole private test service
 on:
   push:
-    branches: [deploy/community-test8-20261116]
+    branches: [feature/treehole-accounts-20261114]
     paths: [cloudbase/community-test-deploy.json]
 permissions:
   contents: read
