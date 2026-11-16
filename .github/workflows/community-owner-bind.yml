@@ -1,0 +1,28 @@
+name: Bind owner community moderator
+on:
+  push:
+    branches: ['ops/community-owner-bind-20261116']
+    paths: ['.github/workflows/community-owner-bind.yml']
+permissions:
+  contents: read
+concurrency:
+  group: community-owner-binding
+  cancel-in-progress: false
+jobs:
+  bind:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify exact-account binding guards
+        run: node --test cloudbase/tests/community-moderator-binding.verify.mjs
+      - name: Bind the owner-authorized account
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          COMMUNITY_TARGET_SHA256: 262a96e8a744fa688f50d64a9277e414d7ad0a7dbbef8c69a1fd8f15345dad09
+        run: node scripts/cloudbase/bind-community-moderator.mjs
