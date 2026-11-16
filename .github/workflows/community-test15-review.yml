@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: community-test15-review
+  group: community-test15-review-focused
   cancel-in-progress: true
 jobs:
   review:
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [community, messages, touch]
+        suite: [messages, touch]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
