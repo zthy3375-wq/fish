@@ -3,7 +3,7 @@ import {chromium} from 'playwright';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
-const directory='/tmp/handan-community-v12-preview';await mkdir(directory,{recursive:true});
+const directory='/tmp/handan-community-v15-preview';await mkdir(directory,{recursive:true});
 const browser=await chromium.launch({args:['--no-sandbox']});
 const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,deviceScaleFactor:2,recordVideo:{dir:directory,size:{width:390,height:844}}});
 const page=await context.newPage(),errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(/^https?:/.test(r.url()))requests.push(r.url());});

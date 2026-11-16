@@ -1,5 +1,7 @@
 # 关注用户与关注动态 · test.10
 
+> test.14 已在 Android 新增本人粉丝计数、粉丝名单/回关和私信的本地实现与验证，线上后台尚待启用，见 [本轮状态](COMMUNITY-MESSAGES.md)。本文件以下为 test.10 当时的记录。
+
 基于 PR #70 / `8eaa179`，分支 `feat/community-following-20261116`、草稿 [PR #71](https://github.com/zthy3375-wq/fish/pull/71)。Android `1.3.0-test.10 /160`，原生 SwiftUI / iOS 16 同步实现；正式更新保持 1.2.4 /150。
 
 ## 本轮范围

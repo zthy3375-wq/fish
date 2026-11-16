@@ -45,7 +45,7 @@ test('poll publication retries preserve deadline and reject definition changes',
 });
 test('schema reapplication retains votes and private access restrictions; account deletion removes votes',async()=>{
  const u=await api.execute('register',{username:'temporary_voter',nickname:'临时投票者',password,agreed:true},'','new');const p=await post();await vote(u,p,'2');await pg.exec(schema);assert.equal((await call(u,'posts.get',{postId:p.id})).post.poll.myOptionId,'2');await call(u,'account.delete',{password});assert.equal((await call(a,'posts.get',{postId:p.id})).post.poll.total,0);
- const rows=(await pg.query("SELECT relname,relrowsecurity FROM pg_class WHERE relname IN ('hyt_polls','hyt_poll_votes')")).rows;assert.equal(rows.length,2);assert(rows.every(x=>x.relrowsecurity));assert.equal(api.config().schema,8);assert.equal(api.config().pollsEnabled,true);
+ const rows=(await pg.query("SELECT relname,relrowsecurity FROM pg_class WHERE relname IN ('hyt_polls','hyt_poll_votes')")).rows;assert.equal(rows.length,2);assert(rows.every(x=>x.relrowsecurity));assert.equal(api.config().schema,10);assert.equal(api.config().pollsEnabled,true);
 });
 test('image-only root and nested comments sign only projected media in detail, context and like responses',async()=>{
  const p=await post(),image=await upload(b),root=await comment(b,p,{images:[image.id]});assert.equal(root.body,'[图片]');assert(root.images[0].url);visible(root);

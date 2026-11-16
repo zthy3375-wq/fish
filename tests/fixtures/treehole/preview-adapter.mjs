@@ -18,10 +18,20 @@ export function adapter(campus){
  const followed=new Map();
  const unread=()=>notifications.filter(n=>!n.readAt).length;
  const copy=x=>JSON.parse(JSON.stringify(x));
+ const dmThreads=[],dmMessages=[];let dmSequence=0;
  async function request(action,b={}){
   await new Promise(r=>setTimeout(r,action==='posts.get'?650:100));
   const p=posts.find(p=>p.id===b.postId);
-  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:8,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:true,followingEnabled:true,discoveryEnabled:true,avatarsEnabled:true,responsesEnabled:true};
+  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:10,responseKinds:['useful','joy','hug'],socialEnabled:true,messagesEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:true,followingEnabled:true,discoveryEnabled:true,avatarsEnabled:true,responsesEnabled:true};
+  if(action==='follows.stats')return {social:{followingCount:followed.size,followerCount:1}};
+  if(action==='followers.list')return {followers:[{id:posts[0].author.id,nickname:posts[0].author.name,bio:'分享校园里的小美好。',followedAt:new Date().toISOString(),following:followed.has(posts[0].author.id)}],next:null};
+  if(action==='messages.open'){let t=dmThreads.find(t=>t.member.id===b.memberId);if(!t){const p=posts.find(p=>p.author.id===b.memberId);t={id:crypto.randomUUID(),member:{id:b.memberId,nickname:p?.author.name||'预览同学'},lastSeq:'0',updatedAt:new Date().toISOString(),lastMessage:null,unreadCount:0};dmThreads.push(t);}return {conversation:copy(t)};}
+  if(action==='messages.inbox')return {conversations:copy(dmThreads.filter(t=>t.lastSeq!=='0')),messageUnreadCount:0,next:null};
+  if(action==='messages.unread')return {messageUnreadCount:0};
+  if(action==='messages.list')return {conversation:copy(dmThreads.find(t=>t.id===b.conversationId)),messages:copy(dmMessages.filter(m=>m.thread===b.conversationId&&(!b.afterSeq||BigInt(m.seq)>BigInt(b.afterSeq)))),next:null};
+  if(action==='messages.read')return {};
+  if(action==='messages.send'){let m=dmMessages.find(m=>m.requestId===b.requestId);if(!m){m={id:crypto.randomUUID(),thread:b.conversationId,seq:String(++dmSequence),body:b.body,mine:true,createdAt:new Date().toISOString(),requestId:b.requestId};dmMessages.push(m);}const t=dmThreads.find(t=>t.id===b.conversationId);t.lastMessage=m.body;t.lastSeq=m.seq;t.updatedAt=m.createdAt;return {message:copy(m),conversation:copy(t)};}
+  if(action==='members.block'){followed.delete(b.memberId);dmThreads.splice(dmThreads.findIndex(t=>t.member.id===b.memberId),1);return {};}
   if(action==='avatar.set'){user.avatar=b.imageId?uploaded.get(b.imageId):null;for(const p of posts)if(!p.anonymous&&p.author.id===user.id)p.author.avatar=user.avatar;return {user:copy(user)};}
   if(action==='responses.set'){p.responseCounts||={};if(p.myResponse)p.responseCounts[p.myResponse]=Math.max(0,(p.responseCounts[p.myResponse]||0)-1);p.myResponse=b.kind;if(b.kind)p.responseCounts[b.kind]=(p.responseCounts[b.kind]||0)+1;return {post:copy(p)};}
   if(action==='buddies.members'){if(!p.author.mine)throw Error('forbidden');return {post:copy(p),participants:p.buddy.joined?[{id:user.id,nickname:user.nickname,avatar:user.avatar,joinedAt:new Date().toISOString()}]:[]};}

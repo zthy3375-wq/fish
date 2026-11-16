@@ -121,4 +121,20 @@ class TreeholeClientTest {
         assertEquals(3, sent)
     }
 
+    @Test fun privateMessagesAndFollowerStatsRequireSessionAndKeepTokensNative() {
+        val vault = Vault(); var sent = 0
+        val actions = listOf("follows.stats", "followers.list", "members.block", "messages.open", "messages.inbox", "messages.unread", "messages.list", "messages.send", "messages.read")
+        val client = TreeholeClient(vault) { action, body, token ->
+            assertEquals(vault.token, token); assertTrue(action in actions); sent++
+            if (action == "messages.send") { assertEquals("hello", body.getString("body")); assertEquals("retry-id", body.getString("requestId")) }
+            TreeholeResponse(200, JSONObject().put("sessionToken", "private").put("messageUnreadCount", 1))
+        }
+        for (action in actions) {
+            try { client.request(action, JSONObject()); fail() } catch (e: TreeholeFailure) { assertEquals("session_expired", e.code) }
+        }
+        assertEquals(0, sent); vault.token = "a".repeat(43)
+        for (action in actions) assertFalse(client.request(action, JSONObject().put("body", "hello").put("requestId", "retry-id")).has("sessionToken"))
+        assertEquals(actions.size, sent)
+    }
+
 }

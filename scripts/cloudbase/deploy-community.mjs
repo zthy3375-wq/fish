@@ -2,6 +2,7 @@
 import {spawnSync} from 'node:child_process';
 import {readFileSync,writeFileSync,chmodSync,unlinkSync} from 'node:fs';
 import {createHmac,randomBytes,randomUUID} from 'node:crypto';
+import {preservationBegin,preservationEnd} from './community-preservation.mjs';
 import {sql} from '../../cloudbase/functions/community/database.mjs';
 import {cloudMedia} from '../../cloudbase/functions/community/media.mjs';
 import jpeg from '../../cloudbase/functions/community/node_modules/jpeg-js/index.js';
@@ -10,7 +11,7 @@ const envId='hanyuantong-d8gjzt1jh12370215',region='ap-shanghai';
 const base=`https://${envId}-1527874185.${region}.app.tcloudbase.com/hyt-community`;
 const activation=JSON.parse(readFileSync('cloudbase/community-test-deploy.json','utf8'));
 if(activation.mode!=='private-treehole-test'||activation.service!=='hyt-community'||activation.registration!=='invite'||!/^[0-9a-f]{64}$/.test(activation.inviteHash))throw Error('Invalid private-test activation');
-if(process.env.GITHUB_REF&&!['refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test12-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
+if(process.env.GITHUB_REF&&!['refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test12-20261116','refs/heads/deploy/community-test15-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
 const key=process.env.CLOUDBASE_API_KEY?.trim();if(!key)throw Error('CloudBase deployment key unavailable');
 const response=await fetch(`https://${envId}.${region}.tcb-api.tencentcloudapi.com/capi/credential`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({env:envId}),signal:AbortSignal.timeout(25000)});
 const envelope=await response.json();if(envelope.code!==0)throw Error('CloudBase credential exchange failed');const credentials=envelope.data;
@@ -25,14 +26,14 @@ const identity=await identityResponse.json(),dbRole=identity[0]?.role;
 if(!/^[a-zA-Z0-9_-]{1,120}$/.test(dbRole||'')||['anon','authenticated','public'].includes(dbRole))throw Error('Unable to verify database role');
 // One transaction, only hyt_ community objects. Existing analytics/academic rows are untouched.
 const schema=readFileSync('cloudbase/community-schema.sql','utf8');
-cli(['db','execute','--sql','BEGIN;\n'+schema+`\nDO $$ DECLARE obj record; BEGIN
+cli(['db','execute','--sql','BEGIN;\n'+preservationBegin+schema+`\nDO $$ DECLARE obj record; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN
- ('hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
+ ('hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
  EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,'${dbRole}'); END LOOP;
  FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
- ('hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
- EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\nCOMMIT;`,'--json']);
-console.log('Community schema installed with direct-client access denied');
+ ('hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
+ EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\n${preservationEnd}\nCOMMIT;`,'--json']);
+console.log('Community schema installed; every pre-existing community row preserved; direct-client access denied');
 await cloudMedia({env:envId,key}).ensureBucket();
 cli(['db','execute','--sql',`BEGIN;
 DROP POLICY IF EXISTS hyt_community_private_objects ON storage.objects;
@@ -47,10 +48,10 @@ try{cli(['fn','deploy','hyt-community','--httpFn','--dir','cloudbase/functions/c
 let configuration;
 for(let attempt=0;attempt<12;attempt++){
  try{configuration=await fetch(base+'/v1/config',{signal:AbortSignal.timeout(10000)}).then(async r=>({ok:r.ok,value:await r.json()}));}catch{configuration=null;}
- if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite&&configuration.value.imagesEnabled&&configuration.value.schema===8&&configuration.value.engagementEnabled===true&&configuration.value.avatarsEnabled===true&&configuration.value.responsesEnabled===true&&configuration.value.discoveryEnabled===true&&configuration.value.followingEnabled===true&&configuration.value.pollsEnabled===true&&configuration.value.commentImagesEnabled===true&&configuration.value.buddiesEnabled===true)break;
+ if(configuration?.ok&&configuration.value.registrationEnabled&&configuration.value.requiresInvite&&configuration.value.imagesEnabled&&configuration.value.schema===10&&configuration.value.responseKinds?.join(',')==='useful,joy,hug'&&configuration.value.engagementEnabled===true&&configuration.value.avatarsEnabled===true&&configuration.value.responsesEnabled===true&&configuration.value.discoveryEnabled===true&&configuration.value.followingEnabled===true&&configuration.value.pollsEnabled===true&&configuration.value.commentImagesEnabled===true&&configuration.value.buddiesEnabled===true&&configuration.value.messagesEnabled===true&&configuration.value.socialEnabled===true)break;
  await new Promise(resolve=>setTimeout(resolve,2500));
 }
-if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite||!configuration.value.imagesEnabled||configuration.value.schema!==8||configuration.value.engagementEnabled!==true||configuration.value.avatarsEnabled!==true||configuration.value.responsesEnabled!==true||configuration.value.discoveryEnabled!==true||configuration.value.followingEnabled!==true||configuration.value.pollsEnabled!==true||configuration.value.commentImagesEnabled!==true||configuration.value.buddiesEnabled!==true)throw Error('Invite gate did not activate');
+if(!configuration?.ok||!configuration.value.registrationEnabled||!configuration.value.requiresInvite||!configuration.value.imagesEnabled||configuration.value.schema!==10||configuration.value.responseKinds?.join(',')!=='useful,joy,hug'||configuration.value.engagementEnabled!==true||configuration.value.avatarsEnabled!==true||configuration.value.responsesEnabled!==true||configuration.value.discoveryEnabled!==true||configuration.value.followingEnabled!==true||configuration.value.pollsEnabled!==true||configuration.value.commentImagesEnabled!==true||configuration.value.buddiesEnabled!==true||configuration.value.messagesEnabled!==true||configuration.value.socialEnabled!==true)throw Error('Invite gate did not activate');
 const http=async(action,body={},token='')=>{const r=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});return {status:r.status,body:await r.json()};};
 if((await http('posts.list')).status!==401)throw Error('Anonymous read access unexpectedly enabled');
 if((await http('credentials',{username:'test'})).status!==404)throw Error('Internal endpoint was exposed');
@@ -59,7 +60,7 @@ if((await http('register',{username:'invalid_invite_test',nickname:'测试',pass
 process.env.CLOUDBASE_ENV_ID=envId;process.env.CLOUDBASE_APIKEY=key;
 const db=async(a,b,t)=>(await sql('SELECT hyt_community($1,$2::jsonb,$3) AS result',[a,JSON.stringify(b),t]))[0]?.result;
 const local=createCommunity({db,storage:cloudMedia({env:envId,key}),registrationEnabled:true,rateSalt});
-const testAccounts=[];const testPosts=[];
+const testAccounts=[];const testPosts=[];const testThreads=[];
 try{
  for(let i=0;i<3;i++){
   const password=randomBytes(24).toString('base64url');const r=await local.execute('register',{username:'smoke_'+randomBytes(6).toString('hex'),nickname:'联调测试'+i,password,agreed:true},'','deployment');
@@ -136,6 +137,69 @@ try{
  if(followingList.body.following?.[0]?.id!==author.user.id||'username' in followingList.body.following[0])throw Error('Live private following list failed');
  await http('follows.set',{memberId:author.user.id,enabled:false},reader.sessionToken);
  if((await http('posts.list',{scope:'following'},reader.sessionToken)).body.posts?.length!==0)throw Error('Live unfollow failed');
+ // schema 9/10: verify new capabilities through the same public HTTPS routes as Android.
+ for(const kind of ['joy','joy']){const r=await http('responses.set',{postId:created.body.post.id,kind},reader.sessionToken);if(r.status!==200||r.body.post.myResponse!=='joy'||r.body.post.responseCounts.joy!==1||Object.keys(r.body.post.responseCounts).length!==1)throw Error('Live joy retry/count failed');}
+ const joyNotice=(await http('notifications.list',{filter:'likes'},author.sessionToken)).body.notifications?.find(n=>n.kind==='post_response');
+ if(joyNotice?.excerpt!=='欢乐'||joyNotice.actor?.name!=='一位同学'||'id' in joyNotice.actor)throw Error('Live joy notification privacy failed');
+ await http('responses.set',{postId:created.body.post.id,kind:null},reader.sessionToken);
+ await http('follows.set',{memberId:author.user.id,enabled:true},reader.sessionToken);
+ const authorStats=await http('follows.stats',{memberId:reader.user.id},author.sessionToken);
+ if(authorStats.body.social?.followingCount!==0||authorStats.body.social?.followerCount!==1)throw Error('Live owned follower counts failed');
+ const fans=await http('followers.list',{memberId:reader.user.id},author.sessionToken);
+ if(fans.body.followers?.length!==1||fans.body.followers[0].id!==reader.user.id||fans.body.followers[0].following!==false||'username' in fans.body.followers[0])throw Error('Live private follower list failed');
+ await http('follows.set',{memberId:reader.user.id,enabled:true},author.sessionToken);
+ if((await http('followers.list',{},author.sessionToken)).body.followers?.[0]?.following!==true)throw Error('Live follow-back failed');
+ if((await http('follows.stats',{},author.sessionToken)).body.social?.followingCount!==1)throw Error('Live following count refresh failed');
+ const opened=await http('messages.open',{memberId:author.user.id},reader.sessionToken);
+ if(opened.status!==200||opened.body.conversation?.member?.id!==author.user.id)throw Error('Live private conversation open failed');
+ const tid=opened.body.conversation.id;testThreads.push(tid);
+ if((await http('messages.open',{memberId:reader.user.id},author.sessionToken)).body.conversation?.id!==tid)throw Error('Live canonical conversation failed');
+ const draft={conversationId:tid,body:'[真实私信联调，结束即清理]',requestId:randomUUID()};
+ const sent=await http('messages.send',draft,reader.sessionToken),retry=await http('messages.send',draft,reader.sessionToken);
+ if(sent.status!==200||retry.body.message?.id!==sent.body.message?.id||!sent.body.message.mine)throw Error('Live private send/retry failed');
+ if((await http('messages.send',{...draft,body:'[不同内容]'},reader.sessionToken)).status!==409)throw Error('Live private send conflict failed');
+ if((await http('messages.unread',{},author.sessionToken)).body.messageUnreadCount!==1)throw Error('Live private unread count failed');
+ const privateInbox=await http('messages.inbox',{},author.sessionToken);
+ if(privateInbox.body.conversations?.[0]?.id!==tid||privateInbox.body.conversations[0].unreadCount!==1)throw Error('Live private inbox failed');
+ const incoming=await http('messages.list',{conversationId:tid},author.sessionToken);
+ if(incoming.body.messages?.length!==1||incoming.body.messages[0].mine||incoming.body.messages[0].requestId!==null||JSON.stringify(incoming.body).includes(reader.user.username))throw Error('Live private history/projection failed');
+ for(const action of ['messages.list','messages.send','messages.read']){
+  const r=await http(action,{conversationId:tid,body:'[不得发送的越权私信]',requestId:randomUUID(),throughSeq:sent.body.message.seq},other.sessionToken);
+  if(r.status!==404||r.body.error!=='conversation_unavailable')throw Error('Live private participant access failed');
+ }
+ await http('messages.read',{conversationId:tid,throughSeq:sent.body.message.seq},author.sessionToken);
+ if((await http('messages.unread',{},author.sessionToken)).body.messageUnreadCount!==0)throw Error('Live private read state failed');
+ const reply=await http('messages.send',{conversationId:tid,body:'[回复联调，结束即清理]',requestId:randomUUID()},author.sessionToken);
+ if(reply.status!==200||(await http('messages.unread',{},reader.sessionToken)).body.messageUnreadCount!==1)throw Error('Live private reply failed');
+ // History fixtures are restricted to this disposable thread and deleted below.
+ await sql("INSERT INTO hyt_dm_messages(thread_id,sender_id,body,request_id,created_at) SELECT $1::uuid,$2::uuid,'[临时分页私信，结束即清理]',gen_random_uuid(),now()-interval '10 minutes' FROM generate_series(1,32)",[tid,reader.user.id]);
+ await sql('UPDATE hyt_dm_threads SET last_seq=(SELECT max(seq) FROM hyt_dm_messages WHERE thread_id=$1::uuid) WHERE id=$1::uuid',[tid]);
+ const latest=await http('messages.list',{conversationId:tid},author.sessionToken);
+ if(latest.body.messages?.length!==30||!latest.body.next?.beforeSeq)throw Error('Live private history page failed');
+ const earlier=await http('messages.list',{conversationId:tid,...latest.body.next},author.sessionToken);
+ if(earlier.body.messages?.length!==4||new Set([...earlier.body.messages,...latest.body.messages].map(x=>x.id)).size!==34)throw Error('Live private older history failed');
+ const forward=await http('messages.list',{conversationId:tid,afterSeq:sent.body.message.seq},author.sessionToken);
+ if(forward.body.messages?.length!==30||!forward.body.next?.afterSeq)throw Error('Live private incremental cursor failed');
+ const forwardNext=await http('messages.list',{conversationId:tid,...forward.body.next},author.sessionToken);
+ if(forwardNext.body.messages?.length!==3)throw Error('Live private incremental continuation failed');
+ const arrived=await http('messages.send',{conversationId:tid,body:'[已读边界之后到达，结束即清理]',requestId:randomUUID()},reader.sessionToken);
+ await http('messages.read',{conversationId:tid,throughSeq:latest.body.messages.at(-1).seq},author.sessionToken);
+ if((await http('messages.unread',{},author.sessionToken)).body.messageUnreadCount!==1)throw Error('Live private read boundary swallowed a later message');
+ await http('messages.read',{conversationId:tid,throughSeq:arrived.body.message.seq},author.sessionToken);
+ const third=await http('messages.open',{memberId:reader.user.id},other.sessionToken);
+ if(third.status!==200)throw Error('Live private block setup failed');testThreads.push(third.body.conversation.id);
+ await http('messages.send',{conversationId:third.body.conversation.id,body:'[屏蔽联调，结束即清理]',requestId:randomUUID()},reader.sessionToken);
+ if((await http('members.block',{memberId:reader.user.id},other.sessionToken)).status!==200)throw Error('Live private block failed');
+ if((await http('messages.send',{conversationId:third.body.conversation.id,body:'[屏蔽后不得发送]',requestId:randomUUID()},reader.sessionToken)).status!==404)throw Error('Live private block send guard failed');
+ if((await http('messages.unread',{},other.sessionToken)).body.messageUnreadCount!==0||(await http('messages.inbox',{},other.sessionToken)).body.conversations?.length!==0)throw Error('Live private blocked visibility failed');
+ for(const table of ['hyt_dm_threads','hyt_dm_messages','hyt_dm_reads']){
+  const rows=await sql("SELECT has_table_privilege($1,$2,'SELECT') AS allowed",[dbRole,table]);if(![false,'false','f'].includes(rows[0]?.allowed))throw Error('Direct message table access was not denied');
+ }
+ for(const fn of ['hyt_dm_visible(uuid)','hyt_dm_json(hyt_dm_threads,uuid)','hyt_dm_message_json(hyt_dm_messages,uuid)']){
+  const rows=await sql("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed",[dbRole,fn]);if(![false,'false','f'].includes(rows[0]?.allowed))throw Error('Direct message helper access was not denied');
+ }
+ console.log('Live test.15 joy checks passed: capability, independent counts, retry, cancel and generic notification');
+ console.log('Live test.14 checks passed: owned follower counts/list, follow-back, canonical private conversation, send/reply/retry/conflict, participant-only history, unread boundaries, history/incremental pages, block and direct-client permission denial');
  const pollBody={body:'',anonymous:true,requestId:randomUUID(),poll:{question:'[投票联调，完成即清理]',options:['选项甲','选项乙'],durationHours:24}};
  const pollCreated=await http('posts.create',pollBody,author.sessionToken);
  if(pollCreated.status!==201||pollCreated.body.post.poll?.total!==0)throw Error('Live poll creation failed');
@@ -207,7 +271,9 @@ try{
  }
  // Remove only these generated test identities/content, never real user rows.
  for(const pid of testPosts){await sql('DELETE FROM hyt_buddy_members WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_buddies WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_poll_votes WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_polls WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_responses WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_notifications WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_watches WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_visits WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comment_likes WHERE comment_id IN (SELECT id FROM hyt_comments WHERE post_id=$1::uuid)',[pid]);await sql('DELETE FROM hyt_media WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_thread_aliases WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_comments WHERE post_id=$1::uuid',[pid]);await sql('DELETE FROM hyt_posts WHERE id=$1::uuid',[pid]);}
+ for(const u of testAccounts)await sql('DELETE FROM hyt_community_rate WHERE key=$1',['member:'+u.user.id]);
+ for(const tid of testThreads){const rows=await sql('SELECT (SELECT count(*) FROM hyt_dm_threads WHERE id=$1::uuid)+(SELECT count(*) FROM hyt_dm_messages WHERE thread_id=$1::uuid)+(SELECT count(*) FROM hyt_dm_reads WHERE thread_id=$1::uuid) AS remaining',[tid]);if(Number(rows[0]?.remaining)!==0)throw Error('Disposable private conversation cleanup incomplete');}
  for(const u of testAccounts)await sql('DELETE FROM hyt_members WHERE id=$1::uuid AND deleted_at IS NOT NULL',[u.user.id]);
 }
-console.log('Disposable accounts, posts, comments, poll votes and media cleared');
+console.log('Disposable accounts, posts, comments, poll votes, private conversations/messages/read states and media cleared');
 console.log(JSON.stringify({service:'hyt-community',mode:'invite-only',apkPublished:false,updateChannelChanged:false}));
