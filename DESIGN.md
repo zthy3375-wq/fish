@@ -16,7 +16,11 @@ typography:
   brand:
     fontFamily: "'Noto Serif SC', 'Songti SC', SimSun, serif"
 rounded:
+  xs: '4px'
+  control: '8px'
   sm: '10px'
+  navigation: '12px'
+  avatar: '18px'
   md: '16px'
   lg: '20px'
 spacing:
@@ -24,8 +28,8 @@ spacing:
   page: '20px'
   content-max: '680px'
 components:
-  button: {height: '44px'}
-  card: {rounded: '16px'}
+  button: {height: '44px', backgroundColor: '{colors.primary}', textColor: '{colors.surface}'}
+  card: {rounded: '16px', backgroundColor: '{colors.surface}', textColor: '{colors.text}'}
   sheet: {rounded: '20px'}
 ---
 # 邯院通设计规范

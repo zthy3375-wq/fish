@@ -6,7 +6,7 @@
 
 - `android/app/src/main/java/org/handancampus/app/community/TreeholeClient.kt:20`：原生保存会话、白名单 action、正文体积上限，返回前剥离会话及密码/恢复码摘要；HTTP 不跟随重定向并限制响应体。既有会话测试复核。
 - `cloudbase/functions/community/core.mjs:10`：scrypt 有并发预算，密码随机盐，客户端身份/角色不作为授权依据。
-- `cloudbase/schema-community.sql`：管理员处理、匿名隔离、私信成员关系由服务端 RPC 检查；既有 PostgreSQL/PGlite 用例覆盖越权、屏蔽、删除、幂等、速率和数据保全。本轮后端 101 项通过，不能代替生产 RLS 配置审计。
+- `cloudbase/community-schema.sql`：管理员处理、匿名隔离、私信成员关系由服务端 RPC 检查；既有 PostgreSQL/PGlite 用例覆盖越权、屏蔽、删除、幂等、速率和数据保全。本轮后端 101 项通过，不能代替生产 RLS 配置审计。
 - `android/app/src/main/AndroidManifest.xml:11`：禁止备份；社区内容使用 Vue 文本插值，未新增 v-html、动态脚本或敏感 Web 存储。
 - `capacitor.config.ts`：WebView 调试关闭；未修改 Android 包身份、签名或线上更新元数据。
 
