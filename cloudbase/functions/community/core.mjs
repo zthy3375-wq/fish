@@ -25,7 +25,7 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list']);
+export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote']);
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
@@ -55,7 +55,7 @@ function sanitize(action,b){
  }
  if(action==='media.upload'){
   if(typeof b.data!=='string'||b.data.length>Math.ceil(MAX_IMAGE_BYTES/3)*4||b.data.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(b.data))fail('invalid_image');
-  const purpose=b.purpose??'post';if(!['post','avatar'].includes(purpose))fail();
+  const purpose=b.purpose??'post';if(!['post','avatar','comment'].includes(purpose))fail();
   return {requestId:id(b.requestId),digest:digest(b.data),purpose};
  }
  if(action==='media.discard')return {imageId:id(b.imageId)};
@@ -64,7 +64,10 @@ function sanitize(action,b){
   const category=b.category??'daily';if(!categories.includes(category))fail();
   const interest=b.interest??'';if(typeof interest!=='string'||interest&&(!interests.includes(interest)||category!=='entertainment'))fail();
   const anonymous=boolean(b.anonymous);if(category==='treehole'&&!anonymous)fail();
-  return {body:text(b.body,images.length?0:1,3000),title:text(b.title??'',0,40),category,interest,images,anonymous,requestId:id(b.requestId)};
+  let poll=null;
+  if(b.poll!=null){const d=b.poll;if(typeof d!=='object'||Array.isArray(d)||!Array.isArray(d.options)||d.options.length<2||d.options.length>6||![24,72,168].includes(d.durationHours))fail();
+   const options=d.options.map(x=>text(x,1,40));if(new Set(options.map(x=>x.toLowerCase())).size!==options.length)fail();poll={question:text(d.question,1,80),options,durationHours:d.durationHours};}
+  return {poll,body:text(b.body,images.length||poll?0:1,3000),title:text(b.title??'',0,40),category,interest,images,anonymous,requestId:id(b.requestId)};
  }
  if(action==='admin.resolve'){
   if(!['remove','lock','ban','dismiss'].includes(b.decision))fail();
@@ -72,6 +75,7 @@ function sanitize(action,b){
  }
  if(['me','logout','password.change','account.delete','blocks.clear','admin.reports'].includes(action))return {};
  const out={postId:id(b.postId)};
+ if(action==='polls.vote'){if(b.optionId!==null&&(typeof b.optionId!=='string'||! /^[0-5]$/.test(b.optionId)))fail();out.optionId=b.optionId;}
  if(action==='responses.set'){if(b.kind!==null&&!['same','hug','useful'].includes(b.kind))fail();out.kind=b.kind;}
  if(action==='threads.watch')out.enabled=boolean(b.enabled);
  if(action==='comments.context')out.commentId=id(b.commentId);
@@ -80,7 +84,7 @@ function sanitize(action,b){
  if(action==='comments.replies')out.rootId=id(b.rootId);
  if(['posts.get','comments.replies'].includes(action)&&(b.afterTime!=null||b.afterId!=null)){out.afterTime=time(b.afterTime);out.afterId=id(b.afterId);}
  if(action==='comments.like')Object.assign(out,{commentId:id(b.commentId),enabled:boolean(b.enabled)});
- if(action==='comments.create')Object.assign(out,{body:text(b.body,1,1000),anonymous:boolean(b.anonymous),requestId:id(b.requestId),replyTo:id(b.replyTo,true)});
+ if(action==='comments.create'){const images=b.images??[];if(!Array.isArray(images)||images.length>3||new Set(images).size!==images.length)fail();images.forEach(x=>id(x));Object.assign(out,{images,body:text(b.body,images.length?0:1,1000),anonymous:boolean(b.anonymous),requestId:id(b.requestId),replyTo:id(b.replyTo,true)});}
  if(['comments.delete','reports.create','blocks.set'].includes(action))out.commentId=id(b.commentId,action!=='comments.delete');
  if(action==='reports.create')out.reason=text(b.reason,2,300);
  if(action==='reactions.set'){if(!['like','save'].includes(b.kind))fail();Object.assign(out,{kind:b.kind,enabled:boolean(b.enabled)});}
@@ -144,19 +148,18 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(r.notifications){const rows=r.notifications;r.notifications=rows.slice(0,30);r.next=rows.length>30?{beforeTime:r.notifications.at(-1).createdAt,beforeId:r.notifications.at(-1).id}:null;}
   if(r.following){const rows=r.following;r.following=rows.slice(0,20);r.next=rows.length>20?{beforeTime:r.following.at(-1).followedAt,beforeId:r.following.at(-1).id}:null;}
   // Internal object keys never leave this service. Signed links expire after ten minutes.
-  const images=[...(r.image?[r.image]:[]),...(r.post?.images||[]),...(r.posts||[]).flatMap(p=>p.images||[])];
-  // Only already-projected public avatar fields are signed; anonymous projections contain none.
-  function avatars(value){if(!value||typeof value!=='object')return;if(value.avatar)images.push(value.avatar);for(const [key,child] of Object.entries(value))if(key!=='avatar')avatars(child);}
-  avatars(r);
+  const images=[];
+  function collect(value){if(!value||typeof value!=='object')return;if(typeof value.key==='string'&&typeof value.id==='string'&&typeof value.width==='number')images.push(value);for(const child of Object.values(value))collect(child);}
+  collect(r);
   const keys=[...new Set(images.map(i=>i.key))];let urls=new Map();
   if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
   for(const image of images){image.url=urls.get(image.key)||null;delete image.key;}
-  if(storage&&['posts.delete','account.delete','admin.resolve','media.discard','media.upload','avatar.set'].includes(action)){
+  if(storage&&['posts.delete','comments.delete','account.delete','admin.resolve','media.discard','media.upload','avatar.set'].includes(action)){
    try {const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}}catch{console.warn('Community image cleanup will retry');}
   }
   if(sessionToken)r.sessionToken=sessionToken;
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:6,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:7,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
 }

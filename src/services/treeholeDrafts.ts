@@ -1,6 +1,6 @@
-import type {TreeholeImage} from './treehole';
+import type {TreeholeImage,TreeholePollDraft} from './treehole';
 export interface DraftImage {id:string;data:string;width:number;height:number;remote?:TreeholeImage}
-export interface TreeholeDraft {title:string;body:string;category:string;interest?:string;anonymous:boolean;requestId:string;images:DraftImage[]}
+export interface TreeholeDraft {poll?:TreeholePollDraft|null;title:string;body:string;category:string;interest?:string;anonymous:boolean;requestId:string;images:DraftImage[]}
 let database:Promise<IDBDatabase>|undefined;
 function open(){return database??=new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('hyt-treehole-drafts-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>resolve(r.result);r.onerror=()=>{database=undefined;reject(r.error);};});}
 async function operation<T>(id:string,mode:IDBTransactionMode,work:(store:IDBObjectStore)=>IDBRequest){const db=await open();return new Promise<T>((resolve,reject)=>{const tx=db.transaction('drafts',mode),r=work(tx.objectStore('drafts'));tx.oncomplete=()=>resolve(r.result);tx.onerror=tx.onabort=()=>reject(tx.error);});}

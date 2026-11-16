@@ -91,4 +91,16 @@ class TreeholeClientTest {
         assertFalse(client.request("follows.list", JSONObject()).has("sessionToken")); assertEquals(2, sent)
     }
 
+    @Test fun pollVotingKeepsNativeAuthenticationAndNullCancellation() {
+        val vault = Vault(); var sent = 0
+        val client = TreeholeClient(vault) { action, body, token ->
+            assertEquals("polls.vote", action); assertEquals(vault.token, token); sent++
+            assertTrue(body.isNull("optionId"))
+            TreeholeResponse(200, JSONObject().put("sessionToken", "private"))
+        }
+        try { client.request("polls.vote", JSONObject()); fail() } catch (e: TreeholeFailure) { assertEquals("session_expired", e.code) }
+        assertEquals(0, sent); vault.token = "a".repeat(43)
+        assertFalse(client.request("polls.vote", JSONObject().put("postId", "post").put("optionId", JSONObject.NULL)).has("sessionToken")); assertEquals(1, sent)
+    }
+
 }

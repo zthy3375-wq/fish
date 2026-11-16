@@ -12,15 +12,18 @@ export function adapter(campus){
   {id:'notice-2',kind:'thread_reply',postId:'post-1',commentId:'comment-2',rootId:null,actor:comments[1].author,excerpt:comments[1].body,postTitle:posts[0].title,createdAt:new Date(Date.now()-900000).toISOString(),readAt:null},
   {id:'notice-3',kind:'post_like',postId:'post-3',commentId:null,rootId:null,actor:{name:'一位同学',anonymous:true,mine:false},excerpt:'',postTitle:posts[2].title,createdAt:new Date(Date.now()-3600000).toISOString(),readAt:null}
  ];
+ posts[2].poll={version:0,question:'周末想怎么放松？',closesAt:new Date(Date.now()+3*86400000).toISOString(),closed:false,total:0,myOptionId:null,options:['散步拍照','一起运动','宿舍开黑'].map((text,i)=>({id:String(i),text,count:0}))};
+ comments[0].images=[photo('comment-photo-1')];
  const followed=new Map();
  const unread=()=>notifications.filter(n=>!n.readAt).length;
  const copy=x=>JSON.parse(JSON.stringify(x));
  async function request(action,b={}){
   await new Promise(r=>setTimeout(r,action==='posts.get'?650:100));
   const p=posts.find(p=>p.id===b.postId);
-  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:6,followingEnabled:true,discoveryEnabled:true,avatarsEnabled:true,responsesEnabled:true};
+  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:7,pollsEnabled:true,commentImagesEnabled:true,followingEnabled:true,discoveryEnabled:true,avatarsEnabled:true,responsesEnabled:true};
   if(action==='avatar.set'){user.avatar=b.imageId?uploaded.get(b.imageId):null;for(const p of posts)if(!p.anonymous&&p.author.id===user.id)p.author.avatar=user.avatar;return {user:copy(user)};}
   if(action==='responses.set'){p.responseCounts||={};if(p.myResponse)p.responseCounts[p.myResponse]=Math.max(0,(p.responseCounts[p.myResponse]||0)-1);p.myResponse=b.kind;if(b.kind)p.responseCounts[b.kind]=(p.responseCounts[b.kind]||0)+1;return {post:copy(p)};}
+  if(action==='polls.vote'){const poll=p.poll;if(poll.closed||Date.now()>=Date.parse(poll.closesAt))throw Error('poll_closed');if(poll.myOptionId!==null){poll.options.find(o=>o.id===poll.myOptionId).count--;poll.total--;}poll.myOptionId=b.optionId;if(b.optionId!==null){poll.options.find(o=>o.id===b.optionId).count++;poll.total++;}poll.version++;return {post:copy(p)};}
   if(action==='me')return {user};
   if(action==='posts.list')return {posts:copy(posts.filter(p=>(!b.category||b.category==='all'||p.category===b.category)&&(!b.section||b.section==='all'||(['help','study'].includes(p.category)?'daily':p.category)===b.section)&&(!b.interest||p.interest===b.interest)&&(!b.query||(p.title+p.body).includes(b.query))&&(b.scope!=='saved'||p.saved)&&(b.scope!=='mine'||p.author.mine)&&(b.scope!=='participated'||p.id==='post-1'||p.author.mine)&&(b.scope!=='watching'||p.watching)&&(b.scope!=='following'||!p.anonymous&&followed.has(p.author.id))&&(b.scope!=='author'||!p.anonymous&&p.author.id===b.memberId))),next:null};
   if(action==='posts.get'){p.newReplyCount=0;return {post:copy(p),comments:copy(comments.filter(c=>c.postId===b.postId)),next:null};}
@@ -36,10 +39,10 @@ export function adapter(campus){
   if(action==='reactions.set'){if(b.kind==='like'){p.likeCount+=b.enabled===p.liked?0:b.enabled?1:-1;p.liked=b.enabled;}else p.saved=b.enabled;return {post:copy(p)};}
   if(action==='comments.replies')return {comments:copy(comments.find(c=>c.id===b.rootId)?.replies||[]),next:null};
   if(action==='comments.like'){const c=comments.flatMap(c=>[c,...c.replies||[]]).find(c=>c.id===b.commentId);c.likeCount+=b.enabled===c.liked?0:b.enabled?1:-1;c.liked=b.enabled;return {comment:copy(c)};}
-  if(action==='comments.create'){const c={id:crypto.randomUUID(),postId:b.postId,body:b.body,author:{name:b.anonymous?'匿名同学 · 晴天':user.nickname,anonymous:!!b.anonymous,mine:true},createdAt:new Date().toISOString(),replyTo:b.replyTo,rootId:null,deleted:false,isOriginalPoster:p.author.mine,likeCount:0,liked:false,replyCount:0,replies:[]};if(b.replyTo){const root=comments.find(c=>c.id===b.replyTo||c.replies.some(r=>r.id===b.replyTo));c.rootId=root.id;root.replies.push(c);root.replyCount++;}else comments.push(c);p.commentCount++;return {comment:copy(c)};}
+  if(action==='comments.create'){const c={id:crypto.randomUUID(),postId:b.postId,body:b.body,images:(b.images||[]).map(id=>uploaded.get(id)),author:{name:b.anonymous?'匿名同学 · 晴天':user.nickname,anonymous:!!b.anonymous,mine:true},createdAt:new Date().toISOString(),replyTo:b.replyTo,rootId:null,deleted:false,isOriginalPoster:p.author.mine,likeCount:0,liked:false,replyCount:0,replies:[]};if(b.replyTo){const root=comments.find(c=>c.id===b.replyTo||c.replies.some(r=>r.id===b.replyTo));c.rootId=root.id;root.replies.push(c);root.replyCount++;}else comments.push(c);p.commentCount++;return {comment:copy(c)};}
   if(action==='media.upload'){const image={id:b.requestId,url:'data:image/jpeg;base64,'+b.data,width:b.purpose==='avatar'?512:1200,height:b.purpose==='avatar'?512:800};uploaded.set(image.id,image);return {image};}
   if(action==='media.discard')return {};
-  if(action==='posts.create'){const p=post(crypto.randomUUID(),b.anonymous?'匿名同学 · 晴天':user.nickname,b.title,b.body,b.category,b.anonymous,b.images.map(id=>uploaded.get(id)));p.interest=b.interest||'';p.createdAt=new Date().toISOString();p.author.mine=true;if(!p.anonymous){p.author.id=user.id;p.author.avatar=user.avatar;}p.watching=true;p.likeCount=0;posts.unshift(p);return {post:copy(p)};}
+  if(action==='posts.create'){const p=post(crypto.randomUUID(),b.anonymous?'匿名同学 · 晴天':user.nickname,b.title,b.body,b.category,b.anonymous,b.images.map(id=>uploaded.get(id)));if(b.poll)p.poll={version:0,question:b.poll.question,options:b.poll.options.map((text,i)=>({id:String(i),text,count:0})),total:0,myOptionId:null,closed:false,closesAt:new Date(Date.now()+b.poll.durationHours*3600000).toISOString()};p.interest=b.interest||'';p.createdAt=new Date().toISOString();p.author.mine=true;if(!p.anonymous){p.author.id=user.id;p.author.avatar=user.avatar;}p.watching=true;p.likeCount=0;posts.unshift(p);return {post:copy(p)};}
   if(action==='posts.delete'){posts.splice(posts.findIndex(p=>p.id===b.postId),1);return {};}
   if(action==='reports.create'||action==='blocks.clear')return {};
   if(action==='profile.update'){user.nickname=b.nickname;user.bio=b.bio||'';return {user};}

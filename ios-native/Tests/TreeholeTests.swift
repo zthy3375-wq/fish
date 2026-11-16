@@ -448,4 +448,62 @@ final class TreeholeTests: XCTestCase {
         XCTAssertEqual(store.scope, "following"); XCTAssertEqual(store.interest, "games"); XCTAssertEqual(store.query, "")
     }
 
+    func testPollDraftValidationAndLegacyDraftDecoding() throws {
+        var draft = TreeholePollDraft(); XCTAssertFalse(draft.valid)
+        draft.question = "今天吃什么"; draft.options = ["面", "饭"]; XCTAssertTrue(draft.valid)
+        draft.options = [" a ", "A"]; XCTAssertFalse(draft.valid)
+        draft.options = ["面", "饭"]; draft.durationHours = 2; XCTAssertFalse(draft.valid)
+        let legacy = Data(#"{"title":"旧草稿","body":"","category":"daily","anonymous":false,"requestId":"old","photos":[]}"#.utf8)
+        let decoded = try JSONDecoder().decode(TreeholeDraft.self, from: legacy); XCTAssertNil(decoded.poll); XCTAssertEqual(decoded.title, "旧草稿")
+        var value = TreeholeDraft(); value.poll = draft; XCTAssertTrue(value.hasContent)
+        XCTAssertEqual(try JSONDecoder().decode(TreeholeDraft.self, from: JSONEncoder().encode(value)).poll, draft)
+    }
+    func testPollDeadlineAndLegacyPlaceholders() throws {
+        let poll = samplePoll(); XCTAssertFalse(poll.ended(at: Date(timeIntervalSince1970: 0))); XCTAssertTrue(poll.ended(at: .distantFuture))
+        var post = samplePost(); post.poll = poll; XCTAssertEqual(post.displayBody, post.body)
+        let data = Data(#"{"id":"c","postId":"p","body":"[图片]","createdAt":"now","replyTo":null,"author":{"name":"匿名同学","anonymous":true,"mine":false},"deleted":false,"isOriginalPoster":false,"images":[{"id":"i","width":1,"height":1}]}"#.utf8)
+        let comment = try JSONDecoder().decode(TreeholeComment.self, from: data); XCTAssertEqual(comment.displayBody, ""); XCTAssertEqual(comment.images?.count, 1)
+        let old = try JSONDecoder().decode(TreeholeComment.self, from: Data(#"{"id":"c","postId":"p","body":"文字","createdAt":"now","replyTo":null,"author":{"name":"同学","anonymous":false,"mine":false},"deleted":false,"isOriginalPoster":false}"#.utf8))
+        XCTAssertNil(old.images); XCTAssertEqual(old.displayBody, "文字")
+    }
+    private func samplePoll(version: Int = 0, choice: String? = nil) -> TreeholePoll {
+        TreeholePoll(version: version, question: "吃什么？", closesAt: "2099-01-01T00:00:00.000Z", closed: false, total: choice == nil ? 0 : 1, myOptionId: choice, options: [TreeholePollOption(id: "0", text: "面", count: choice == "0" ? 1 : 0), TreeholePollOption(id: "1", text: "饭", count: choice == "1" ? 1 : 0)])
+    }
+    @MainActor func testPollVoteFailureKeepsCommittedCountsAndSwitchUpdatesRoutes() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.pollsEnabled = true
+        var post = samplePost(); post.poll = samplePoll(); store.posts = [post]; store.profilePosts = [post]; store.current = post
+        TreeholeTestProtocol.handler = { request in XCTAssertEqual(request.url?.lastPathComponent, "polls.vote"); return (503, Data(#"{"error":"network_unavailable"}"#.utf8)) }
+        await store.vote(post, optionId: "0"); XCTAssertEqual(store.current?.poll?.total, 0); XCTAssertNotNil(store.message)
+        var fresh = post; fresh.poll = samplePoll(version: 1, choice: "1")
+        let data = try JSONSerialization.data(withJSONObject: ["post": JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh))])
+        TreeholeTestProtocol.handler = { _ in (200, data) }; store.current?.saved = true
+        await store.vote(post, optionId: "1"); XCTAssertEqual(store.current?.poll?.myOptionId, "1"); XCTAssertEqual(store.posts[0].poll, fresh.poll); XCTAssertEqual(store.profilePosts[0].poll, fresh.poll); XCTAssertEqual(store.restoreResponse(post).poll, fresh.poll); XCTAssertEqual(store.current?.saved, true)
+        let stale = page([post]); TreeholeTestProtocol.handler = { _ in (200, stale) }; try await store.feed(); XCTAssertEqual(store.posts[0].poll?.version, 1)
+    }
+    @MainActor func testPollLateVoteCannotRestoreExpiredAccount() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let store = TreeholeStore(api: service(vault)); store.pollsEnabled = true
+        var post = samplePost(); post.poll = samplePoll(); store.current = post
+        var fresh = post; fresh.poll = samplePoll(version: 1, choice: "0")
+        let data = try JSONSerialization.data(withJSONObject: ["post": JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh))])
+        TreeholeTestProtocol.handler = { _ in (200, data) }
+        let paused = expectation(description: "vote held"); TreeholeTestProtocol.pauseNext = true; TreeholeTestProtocol.paused = { paused.fulfill() }
+        let task = Task { await store.vote(post, optionId: "0") }; await fulfillment(of: [paused], timeout: 3)
+        XCTAssertEqual(store.current?.poll?.total, 0); store.clear(); TreeholeTestProtocol.resume?(); await task.value
+        XCTAssertNil(store.current); XCTAssertTrue(store.pendingVotes.isEmpty); XCTAssertEqual(store.restorePoll(post).poll?.version, 0)
+    }
+    @MainActor func testPollCloseErrorAndNullCancellationNativeTransport() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        let api = service(vault), store = TreeholeStore(api: service(vault)); store.pollsEnabled = true
+        var post = samplePost(); post.poll = samplePoll(); store.current = post
+        TreeholeTestProtocol.handler = { _ in (409, Data(#"{"error":"poll_closed"}"#.utf8)) }
+        await store.vote(post, optionId: "0"); XCTAssertEqual(store.current?.poll?.closed, true)
+        TreeholeTestProtocol.handler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer " + String(repeating: "a", count: 43))
+            return (200, Data(#"{"sessionToken":"private"}"#.utf8))
+        }
+        let r = try await api.request("polls.vote", ["postId":"p", "optionId":NSNull()]); XCTAssertNil(r.sessionToken)
+    }
+
 }

@@ -28,5 +28,5 @@ try{
   await page.getByLabel('想说的话').fill('图片排序后的草稿');await page.getByRole('button',{name:'返回社区',exact:true}).tap();await page.getByRole('button',{name:'保存草稿并返回',exact:true}).tap();await page.locator('.th-draft-resume').waitFor();await page.reload();await page.locator('.th-draft-resume').tap();assert.equal(await page.locator('.th-draft-images>div').count(),1);assert.equal(await page.getByLabel('想说的话').inputValue(),'图片排序后的草稿');checks.push(`${width}: reordered image draft survives reload`);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await context.close();
  }
- await writeFile('/tmp/handan-community-v10-preview/touch-checks.json',JSON.stringify({passed:checks.length,checks},null,2));console.log(JSON.stringify({passed:checks.length}));
+ await writeFile('/tmp/handan-community-v11-preview/touch-checks.json',JSON.stringify({passed:checks.length,checks},null,2));console.log(JSON.stringify({passed:checks.length}));
 }finally{await browser.close();}

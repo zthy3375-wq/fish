@@ -34,6 +34,9 @@ struct TreeholeView: View {
     @State private var feedEndOffset: CGFloat = .greatestFiniteMagnitude
     @State private var replyAnonymous = false
     private var bodyText: String { draft.value.body }
+    @State private var replyPhotos: [TreeholeDraftPhoto] = []
+    @State private var pickedReplyPhotos: [PhotosPickerItem] = []
+    private var hasReply: Bool { !replyText.isEmpty || !replyPhotos.isEmpty }
     @State private var replyText = ""
     @State private var reportReason = ""
     @State private var commentRequest = UUID().uuidString
@@ -143,7 +146,7 @@ struct TreeholeView: View {
             }
             if screen != "feed" { ToolbarItem(placement: .navigationBarLeading) { Button { back() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("返回社区").disabled(tree.busy) } }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if screen == "compose" { Button("发布", action: publish).fontWeight(.semibold).disabled(tree.busy || (bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.value.photos.isEmpty)) }
+                if screen == "compose" { Button("发布", action: publish).fontWeight(.semibold).disabled(tree.busy || (bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.value.photos.isEmpty && draft.value.poll == nil) || (draft.value.poll != nil && (!tree.pollsEnabled || draft.value.poll?.valid != true))) }
                 else if screen == "feed", let user = tree.user {
                     Button { withAnimation { searchOpen.toggle() } } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索帖子")
                     if tree.engagementEnabled { Button(action: showInbox) { Image(systemName: "bell").overlay(alignment: .topTrailing) { if tree.unreadCount > 0 { Text(tree.unreadCount > 99 ? "99+" : "\(tree.unreadCount)").font(.system(size: 9, weight: .bold)).padding(3).background(TreeholeTheme.primary, in: Capsule()).foregroundStyle(.white).offset(x: 9, y: -9) } } }.accessibilityLabel("互动消息") }
@@ -172,8 +175,9 @@ struct TreeholeView: View {
             }
         }
         .onChange(of: pickedPhotos) { items in loadPhotos(items) }
+        .onChange(of: pickedReplyPhotos) { items in loadReplyPhotos(items) }
         .fullScreenCover(item: $gallery) { TreeholeGallery(selection: $0, api: tree.api) }
-        .onChange(of: tree.user?.id) { identity in if identity == nil { auth = "login"; routes = [] }; draft.bind(identity); replyText = ""; replyExpanded = false; password = ""; newPassword = ""; replyTo = nil; accountPage = "overview"; screen = "feed" }
+        .onChange(of: tree.user?.id) { identity in if identity == nil { auth = "login"; routes = [] }; draft.bind(identity); replyText = ""; replyPhotos = []; pickedReplyPhotos = []; replyExpanded = false; password = ""; newPassword = ""; replyTo = nil; accountPage = "overview"; screen = "feed" }
         .sheet(isPresented: Binding(get: { tree.recovery != nil }, set: { if !$0 { tree.recovery = nil } })) {
             VStack(alignment: .leading, spacing: 20) {
                 Label("保存你的账号恢复码", systemImage: "checkmark.shield").font(.title2.bold())
@@ -184,16 +188,16 @@ struct TreeholeView: View {
             }.padding(24).interactiveDismissDisabled()
         }
         .sheet(isPresented: $replyExpanded, onDismiss: { replyFocused = false }) {
-            if let post = tree.current { replyEditor(post).presentationDetents([.height(300), .medium]).presentationDragIndicator(.visible).interactiveDismissDisabled(tree.busy) }
+            if let post = tree.current { ScrollView { replyEditor(post) }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).interactiveDismissDisabled(tree.busy) }
         }
         .sheet(item: $reportTarget) { target in reportSheet(target) }
         .confirmationDialog(confirmation?.title ?? "确认操作", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), titleVisibility: .visible) {
             Button("确认", role: .destructive) { if let action = confirmation?.action { tree.perform(action) }; confirmation = nil }
             Button("取消", role: .cancel) { confirmation = nil }
         }
-        .confirmationDialog("放弃还没发布的文字？", isPresented: $discard, titleVisibility: .visible) {
+        .confirmationDialog("放弃还没发布的内容？", isPresented: $discard, titleVisibility: .visible) {
             if screen == "compose" { Button("保存草稿并返回") { draft.flush(); screen = "feed" } }
-            Button("放弃并返回", role: .destructive) { if screen == "compose" { draft.clear() }; replyText = ""; replyTo = nil; returnToFeed() }
+            Button("放弃并返回", role: .destructive) { if screen == "compose" { draft.clear() }; replyText = ""; replyPhotos = []; pickedReplyPhotos = []; replyTo = nil; returnToFeed() }
             Button("继续编辑", role: .cancel) { }
         }
     }
@@ -328,6 +332,10 @@ struct TreeholeView: View {
             if tree.imagesEnabled && draft.value.photos.count < 9 {
                 PhotosPicker(selection: $pickedPhotos, maxSelectionCount: 9 - draft.value.photos.count, matching: .images) { Label("添加图片 · \(draft.value.photos.count)/9", systemImage: "photo.on.rectangle").font(.subheadline).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 10)) }
             }
+            if draft.value.poll != nil {
+                TreeholePollEditor(poll: Binding(get: { draft.value.poll ?? TreeholePollDraft() }, set: { draft.value.poll = $0 })) { draft.value.poll = nil }
+                if !tree.pollsEnabled { Text("投票暂不可用，草稿已保留").font(.caption).foregroundStyle(.secondary) }
+            } else if tree.pollsEnabled { Button { draft.value.poll = TreeholePollDraft() } label: { Label("添加投票", systemImage: "chart.bar.xaxis").frame(minHeight: 44) } }
             if !draft.message.isEmpty { Text(draft.message).font(.caption2).foregroundStyle(.secondary) }
             HStack { Label("友善表达，尊重隐私", systemImage: "bubble.left"); Spacer(); Text("\(bodyText.count) / 3000") }.font(.caption2).foregroundStyle(.secondary)
             Divider()
@@ -349,16 +357,78 @@ struct TreeholeView: View {
         if let remote = photo.remote { Task { _ = try? await tree.api.request("media.discard", ["imageId": remote.id]) } }
     }
     private func publish() {
+        let member = tree.user?.id
         tree.perform {
             guard tree.discoveryEnabled || !["entertainment", "treehole"].contains(draft.value.category) else { tree.message = "这个分区暂不可用，草稿已保留，请稍后重试"; return }
-            for index in draft.value.photos.indices where draft.value.photos[index].remote == nil {
-                let photo = draft.value.photos[index]
+            guard draft.value.poll == nil || tree.pollsEnabled && draft.value.poll?.valid == true else { return }
+            for photo in draft.value.photos where photo.remote == nil {
                 guard let remote = try await tree.api.request("media.upload", ["data": photo.data.base64EncodedString(), "requestId": photo.id]).image else { throw TreeholeError(code: "images_unavailable") }
+                guard tree.user?.id == member, let index = draft.value.photos.firstIndex(where: { $0.id == photo.id }) else { throw CancellationError() }
                 draft.value.photos[index].remote = remote; draft.flush()
             }
-            let r = try await tree.api.request("posts.create", ["body": bodyText, "title": draft.value.title, "category": draft.value.category, "interest": draft.value.category == "entertainment" ? draft.value.interest ?? "" : "", "anonymous": draft.value.category == "treehole" || anonymous, "requestId": draft.value.requestId, "images": draft.value.photos.compactMap { $0.remote?.id }])
+            let r = try await tree.api.request("posts.create", ["body": bodyText, "title": draft.value.title, "category": draft.value.category, "interest": draft.value.category == "entertainment" ? draft.value.interest ?? "" : "", "anonymous": draft.value.category == "treehole" || anonymous, "requestId": draft.value.requestId, "images": draft.value.photos.compactMap { $0.remote?.id }, "poll": draft.value.poll?.payload as Any? ?? NSNull()])
+            guard tree.user?.id == member else { throw CancellationError() }
             draft.clear()
             if let post = r.post { tree.feedNeedsRefresh = true; initialDetailTarget = "post"; tree.current = post; tree.comments = []; detailTab = "body"; replyExpanded = false; screen = "detail"; try await tree.detail(post) }
+        }
+    }
+    @ViewBuilder private func commentImages(_ comment: TreeholeComment, post: TreeholePost) -> some View {
+        if !comment.deleted, let images = comment.images, !images.isEmpty {
+            TreeholeImageGrid(postId: post.id, images: images, full: false, api: tree.api) { index in gallery = TreeholeGallerySelection(postId: post.id, images: images, index: index) }.frame(maxWidth: images.count == 1 ? 160 : 270, alignment: .leading)
+        }
+    }
+    private var replyPhotoEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !replyPhotos.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(replyPhotos) { photo in
+                        if let image = UIImage(data: photo.data) {
+                            Image(uiImage: image).resizable().scaledToFill().frame(width: 74, height: 74).clipped().clipShape(RoundedRectangle(cornerRadius: 8)).overlay(alignment: .topTrailing) {
+                                Button { removeReplyPhoto(photo) } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black.opacity(0.6)).frame(width: 44, height: 44) }.accessibilityLabel("移除评论图片").disabled(tree.busy)
+                            }
+                        }
+                    }
+                }
+            }
+            if tree.commentImagesEnabled && replyPhotos.count < 3 {
+                PhotosPicker(selection: $pickedReplyPhotos, maxSelectionCount: 3 - replyPhotos.count, matching: .images) { Label("添加图片 · \(replyPhotos.count)/3", systemImage: "photo").font(.caption).frame(minHeight: 44) }.disabled(tree.busy)
+            }
+        }
+    }
+    private func loadReplyPhotos(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty, tree.commentImagesEnabled else { return }
+        let member = tree.user?.id, postId = tree.current?.id
+        tree.perform {
+            defer { pickedReplyPhotos = [] }
+            for item in items.prefix(max(0, 3 - replyPhotos.count)) {
+                guard let bytes = try await item.loadTransferable(type: Data.self) else { throw TreeholeError(code: "invalid_image") }
+                guard member == tree.user?.id, postId == tree.current?.id else { throw CancellationError() }
+                replyPhotos.append(try TreeholeDraftStore.prepare(bytes))
+            }
+        }
+    }
+    private func removeReplyPhoto(_ photo: TreeholeDraftPhoto) {
+        replyPhotos.removeAll { $0.id == photo.id }
+        if let image = photo.remote { Task { _ = try? await tree.api.request("media.discard", ["imageId": image.id]) } }
+    }
+    private func sendComment(_ post: TreeholePost) {
+        let member = tree.user?.id
+        tree.perform {
+            do {
+                for photo in replyPhotos where photo.remote == nil {
+                    guard let image = try await tree.api.request("media.upload", ["data": photo.data.base64EncodedString(), "requestId": photo.id, "purpose": "comment"]).image else { throw TreeholeError(code: "images_unavailable") }
+                    guard member == tree.user?.id, tree.current?.id == post.id, let index = replyPhotos.firstIndex(where: { $0.id == photo.id }) else { throw CancellationError() }
+                    replyPhotos[index].remote = image
+                }
+                _ = try await tree.api.request("comments.create", ["postId": post.id, "body": replyText, "anonymous": replyAnonymous || forceAnonymous, "requestId": commentRequest, "replyTo": replyTo?.id as Any? ?? NSNull(), "images": replyPhotos.compactMap { $0.remote?.id }])
+                guard member == tree.user?.id, tree.current?.id == post.id else { throw CancellationError() }
+                replyText = ""; replyPhotos = []; pickedReplyPhotos = []; replyTo = nil; replyFocused = false; replyExpanded = false; commentRequest = UUID().uuidString; try await tree.detail(post)
+            } catch {
+                if member == tree.user?.id, tree.current?.id == post.id, let e = error as? TreeholeError, e.code == "image_unavailable" {
+                    replyPhotos = replyPhotos.map { TreeholeDraftPhoto(id: UUID().uuidString, data: $0.data) }
+                }
+                throw error
+            }
         }
     }
     @ViewBuilder private func discussion(_ post: TreeholePost) -> some View {
@@ -421,15 +491,17 @@ struct TreeholeView: View {
                     if !comment.deleted { commentLike(comment, post: post); contentMenu(post, comment: comment) }
                 }
 
-                Text(comment.body).font(.system(size: 16)).foregroundStyle(comment.deleted ? TreeholeTheme.muted : TreeholeTheme.text).lineSpacing(5).textSelection(.enabled)
+                if !comment.displayBody.isEmpty { Text(comment.displayBody).font(.system(size: 16)).foregroundStyle(comment.deleted ? TreeholeTheme.muted : TreeholeTheme.text).lineSpacing(5).textSelection(.enabled) }
+                commentImages(comment, post: post)
                 if !comment.deleted && !post.locked { Button("回复") { replyTo = comment; replyExpanded = true }.font(.caption).padding(.vertical, 4) }
                 if (comment.replyCount ?? 0) > 0 {
                     VStack(alignment: .leading, spacing: 7) {
                         ForEach(Array((comment.replies ?? []).prefix(tree.expandedReplies.contains(comment.id) ? Int.max : 2))) { child in
                             VStack(alignment: .leading, spacing: 2) {
                                 Button { replyTo = child; replyExpanded = true } label: {
-                                    (Text(child.author.name + (child.isOriginalPoster ? " [楼主]" : "")).foregroundColor(Color(red: 0.23, green: 0.40, blue: 0.54)) + Text(child.replyTo != comment.id && child.replyTo != nil ? " 回复 " + replyName(child.replyTo!) : "").foregroundColor(.secondary) + Text("：" + child.body)).font(.system(size: 14)).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+                                    (Text(child.author.name + (child.isOriginalPoster ? " [楼主]" : "")).foregroundColor(Color(red: 0.23, green: 0.40, blue: 0.54)) + Text(child.replyTo != comment.id && child.replyTo != nil ? " 回复 " + replyName(child.replyTo!) : "").foregroundColor(.secondary) + Text(child.displayBody.isEmpty ? "" : "：" + child.displayBody)).font(.system(size: 14)).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
                                 }.buttonStyle(.plain).disabled(child.deleted || post.locked)
+                                commentImages(child, post: post)
                                 if tree.expandedReplies.contains(comment.id) { HStack { Text(TreeholePresentation.date(child.createdAt)).font(.system(size: 10)).foregroundStyle(.secondary); Spacer(); if !child.deleted { if tree.expandedReplies.contains(comment.id) { commentLike(child, post: post) }; contentMenu(post, comment: child) } } }
                             }
                         }
@@ -454,7 +526,7 @@ struct TreeholeView: View {
     }
     private func replyBar(_ post: TreeholePost, showComments: @escaping () -> Void) -> some View {
         HStack(spacing: 16) {
-            Button { replyExpanded = true } label: { HStack(spacing: 7) { Image(systemName: "square.and.pencil"); Text(post.locked ? "讨论已暂停" : replyText.isEmpty ? "说点什么吧…" : "继续编辑回复…").lineLimit(1); Spacer(minLength: 0) }.font(.system(size: 13)).padding(11).foregroundStyle(.secondary).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 7)) }.disabled(post.locked).accessibilityLabel("写回复")
+            Button { replyExpanded = true } label: { HStack(spacing: 7) { Image(systemName: "square.and.pencil"); Text(post.locked ? "讨论已暂停" : !hasReply ? "说点什么吧…" : "继续编辑回复…").lineLimit(1); Spacer(minLength: 0) }.font(.system(size: 13)).padding(11).foregroundStyle(.secondary).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 7)) }.disabled(post.locked).accessibilityLabel("写回复")
             Button { tree.react(post, kind: "like") } label: { barAction(post.likeCount > 0 ? "\(post.likeCount)" : "点赞", icon: post.liked ? "hand.thumbsup.fill" : "hand.thumbsup") }.foregroundStyle(post.liked ? TreeholeTheme.primary : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":like")).accessibilityLabel(post.liked ? "取消点赞" : "点赞")
             Button { tree.react(post, kind: "save") } label: { barAction(post.saved ? "已收藏" : "收藏", icon: post.saved ? "bookmark.fill" : "bookmark") }.foregroundStyle(post.saved ? TreeholeTheme.primary : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":save")).accessibilityLabel(post.saved ? "取消收藏" : "收藏")
             Button(action: showComments) { barAction(post.commentCount > 0 ? "\(post.commentCount)" : "评论", icon: "bubble.right") }.foregroundStyle(TreeholeTheme.muted).accessibilityLabel("查看评论")
@@ -468,16 +540,12 @@ struct TreeholeView: View {
             HStack { Text(replyTo.map { "回复 " + $0.author.name } ?? "写评论").font(.subheadline.weight(.semibold)); Spacer(); Button { replyFocused = false; replyExpanded = false } label: { Image(systemName: "xmark").padding(8) }.accessibilityLabel("收起回复编辑器").disabled(tree.busy) }
             if let replyTo { HStack { Text(replyTo.body).font(.caption).lineLimit(1); Spacer(); Button { self.replyTo = nil } label: { Image(systemName: "xmark") }.accessibilityLabel("取消回复") }.foregroundStyle(.secondary) }
             TextField("说说你的想法…", text: $replyText, axis: .vertical).lineLimit(3...5).focused($replyFocused).font(.body).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 7)).accessibilityLabel("你的回复").onChange(of: replyText) { replyText = String($0.prefix(1000)) }.disabled(tree.busy)
+            replyPhotoEditor
             HStack(spacing: 10) {
                 Button { replyAnonymous.toggle() } label: { Label(tree.current?.category == "treehole" ? "本区统一匿名" : forceAnonymous ? "保持楼主匿名身份" : replyAnonymous ? "匿名回复" : "昵称回复", systemImage: replyAnonymous || forceAnonymous ? "theatermasks" : "person.crop.circle").font(.caption2).padding(9).background(TreeholeTheme.background, in: Capsule()) }.disabled(tree.busy || forceAnonymous).accessibilityValue(replyAnonymous || forceAnonymous ? "匿名" : "昵称")
                 Spacer(minLength: 0)
                 Text("\(replyText.count)/1000").font(.system(size: 10)).foregroundStyle(.secondary)
-                Button("发布回复") {
-                    tree.perform {
-                        _ = try await tree.api.request("comments.create", ["postId": post.id, "body": replyText, "anonymous": replyAnonymous || forceAnonymous, "requestId": commentRequest, "replyTo": replyTo?.id as Any? ?? NSNull()])
-                        replyText = ""; replyTo = nil; replyFocused = false; replyExpanded = false; commentRequest = UUID().uuidString; try await tree.detail(post)
-                    }
-                }.font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).tint(TreeholeTheme.text).disabled(tree.busy || replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("发布回复") { sendComment(post) }.font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).tint(TreeholeTheme.text).disabled(tree.busy || (replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyPhotos.isEmpty))
             }
             if let message = tree.message { Text(message).font(.caption).foregroundStyle(.red) }
             Spacer(minLength: 0)
@@ -494,16 +562,17 @@ struct TreeholeView: View {
             }
             if full {
                 if let title = post.title, !title.isEmpty { Text(title).font(.title2.weight(.bold)).textSelection(.enabled) }
-                if !post.body.isEmpty { Text(post.body).font(.body).lineSpacing(6).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                if !post.displayBody.isEmpty { Text(post.displayBody).font(.body).lineSpacing(6).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
             } else {
-                Button { open(post) } label: { VStack(alignment: .leading, spacing: 8) { if let title = post.title, !title.isEmpty { Text(title).font(.headline.weight(.bold)).lineLimit(2) }; if !post.body.isEmpty { Text(post.body).font(.body).lineSpacing(5).lineLimit(3) } }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading) }.buttonStyle(TreeholePressStyle())
+                Button { open(post) } label: { VStack(alignment: .leading, spacing: 8) { if let title = post.title, !title.isEmpty { Text(title).font(.headline.weight(.bold)).lineLimit(2) }; if !post.displayBody.isEmpty { Text(post.displayBody).font(.body).lineSpacing(5).lineLimit(3) } }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading) }.buttonStyle(TreeholePressStyle())
             }
+            if let poll = post.poll { TreeholePollCard(poll: poll, enabled: tree.pollsEnabled && !post.locked, pending: tree.pendingVotes.contains(post.id)) { option in Task { await tree.vote(post, optionId: option) } } }
             if let images = post.images, !images.isEmpty { TreeholeImageGrid(postId: post.id, images: images, full: full, api: tree.api) { index in gallery = TreeholeGallerySelection(postId: post.id, images: images, index: index) } }
             if !full, let count = post.newReplyCount, count > 0 { Button("\(count) 条新回复 · 接着聊") { open(post, comments: true) }.font(.caption).frame(minHeight: 40) }
             if tree.responsesEnabled { TreeholeResponses(post: post, disabled: tree.pendingResponses.contains(post.id)) { tree.respond(post, kind: $0) } }
             if post.locked { Label("已暂停回复", systemImage: "lock").font(.caption2).foregroundStyle(.secondary) }
             HStack {
-                Button { if !replyText.isEmpty { tree.message = "请先发布回复，或返回时选择放弃"; return }; selectDiscovery(post.category ?? "daily", interest: post.interest ?? "") } label: { Text("# " + (TreeholeCategories.interestName(post.interest).isEmpty ? TreeholeCategories.name(post.category) : "兴趣 · " + TreeholeCategories.interestName(post.interest))).font(.caption).foregroundStyle(TreeholeTheme.muted).padding(.horizontal, 8).padding(.vertical, 5).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 6)).frame(minHeight: 44) }
+                Button { if hasReply { tree.message = "请先发布回复，或返回时选择放弃"; return }; selectDiscovery(post.category ?? "daily", interest: post.interest ?? "") } label: { Text("# " + (TreeholeCategories.interestName(post.interest).isEmpty ? TreeholeCategories.name(post.category) : "兴趣 · " + TreeholeCategories.interestName(post.interest))).font(.caption).foregroundStyle(TreeholeTheme.muted).padding(.horizontal, 8).padding(.vertical, 5).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 6)).frame(minHeight: 44) }
                 Spacer()
                 if !full {
                     Button { open(post, comments: true) } label: { Label("\(post.commentCount)", systemImage: "bubble.right").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("查看评论，共 \(post.commentCount) 条")
@@ -524,10 +593,10 @@ struct TreeholeView: View {
             }
         }
     }
-    private func startPost() { replyExpanded = false; replyTo = nil; replyText = ""; replyAnonymous = false; commentRequest = UUID().uuidString; if !draft.value.hasContent { draft.value.category = tree.category == "all" ? "daily" : tree.category; draft.value.interest = tree.category == "entertainment" ? tree.interest : nil; if draft.value.category == "treehole" { draft.value.anonymous = true } }; screen = "compose" }
+    private func startPost() { replyExpanded = false; replyTo = nil; replyText = ""; replyPhotos = []; pickedReplyPhotos = []; replyAnonymous = false; commentRequest = UUID().uuidString; if !draft.value.hasContent { draft.value.category = tree.category == "all" ? "daily" : tree.category; draft.value.interest = tree.category == "entertainment" ? tree.interest : nil; if draft.value.category == "treehole" { draft.value.anonymous = true } }; screen = "compose" }
     private func selectDiscovery(_ category: String, interest: String = "") {
         guard !tree.busy else { return }
-        if screen == "detail", !replyText.isEmpty { tree.message = "请先发布回复，或返回时选择放弃"; return }
+        if screen == "detail", hasReply { tree.message = "请先发布回复，或返回时选择放弃"; return }
         screen = "feed"; tree.leaveDetail(); tree.perform { try await tree.selectDiscovery(category, interest: interest) }
     }
     private func reloadFeed() { tree.perform { try await tree.feed() } }
@@ -647,7 +716,7 @@ struct TreeholeView: View {
         let frame = routeFrame()
         tree.perform {
             try await tree.notificationDetail(item)
-            routes.append(frame); replyText = ""; replyTo = nil; replyAnonymous = false; commentRequest = UUID().uuidString
+            routes.append(frame); replyText = ""; replyPhotos = []; pickedReplyPhotos = []; replyTo = nil; replyAnonymous = false; commentRequest = UUID().uuidString
             initialDetailTarget = tree.focusedThread != nil ? "context" : item.commentId != nil ? "comments" : "post"
             detailTab = item.commentId == nil ? "body" : "comments"; screen = "detail"
         }
@@ -682,14 +751,14 @@ struct TreeholeView: View {
         routes.append(routeFrame())
         scrollIntentUntil = Date().addingTimeInterval(0.65)
         initialDetailTarget = comments ? "comments" : "post"; detailTab = comments ? "comments" : "body"
-        replyExpanded = false; replyText = ""; replyTo = nil; replyAnonymous = false; commentRequest = UUID().uuidString
+        replyExpanded = false; replyText = ""; replyPhotos = []; pickedReplyPhotos = []; replyTo = nil; replyAnonymous = false; commentRequest = UUID().uuidString
         tree.openDetail(post); screen = "detail"
     }
     private func back() {
         replyFocused = false
         if screen == "account" && accountPage != "overview" { accountPage = "overview"; password = ""; newPassword = ""; return }
         if screen == "moderate" { screen = "account"; return }
-        if (screen == "compose" && draft.value.hasContent) || (screen == "detail" && !replyText.isEmpty) { discard = true; return }
+        if (screen == "compose" && draft.value.hasContent) || (screen == "detail" && hasReply) { discard = true; return }
         password = ""; newPassword = ""; previousRoute()
     }
     static let rules = "尊重同学，勿发布他人隐私、辱骂、骚扰、垃圾广告或违法内容。可以举报、删除自己的内容和注销账号。匿名会对其他用户隐藏昵称与账号，后台保留账号关联用于处理举报；不同帖子使用不同匿名代号，同一帖子内的匿名发言可关联。请留意文字本身是否暴露身份。账号服务保存登录账号、昵称、密码加密摘要、帖子、互动与举报记录，用于登录及社区服务。教务账号与课表不会上传到社区。可以在账号设置中注销。"

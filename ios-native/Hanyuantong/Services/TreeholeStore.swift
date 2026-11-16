@@ -31,6 +31,10 @@ import Combine
     @Published var sort = "latest"
     @Published var imagesEnabled = false
     @Published var avatarsEnabled = false
+    @Published var pollsEnabled = false
+    @Published var commentImagesEnabled = false
+    @Published var pendingVotes: Set<String> = []
+    private var pollSnapshots: [String: TreeholePoll] = [:]
     @Published var responsesEnabled = false
     @Published var pendingResponses: Set<String> = []
     private var responseSnapshots: [String: TreeholePost] = [:]
@@ -75,12 +79,12 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
-            self.engagementEnabled = config.engagementEnabled == true
+            self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
             self.followingEnabled = config.followingEnabled == true; self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
             do { self.user = try await self.api.request("me").user; try await self.feed() }
             catch let error as TreeholeError where error.code == "session_expired" { self.clear() }
@@ -162,7 +166,7 @@ import Combine
         feedLoadingMore = false; feedPageError = nil; lastAutomaticCursor = ""
         let result = try await api.request("posts.list", identity)
         guard revision == feedRevision, generation == epoch else { return }
-        rememberResponses(result.posts ?? []); posts = result.posts ?? []; feedNext = result.next; loadedFeedIdentity = identity; feedNeedsRefresh = false
+        rememberResponses(result.posts ?? []); posts = (result.posts ?? []).map(restorePoll); feedNext = result.next; loadedFeedIdentity = identity; feedNeedsRefresh = false
     }
     func loadMoreFeed(automatic: Bool = true) async {
         guard !busy, !feedLoadingMore, let cursor = feedNext, loadedFeedIdentity == feedIdentity else { return }
@@ -176,7 +180,7 @@ import Combine
             guard revision == feedRevision, generation == epoch, identity == feedIdentity else { return }
             rememberResponses(result.posts ?? [])
             var ids = Set(posts.map(\.id))
-            posts += (result.posts ?? []).filter { ids.insert($0.id).inserted }; feedNext = result.next
+            posts += (result.posts ?? []).map(restorePoll).filter { ids.insert($0.id).inserted }; feedNext = result.next
             if let next = result.next, cursorKey(next) == key { feedPageError = "暂时无法继续加载，请刷新后重试" }
         } catch {
             guard revision == feedRevision, generation == epoch, identity == feedIdentity else { return }
@@ -239,7 +243,7 @@ import Combine
             catch let e as TreeholeError where e.code == "not_found" { message = "这条回复已不可用，可以继续查看讨论" }
         }
         guard generation == epoch else { throw CancellationError() }
-        rememberResponses([post]); leaveDetail(); current = post; syncFeedPost(post); comments = r.comments ?? []; commentNext = r.next; focusedThread = context
+        rememberResponses([post]); leaveDetail(); current = restorePoll(post); syncFeedPost(restorePoll(post)); comments = r.comments ?? []; commentNext = r.next; focusedThread = context
         do { try await readNotifications([item.id]) } catch { message = "已打开讨论，消息已读状态暂未同步" }
     }
     func profile(_ id: String, more: Bool = false) async throws {
@@ -253,7 +257,7 @@ import Combine
         if more && publicProfile?.id != id { return }
         publicProfile = person; if let person { followStates[person.id] = person.following }; rememberResponses(r.posts ?? [])
         var ids = Set(profilePosts.map(\.id))
-        profilePosts = more ? profilePosts + (r.posts ?? []).filter { ids.insert($0.id).inserted } : r.posts ?? []; profileNext = r.next
+        profilePosts = more ? profilePosts + (r.posts ?? []).map(restorePoll).filter { ids.insert($0.id).inserted } : (r.posts ?? []).map(restorePoll); profileNext = r.next
     }
     func toggleWatch(_ post: TreeholePost) async {
         guard !watchPending else { return }; let generation = epoch; watchPending = true
@@ -294,7 +298,7 @@ import Combine
             if pendingReactions.contains(post.id + ":save"), let cached = current { fresh.saved = cached.saved }
             if !more { discussion += 1; expandedReplies = []; replyPages = [:]; loadedThreads = [] }
             if pendingResponses.contains(post.id), let cached = current { fresh.myResponse = cached.myResponse; fresh.responseCounts = cached.responseCounts }
-            rememberResponses([fresh]); current = fresh; syncFeedPost(fresh)
+            rememberResponses([fresh]); fresh = restorePoll(fresh); current = fresh; syncFeedPost(fresh)
             var ids = Set(comments.map(\.id))
             comments = more ? comments + (r.comments ?? []).filter { ids.insert($0.id).inserted } : r.comments ?? []; commentNext = r.next
         } catch {
@@ -361,11 +365,37 @@ import Combine
         if var post = current, post.id == id { apply(&post); current = post }
     }
     private func rememberResponses(_ fresh: [TreeholePost]) {
+        for post in fresh { if let poll = post.poll, poll.version >= (pollSnapshots[post.id]?.version ?? -1) { pollSnapshots[post.id] = poll } }
         for post in fresh where responseSnapshots[post.id] != nil && !pendingResponses.contains(post.id) { responseSnapshots[post.id] = post }
     }
     func restoreResponse(_ post: TreeholePost) -> TreeholePost {
-        guard let response = responseSnapshots[post.id] else { return post }; var restored = post
+        guard let response = responseSnapshots[post.id] else { return restorePoll(post) }; var restored = restorePoll(post)
         restored.myResponse = response.myResponse; restored.responseCounts = response.responseCounts; return restored
+    }
+    func restorePoll(_ post: TreeholePost) -> TreeholePost {
+        var result = post
+        if let poll = pollSnapshots[post.id], poll.version >= (post.poll?.version ?? -1) { result.poll = poll }
+        return result
+    }
+    private func applyPoll(_ id: String, poll: TreeholePoll) {
+        guard poll.version >= (pollSnapshots[id]?.version ?? -1) else { return }
+        pollSnapshots[id] = poll
+        if let index = posts.firstIndex(where: { $0.id == id }) { posts[index].poll = poll }
+        if let index = profilePosts.firstIndex(where: { $0.id == id }) { profilePosts[index].poll = poll }
+        if current?.id == id { current?.poll = poll }
+    }
+    func vote(_ post: TreeholePost, optionId: String?) async {
+        guard pollsEnabled, !post.locked, let poll = post.poll, !poll.ended(), !pendingVotes.contains(post.id) else { return }
+        let generation = epoch; pendingVotes.insert(post.id); message = nil
+        defer { if generation == epoch { pendingVotes.remove(post.id) } }
+        do {
+            let response = try await api.request("polls.vote", ["postId": post.id, "optionId": optionId as Any? ?? NSNull()])
+            guard generation == epoch, let fresh = response.post?.poll else { return }
+            applyPoll(post.id, poll: fresh)
+        } catch {
+            if generation == epoch, let e = error as? TreeholeError, e.code == "poll_closed" { var closed = poll; closed.closed = true; applyPoll(post.id, poll: closed) }
+            actionError(error, generation: generation)
+        }
     }
     private func updateResponse(_ id: String, kind: String?, counts: [String: Int], source: TreeholePost) {
         var snapshot = source; snapshot.myResponse = kind; snapshot.responseCounts = counts; responseSnapshots[id] = snapshot
