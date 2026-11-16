@@ -182,6 +182,14 @@ try{
  const left=await http('buddies.join',{postId:buddyId,enabled:false},winner.sessionToken);
  if(left.body.post?.buddy?.count!==0||left.body.post.buddy.joined)throw Error('Live buddy cancellation failed');
  if((await http('buddies.close',{postId:buddyId,closed:false},author.sessionToken)).body.post?.buddy?.closed!==false)throw Error('Live buddy reopen failed');
+ // Public blocks must not turn an anonymous host into a discoverable public identity.
+ await http('buddies.join',{postId:buddyId,enabled:true},reader.sessionToken);
+ await http('blocks.set',{postId:discovery.body.post.id},reader.sessionToken);
+ if((await http('posts.get',{postId:buddyId},reader.sessionToken)).body.post?.buddy?.joined!==true)throw Error('Anonymous buddy block isolation failed');
+ await http('buddies.join',{postId:buddyId,enabled:false},reader.sessionToken);
+ if((await http('buddies.join',{postId:buddyId,enabled:true},reader.sessionToken)).body.post?.buddy?.joined!==true)throw Error('Anonymous buddy signup isolation failed');
+ await http('buddies.join',{postId:buddyId,enabled:false},reader.sessionToken);
+ console.log('Live anonymous buddy privacy passed: public blocks neither cancel nor reveal anonymous-host signup');
  console.log('Live test.12 buddy checks passed: immutable publish retry, simultaneous last seat, private roster, joined feed, notifications, close/reopen and cancellation');
  console.log('Live test.11 checks passed: poll-only publish/retry, immutable deadline, select/switch/cancel, voter privacy, image-only comment/retry/projection/URL and delete');
  console.log('Live test.10 checks passed: follow/unfollow, viewer-owned list, public following feed and anonymous exclusion');

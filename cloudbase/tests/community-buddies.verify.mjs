@@ -75,3 +75,14 @@ test('notification aggregation does not duplicate on retries and real changes be
 test('account deletion releases registrations and advances revisions without reviving stale counts',async()=>{
  const d=await api.execute('register',{username:'buddy_deleted',nickname:'即将注销',password,agreed:true},'','buddy-delete'),p=await post();const before=await join(d,p);await call(d,'account.delete',{password});const after=(await call(a,'posts.get',{postId:p.id})).post;assert.equal(after.buddy.count,0);assert(after.buddy.version>before.buddy.version);
 });
+
+test('public blocks never link anonymous hosts through changed membership or signup refusals',async()=>{
+ const anon=await post({anonymous:true}),named=await post();const before=await join(b,anon);
+ await call(b,'blocks.set',{postId:named.id});let current=(await call(b,'posts.get',{postId:anon.id})).post;
+ assert.equal(current.buddy.joined,true);assert.equal(current.buddy.version,before.buddy.version);assert.equal(current.author.id,undefined);
+ await join(b,anon,false);assert.equal((await join(b,anon)).buddy.joined,true);
+ const other=(await call(b,'posts.create',{body:'公开日常',anonymous:false,requestId:randomUUID()})).post;
+ await call(a,'blocks.set',{postId:other.id});current=(await call(b,'posts.get',{postId:anon.id})).post;assert.equal(current.buddy.joined,true);
+ await join(b,anon,false);assert.equal((await join(b,anon)).buddy.joined,true);
+ await call(b,'blocks.set',{postId:anon.id});assert.equal((await call(a,'buddies.members',{postId:anon.id})).participants.length,0);
+});
