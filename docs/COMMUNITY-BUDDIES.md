@@ -1,6 +1,6 @@
 # 搭子招募 · test.12
 
-基于 `feat/community-polls-comments-20261116` / PR #72 / `8a1349a`，保留 test.11 全部成果。开发分支 `feat/community-buddies-20261116`，Android `1.3.0-test.12 /162`、原包名和原正式签名，原生 iOS 最低 iOS 16。仅测试，不合并 main，不更新蒲公英或正式更新渠道。
+草稿 [PR #73](https://github.com/zthy3375-wq/fish/pull/73)，基于 `feat/community-polls-comments-20261116` / PR #72 / `8a1349a`，保留 test.11 全部成果。开发分支 `feat/community-buddies-20261116`，Android `1.3.0-test.12 /162`、原包名和原正式签名，原生 iOS 最低 iOS 16。仅测试，不合并 main，不更新蒲公英或正式更新渠道。
 
 ## 已实现
 
@@ -19,8 +19,35 @@ schema 8，`buddiesEnabled` 能力开关；新增 `hyt_buddies`、`hyt_buddy_mem
 
 私有服务升级通过独立、一次性激活分支执行，沿用邀请码；联调完成清理临时账号、帖子、报名、通知和媒体。未执行前不计为已上线。
 
-## 验证进度
+## 验证与来源
 
-当前本地：前端 487、共享解析 78、后端 79、新增搭子浏览器 24 项通过。完整浏览器/触控、Android Debug/Release、iOS XCTest 与两种编译、真实服务联调和交付核验待最终回填。
+客户端产品源码 `dd39d9cc76688699f497555826f3754d1ca0b76a`，tree `c47444f4d551374d792d9d82f01c55768f408ffb`；Android/iOS CI 合并提交 `ca9f96a953658cdf1c5b8e890367976ec3651e47` 的 tree 与之相同。后端匿名隔离修正及浏览器测试隔离在 `4c2382090cbd2d0558e87d4c4451617f14402cc2`，客户端源码不变。
+
+| 范围 | 结果与边界 |
+| --- | --- |
+| Vue / TypeScript / build | 487 项前端测试与生产构建通过 |
+| 共享解析 | 78 项通过 |
+| 后端 | 80 项通过，含 13 项搭子专项；真实 PostgreSQL 事务、屏蔽与匿名隔离、迁移重放 |
+| 社区浏览器 | SQL + HTTP + 实际 Vue 页面全量 209 项通过，360/390/430 px；后端最终匿名修正后再次全量通过 |
+| 离线演示触控 | 54 项通过，覆盖原功能、报名、我报名的、名单、关闭与重开；不是实体设备证据 |
+| Android | Debug/Release 原生测试任务及构建通过；测试集各 192 项，原证书、包身份与 30 个内嵌网页资源一致性通过 |
+| iOS | 373 项单测通过、1 项真机检查跳过，42 项 TreeholeTests 全通过；5 项现有 UI、模拟器及未签名 iPhone Release 编译通过 |
+
+[Quality 43839100210](https://github.com/zthy3375-wq/fish/actions/runs/43839100210) 通过；[Android 43839100014](https://github.com/zthy3375-wq/fish/actions/runs/43839100014) 的 apk job `133203148181` 通过。该工作流的 browser job 首轮因全量合成账号共用 IP 达到 30 次认证限额而失败，追加场景隔离测试预算后本地全量 209 项通过；生产限流不变，不把失败工作流写成整体成功。触控脚本补充等待筛选完成和滚动停止。最初 iOS 工程缺少新增 Swift 文件登记，已重新生成工程并重跑；[iOS 43839100059](https://github.com/zthy3375-wq/fish/actions/runs/43839100059) 记录最终原生结果。
+
+本地后端并行进程占用内存时两个测试文件被终止，`check:community` 限制同时运行 2 个进程后全部通过，测试范围未减少。
+
+## 真实服务
+
+schema 8 / `buddiesEnabled=true`，邀请码沿用原值。首次升级 [43839208627](https://github.com/zthy3375-wq/fish/actions/runs/43839208627) 通过：真实最后名额并发、发布和报名重试、名单权限、「我报名的」、泛化消息、退出、关闭/重开，以及所有旧功能联调。临时账号、帖子、报名、消息和媒体清理完成。
+
+最终匿名隔离升级激活提交 `31494b0e2983e05f6ccab82e6114fffd9b12706c`，独立分支 `deploy/community-test12-20261116`，标记 revision 10；[43841626156](https://github.com/zthy3375-wq/fish/actions/runs/43841626156) 完整通过，含 80 项后端测试、匿名屏蔽隔离及所有真实接口联调，临时数据与媒体清理完成。一次性触发已在 `5f34c9bb0dec6da389c4027f6351b19b7dd840e2` 撤去。此流程未发布 APK、未改正式更新配置。
+
+## 交付
+
+- `Hanyuantong-v1.3.0-test.12-Community.apk`：12,479,694 字节；SHA-256 `a9df62e4eed971ba201bfbb20570c09aec5eeedb325b5aa6bac4cb9d505c6c6f`。
+- `Hanyuantong-Community-test12-Preview.html`：420,469 字节；SHA-256 `4038648050ae50ceeb8fde766b6d41d6f8374fd0ca4ae90614d627ff90a9397f`。实际 Vue 组件、合成本地数据，仅演示。
+- 两文件已保存。包名 `org.handancampus.app`，版本 `1.3.0-test.12 /162`，非 Debug；原证书 SHA-256 `4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9`，v1/v2/v3 签名及 ZIP/原生库对齐核验通过。
+- 草稿 [PR #73](https://github.com/zthy3375-wq/fish/pull/73)，基于 PR #72；`main` 仍为 `ab8872232f9338c587b9555d9acc8ca0962f8d10`。正式 `1.2.4 /150`、蒲公英和正式更新渠道保持。
 
 实体 Android 覆盖安装、真实输入法/相册、iPhone 真机仍需实测。没有可分发 IPA/TestFlight。活动徽章、系统推送、私信、@ 提及、自动匹配与公开报名名单不在本轮范围。
