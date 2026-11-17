@@ -106,15 +106,15 @@ try{
   assert(await page.getByRole('button',{name:'播放小鱼动画',exact:true}).getAttribute('aria-pressed')==='true',`${width}: fish can be paused`);
   assert(!await page.locator('.campus-hero').evaluate(el=>el.classList.contains('fish-running')),`${width}: paused mascot stops animation`);
   await page.screenshot({path:path.join(output,`campus-home-empty-${width}.png`),animations:'disabled'});
-  await page.getByRole('button',{name:'连接学校',exact:true}).click();
-  await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
-  assert(await page.locator('.profile-accounts').getByRole('button',{name:'连接',exact:true}).isVisible(),`${width}: empty home leads to the existing school connection`);
-  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
   await page.getByRole('button',{name:'播放小鱼动画',exact:true}).click();
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.getByRole('button',{name:'暂停小鱼动画',exact:true}).waitFor({state:'hidden'});
   assert(await page.locator('.fish-swim').evaluate(el=>getComputedStyle(el).animationName)==='none',`${width}: reduced motion disables mascot animation`);
   await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.getByRole('button',{name:'连接学校',exact:true}).click();
+  await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
+  assert(await page.locator('.profile-accounts').getByRole('button',{name:'连接',exact:true}).isVisible(),`${width}: empty home leads to the existing school connection`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
   await checkParcelShortcuts(page,assert,{width,output});
   await checkNativeLife(page,assert,{width,output});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
@@ -164,6 +164,7 @@ try{
    const box=s=>document.querySelector(s).getBoundingClientRect();
    return {hero:box('.campus-hero').height,walletBottom:box('.life-wallets').bottom,servicesBottom:box('.life-utilities').bottom,mainBottom:box('main').bottom,timelineBottom:box('.home-timeline').bottom,studyTop:box('.home-study-links').top,overflow:document.documentElement.scrollWidth>innerWidth};
   });
+  console.log('Home viewport evidence',width,JSON.stringify(homeLayout));
   assert(homeLayout.hero>=264,`${width}: campus illustration retains a generous height with status inset`);
   assert(homeLayout.servicesBottom<=homeLayout.mainBottom,`${width}: all four life service actions fit above navigation with status inset`);
   assert(homeLayout.walletBottom<=homeLayout.mainBottom,`${width}: both life wallets fit above navigation with status inset`);
