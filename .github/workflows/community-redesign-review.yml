@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           baseline=265e4f9fb08195e50faf500201330781da8254aa
-          git restore --source "$baseline" --staged --worktree -- src public package.json package-lock.json
+          git restore --source "$baseline" --staged --worktree -- src public tests package.json package-lock.json
           comparison_tree=$(git write-tree)
           test "$(git rev-parse "$comparison_tree:src")" = "$(git rev-parse "$baseline:src")"
           test "$(git rev-parse "$comparison_tree:public")" = "$(git rev-parse "$baseline:public")"
