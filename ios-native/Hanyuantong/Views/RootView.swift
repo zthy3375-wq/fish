@@ -71,7 +71,7 @@ struct HomeView: View {
                     NavigationLink { LearningCenterView(store: learning) } label: { HStack { Label("学习通", systemImage: "books.vertical"); Spacer(); Text("作业 · 考试").font(.caption).foregroundStyle(CampusTheme.muted) }.padding(.vertical, 12) }
                 }.campusCard()
             }.padding(20).frame(maxWidth: 680)
-        }.background(CampusTheme.background).toolbar(.hidden, for: .navigationBar)
+        }.background(CampusTheme.background).campusNavigationBarHidden()
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 while !Task.isCancelled {

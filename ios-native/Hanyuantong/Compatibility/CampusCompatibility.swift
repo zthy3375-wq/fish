@@ -61,6 +61,14 @@ struct CampusMultilineField: View {
 }
 
 extension View {
+    @ViewBuilder func campusNavigationBarHidden() -> some View {
+        if #available(iOS 16.0, *) { toolbar(.hidden, for: .navigationBar) }
+        else { navigationBarHidden(true) }
+    }
+    @ViewBuilder func campusTabBarHidden(_ hidden: Bool) -> some View {
+        if #available(iOS 16.0, *) { toolbar(hidden ? .hidden : .visible, for: .tabBar) }
+        else { background(CampusLegacyTabBarVisibility(hidden: hidden).frame(width: 0, height: 0)) }
+    }
     @ViewBuilder func campusScrollBackground() -> some View {
         if #available(iOS 16.0, *) { scrollContentBackground(.hidden) } else { self }
     }
@@ -155,6 +163,32 @@ private struct CampusPhotoController: UIViewControllerRepresentable {
         init(selected: @escaping ([CampusPhotoItem]) -> Void) { self.selected = selected }
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             selected(results.map { CampusPhotoItem(provider: $0.itemProvider) })
+        }
+    }
+}
+
+/// Public UIKit containment API; restore visibility when leaving the community.
+private struct CampusLegacyTabBarVisibility: UIViewControllerRepresentable {
+    let hidden: Bool
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.desired = hidden
+        DispatchQueue.main.async { [weak controller] in controller?.applyVisibility() }
+    }
+    final class Controller: UIViewController {
+        var desired = false
+        private var previous: Bool?
+        override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); applyVisibility() }
+        func applyVisibility() {
+            guard let owner = tabBarController else { return }
+            if previous == nil { previous = owner.tabBar.isHidden }
+            owner.tabBar.isHidden = desired
+            owner.view.setNeedsLayout()
+        }
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            if let previous { tabBarController?.tabBar.isHidden = previous }
+            previous = nil
         }
     }
 }

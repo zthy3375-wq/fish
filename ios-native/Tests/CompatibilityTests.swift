@@ -13,10 +13,12 @@ final class CompatibilityTests: XCTestCase {
             completion(file, false, nil)
             return nil
         }
+        let accepted = try await CampusPhotoItem(provider: provider).loadBoundedData(maximumBytes: 21)
+        XCTAssertEqual(accepted.count, 21)
         do {
             _ = try await CampusPhotoItem(provider: provider).loadBoundedData(maximumBytes: 20)
             XCTFail("Oversized photo must be rejected before decoding")
-        } catch { XCTAssertNotNil(error) }
+        } catch { XCTAssertEqual((error as NSError).code, CocoaError.Code.fileReadTooLarge.rawValue) }
     }
     func testPhotoSelectionIdentityDoesNotReuseAnotherSelection() {
         let provider = NSItemProvider()
