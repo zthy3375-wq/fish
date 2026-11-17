@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        snapshot: [before, after]
+        snapshot: [after]
     steps:
       - uses: actions/checkout@v4
         with:

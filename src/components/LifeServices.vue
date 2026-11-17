@@ -34,7 +34,7 @@ onMounted(()=>{void initQuzhi();void initPangguai()});
 <style scoped>
 .life-services{background:var(--color-surface);border:1px solid var(--color-border);border-radius:16px;overflow:hidden}
 .life-wallets{display:grid}
-.life-card{display:flex;align-items:center;gap:12px;min-width:0;min-height:72px;padding:12px 14px;text-align:left;color:var(--color-text);background:transparent}
+.life-card{display:flex;align-items:center;gap:12px;min-width:0;min-height:72px;border-radius:0;padding:12px 14px;text-align:left;color:var(--color-text);background:transparent}
 .life-card+ .life-card{border-top:1px solid var(--color-divider)}
 .life-service-icon{display:grid;place-items:center;flex:0 0 40px;height:40px;border-radius:12px;background:var(--color-tint);color:var(--color-primary)}
 .life-laundry .life-service-icon{background:var(--course-green-bg);color:var(--course-green)}
@@ -42,7 +42,7 @@ onMounted(()=>{void initQuzhi();void initPangguai()});
 .life-wallet-value{flex:0 1 auto;text-align:right;min-width:0}.life-wallet-value b{display:block;font-size:19px;line-height:1.3;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.life-wallet-value .is-disconnected{font-size:13px;color:var(--color-primary)}
 .life-balance-label{display:block;color:var(--color-muted);font-size:10px;line-height:1.6;margin-top:3px}.life-row-arrow{color:var(--color-muted);flex-shrink:0}
 .life-utilities{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-top:1px solid var(--color-divider)}
-.life-utilities button{display:flex;align-items:center;gap:9px;min-width:0;min-height:64px;padding:10px 14px;text-align:left;color:var(--color-text)}
+.life-utilities button{display:flex;align-items:center;gap:9px;min-width:0;min-height:64px;border-radius:0;padding:10px 14px;text-align:left;color:var(--color-text)}
 .life-utilities button+button{border-left:1px solid var(--color-divider)}
 .life-utilities button>span{flex:1;min-width:0}.life-utilities svg{flex-shrink:0;color:var(--color-primary)}.life-utilities svg:last-child{color:var(--color-muted)}
 .life-utilities strong{display:block;font-size:13px;font-weight:600;line-height:1.5}.life-utilities small{display:block;margin-top:2px;font-size:10px;line-height:1.6;color:var(--color-muted)}

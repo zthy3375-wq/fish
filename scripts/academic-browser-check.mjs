@@ -106,6 +106,10 @@ try{
   assert(await page.getByRole('button',{name:'播放小鱼动画',exact:true}).getAttribute('aria-pressed')==='true',`${width}: fish can be paused`);
   assert(!await page.locator('.campus-hero').evaluate(el=>el.classList.contains('fish-running')),`${width}: paused mascot stops animation`);
   await page.screenshot({path:path.join(output,`campus-home-empty-${width}.png`),animations:'disabled'});
+  await page.getByRole('button',{name:'连接学校',exact:true}).click();
+  await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
+  assert(await page.locator('.profile-accounts').getByRole('button',{name:'连接',exact:true}).isVisible(),`${width}: empty home leads to the existing school connection`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
   await page.getByRole('button',{name:'播放小鱼动画',exact:true}).click();
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.getByRole('button',{name:'暂停小鱼动画',exact:true}).waitFor({state:'hidden'});
@@ -158,12 +162,14 @@ try{
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   const homeLayout=await page.evaluate(()=>{
    const box=s=>document.querySelector(s).getBoundingClientRect();
-   return {hero:box('.campus-hero').height,walletBottom:box('.life-wallets').bottom,mainBottom:box('main').bottom,timelineBottom:box('.home-timeline').bottom,studyTop:box('.home-study-links').top,overflow:document.documentElement.scrollWidth>innerWidth};
+   return {hero:box('.campus-hero').height,walletBottom:box('.life-wallets').bottom,servicesBottom:box('.life-utilities').bottom,mainBottom:box('main').bottom,timelineBottom:box('.home-timeline').bottom,studyTop:box('.home-study-links').top,overflow:document.documentElement.scrollWidth>innerWidth};
   });
   assert(homeLayout.hero>=264,`${width}: campus illustration retains a generous height with status inset`);
+  assert(homeLayout.servicesBottom<=homeLayout.mainBottom,`${width}: all four life service actions fit above navigation with status inset`);
   assert(homeLayout.walletBottom<=homeLayout.mainBottom,`${width}: both life wallets fit above navigation with status inset`);
   assert(homeLayout.timelineBottom<=homeLayout.studyTop&&!homeLayout.overflow,`${width}: today's timeline stays clear of shortcuts without page overflow`);
   assert(await page.locator('.home-timeline button').count()===1&&JSON.stringify(await page.locator('.home-timeline .course-time-caption time').allTextContents())===JSON.stringify(['11:15','15:10']),`${width}: today's course name and start remain on the timeline`);
+  await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur()});
   await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
   const homeTargets=await page.locator('.home-timeline-head button,.home-study-links button,.life-card,.life-utilities button').evaluateAll(els=>els.every(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.width>=44}));
   assert(homeTargets,`${width}: home course and service actions have 44px touch targets`);
