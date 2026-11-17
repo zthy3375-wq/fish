@@ -7,6 +7,7 @@ import {quzhiMoney} from '../services/quzhi-client';
 import {drinkingWaterTicket,drinkingWaterAmount} from '../domain/drinking-water-wallet';
 defineEmits<{open:[page:string]}>();
 const water=computed(()=>drinkingWaterAmount(drinkingWaterTicket(pangguai.value.tickets??[])?.balance));
+const ongoing=computed(()=>{const w=pangguai.value.water;return !!w&&!['settled','ended_zero','closed_unknown','archived_unverified'].includes(w.phase)});
 onMounted(()=>{void initQuzhi();void initPangguai()});
 </script>
 <template>
@@ -20,7 +21,7 @@ onMounted(()=>{void initQuzhi();void initPangguai()});
    </button>
    <button class="life-card life-laundry" @click="$emit('open','pangguai-wallet')">
     <span class="life-service-icon"><WashingMachine :size="22"/></span>
-    <span class="life-service-copy"><strong>胖乖生活</strong><small>{{pangguai.expired?'登录已失效 · 请重新连接':'饮水 · 洗衣 · 扫码'}}</small></span>
+    <span class="life-service-copy"><strong>胖乖生活</strong><small>{{pangguai.expired?'登录已失效 · 请重新连接':ongoing?'查看当前接水记录':'饮水 · 洗衣 · 扫码'}}</small></span>
     <span class="life-wallet-value"><b :class="{'is-disconnected':!pangguai.connected}">{{pangguai.connected?(water!==null?'¥'+water:'暂未获取'):'连接账户'}}</b><span class="life-balance-label">{{pangguai.connected?'饮水余额 · 上次查询':'去连接'}}</span></span>
     <ChevronRight class="life-row-arrow" :size="16"/>
    </button>

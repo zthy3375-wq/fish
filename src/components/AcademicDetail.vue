@@ -36,6 +36,7 @@ const emit = defineEmits<{
   course: [course: Course, week: number];
   create: [preset?: CellPreset];
   conflict: [courses: Course[]];
+  manage: [];
 }>();
 const state = computed(() => {
   scheduleViews[props.semester.id] ??= {
@@ -129,6 +130,7 @@ function touchEnd(e: TouchEvent) {
         回到本周
       </button>
     </div>
+    <div class="schedule-context"><span>{{mode==='official'?'学校课表':'个人课表'}}</span><button type="button" @click="emit('manage')">管理个人课程 <ChevronRight :size="15"/></button></div>
     <div class="week-toolbar">
       <button
         class="icon-button"
