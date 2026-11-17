@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS public.hyt_moderation (
  report_id uuid REFERENCES public.hyt_reports(id), action text NOT NULL, reason text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE public.hyt_moderation ADD COLUMN IF NOT EXISTS post_id uuid REFERENCES public.hyt_posts(id);
+ALTER TABLE public.hyt_moderation ADD COLUMN IF NOT EXISTS comment_id uuid REFERENCES public.hyt_comments(id);
+CREATE INDEX IF NOT EXISTS hyt_moderation_time ON public.hyt_moderation(created_at,id);
+
 CREATE TABLE IF NOT EXISTS public.hyt_community_rate (
  key text PRIMARY KEY, count int NOT NULL, until_at timestamptz NOT NULL
 );
@@ -588,6 +592,65 @@ BEGIN
     WHERE b->>'beforeTime' IS NULL OR (ranked.rank,ranked.created_at,ranked.id)<(coalesce((b->>'beforeRank')::numeric,0),(b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid)
     ORDER BY ranked.rank DESC,ranked.created_at DESC,ranked.id DESC LIMIT 21) q;
   RETURN jsonb_build_object('status',200,'posts',result,'snapshotTime',snapshot);
+ END IF;
+
+ IF a IN ('admin.context','admin.content','admin.history','admin.action') THEN
+  IF m.role<>'moderator' THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
+  IF a='admin.history' THEN
+   SELECT coalesce(jsonb_agg(x ORDER BY x->>'createdAt' DESC,x->>'id' DESC),'[]'::jsonb) INTO result FROM
+    (SELECT jsonb_build_object('id',h.id,'action',h.action,'reason',h.reason,'createdAt',h.created_at,'operator',u.nickname,'postId',coalesce(h.post_id,r.post_id),'commentId',coalesce(h.comment_id,r.comment_id)) x
+     FROM public.hyt_moderation h LEFT JOIN public.hyt_members u ON u.id=h.moderator_id LEFT JOIN public.hyt_reports r ON r.id=h.report_id
+     WHERE b->>'beforeTime' IS NULL OR (h.created_at,h.id)<((b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid)
+     ORDER BY h.created_at DESC,h.id DESC LIMIT 30) q;
+   RETURN jsonb_build_object('status',200,'history',result);
+  END IF;
+  IF a='admin.content' THEN
+   SELECT coalesce(jsonb_agg(x ORDER BY x->>'createdAt' DESC,x->>'id' DESC),'[]'::jsonb) INTO result FROM
+    (SELECT public.hyt_post_json(v,m.id) x FROM public.hyt_posts v WHERE v.deleted_at IS NULL
+     AND (coalesce(b->>'query','')='' OR position(lower(b->>'query') in lower(v.title||' '||v.body))>0)
+     AND (b->>'beforeTime' IS NULL OR (v.created_at,v.id)<((b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid))
+     ORDER BY v.created_at DESC,v.id DESC LIMIT 20) q;
+   RETURN jsonb_build_object('status',200,'posts',result);
+  END IF;
+  IF a='admin.action' THEN
+   -- Repeated network retries cannot create duplicate actions or extend punishments.
+   SELECT jsonb_build_object('actor',moderator_id,'postId',post_id,'commentId',comment_id,'action',action,'reason',reason,'reportId',report_id) INTO result FROM public.hyt_moderation WHERE id=(b->>'requestId')::uuid;
+   IF FOUND THEN
+    IF result=jsonb_build_object('actor',m.id,'postId',(b->>'postId')::uuid,'commentId',(b->>'commentId')::uuid,'action',b->>'decision','reason',b->>'reason','reportId',(b->>'reportId')::uuid) THEN RETURN '{"status":200}'::jsonb; END IF;
+    RETURN '{"status":409,"error":"request_conflict"}'::jsonb;
+   END IF;
+   IF b->>'reportId' IS NOT NULL THEN
+    SELECT * INTO report FROM public.hyt_reports WHERE id=(b->>'reportId')::uuid FOR UPDATE;
+    IF NOT FOUND OR report.post_id<>(b->>'postId')::uuid OR report.comment_id IS DISTINCT FROM (b->>'commentId')::uuid THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
+    IF report.status<>'open' THEN RETURN '{"status":409,"error":"report_resolved"}'::jsonb; END IF;
+   ELSIF b->>'decision' IN ('ban','dismiss') THEN RETURN '{"status":400,"error":"invalid_request"}'::jsonb;
+   END IF;
+  END IF;
+  SELECT * INTO p FROM public.hyt_posts WHERE id=(b->>'postId')::uuid FOR UPDATE;
+  IF NOT FOUND THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
+  target=p.author_id;
+  IF b->>'commentId' IS NOT NULL THEN
+   SELECT * INTO c FROM public.hyt_comments WHERE id=(b->>'commentId')::uuid AND post_id=p.id FOR UPDATE;
+   IF NOT FOUND THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
+   target=c.author_id;
+  END IF;
+  IF a='admin.context' THEN
+   RETURN jsonb_build_object('status',200,'post',CASE WHEN p.deleted_at IS NULL THEN public.hyt_post_json(p,m.id) ELSE NULL END,'removed',p.deleted_at IS NOT NULL,'context',(SELECT public.hyt_comment_json(v,m.id) FROM public.hyt_comments v WHERE v.id=c.reply_to AND v.post_id=p.id),'comment',CASE WHEN c.id IS NOT NULL THEN public.hyt_comment_json(c,m.id) ELSE NULL END,
+    'comments',(SELECT coalesce(jsonb_agg(public.hyt_comment_json(v,m.id) ORDER BY v.created_at),'[]'::jsonb) FROM (SELECT * FROM public.hyt_comments WHERE post_id=p.id ORDER BY created_at LIMIT 20) v));
+  END IF;
+  IF b->>'decision'<>'dismiss' AND (p.deleted_at IS NOT NULL OR (c.id IS NOT NULL AND c.deleted_at IS NOT NULL)) THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
+  IF b->>'decision'='remove' THEN
+   IF c.id IS NULL THEN UPDATE public.hyt_posts SET deleted_at=now() WHERE id=p.id;UPDATE public.hyt_media SET deleted_at=now() WHERE post_id=p.id;
+   ELSE UPDATE public.hyt_comments SET deleted_at=now() WHERE id=c.id;UPDATE public.hyt_media SET deleted_at=now() WHERE comment_id=c.id; END IF;
+  ELSIF b->>'decision' IN ('lock','unlock') THEN UPDATE public.hyt_posts SET locked=(b->>'decision'='lock') WHERE id=p.id;
+  ELSIF b->>'decision'='ban' THEN
+   IF EXISTS(SELECT 1 FROM public.hyt_members WHERE id=target AND role='moderator') THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
+   UPDATE public.hyt_members SET banned_until=now()+interval '7 days' WHERE id=target;
+  ELSIF b->>'decision'<>'dismiss' THEN RETURN '{"status":400,"error":"invalid_request"}'::jsonb;
+  END IF;
+  IF b->>'reportId' IS NOT NULL THEN UPDATE public.hyt_reports SET status='resolved',resolution=b->>'reason',resolved_at=now() WHERE id=report.id; END IF;
+  INSERT INTO public.hyt_moderation(id,moderator_id,report_id,post_id,comment_id,action,reason) VALUES((b->>'requestId')::uuid,m.id,(b->>'reportId')::uuid,p.id,c.id,b->>'decision',b->>'reason');
+  RETURN '{"status":200}'::jsonb;
  END IF;
  IF a='admin.reports' THEN
   IF m.role<>'moderator' THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;

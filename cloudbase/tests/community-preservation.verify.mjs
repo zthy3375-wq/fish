@@ -14,3 +14,13 @@ test('preservation guard aborts any row rewrite and transaction rollback restore
  await assert.rejects(pg.exec('BEGIN;'+preservationBegin+"UPDATE hyt_posts SET body='不得改写原内容';"+preservationEnd+'COMMIT;'),/Existing community rows changed/);
  await pg.exec('ROLLBACK;');assert.equal((await pg.query('SELECT body FROM hyt_posts')).rows[0].body,'原有匿名内容');
 });
+test('new nullable audit columns can be added without weakening old-value protection',async()=>{
+ await pg.exec("CREATE TABLE hyt_guard_fixture(id int PRIMARY KEY,body text); INSERT INTO hyt_guard_fixture VALUES(1,'原有记录');");
+ await pg.exec('BEGIN;'+preservationBegin+"ALTER TABLE hyt_guard_fixture ADD COLUMN comment_id uuid;"+preservationEnd+'COMMIT;');
+ assert.deepEqual((await pg.query('SELECT * FROM hyt_guard_fixture')).rows,[{id:1,body:'原有记录',comment_id:null}]);
+});
+test('once added, new columns are protected on later deployments too',async()=>{
+ await pg.exec("UPDATE hyt_guard_fixture SET comment_id='00000000-0000-4000-8000-000000000001';");
+ await assert.rejects(pg.exec('BEGIN;'+preservationBegin+"UPDATE hyt_guard_fixture SET comment_id=NULL;"+preservationEnd+'COMMIT;'),/Existing community rows changed/);await pg.exec('ROLLBACK;');
+ assert.equal((await pg.query('SELECT comment_id FROM hyt_guard_fixture')).rows[0].comment_id,'00000000-0000-4000-8000-000000000001');
+});

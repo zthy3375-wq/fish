@@ -15,7 +15,7 @@ before(async()=>{pg=new PGlite();await pg.exec(schema);api=createCommunity({regi
 afterEach(async()=>{await pg.exec("UPDATE hyt_members SET banned_until=NULL,role='member'; DELETE FROM hyt_community_rate; DELETE FROM hyt_blocks; DELETE FROM hyt_hidden_threads; TRUNCATE hyt_posts CASCADE;");});
 after(async()=>pg.close());
 test('buddy definition requires category, explicit campus time, location, capacity and text',async()=>{
- assert.equal(api.config().schema,10);assert.equal(api.config().buddiesEnabled,true);
+ assert.equal(api.config().schema,11);assert.equal(api.config().buddiesEnabled,true);
  for(const extra of [{category:'daily'},{body:''},{buddy:{...definition(),capacity:0}},{buddy:{...definition(),capacity:21}},{buddy:{...definition(),capacity:2.5}},{buddy:{...definition(),location:' '}},{buddy:{...definition(),startsAt:'2026-12-01T10:00'}},{poll:{question:'混合',options:['一','二'],durationHours:24}}])await assert.rejects(post(extra),{code:'invalid_request'});
  for(const startsAt of [new Date(Date.now()-1000).toISOString(),new Date(Date.now()+91*86400000).toISOString()])await assert.rejects(post({buddy:{...definition(),startsAt}}),{code:'buddy_time'});
  const p=await post();assert.equal(p.buddy.capacity,2);assert.equal(p.buddy.count,0);assert.equal(p.buddy.joined,false);assert(!('participants' in p.buddy));

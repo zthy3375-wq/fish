@@ -67,5 +67,5 @@ test('capability, argument validation and additive migration protect existing co
  await pg.exec("DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF; END $$;");await pg.exec(schema);
  assert((await call(b,'profile.get',{memberId:a.user.id})).profile.following);assert.equal((await call(b,'posts.list',{scope:'saved'})).posts[0].id,p.id);
  assert.equal((await pg.query("SELECT has_table_privilege('anon','hyt_follows','SELECT') AS allowed")).rows[0].allowed,false);
- assert.equal(api.config().schema,10);assert.equal(api.config().followingEnabled,true);
+ assert.equal(api.config().schema,11);assert.equal(api.config().followingEnabled,true);
 });

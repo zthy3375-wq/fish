@@ -137,4 +137,17 @@ class TreeholeClientTest {
         assertEquals(actions.size, sent)
     }
 
+    @Test fun moderationTransportKeepsTokenNativeAndHonorsServerDenial() {
+        val vault = Vault().apply { token = "a".repeat(43) }
+        var sent = 0
+        val client = TreeholeClient(vault) { _, _, token ->
+            assertEquals(vault.token, token); sent++
+            TreeholeResponse(403, JSONObject().put("error", "forbidden"))
+        }
+        for (action in listOf("admin.context", "admin.content", "admin.history", "admin.action")) {
+            try { client.request(action, JSONObject()); fail("Server denial must propagate") }
+            catch (e: TreeholeFailure) { assertEquals("forbidden", e.code) }
+        }
+        assertEquals(4, sent); assertEquals("a".repeat(43), vault.token)
+    }
 }
