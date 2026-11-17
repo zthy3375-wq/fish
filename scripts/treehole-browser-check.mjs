@@ -363,7 +363,9 @@ try{
   const a=await client(width),page=a.page;active=page;await register(page,`discovery_${width}`,'兴趣同学');
   const nav=page.getByRole('navigation',{name:'帖子分区'}),tabs=page.getByRole('group',{name:'兴趣标签'});
   assert.deepEqual(await nav.getByRole('button').allTextContents(),['全部','校园日常','兴趣娱乐','搭子广场','匿名树洞']);
-  for(const button of await nav.getByRole('button').all()){const box=await button.boundingBox();assert(box.x>=0&&box.x+box.width<=width&&box.height>=44);}
+  // Registration changes screens; measure hit targets after their transition settles.
+  await page.waitForFunction(width=>Array.from(document.querySelectorAll('.th-category-nav button')).every(el=>{const r=el.getBoundingClientRect();return r.x>=-.001&&r.right<=width+.001&&r.height>=44-.001}),width);
+  for(const button of await nav.getByRole('button').all()){const box=await button.boundingBox();assert(box.x>=-.001&&box.x+box.width<=width+.001&&box.height>=44-.001,JSON.stringify({width,label:await button.innerText(),box}));}
   const create=(category,extra={})=>api.execute('posts.create',{category,body:'发现合成内容 '+category,anonymous:false,requestId:crypto.randomUUID(),...extra},a.state.token,`discovery-${width}`);
   await create('help');await create('study',{anonymous:true});await create('entertainment',{interest:'music',body:'音乐合成内容'});
   await nav.getByRole('button',{name:'校园日常',exact:true}).click();await page.getByRole('group',{name:'校园内容筛选'}).getByRole('button',{name:'学习交流',exact:true}).click();await page.locator('.th-post').first().waitFor();assert((await page.locator('.th-post').allTextContents()).every(t=>t.includes('学习交流')));checks.push(`${width}: compact four-section navigation preserves legacy study and anonymous identity`);
