@@ -206,13 +206,13 @@ struct CourseDetailView: View {
         List {
             Section { Text(course.name).font(.title2.weight(.semibold)).padding(.vertical, 8) }
             Section("课程信息") {
-                LabeledContent("教师", value: course.teacher.isEmpty ? "未提供" : course.teacher)
-                LabeledContent("地点", value: course.room.isEmpty ? "未提供" : course.room)
-                LabeledContent("上课时间", value: "\(course.start)–\(course.end)")
-                LabeledContent("星期", value: ["一", "二", "三", "四", "五", "六", "日"][min(7, max(1, course.day)) - 1])
-                if !course.period.isEmpty { LabeledContent("节次", value: course.period) }
-                LabeledContent("教学周", value: course.weeks.map(String.init).joined(separator: "、"))
-                LabeledContent("来源", value: course.source == "personal" ? "个人课程" : (course.locallyAdjusted == true ? "学校课程 · 已在本机调课" : "教务系统"))
+                CampusLabeledValue("教师", value: course.teacher.isEmpty ? "未提供" : course.teacher)
+                CampusLabeledValue("地点", value: course.room.isEmpty ? "未提供" : course.room)
+                CampusLabeledValue("上课时间", value: "\(course.start)–\(course.end)")
+                CampusLabeledValue("星期", value: ["一", "二", "三", "四", "五", "六", "日"][min(7, max(1, course.day)) - 1])
+                if !course.period.isEmpty { CampusLabeledValue("节次", value: course.period) }
+                CampusLabeledValue("教学周", value: course.weeks.map(String.init).joined(separator: "、"))
+                CampusLabeledValue("来源", value: course.source == "personal" ? "个人课程" : (course.locallyAdjusted == true ? "学校课程 · 已在本机调课" : "教务系统"))
                 if !course.notes.isEmpty { Text(course.notes) }
             }
             if course.source == "school" {
@@ -270,7 +270,7 @@ struct CourseEditorView: View {
             && firstWeek >= 1 && lastWeek <= maximumWeek
     }
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("个人课程") { TextField("课程名称", text: $name); TextField("教师（选填）", text: $teacher); TextField("地点（选填）", text: $room) }
                 Section("上课时间") {

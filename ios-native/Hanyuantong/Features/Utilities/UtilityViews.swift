@@ -69,7 +69,7 @@ struct NativeHelpView: View {
                 Text("请在 QQ 中搜索群号加入；不会自动入群或发送消息。").font(.footnote).foregroundStyle(.secondary)
             }
             Section("同步问题反馈") {
-                ShareLink(item: diagnostic) { Label("分享脱敏状态", systemImage: "square.and.arrow.up") }
+                CampusShareLink(item: diagnostic) { Label("分享脱敏状态", systemImage: "square.and.arrow.up") }
                 Text("仅包含版本、平台、教务连接状态和记录数量，不包含账号、密码、会话、课程名称或待办内容。请在系统分享面板选择接收方。").font(.footnote).foregroundStyle(.secondary)
             }
             Section("使用说明") {

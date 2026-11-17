@@ -32,7 +32,7 @@ for title, files in [('Sources',app_files),('Tests',unit_files),('UITests',ui_fi
         add('build:'+path,'PBXBuildFile',fileRef=ref(path))
     groups.append(add(title,'PBXGroup',children=entries,name=title,sourceTree='<group>'))
 products=[]; targets=[]
-base=dict(SWIFT_VERSION='5.0', IPHONEOS_DEPLOYMENT_TARGET='16.0', SDKROOT='iphoneos', TARGETED_DEVICE_FAMILY='1', CODE_SIGN_STYLE='Automatic', DEVELOPMENT_TEAM='', ENABLE_USER_SCRIPT_SANDBOXING='YES', CLANG_ENABLE_MODULES='YES')
+base=dict(SWIFT_VERSION='5.0', IPHONEOS_DEPLOYMENT_TARGET='15.4', SDKROOT='iphoneos', TARGETED_DEVICE_FAMILY='1', CODE_SIGN_STYLE='Automatic', DEVELOPMENT_TEAM='', ENABLE_USER_SCRIPT_SANDBOXING='YES', CLANG_ENABLE_MODULES='YES')
 for name,files,extension,ptype in [('Hanyuantong',app_files,'app','application'),('HanyuantongWidget',widget_files,'appex','app-extension'),('HanyuantongTests',unit_files,'xctest','bundle.unit-test'),('HanyuantongUITests',ui_files,'xctest','bundle.ui-testing')]:
     product=add(name+'product','PBXFileReference',explicitFileType='wrapper.application' if extension=='app' else 'wrapper.app-extension' if extension=='appex' else 'wrapper.cfbundle',includeInIndex=0,path=name+'.'+extension,sourceTree='BUILT_PRODUCTS_DIR');products.append(product)
     sources=add(name+'sources','PBXSourcesBuildPhase',buildActionMask=2147483647,files=[ref('build:'+x.relative_to(ROOT).as_posix()) for x in files],runOnlyForDeploymentPostprocessing=0)

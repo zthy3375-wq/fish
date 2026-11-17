@@ -11,13 +11,13 @@ import CoreImage
 struct PangguaiScannerView: View {
     @Environment(\.dismiss) private var dismiss
     let onCode: (String) -> Void
-    @State private var photo: PhotosPickerItem?
+    @State private var photo: CampusPhotoItem?
     @State private var torch = false
     @State private var status = "将机身二维码完整放入画面。屏幕码请关闭手电并避开反光。"
     @State private var resolved = false
     @State private var readingPhoto = false
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             VStack(spacing: 12) {
                 PGCameraView(torch: torch, paused: readingPhoto || resolved, onCode: accept, onError: { status = $0 })
                     .clipShape(RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).stroke(CampusTheme.border))
@@ -25,7 +25,7 @@ struct PangguaiScannerView: View {
                 HStack {
                     Button { torch.toggle() } label: { Label(torch ? "关闭手电":"手电筒", systemImage: torch ? "flashlight.off.fill":"flashlight.on.fill") }
                     Spacer()
-                    PhotosPicker(selection: $photo, matching: .images, photoLibrary: .shared()) { Label("从照片识别", systemImage: "photo") }.disabled(readingPhoto)
+                    CampusPhotoPicker(selection: $photo, matching: .images, photoLibrary: .shared()) { Label("从照片识别", systemImage: "photo") }.disabled(readingPhoto)
                 }.buttonStyle(.bordered).padding()
                 Text("扫码只查询设备，不会扣款或启动。").font(.caption).foregroundStyle(CampusTheme.muted)
             }.padding().background(CampusTheme.background).navigationTitle("扫一扫").navigationBarTitleDisplayMode(.inline)

@@ -33,7 +33,7 @@ struct SchoolCourseAdjustmentView: View {
     }
     private var dirty: Bool { draft != initial || range != "one" || week != initialWeek || custom != Set([initialWeek]) }
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section {
                     Text(context.source.name).font(.headline)

@@ -44,10 +44,7 @@ struct TreeholeFeedScopes: View {
     let select: (String) -> Void
     private var items: [(String, String)] { [("all", "广场")] + (tree.followingEnabled ? [("following", "关注动态")] : []) + [("participated", "我参与的"), ("watching", "关注的讨论")] }
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { buttons }
-            ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 18) { buttons } }
-        }.padding(.bottom, 8).disabled(tree.busy)
+        CampusAdaptiveRow { HStack(spacing: 12) { buttons } } fallback: { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 18) { buttons } } }.padding(.bottom, 8).disabled(tree.busy)
     }
     private var buttons: some View {
         ForEach(items, id: \.0) { id, label in

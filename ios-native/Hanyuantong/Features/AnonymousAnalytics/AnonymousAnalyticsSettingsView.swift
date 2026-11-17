@@ -6,7 +6,7 @@ struct AnonymousAnalyticsSettingsView: View {
     var body: some View {
         List {
             Section("使用统计") {
-                LabeledContent("参与状态", value: store.state.choice == .on ? "已开启" : store.state.choice == .off ? "已关闭" : "尚未选择")
+                CampusLabeledValue("参与状态", value: store.state.choice == .on ? "已开启" : store.state.choice == .off ? "已关闭" : "尚未选择")
                 Text("仅统计活跃安装、应用版本和预设功能使用次数。随机安装标识仅用于统计，不读取硬件标识，不上传学号、密码、课程、余额或订单。")
                     .font(.caption).foregroundStyle(CampusTheme.muted)
                 if let reason = store.unavailableReason {
@@ -36,7 +36,7 @@ struct AnonymousAnalyticsSettingsView: View {
                         .disabled(!store.state.hasIdentity).accessibilityIdentifier("analytics-delete")
                 }
                 if let last = store.state.lastSent {
-                    LabeledContent("上次上报", value: CampusTheme.date(last, format: "M月d日 HH:mm")).font(.caption)
+                    CampusLabeledValue("上次上报", value: CampusTheme.date(last, format: "M月d日 HH:mm")).font(.caption)
                 }
                 if store.state.choice == .on {
                     Button("重试上报") { store.flush(force: true) }.disabled(store.isSending)
@@ -45,7 +45,7 @@ struct AnonymousAnalyticsSettingsView: View {
             }
             if let error = store.error { Section { Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("analytics-error") } }
         }.navigationTitle("匿名使用统计").navigationBarTitleDisplayMode(.inline)
-            .scrollContentBackground(.hidden).background(CampusTheme.background)
+            .campusScrollBackground().background(CampusTheme.background)
             .confirmationDialog("同时关闭统计并删除该安装已上报的记录？未确认删除时会保留凭证供重试。", isPresented: $confirmingDelete, titleVisibility: .visible) {
                 Button("确认删除", role: .destructive) { store.deleteData() }
                 Button("取消", role: .cancel) { }

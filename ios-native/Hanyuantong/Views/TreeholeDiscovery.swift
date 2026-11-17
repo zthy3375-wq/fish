@@ -7,10 +7,7 @@ struct TreeholeDiscoveryBar: View {
     private var selected: String { tree.discoveryEnabled ? TreeholeCategories.section(tree.category) : tree.category }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 0) { sectionButtons }
-                ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 18) { sectionButtons } }
-            }.accessibilityElement(children: .contain).accessibilityLabel("帖子分区")
+            CampusAdaptiveRow { HStack(spacing: 0) { sectionButtons } } fallback: { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 18) { sectionButtons } } }.accessibilityElement(children: .contain).accessibilityLabel("帖子分区")
             if tree.discoveryEnabled, selected == "daily" {
                 chips([("daily", "全部日常"), ("help", "提问求助"), ("study", "学习交流")], selected: tree.category) { select($0, "") }
             }

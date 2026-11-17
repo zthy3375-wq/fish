@@ -6,11 +6,11 @@ struct RootView: View {
     @EnvironmentObject var analytics: AnonymousAnalyticsStore
     var body: some View {
         TabView(selection: $store.selectedTab) {
-            NavigationStack { HomeView() }.tabItem { Label("首页", systemImage: "house") }.tag(AppTab.home)
-            NavigationStack { ScheduleView() }.tabItem { Label("课表", systemImage: "calendar") }.tag(AppTab.schedule)
-            NavigationStack { TreeholeView() }.tabItem { Label("社区", systemImage: "bubble.left.and.bubble.right") }.tag(AppTab.community)
-            NavigationStack { TasksView() }.tabItem { Label("待办", systemImage: "checklist") }.tag(AppTab.tasks)
-            NavigationStack { ProfileView() }.tabItem { Label("我的", systemImage: "person") }.tag(AppTab.profile)
+            CampusNavigation { HomeView() }.tabItem { Label("首页", systemImage: "house") }.tag(AppTab.home)
+            CampusNavigation { ScheduleView() }.tabItem { Label("课表", systemImage: "calendar") }.tag(AppTab.schedule)
+            CampusNavigation { TreeholeView() }.tabItem { Label("社区", systemImage: "bubble.left.and.bubble.right") }.tag(AppTab.community)
+            CampusNavigation { TasksView() }.tabItem { Label("待办", systemImage: "checklist") }.tag(AppTab.tasks)
+            CampusNavigation { ProfileView() }.tabItem { Label("我的", systemImage: "person") }.tag(AppTab.profile)
         }
         .onChange(of: store.selectedTab) { tab in
             if tab == .schedule { analytics.recordFeature(.schedule) }

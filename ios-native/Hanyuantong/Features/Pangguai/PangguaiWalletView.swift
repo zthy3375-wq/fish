@@ -101,7 +101,7 @@ struct PangguaiWalletView: View {
         if tab == 0 { merchantList } else { orderList }
         DisclosureGroup("账户与帮助") {
             VStack(alignment: .leading, spacing: 10) {
-                LabeledContent("通用钱包余额", value: "¥" + PangguaiProtocol.amount(store.snapshot.balance)).privacySensitive()
+                CampusLabeledValue("通用钱包余额", value: "¥" + PangguaiProtocol.amount(store.snapshot.balance)).privacySensitive()
                 Text("商户钱包各自独立，不合并金额。退出不会停止设备或撤销扣款；未完成操作的加密防重记录会保留，重新连接相同账户后核对。").font(.caption).foregroundStyle(CampusTheme.muted)
                 Button("退出胖乖账户", role: .destructive) { confirmation = .logout }.disabled(store.busy)
             }.padding(.top, 10)
@@ -284,7 +284,7 @@ private struct PangguaiLoginView: View {
     @State private var code = ""
     @State private var consent = false
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("连接胖乖生活") {
                     TextField("胖乖手机号", text: $phone).keyboardType(.phonePad).textContentType(.telephoneNumber).privacySensitive()

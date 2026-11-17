@@ -31,7 +31,7 @@ struct ProfileView: View {
                 if store.isConnected {
                     Label("教务系统已连接", systemImage: "checkmark.shield")
                     Button { store.refreshSchool() } label: { HStack { Label("更新课表、成绩与考试", systemImage: "arrow.clockwise"); Spacer(); if store.isBusy { ProgressView() } } }.disabled(store.isBusy)
-                    if let synced = store.lastSynced { LabeledContent("上次更新", value: CampusTheme.date(synced, format: "M月d日 HH:mm")).font(.caption) }
+                    if let synced = store.lastSynced { CampusLabeledValue("上次更新", value: CampusTheme.date(synced, format: "M月d日 HH:mm")).font(.caption) }
                     Button("断开教务连接", role: .destructive) { disconnecting = true }.disabled(store.isBusy)
                 } else {
                     Button { store.connectSchool() } label: { Label("连接邯郸学院教务系统", systemImage: "link") }.disabled(store.isBusy).accessibilityIdentifier("连接邯郸学院")
@@ -45,7 +45,7 @@ struct ProfileView: View {
             }
             Section("个人课表设置") {
                 if let state = store.personalSchedule, let semester = state.semesters.first(where: { $0.id == state.activeSemesterId }) {
-                    LabeledContent("当前个人学期", value: semester.title)
+                    CampusLabeledValue("当前个人学期", value: semester.title)
                     Text("第一周周一：\(semester.weekStartDate) · \(semester.weekCount) 周").font(.caption).foregroundStyle(CampusTheme.muted)
                 } else {
                     Text("旧个人记录已保留。校准第一周周一后尝试启用多学期管理；不兼容记录不会被丢弃。").font(.caption).foregroundStyle(CampusTheme.muted)
@@ -77,7 +77,7 @@ struct ProfileView: View {
                 NavigationLink("匿名使用统计") { AnonymousAnalyticsSettingsView(store: analytics) }
                 NavigationLink("帮助与反馈") { NativeHelpView() }
             }
-        }.scrollContentBackground(.hidden).background(CampusTheme.background).navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
+        }.campusScrollBackground().background(CampusTheme.background).navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
             .confirmationDialog("断开后会移除本机教务会话及教务缓存，个人课程和待办不受影响。", isPresented: $disconnecting, titleVisibility: .visible) { Button("断开连接", role: .destructive) { store.disconnectSchool() } }
     }
@@ -106,7 +106,7 @@ private struct LegacyPersonalCalendarView: View {
         _start = State(initialValue: start); self.save = save
     }
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("校准旧个人课表") {
                     DatePicker("个人第一周周一", selection: $start, displayedComponents: .date)
@@ -150,7 +150,7 @@ struct AcademicRecordsView: View {
             if selection == 0 { NativeGradeAnalysisView(grades: store.grades, profile: store.academicProfile) }
             else { NativeExamRecordsView(exams: store.exams) }
             if !store.isConnected { Button("连接教务系统") { store.connectSchool() }.disabled(store.isBusy) }
-        }.scrollContentBackground(.hidden).background(CampusTheme.background).navigationTitle("成绩与考试").navigationBarTitleDisplayMode(.inline)
+        }.campusScrollBackground().background(CampusTheme.background).navigationTitle("成绩与考试").navigationBarTitleDisplayMode(.inline)
             .toolbar { if store.isConnected { Button { store.refreshSchool() } label: { if store.isBusy { ProgressView() } else { Image(systemName: "arrow.clockwise") } }.disabled(store.isBusy).accessibilityLabel("更新教务数据") } }
     }
 }

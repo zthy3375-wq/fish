@@ -15,8 +15,8 @@ extension CampusDisplayTheme {
     var body: some View {
         Form {
             Section("本机资料") {
-                LabeledContent("昵称", value: store.preferences.name)
-                LabeledContent("专业 / 年级", value: store.preferences.major.isEmpty ? "未填写" : store.preferences.major)
+                CampusLabeledValue("昵称", value: store.preferences.name)
+                CampusLabeledValue("专业 / 年级", value: store.preferences.major.isEmpty ? "未填写" : store.preferences.major)
                 Button("编辑个人资料") { editingProfile = true }
                     .disabled(!store.canEdit).accessibilityIdentifier("edit-local-profile")
                 Text("无需填写真实学号和身份信息。昵称与专业 / 年级仅加密保存在本机，不修改学校资料，也不加入匿名统计或发送到学校。")
@@ -58,7 +58,7 @@ extension CampusDisplayTheme {
                 Text("只恢复昵称、专业 / 年级、主题和紧凑布局，不影响学校连接、个人课程、待办、系统提醒、小组件或匿名统计选择。")
             }
         }
-        .scrollContentBackground(.hidden).background(CampusTheme.background)
+        .campusScrollBackground().background(CampusTheme.background)
         .navigationTitle("显示与本机资料").navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $editingProfile) { LocalProfileEditorView(store: store) }
         .confirmationDialog("恢复默认本机设置？", isPresented: $confirmingReset, titleVisibility: .visible) {
@@ -130,7 +130,7 @@ extension CampusDisplayTheme {
     private var valid: Bool { (try? store.preferences.editingProfile(name: name, major: major)) != nil }
 
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section {
                     TextField("昵称", text: $name).textContentType(.nickname)
@@ -149,7 +149,7 @@ extension CampusDisplayTheme {
                     Section { Text(issue).foregroundStyle(.red).accessibilityIdentifier("local-profile-error") }
                 }
             }
-            .scrollContentBackground(.hidden).background(CampusTheme.background)
+            .campusScrollBackground().background(CampusTheme.background)
             .navigationTitle("编辑个人资料").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

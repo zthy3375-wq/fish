@@ -21,7 +21,7 @@ struct TreeholeView: View {
     @State private var newPassword = ""
     @State private var agreed = false
     @StateObject private var draft = TreeholeDraftStore()
-    @State private var pickedPhotos: [PhotosPickerItem] = []
+    @State private var pickedPhotos: [CampusPhotoItem] = []
     @State private var gallery: TreeholeGallerySelection?
     @Environment(\.scenePhase) private var scenePhase
     private var anonymous: Bool { draft.value.anonymous }
@@ -37,7 +37,7 @@ struct TreeholeView: View {
     @State private var replyAnonymous = false
     private var bodyText: String { draft.value.body }
     @State private var replyPhotos: [TreeholeDraftPhoto] = []
-    @State private var pickedReplyPhotos: [PhotosPickerItem] = []
+    @State private var pickedReplyPhotos: [CampusPhotoItem] = []
     private var hasReply: Bool { !replyText.isEmpty || !replyPhotos.isEmpty }
     @State private var replyText = ""
     @State private var reportReason = ""
@@ -126,7 +126,7 @@ struct TreeholeView: View {
                   value.translation.width > 90, abs(value.translation.height) < 30 else { return }
             back()
         })
-        .scrollDismissesKeyboard(.interactively)
+        .campusKeyboardDismissal()
         .refreshable {
             guard screen == "feed", tree.user != nil, !tree.busy else { return }
             tree.busy = true; tree.message = nil
@@ -195,7 +195,7 @@ struct TreeholeView: View {
             }.padding(24).interactiveDismissDisabled()
         }
         .sheet(isPresented: $replyExpanded, onDismiss: { replyFocused = false }) {
-            if let post = tree.current { ScrollView { replyEditor(post) }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).interactiveDismissDisabled(tree.busy) }
+            if let post = tree.current { ScrollView { replyEditor(post) }.campusReplySheet().interactiveDismissDisabled(tree.busy) }
         }
         .sheet(item: $buddyRosterPost) { post in TreeholeBuddyRoster(post: post).environmentObject(tree) }
         .sheet(item: $reportTarget) { target in reportSheet(target) }
@@ -320,7 +320,7 @@ struct TreeholeView: View {
             Divider()
             ZStack(alignment: .topLeading) {
                 if bodyText.isEmpty { Text("分享校园里的新鲜事…").foregroundStyle(.tertiary).padding(.top, 8).padding(.leading, 5).allowsHitTesting(false) }
-                TextEditor(text: $draft.value.body).scrollContentBackground(.hidden).frame(minHeight: 190).accessibilityLabel("想说的话").onChange(of: bodyText) { draft.value.body = String($0.prefix(3000)) }
+                TextEditor(text: $draft.value.body).campusScrollBackground().frame(minHeight: 190).accessibilityLabel("想说的话").onChange(of: bodyText) { draft.value.body = String($0.prefix(3000)) }
             }.font(.body).lineSpacing(7)
             if !draft.value.photos.isEmpty {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
@@ -337,7 +337,7 @@ struct TreeholeView: View {
                 }.font(.caption).padding(.horizontal, 10).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 10))
             }
             if tree.imagesEnabled && draft.value.photos.count < 9 {
-                PhotosPicker(selection: $pickedPhotos, maxSelectionCount: 9 - draft.value.photos.count, matching: .images) { Label("添加图片 · \(draft.value.photos.count)/9", systemImage: "photo.on.rectangle").font(.subheadline).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 10)) }
+                CampusPhotoPicker(selection: $pickedPhotos, maxSelectionCount: 9 - draft.value.photos.count, matching: .images) { Label("添加图片 · \(draft.value.photos.count)/9", systemImage: "photo.on.rectangle").font(.subheadline).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 10)) }
             }
             buddyEditor
             if draft.value.poll != nil {
@@ -358,12 +358,12 @@ struct TreeholeView: View {
             Button { draft.value.buddy = TreeholeBuddyDraft() } label: { Label("设置时间、地点和报名", systemImage: "person.2").frame(minHeight: 44) }
         }
     }
-    private func loadPhotos(_ items: [PhotosPickerItem]) {
+    private func loadPhotos(_ items: [CampusPhotoItem]) {
         guard !items.isEmpty else { return }
         tree.perform {
             defer { pickedPhotos = [] }
             for item in items.prefix(max(0, 9 - draft.value.photos.count)) {
-                guard let bytes = try await item.loadTransferable(type: Data.self) else { throw TreeholeError(code: "invalid_image") }
+                guard let bytes = try await item.loadData() else { throw TreeholeError(code: "invalid_image") }
                 draft.value.photos.append(try TreeholeDraftStore.prepare(bytes)); draft.flush()
             }
         }
@@ -408,17 +408,17 @@ struct TreeholeView: View {
                 }
             }
             if tree.commentImagesEnabled && replyPhotos.count < 3 {
-                PhotosPicker(selection: $pickedReplyPhotos, maxSelectionCount: 3 - replyPhotos.count, matching: .images) { Label("添加图片 · \(replyPhotos.count)/3", systemImage: "photo").font(.caption).frame(minHeight: 44) }.disabled(tree.busy)
+                CampusPhotoPicker(selection: $pickedReplyPhotos, maxSelectionCount: 3 - replyPhotos.count, matching: .images) { Label("添加图片 · \(replyPhotos.count)/3", systemImage: "photo").font(.caption).frame(minHeight: 44) }.disabled(tree.busy)
             }
         }
     }
-    private func loadReplyPhotos(_ items: [PhotosPickerItem]) {
+    private func loadReplyPhotos(_ items: [CampusPhotoItem]) {
         guard !items.isEmpty, tree.commentImagesEnabled else { return }
         let member = tree.user?.id, postId = tree.current?.id
         tree.perform {
             defer { pickedReplyPhotos = [] }
             for item in items.prefix(max(0, 3 - replyPhotos.count)) {
-                guard let bytes = try await item.loadTransferable(type: Data.self) else { throw TreeholeError(code: "invalid_image") }
+                guard let bytes = try await item.loadData() else { throw TreeholeError(code: "invalid_image") }
                 guard member == tree.user?.id, postId == tree.current?.id else { throw CancellationError() }
                 replyPhotos.append(try TreeholeDraftStore.prepare(bytes))
             }
@@ -556,7 +556,7 @@ struct TreeholeView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack { Text(replyTo.map { "回复 " + $0.author.name } ?? "写评论").font(.subheadline.weight(.semibold)); Spacer(); Button { replyFocused = false; replyExpanded = false } label: { Image(systemName: "xmark").padding(8) }.accessibilityLabel("收起回复编辑器").disabled(tree.busy) }
             if let replyTo { HStack { Text(replyTo.body).font(.caption).lineLimit(1); Spacer(); Button { self.replyTo = nil } label: { Image(systemName: "xmark") }.accessibilityLabel("取消回复") }.foregroundStyle(.secondary) }
-            TextField("说说你的想法…", text: $replyText, axis: .vertical).lineLimit(3...5).focused($replyFocused).font(.body).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 7)).accessibilityLabel("你的回复").onChange(of: replyText) { replyText = String($0.prefix(1000)) }.disabled(tree.busy)
+            CampusMultilineField("说说你的想法…", text: $replyText, minimum: 3, maximum: 5).focused($replyFocused).font(.body).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 7)).accessibilityLabel("你的回复").onChange(of: replyText) { replyText = String($0.prefix(1000)) }.disabled(tree.busy)
             replyPhotoEditor
             HStack(spacing: 10) {
                 Button { replyAnonymous.toggle() } label: { Label(tree.current?.category == "treehole" ? "本区统一匿名" : forceAnonymous ? "保持楼主匿名身份" : replyAnonymous ? "匿名回复" : "昵称回复", systemImage: replyAnonymous || forceAnonymous ? "theatermasks" : "person.crop.circle").font(.caption2).padding(9).background(TreeholeTheme.background, in: Capsule()) }.disabled(tree.busy || forceAnonymous).accessibilityValue(replyAnonymous || forceAnonymous ? "匿名" : "昵称")
@@ -670,7 +670,7 @@ struct TreeholeView: View {
                 if accountPage == "profile" {
                     Text("其他同学会看到这个昵称。").font(.subheadline).foregroundStyle(.secondary)
                     TextField("公开昵称", text: $nickname).textContentType(.nickname)
-                    if tree.engagementEnabled { TextField("个人简介（选填）", text: $bio, axis: .vertical).lineLimit(2...4).onChange(of: bio) { bio = String($0.prefix(120)) } }
+                    if tree.engagementEnabled { CampusMultilineField("个人简介（选填）", text: $bio, minimum: 2, maximum: 4).onChange(of: bio) { bio = String($0.prefix(120)) } }
                     Button("保存资料") { tree.perform { var body = ["nickname": nickname]; if tree.engagementEnabled { body["bio"] = bio }; tree.user = try await tree.api.request("profile.update", body).user; tree.feedNeedsRefresh = true; accountPage = "overview" } }.buttonStyle(.borderedProminent).disabled(nickname.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
                 } else if accountPage == "password" {
                     Text("修改后其他设备会退出登录，并生成新的恢复码。").font(.subheadline).foregroundStyle(.secondary)
@@ -690,7 +690,7 @@ struct TreeholeView: View {
     }
     private func accountFeed(_ scope: String) { tree.perform { try await tree.selectScope(scope); routes = []; searchOpen = false; screen = "feed" } }
     private func reportSheet(_ target: TreeholeTarget) -> some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("举报原因") { TextEditor(text: $reportReason).frame(minHeight: 120).onChange(of: reportReason) { reportReason = String($0.prefix(300)) }; Text("例如：泄露隐私、骚扰、垃圾广告").font(.caption) }
                 if let message = tree.message { Text(message).foregroundStyle(.red) }
