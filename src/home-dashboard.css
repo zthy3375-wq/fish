@@ -1,0 +1,46 @@
+/* Home owns its composition; shared product tokens and five-tab navigation stay unchanged. */
+.home-body{position:relative;display:grid;gap:20px;padding-top:14px}
+.home-body .analytics-card{margin:0}
+.home-course-panel{background:var(--color-surface);border:1px solid var(--color-border);border-radius:16px;overflow:hidden}
+.home-next{display:block;width:100%;text-align:left;padding:14px 16px;background:var(--color-highlight);color:var(--color-text)}
+.home-next:active{background:var(--color-tint);transform:none}
+.home-next:focus-visible{outline-offset:-3px}
+.home-next-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;font-size:12px;color:var(--color-primary-strong)}
+.home-next-head>span:first-child{display:flex;align-items:center;gap:6px;font-weight:600}
+.home-countdown{font-size:12px;font-variant-numeric:tabular-nums}
+.home-next-main{display:flex;align-items:center;gap:14px;min-width:0}
+.home-course-clock.home-next-meta{display:grid;flex:0 0 auto;gap:0;margin:0;padding-right:14px;border-right:1px solid var(--color-border);font-variant-numeric:tabular-nums}
+.home-course-clock time{font-size:26px;font-weight:650;line-height:1.15;color:var(--color-primary-strong);letter-spacing:-.02em}
+.home-course-clock>span{font-size:12px;line-height:1.5;color:var(--color-muted);margin-top:3px}
+.home-course-copy{flex:1;min-width:0}
+.home-next-title{display:block;font-size:19px;font-weight:650;line-height:1.45;overflow-wrap:anywhere;border:0;padding:0}
+.home-next-meta{display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:5px;font-size:11px;line-height:1.5;color:var(--color-muted)}
+.home-next-meta>span{display:inline-flex;align-items:center;gap:3px;min-width:0;overflow-wrap:anywhere}
+.home-next-meta svg{width:12px;height:12px;flex-shrink:0}
+.home-course-chevron{flex-shrink:0;color:var(--color-primary)}
+.home-next-empty{padding-block:16px}
+.home-next-empty .home-next-title{font-size:18px}
+.home-next-empty .home-next-meta{font-size:12px}
+.home-empty-action{display:flex;align-items:center;gap:4px;min-height:44px;color:var(--color-primary);font-size:13px;font-weight:600;margin-bottom:-8px}
+.home-timeline-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding-inline:16px;font-size:12px;color:var(--color-muted)}
+.home-timeline-head button{display:flex;align-items:center;gap:4px;min-height:44px;font-size:12px;color:var(--color-primary);white-space:normal;text-align:left}
+.home-timeline-head .home-timeline-toggle{color:var(--color-text);font-weight:500;flex:1}
+.home-timeline-toggle svg{transition:transform var(--motion-normal) var(--ease-standard)}
+.home-timeline-toggle svg.is-open{transform:rotate(180deg)}
+.home-study-links{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-top:1px solid var(--color-divider)}
+.home-study-links button{display:flex;align-items:center;gap:8px;padding:12px 16px;min-height:48px;min-width:0;text-align:left}
+.home-study-links button+button{border-left:1px solid var(--color-divider)}
+.home-study-links button>svg{flex-shrink:0;color:var(--color-primary)}
+.home-study-links button>svg:last-child{margin-left:auto;color:var(--color-muted)}
+.home-study-links strong{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.home-study-links button:active{background:var(--color-highlight);transform:none}
+.home-study-links button:focus-visible{outline-offset:-3px}
+.home-service-heading{display:flex;align-items:center;justify-content:space-between;margin:0 0 10px}
+.home-service-heading h2{font-size:17px;font-weight:650;line-height:1.5}
+.home-body .today-tasks{padding:0 16px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:16px}
+.home-body .today-tasks .section-heading{margin:4px 0 8px;min-height:44px}
+.home-body .today-tasks .section-heading h2{font-size:16px}
+.home-body .today-empty{min-height:52px;text-align:left}
+.home-body .today-empty span{font-size:13px}
+@media(max-width:374px){.home-next{padding-inline:14px}.home-next-main{gap:10px}.home-course-clock.home-next-meta{padding-right:10px}.home-course-clock time{font-size:24px}.home-next-title{font-size:18px}.home-study-links button{padding-inline:14px}.home-timeline-head{padding-inline:14px}}
+@media(prefers-reduced-motion:reduce){.home-timeline-toggle svg{transition:none}}

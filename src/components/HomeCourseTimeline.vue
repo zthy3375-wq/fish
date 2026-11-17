@@ -25,7 +25,7 @@ const label=(state:string)=>state==='current'?'上课中':state==='ended'?'已�
 
 <style scoped>
 .home-timeline{display:flex;overflow-x:auto;gap:16px;padding:4px 16px 12px;scroll-snap-type:x proximity}
-.course-time-item{position:relative;flex:1 0 150px;min-width:0;padding:0;text-align:left;scroll-snap-align:start;color:var(--color-muted);font-variant-numeric:tabular-nums}
+.course-time-item{position:relative;flex:1 0 150px;min-width:0;min-height:56px;padding:0;text-align:left;scroll-snap-align:start;color:var(--color-muted);font-variant-numeric:tabular-nums}
 .is-single .course-time-item{flex:1 1 100%}
 .course-time-track{position:relative;display:block;height:3px;margin:5px 5px 10px;background:var(--color-divider);border-radius:5px}
 .course-time-fill{position:absolute;inset:0 auto 0 0;border-radius:inherit;background:var(--color-border);transition:width 1s linear}

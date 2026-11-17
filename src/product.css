@@ -24,18 +24,6 @@ button:active:disabled{transform:none}
 .floating-nav button.active span{font-weight:650}
 .floating-nav .nav-indicator{top:5px;bottom:5px;left:8px;width:calc((100% - 16px)/var(--nav-count,5));border-radius:12px!important}
 .floating-nav button svg{stroke-width:1.8}
-.home-body{gap:16px;padding-top:14px}
-.home-course-panel,.home-body .today-tasks{border-radius:var(--radius-md);box-shadow:none}
-.home-next{padding:16px}
-.home-next-title{border:0;padding-left:0;font-size:22px;line-height:1.4}
-.home-next-meta{font-size:12px;line-height:1.5}
-.home-timeline-head{font-size:12px}
-.home-course-panel .home-study-links strong{font-size:13px}
-.home-course-panel .home-study-links small{font-size:11px}
-.home-service-heading h2{font-size:16px}
-.home-service-heading span{font-size:12px}
-.home-active .life-card{border-radius:var(--radius-md);min-height:104px;padding:14px}
-.home-body .today-tasks .section-heading h2{font-size:16px}
 .profile-page .profile-strip{padding:8px 0 22px;gap:14px}
 .profile-page .avatar{width:56px;height:56px;border-radius:18px}
 .profile-page .profile-copy strong{font-size:21px}
@@ -77,6 +65,6 @@ button:active:disabled{transform:none}
 .treehole .th-moderation-actions button{min-height:44px;border-radius:var(--radius-sm);padding-inline:12px}
 .treehole .th-social-stats{padding-block:10px}
 .treehole .dm-message p{max-width:85%;line-height:1.65}
-@media(max-width:374px){:root{--page-gutter:16px}.profile-page .theme-row{flex-wrap:wrap}.profile-page .theme-options{margin-left:auto}.home-next-title{font-size:21px}}
+@media(max-width:374px){:root{--page-gutter:16px}.profile-page .theme-row{flex-wrap:wrap}.profile-page .theme-options{margin-left:auto}}
 @media(min-width:768px){.overlay-surface{border-radius:var(--radius-lg)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
