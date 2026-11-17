@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ref,computed,onMounted,onUnmounted,onActivated,onDeactivated,watch,nextTick} from 'vue';
-import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ThumbsUp,ChevronLeft,Bell,BellOff,MessagesSquare,ChevronDown,ChartNoAxesColumnIncreasing,CalendarPlus} from 'lucide-vue-next';
+import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ChevronLeft,Bell,BellOff,MessagesSquare,ChevronDown,ChartNoAxesColumnIncreasing,CalendarPlus} from 'lucide-vue-next';
 import TreeholeMessages from './TreeholeMessages.vue';
 import TreeholeAdmin from './TreeholeAdmin.vue';
 const moderationEnabled=ref(false),adminTarget=ref<{postId:string;commentId?:string|null}|null>(null);
@@ -16,6 +16,7 @@ import TreeholeCommentThread from './TreeholeCommentThread.vue';
 import {treeholeCategories,treeholeCategoryName,treeholeSections,treeholeInterests,treeholeSection,treeholeInterestName,treeholeFeedFilters} from '../domain/treeholeCategories';
 import {readTreeholeDraft,writeTreeholeDraft,deleteTreeholeDraft,prepareTreeholeImage,type DraftImage} from '../services/treeholeDrafts';
 import TreeholeAvatar from './TreeholeAvatar.vue';
+import TreeholeLike from './TreeholeLike.vue';
 import TreeholePostCard from './TreeholePostCard.vue';
 import {treeholeTimestamp} from '../domain/treeholePresentation';
 import {treeholeRequest as request,treeholeError,treeholeErrorCode,type TreeholeResponseKind,type TreeholeUser,type TreeholePost,type TreeholeComment,type TreeholeReport,type TreeholeNotification,type TreeholeProfile,type TreeholeFollow,type TreeholeSocial,type TreeholeMessageDraft,type TreeholePoll,type TreeholePollDraft,type TreeholeBuddy,type TreeholeBuddyDraft,type TreeholeBuddyMember} from '../services/treehole';
@@ -608,7 +609,7 @@ onUnmounted(()=>{clearTimeout(draftTimer);saveDraft();alive=false;active=false;c
     </template>
    </div>
    <button v-if="user&&screen==='feed'&&!recovery" class="th-fab" :class="{'is-collapsed':fabCollapsed}" aria-label="发帖" :disabled="busy" @click="compose()"><PenLine :size="20"/><span>发帖</span></button>
-   <div v-if="user&&screen==='detail'&&detail&&!recovery" class="th-readbar" aria-label="帖子互动"><button class="th-reply-entry" :disabled="busy||detail.locked" @click="focusReply()"><PenLine :size="17"/><span>{{detail.locked?'讨论已暂停':commentBody||commentImages.length?'继续编辑回复…':'说点什么吧…'}}</span></button><button class="th-read-action" :aria-label="detail.liked?'取消点赞':'点赞'" :aria-pressed="detail.liked" :disabled="busy||pendingReactions[detail.id+':like']" @click="react(detail,'like')"><ThumbsUp :size="21" :fill="detail.liked?'currentColor':'none'"/><span>{{detail.likeCount||'点赞'}}</span></button><button class="th-read-action" :aria-label="detail.saved?'取消收藏':'收藏'" :aria-pressed="detail.saved" :disabled="busy||pendingReactions[detail.id+':save']" @click="react(detail,'save')"><Bookmark :size="21" :fill="detail.saved?'currentColor':'none'"/><span>{{detail.saved?'已收藏':'收藏'}}</span></button><button class="th-read-action" aria-label="查看评论" @click="scrollDiscussion"><MessageCircle :size="21"/><span>{{detail.commentCount||'评论'}}</span></button></div>
+   <div v-if="user&&screen==='detail'&&detail&&!recovery" class="th-readbar" aria-label="帖子互动"><button class="th-reply-entry" :disabled="busy||detail.locked" @click="focusReply()"><PenLine :size="17"/><span>{{detail.locked?'讨论已暂停':commentBody||commentImages.length?'继续编辑回复…':'说点什么吧…'}}</span></button><TreeholeLike class="th-read-action" detail :liked="detail.liked" :count="detail.likeCount" :disabled="busy||pendingReactions[detail.id+':like']" @toggle="react(detail,'like')"/><button class="th-read-action" :aria-label="detail.saved?'取消收藏':'收藏'" :aria-pressed="detail.saved" :disabled="busy||pendingReactions[detail.id+':save']" @click="react(detail,'save')"><Bookmark :size="21" :fill="detail.saved?'currentColor':'none'"/><span>{{detail.saved?'已收藏':'收藏'}}</span></button><button class="th-read-action" aria-label="查看评论" @click="scrollDiscussion"><MessageCircle :size="21"/><span>{{detail.commentCount||'评论'}}</span></button></div>
   </div>
   <Transition :name="dialogMotion" @before-enter="(el:Element)=>{el.removeAttribute('inert');el.removeAttribute('aria-hidden')}" @before-leave="(el:Element)=>{el.setAttribute('inert','');el.setAttribute('aria-hidden','true')}">
   <div v-if="dialogOpen" class="th-dialog-backdrop" :class="{'is-gallery':!!gallery}" @click.self="!busy&&requestBack()">

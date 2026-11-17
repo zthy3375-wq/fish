@@ -1,10 +1,11 @@
 /* Community reading and writing surfaces. Global palette and five-tab shell stay shared. */
 .th-nav{min-height:calc(60px + var(--safe-top));background:var(--color-surface);backdrop-filter:none}
 .th-feed-heading{gap:12px;padding:6px 0 4px;border-bottom:0}
-.th-return-links{display:flex;gap:2px;min-width:0;padding:3px;background:var(--color-bg);border-radius:12px}
-.th-return-links button{min-height:44px;padding:0 12px;font-size:14px;line-height:1.5;border-radius:9px;color:var(--color-muted);white-space:nowrap}
-.th-return-links button[aria-pressed=true]{color:var(--color-primary-strong);background:var(--color-surface);font-weight:650}
-.th-return-links button::after{display:none}
+.th-return-links{display:flex;align-items:stretch;gap:16px;min-width:0;background:transparent}
+.th-return-links button{position:relative;min-height:44px;padding:0 2px;color:var(--color-muted);font-size:15px;white-space:nowrap}
+.th-return-links button[aria-pressed=true]{color:var(--color-text);font-weight:700}
+.th-return-links button::after{content:'';position:absolute;left:15%;right:15%;bottom:0;height:3px;background:var(--color-primary);border-radius:3px;transform:scaleX(0);transition:transform 180ms ease-out}
+.th-return-links button[aria-pressed=true]::after{transform:scaleX(1)}
 .th-feed-tools{gap:2px;flex-shrink:0}
 .th-category-nav{display:flex;align-items:center;gap:4px;overflow-x:auto;margin:0 -18px 0;padding:4px 18px 4px;scrollbar-width:none;border:0}
 .th-category-nav button{flex:0 0 auto;min-width:44px;min-height:44px;padding:0 8px;border-radius:8px;font-size:12px;color:var(--color-muted);white-space:nowrap}
@@ -51,8 +52,8 @@
 .th-reply-bottom .th-anon-pill{min-height:44px;padding:0 6px;font-size:11px}
 .th-reply-bottom .th-send{min-height:44px;font-size:13px;padding-inline:14px}
 .th-reply-bottom small{font-size:11px}
-@media(max-width:374px){.th-feed-heading{gap:6px}.th-return-links button{padding-inline:9px;font-size:13px}.th-feed-tools .th-icon{width:36px}.th-readbar{padding-inline:12px;gap:5px}.treehole .th-compose-tool{padding-inline:7px!important;gap:4px!important}}
-@media(prefers-reduced-motion:reduce){.th-return-links button,.th-category-nav button{transition:none}}
+@media(max-width:374px){.th-feed-heading{gap:6px}.th-return-links{gap:10px}.th-feed-tools .th-icon{width:36px}.th-readbar{padding-inline:12px;gap:5px}.treehole .th-compose-tool{padding-inline:7px!important;gap:4px!important}}
+@media(prefers-reduced-motion:reduce){.th-return-links button::after,.th-category-nav button{transition:none}}
 
 .th-detail-tabs button[aria-pressed=true]{color:var(--color-primary-strong)}
 .th-reply-entry{color:var(--color-muted)}
