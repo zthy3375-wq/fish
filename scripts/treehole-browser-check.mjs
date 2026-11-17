@@ -25,6 +25,7 @@ const server=staticServer(async(req,res)=>{try{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));mediaOrigin=`http://127.0.0.1:${server.address().port}`;const url=mediaOrigin+'/#/community';
 const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined});
 const checks=[];let active;
+const redesignBaseline=process.env.COMMUNITY_REDESIGN_BASELINE==='1';
 async function client(width){
  const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
  const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[],requests:[],holdNextPage:false,releasePage:null,failNextPage:false,holdNextDetail:false,releaseDetail:null,failNextDetail:false};
@@ -80,7 +81,7 @@ try{
   await a.page.getByRole('button',{name:'发帖',exact:true}).click();await a.page.getByLabel('想说的话').fill('今天图书馆靠窗的位置很安静。下课后，给自己一点慢下来的时间。');
   assert.equal(await nav.count(),0);checks.push(`${width}: composing hides main navigation to protect the draft`);
   await a.page.getByLabel('帖子标题').fill('图书馆的午后');await a.page.getByLabel('选择分区').selectOption('study');await a.page.getByLabel('添加图片').setInputFiles({name:'campus-fixture.webp',mimeType:'image/webp',buffer:fixture});await a.page.locator('.th-draft-images img').waitFor();
-  await a.page.getByRole('checkbox',{name:'匿名发布',exact:true}).check();await a.page.screenshot({path:path.join(output,`treehole-compose-${width}.png`),animations:'disabled'});a.state.dropNextPost=true;
+  await a.page.getByRole('checkbox',{name:'匿名发布',exact:true}).check();await a.page.waitForFunction(()=>document.querySelector('.th-compose-footnote .th-draft-status')?.textContent.includes('草稿已保存'));await a.page.screenshot({path:path.join(output,`treehole-compose-${width}.png`),animations:'disabled'});a.state.dropNextPost=true;
   await a.page.getByRole('button',{name:'匿名发布',exact:true}).click();await a.page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();
   assert.equal(await a.page.getByLabel('想说的话').inputValue(),'今天图书馆靠窗的位置很安静。下课后，给自己一点慢下来的时间。');
   await a.page.getByRole('button',{name:'匿名发布',exact:true}).click();await a.page.getByRole('heading',{name:'评论',exact:true}).waitFor();
@@ -204,15 +205,34 @@ try{
  for(let i=0;i<4;i++)await call('comments.create',{postId:long.id,body:['谢谢整理，周末打算去看看。','想知道有没有一起拍照的同学。','先收藏了，等安排出来再看。','这条回复用来检查展开和收起。'][i],anonymous:i%2===0,requestId:crypto.randomUUID(),replyTo:roots[0].id});
  await visual.page.reload();await visual.page.getByRole('heading',{name:two.title,exact:true}).waitFor();
  for(const width of [360,390,430]){
-  await visual.page.setViewportSize({width,height:844});await visual.page.screenshot({path:path.join(output,`treehole-content-feed-${width}.png`),fullPage:true,animations:'disabled'});assert.equal(await visual.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await visual.page.setViewportSize({width,height:844});await visual.page.evaluate(()=>{scrollTo(0,0);if(document.activeElement instanceof HTMLElement)document.activeElement.blur()});await visual.page.screenshot({path:path.join(output,`treehole-content-feed-${width}.png`),animations:'disabled'});
+  const priorTheme=await visual.page.locator('html').getAttribute('data-theme');await visual.page.locator('html').evaluate(el=>el.dataset.theme='dark');
+  await visual.page.screenshot({path:path.join(output,`community-dark-${width}.png`),animations:'disabled'});
+  await visual.page.locator('html').evaluate((el,theme)=>{if(theme)el.setAttribute('data-theme',theme);else el.removeAttribute('data-theme')},priorTheme);
+  if(!redesignBaseline){
+   const clipped=visual.page.locator('.th-post').filter({hasText:'想找几位一起做校园项目的同学'});
+   await clipped.locator('.th-read-more').waitFor();
+   assert.equal(await visual.page.locator('.th-post').filter({hasText:two.title}).locator('.th-read-more').count(),0);
+   assert.equal(await visual.page.locator('.th-post').filter({hasText:many.title}).locator('.th-media-total').innerText(),'9 张');
+   checks.push(`${width}: only genuinely clipped excerpts show read-more and photo counts reflect actual attachments`);
+  }assert.equal(await visual.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   const dual=visual.page.locator('.th-post').filter({hasText:two.title});assert.equal(await dual.locator('.th-images.two button').count(),2);
   const nine=visual.page.locator('.th-post').filter({hasText:many.title});assert.equal(await nine.locator('.th-images button').count(),9);
   const tall=visual.page.locator('.th-post').filter({hasText:long.title});assert.equal(await tall.locator('.th-long-image').innerText(),'长图');assert((await tall.locator('.th-images button').boundingBox()).height<=325);
+  await tall.locator('.th-post-body').click();await visual.page.locator('.th-detail').waitFor();
+  await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'正文',exact:true}).click();await visual.page.waitForFunction(()=>scrollY<2);
+  await visual.page.screenshot({path:path.join(output,`community-body-${width}.png`),animations:'disabled'});
+  await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();
   await tall.getByRole('button',{name:/查看评论/}).click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();await visual.page.waitForFunction(()=>document.querySelector('.th-discussion-title').getBoundingClientRect().top<120);const full=await visual.page.locator('.th-detail .th-images button').boundingBox();assert(Math.abs(full.width/full.height-.3)<.01);assert.equal(await visual.page.getByLabel('你的回复',{exact:true}).count(),0);
   await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'评论',exact:true}).click();await visual.page.waitForFunction(()=>document.querySelector('.th-discussion-title').getBoundingClientRect().top<120);assert.equal(await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'评论',exact:true}).getAttribute('aria-pressed'),'true');
   await visual.page.locator('.th-comment').first().waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);await visual.page.screenshot({path:path.join(output,`treehole-content-comments-${width}.png`),animations:'disabled'});
   await visual.page.getByRole('button',{name:'全部 4 条回复',exact:true}).click();await visual.page.getByRole('button',{name:'收起回复',exact:true}).waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),4);await visual.page.getByRole('button',{name:'收起回复',exact:true}).click();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);
-  await visual.page.locator('.th-reply-entry').click();await visual.page.getByLabel('你的回复',{exact:true}).fill('编辑器展开后再选择匿名，阅读时保留更多空间。');await visual.page.screenshot({path:path.join(output,`treehole-content-editor-${width}.png`),animations:'disabled'});await visual.page.getByLabel('你的回复',{exact:true}).fill('');await visual.page.getByRole('button',{name:'收起回复编辑器'}).click();
+  await visual.page.locator('.th-reply-entry').click();await visual.page.getByLabel('你的回复',{exact:true}).fill('编辑器展开后再选择匿名，阅读时保留更多空间。');await visual.page.screenshot({path:path.join(output,`treehole-content-editor-${width}.png`),animations:'disabled'});await visual.page.evaluate(()=>{document.documentElement.style.setProperty('--native-safe-top','32px');document.documentElement.style.setProperty('--native-safe-bottom','24px')});
+  await visual.page.setViewportSize({width,height:520});
+  await visual.page.waitForFunction(()=>{const r=document.querySelector('.th-reply-box .th-send').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight});
+  assert.equal(await visual.page.locator('.th-reply-sheet').evaluate(el=>el.scrollWidth>el.clientWidth),false);
+  await visual.page.screenshot({path:path.join(output,`community-short-reply-${width}.png`),animations:'disabled'});checks.push(`${width}: reply publishing remains visible in a 520px viewport with system safe areas`);
+  await visual.page.setViewportSize({width,height:844});await visual.page.evaluate(()=>{document.documentElement.style.removeProperty('--native-safe-top');document.documentElement.style.removeProperty('--native-safe-bottom')});await visual.page.getByLabel('你的回复',{exact:true}).fill('');await visual.page.getByRole('button',{name:'收起回复编辑器'}).click();
   await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();await visual.page.locator('.th-post').filter({hasText:many.title}).locator('.th-post-body').click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();assert.equal(await visual.page.locator('.carousel button').count(),9);
   await visual.page.locator('.carousel').evaluate(el=>el.scrollTo({left:el.clientWidth*2,behavior:'instant'}));await visual.page.waitForFunction(()=>document.querySelector('.th-media-pagination strong').textContent==='3 / 9');await visual.page.getByRole('button',{name:'查看图片 3，共 9 张',exact:true}).click();await visual.page.getByRole('button',{name:'下一张',exact:true}).click();assert.equal(await visual.page.locator('.th-gallery-bar>span').innerText(),'4 / 9');await visual.page.getByRole('button',{name:'关闭大图'}).click();await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();
   checks.push(`${width}: long image keeps full aspect, two/nine photos, selected comment tab, preview-two/expand-four and carousel/gallery indices`);
@@ -405,7 +425,8 @@ try{
   await page.locator('.th-reply-entry').click();await page.getByLabel('添加评论图片').setInputFiles([{name:'one.webp',mimeType:'image/webp',buffer:fixture},{name:'two.webp',mimeType:'image/webp',buffer:fixture},{name:'three.webp',mimeType:'image/webp',buffer:fixture}]);await page.waitForFunction(()=>document.querySelectorAll('.th-comment-photo-editor img').length===3);
   assert.equal(await page.getByLabel('添加评论图片').count(),0);await page.getByRole('button',{name:'移除评论图片 3',exact:true}).click();await page.getByRole('button',{name:'移除评论图片 2',exact:true}).click();
   a.state.failCommentUpload=true;await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();assert.equal(await page.locator('.th-comment-photo-editor img').count(),1);
-  a.state.dropComment=true;await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.locator('.th-comment .th-media').waitFor();
+  if(!redesignBaseline){assert((await page.locator('.th-reply-box .th-upload-status').innerText()).includes('已上传 0 / 1'));await page.screenshot({path:path.join(output,`community-upload-failed-${width}.png`),animations:'disabled'});}
+  a.state.dropComment=true;if(redesignBaseline)await page.getByRole('button',{name:'发布回复',exact:true}).click();else await page.getByRole('button',{name:'重试回复',exact:true}).click();await page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.locator('.th-comment .th-media').waitFor();
   assert.equal((await db.query('SELECT count(*)::int AS n FROM hyt_comments WHERE post_id=$1',[pid])).rows[0].n,1);assert.equal((await db.query("SELECT count(*)::int AS n FROM hyt_media WHERE post_id=$1 AND comment_id IS NOT NULL",[pid])).rows[0].n,1);
   await page.locator('.th-comment .th-media button').first().click();await page.locator('.th-gallery').waitFor();assert(await page.locator('.th-gallery img').evaluate(i=>i.complete&&i.naturalWidth>0));await page.getByRole('button',{name:'关闭大图'}).click();
   checks.push(`${width}: three-image picker limit, upload failure, lost comment retry, image-only comment and full gallery`);
