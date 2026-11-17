@@ -13,7 +13,7 @@ import {taskStore} from '../services/task-store';
 import type {Course} from '../domain/academic';
 const emit=defineEmits<{course:[course:Course];navigate:[section:string];edit:[task?:CampusTask,day?:string]}>();
 const now=ref(new Date()),message=ref(''),error=ref(''),filters=ref(false);
-const smartLists:[SmartList,string][]=[['today','今天'],['planned','接下来'],['inbox','未安排']];
+const smartLists:[SmartList,string][]=[['today','今天'],['due','即将截止'],['planned','接下来'],['inbox','未安排']];
 const priorities=['无优先级','低优先级','中优先级','高优先级'];
 const selectedDay=computed(()=>validDay(agendaView.date)?agendaView.date:beijingDay(now.value));
 const series=computed<CourseSeries[]>(()=>{const all:CourseSeries[]=[];const school=schoolTerm.value?.data;if(school)all.push({semester:school.semester,courses:schoolCourses.value,source:'school'});for(const semester of schedule.value.semesters){if(semester.id.startsWith('school-page-'))continue;const table=schedule.value.timeTables.find(t=>t.id===semester.timeTableId);all.push({semester,courses:flatten(schedule.value.courses,semester.id,table),source:'personal'})}return all});

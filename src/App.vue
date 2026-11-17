@@ -17,6 +17,7 @@ import CommunityGroup from './components/CommunityGroup.vue';
 import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
 const Treehole=defineAsyncComponent(()=>import('./components/Treehole.vue'));
+const communityAccountEntry=ref(false);
 const treeholeRef=ref<{requestBack:()=>boolean;refresh:()=>void}>();
 const treeholeTabNavigation=ref(true);
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
@@ -421,6 +422,7 @@ function nav(p: Page) { move(p, p === "schedule" ? "schedule" : "overview"); }
 const content=ref<HTMLElement>();
 const scrollPositions=new Map<string,{main:number;window:number}>();
 watch(()=>`${page.value}/${section.value}`,async(key,oldKey)=>{
+ if(page.value!=='community')communityAccountEntry.value=false;
  scrollPositions.set(oldKey,{main:content.value?.scrollTop??0,window:window.scrollY});
  await nextTick();if(key!==`${page.value}/${section.value}`)return;
  const position=scrollPositions.get(key);content.value?.scrollTo({top:position?.main??0,behavior:'instant'});window.scrollTo({top:position?.window??0,behavior:'instant'});
@@ -660,7 +662,7 @@ onUnmounted(() => {
         <button class="primary" @click="load">重试</button>
       </div>
       <div v-else class="page-content">
-          <KeepAlive><Treehole v-if="page === 'community'" ref="treeholeRef" tab-root @exit="back" @tab-navigation="treeholeTabNavigation=$event"/></KeepAlive>
+          <KeepAlive><Treehole v-if="page === 'community'" ref="treeholeRef" v-model:account-entry="communityAccountEntry" tab-root @exit="back" @tab-navigation="treeholeTabNavigation=$event"/></KeepAlive>
           <p v-if="pausedCourseAdjustments && (page==='schedule'||page==='home')" class="task-hint" role="status">学校原安排已变化，{{pausedCourseAdjustments}} 条按周调课记录已暂停，请按新课表重新核对。</p>
           <template v-if="page === 'home'">
             <CampusHero :date="`${dateLabel(now)} · 周${weekdays[dayNumber(now)-1]}`" :week="week>=1&&week<=semester.weekCount?`第 ${week} 教学周`:'学期外'" :unread="!read&&prefs.notifications" :obscured="!!modal||updatesOpen||agendaView.editor" @notifications="open('notifications')"/>
@@ -674,6 +676,7 @@ onUnmounted(() => {
                     <span class="home-course-copy"><strong class="home-next-title">{{homeFocus.name}}</strong><span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span></span>
                     <ChevronRight class="home-course-chevron" :size="18"/>
                   </span>
+                  <span v-if="currentProgress?.state==='current'" class="lesson-progress" role="progressbar" aria-label="本节课进度" :aria-valuenow="Math.round(currentProgress.percent)" aria-valuemin="0" aria-valuemax="100"><i :style="{width:currentProgress.percent+'%'}"/></span>
                 </button>
                 <div v-else class="home-next home-next-empty"><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{!academicCache.connected||!schoolTerm?.data?'连接学校后，可在这里查看课程安排。':'未找到后续课程，可在课表中查看或添加课程。'}}</p><button class="home-empty-action" @click="academicCache.connected||data.courses.length?go('schedule'):nav('profile')">{{academicCache.connected||data.courses.length?'打开课表':'连接学校'}} <ChevronRight :size="15"/></button></div>
                 <div class="home-timeline-head"><button v-if="todayCourses.length" class="home-timeline-toggle" :aria-expanded="homeTimelineOpen" aria-controls="home-timeline-content" @click="homeTimelineOpen=!homeTimelineOpen">今日课程 · {{todayCourses.length}} 节 <ChevronDown :size="15" :class="{'is-open':homeTimelineOpen}"/></button><span v-else>今天没有课程</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
@@ -712,7 +715,7 @@ onUnmounted(() => {
                 @navigate="go"
                 @course="details"
                 @create="createCourse"
-                @conflict="showConflicts"
+                @conflict="showConflicts" @manage="manage()"
             />
           </template>
           <template v-else-if="page === 'profile'">
@@ -725,9 +728,12 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
-            <button class="learning-page-link" @click="nav('community')"><MessageSquare :size="20"/><strong>邯院通账号与树洞</strong><span>昵称、发帖与匿名交流</span><ChevronRight :size="16"/></button>
-            <SectionHeader title="账号与教务"/><section class="profile-accounts"><SchoolConnection collapsible /><button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
+            <SectionHeader title="账号与连接"/>
+            <section class="profile-accounts"><SchoolConnection collapsible />
+             <button class="learning-page-link" @click="communityAccountEntry=true;nav('community')"><MessageSquare :size="20"/><strong>邯院通社区账号</strong><span>主页、消息与账号设置</span><ChevronRight :size="16"/></button>
+             <button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
             </section>
+            <SectionHeader title="我的教务"/>
             <div class="profile-academics"><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/></div>
             <button class="learning-page-link" @click="addCourseWidget"><CalendarDays :size="20"/><strong>桌面课表</strong><span>添加今天与明天的小组件</span><ChevronRight :size="16"/></button>
             <SectionHeader title="偏好与数据" />

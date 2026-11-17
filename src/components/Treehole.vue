@@ -13,7 +13,7 @@ import TreeholePollEditor from './TreeholePollEditor.vue';
 import TreeholeFollowing from './TreeholeFollowing.vue';
 import TreeholeFeedPage from './TreeholeFeedPage.vue';
 import TreeholeCommentThread from './TreeholeCommentThread.vue';
-import {treeholeCategories,treeholeCategoryName,treeholeSections,treeholeInterests,treeholeSection,treeholeInterestName,treeholeFeedFilters} from '../domain/treeholeCategories';
+import {treeholeFeedFilters} from '../domain/treeholeCategories';
 import {readTreeholeDraft,writeTreeholeDraft,deleteTreeholeDraft,prepareTreeholeImage,type DraftImage} from '../services/treeholeDrafts';
 import TreeholeAvatar from './TreeholeAvatar.vue';
 import TreeholeDestination from './TreeholeDestination.vue';
@@ -449,6 +449,12 @@ function askDelete(post:TreeholePost,comment?:TreeholeComment){menu.value=null;c
 function report(post:TreeholePost,comment?:TreeholeComment){menu.value=null;reportTarget.value={postId:post.id,...(comment?{commentId:comment.id}:{})};reason.value='';}
 function submitReport(){if(!reportTarget.value)return;void run(async()=>{await api('reports.create',{...reportTarget.value,reason:reason.value});reportTarget.value=null;notice.value='举报已提交，管理员会查看处理';});}
 function block(post:TreeholePost,comment?:TreeholeComment){menu.value=null;const anon=comment?comment.author.anonymous:post.anonymous;confirmAction.value={title:anon?'隐藏这条讨论？':'屏蔽此人的昵称发言？匿名内容不会关联屏蔽。',run:async()=>{await api('blocks.set',{postId:post.id,commentId:comment?.id});if(!anon){const id=(comment?.author||post.author).id;followingRevision++;followingLoading.value=false;following.value=following.value.filter(p=>p.id!==id);if(profile.value&&profile.value.id===id)profile.value={...profile.value,following:false};}routeHistory.length=0;confirmAction.value=null;detail.value=null;screen.value='feed';await feed();}};}
+const accountEntry=defineModel<boolean>('accountEntry');
+watch([accountEntry,ready,busy,user,recovery],()=>{
+ if(!accountEntry.value||!ready.value||busy.value||!user.value||recovery.value)return;
+ accountEntry.value=false;
+ if(screen.value!=='compose'&&!commentBody.value.trim()&&!commentImages.value.length)account();
+},{flush:'post'});
 function account(){screen.value='account';void refreshSocial();void refreshUnread();nickname.value=user.value?.nickname||'';bio.value=user.value?.bio||'';password.value='';newPassword.value='';accountAction.value='overview';}
 function saveAccount(){void run(async()=>{
  if(accountAction.value==='profile'){const r=await api('profile.update',{nickname:nickname.value,...(engagementEnabled.value?{bio:bio.value}:{})});user.value=r.user!;feedNeedsRefresh=true;notice.value='资料已更新';}
