@@ -65,6 +65,7 @@ async function register(page,username,nickname){
 }
 try{
  for(const width of [360,390,430]){
+  await db.exec('DELETE FROM hyt_moderation; DELETE FROM hyt_reports');
   const a=await client(width),page=a.page;await register(page,'admin_review_'+width,'社区管理员');
   await db.query("UPDATE hyt_members SET role='moderator' WHERE username=$1",['admin_review_'+width]);
   const subject=await api.execute('register',{username:'admin_subject_'+width,nickname:'测试同学',password:'synthetic-long-password',agreed:true},'','seed'+width);
@@ -79,13 +80,14 @@ try{
   }
   await page.getByRole('region',{name:'社区管理中心'}).waitFor();await page.getByRole('button',{name:/举报人的判断/}).waitFor();
   await page.screenshot({path:path.join(output,`admin-queue-${width}.png`),animations:'disabled'});
-  await page.getByRole('button',{name:/举报人的判断/}).click();await page.getByText(c.body,{exact:true}).waitFor();assert.equal(await page.getByLabel('处理理由',{exact:true}).inputValue(),'');
+  await page.getByRole('button',{name:/举报人的判断/}).click();await page.getByText(c.body,{exact:true}).waitFor();assert.equal(await page.getByLabel('处理理由',{exact:true}).inputValue(),'');await page.screenshot({path:path.join(output,`admin-context-${width}.png`),fullPage:true,animations:'disabled'});
   await page.getByLabel('选择操作',{exact:true}).selectOption('lock');await page.getByLabel('处理理由',{exact:true}).fill('核对帖子与评论后，暂停整篇回复');await page.getByRole('button',{name:'核对处理内容',exact:true}).click();assert.equal((await api.execute('admin.context',{postId:p.id},a.state.token,'assert')).post.locked,false);
-  await page.screenshot({path:path.join(output,`admin-decision-${width}.png`),animations:'disabled'});await page.getByRole('button',{name:'确认执行',exact:true}).click();await page.getByText('处理已完成，操作记录已保存',{exact:true}).waitFor();assert.equal((await api.execute('admin.context',{postId:p.id},a.state.token,'assert')).post.locked,true);
+  await page.screenshot({path:path.join(output,`admin-decision-${width}.png`),fullPage:true,animations:'disabled'});await page.setViewportSize({width,height:520});await page.getByRole('button',{name:'确认执行',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,`admin-confirm-short-${width}.png`),animations:'disabled'});await page.setViewportSize({width,height:844});await page.getByRole('button',{name:'确认执行',exact:true}).click();await page.getByText('处理已完成，操作记录已保存',{exact:true}).waitFor();assert.equal((await api.execute('admin.context',{postId:p.id},a.state.token,'assert')).post.locked,true);
   await page.getByRole('button',{name:'操作记录',exact:true}).click();await page.locator('.admin-record').filter({hasText:'核对帖子与评论后，暂停整篇回复'}).first().waitFor();await page.screenshot({path:path.join(output,`admin-history-${width}.png`),animations:'disabled'});
   await page.getByRole('button',{name:'内容管理',exact:true}).click();await page.getByLabel('搜索帖子内容').fill(p.title);await page.getByRole('button',{name:'搜索',exact:true}).click();await page.getByRole('button',{name:new RegExp(p.title)}).waitFor();await page.screenshot({path:path.join(output,`admin-content-${width}.png`),animations:'disabled'});
   await page.getByRole('button',{name:new RegExp(p.title)}).click();await page.getByLabel('选择操作',{exact:true}).selectOption('unlock');await page.getByLabel('处理理由',{exact:true}).fill('确认讨论可继续');await page.getByRole('button',{name:'核对处理内容',exact:true}).click();await page.getByRole('button',{name:'确认执行',exact:true}).click();await page.getByText('处理已完成，操作记录已保存',{exact:true}).waitFor();
   await page.locator('html').evaluate(el=>el.dataset.theme='dark');await page.screenshot({path:path.join(output,`admin-dark-${width}.png`),animations:'disabled'});await page.setViewportSize({width,height:520});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(output,`admin-short-${width}.png`),animations:'disabled'});
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.locator('.th-post').filter({hasText:p.title}).getByRole('button',{name:'帖子操作',exact:true}).click();await page.getByRole('button',{name:'管理此内容',exact:true}).click();await page.getByRole('heading',{name:p.title,exact:true}).waitFor();
   checks.push(`${width}: real report context, independent reason, two-step confirmation, lock/history/search/unlock, dark and short viewport`);assert.deepEqual(a.errors,[]);await a.context.close();
  }
  await writeFile(path.join(output,'checks.json'),JSON.stringify({checks,synthetic:true,backend:'PGlite + HTTP',baseline:process.env.ADMIN_BASELINE==='1'},null,2));
