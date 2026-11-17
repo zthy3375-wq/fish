@@ -25,7 +25,7 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
+export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','admin.context','admin.content','admin.history','admin.action','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
@@ -83,6 +83,12 @@ function sanitize(action,b){
    if(typeof d.startsAt!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/.test(d.startsAt)||!Number.isFinite(Date.parse(d.startsAt)))fail();
    buddy={location:text(d.location,1,60),startsAt:new Date(d.startsAt).toISOString(),capacity:d.capacity};}
   return {buddy,poll,body:text(b.body,buddy?1:images.length||poll?0:1,3000),title:text(b.title??'',0,40),category,interest,images,anonymous,requestId:id(b.requestId)};
+ }
+ if(['admin.content','admin.history'].includes(action))return {...(action==='admin.content'?{query:b.query?text(b.query,1,80):''}:{}),...(b.beforeTime!=null||b.beforeId!=null?{beforeTime:time(b.beforeTime),beforeId:id(b.beforeId)}:{})};
+ if(action==='admin.context')return {postId:id(b.postId),commentId:id(b.commentId,true)};
+ if(action==='admin.action'){
+  if(!['remove','lock','unlock','ban','dismiss'].includes(b.decision))fail();
+  return {postId:id(b.postId),commentId:id(b.commentId,true),reportId:id(b.reportId,true),requestId:id(b.requestId),decision:b.decision,reason:text(b.reason,2,300)};
  }
  if(action==='admin.resolve'){
   if(!['remove','lock','ban','dismiss'].includes(b.decision))fail();
@@ -174,12 +180,12 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   const keys=[...new Set(images.map(i=>i.key))];let urls=new Map();
   if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
   for(const image of images){image.url=urls.get(image.key)||null;delete image.key;}
-  if(storage&&['posts.delete','comments.delete','account.delete','admin.resolve','media.discard','media.upload','avatar.set'].includes(action)){
+  if(storage&&['posts.delete','comments.delete','account.delete','admin.resolve','admin.action','media.discard','media.upload','avatar.set'].includes(action)){
    try {const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}}catch{console.warn('Community image cleanup will retry');}
   }
   if(sessionToken)r.sessionToken=sessionToken;
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:10,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:11,moderationEnabled:true,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
 }
