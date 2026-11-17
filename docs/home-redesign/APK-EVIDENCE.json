@@ -1,0 +1,24 @@
+{
+  "package": "org.handancampus.app",
+  "version": "1.3.0-test.17",
+  "versionCode": 167,
+  "debuggable": false,
+  "bytes": 12491982,
+  "sha256": "961bd3b86b757aa362c7b9c25875d9057b99907a97d1250c319ec92ee8487427",
+  "embeddedWebFiles": 30,
+  "embeddedWebBytesMatchLocalBuild": true,
+  "alignmentVerified": true,
+  "sourceCommit": "ca67c1d55bb39146e500aeb33abda05f5ae8e5ed",
+  "ciMergeCommit": "e33ba81e4b3db7ace0b923a10157d01d53a3d6d5",
+  "sourceTree": "aeb443e5ed470dbf32575945a36dce5ce1a01652",
+  "apkBuildRun": 44011880900,
+  "browserRun": 44011875264,
+  "originalCertificateSha256": "4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9",
+  "signatures": [
+    "v1",
+    "v2",
+    "v3"
+  ],
+  "deviceInstallVerified": false,
+  "published": false
+}
