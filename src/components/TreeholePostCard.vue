@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {ref,computed,watch,nextTick,onMounted,onUnmounted} from 'vue';
-import {ThumbsUp,MessageCircle,MoreHorizontal,LockKeyhole,ChevronDown} from 'lucide-vue-next';
+import {MessageCircle,MoreHorizontal,LockKeyhole,ChevronDown} from 'lucide-vue-next';
 import TreeholeBuddy from './TreeholeBuddy.vue';
 import TreeholePoll from './TreeholePoll.vue';
+import TreeholeLike from './TreeholeLike.vue';
 import TreeholeResponses from './TreeholeResponses.vue';
 import TreeholeAvatar from './TreeholeAvatar.vue';
 import TreeholeImages from './TreeholeImages.vue';
@@ -46,7 +47,7 @@ function openCard(event:MouseEvent){if(!props.full&&!props.busy&&!(event.target 
   <button v-if="!full&&(post.newReplyCount||0)>0" class="th-new-replies" :disabled="busy" @click="$emit('discussion')">{{post.newReplyCount}} 条新回复 · 接着聊 <MessageCircle :size="13"/></button>
   <div class="th-post-interactions">
   <TreeholeResponses v-if="responsesEnabled" :post="post" :joy-enabled="joyEnabled" :disabled="busy||responding" @choose="$emit('response',$event)"/>
-  <footer class="th-post-actions"><span class="th-action-spacer"/><span v-if="post.locked" class="th-locked-tag" aria-label="已暂停回复"><LockKeyhole :size="13"/></span><template v-if="!full"><button :aria-label="'查看评论，共 '+post.commentCount+' 条'" :disabled="busy" @click="$emit('discussion')"><MessageCircle :size="19"/><span>{{post.commentCount||'评论'}}</span></button><button :aria-label="post.liked?'取消点赞':'点赞'" :aria-pressed="post.liked" :disabled="busy||reacting" @click="$emit('react','like')"><ThumbsUp :size="19" :fill="post.liked?'currentColor':'none'"/><span>{{post.likeCount||'赞'}}</span></button></template></footer>
+  <footer class="th-post-actions"><span class="th-action-spacer"/><span v-if="post.locked" class="th-locked-tag" aria-label="已暂停回复"><LockKeyhole :size="13"/></span><template v-if="!full"><button :aria-label="'查看评论，共 '+post.commentCount+' 条'" :disabled="busy" @click="$emit('discussion')"><MessageCircle :size="19"/><span>{{post.commentCount||'评论'}}</span></button><TreeholeLike :liked="post.liked" :count="post.likeCount" :disabled="busy||reacting" @toggle="$emit('react','like')"/></template></footer>
   </div>
  </article>
 </template>
@@ -61,20 +62,21 @@ header{display:flex;align-items:center;gap:8px;min-height:44px}.th-author-avatar
 .th-new-replies{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-primary);min-height:44px;padding:0}.th-post :deep(.th-media){margin:7px 0 4px}
 button{transition:color 120ms ease,background 100ms ease}button:active>svg{transform:scale(.9)}button[aria-pressed=true]>svg{animation:th-react 170ms ease-out}button:focus{outline:none}button:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:8px}
 @keyframes th-react{50%{transform:scale(1.18)}}@media(prefers-reduced-motion:reduce){*,*::before{animation:none!important;transition:none!important}}
-/* Reading rhythm belongs to this component, not a global card override. */
-.th-post-card.th-post{padding:16px 18px 10px;border-bottom:8px solid var(--color-bg);border-radius:0}
-.th-post-card.th-detail{padding:18px 18px 14px;border-radius:0}
-.th-post-card header{gap:10px}.th-post-card .th-post-byline small{font-size:11px;line-height:1.6;margin-top:3px}
-.th-post-card .th-category-tag{padding-inline:8px;max-width:108px;font-size:11px;color:var(--color-primary);background:var(--color-highlight);border-radius:8px;min-height:44px;align-self:center}
-.th-post-card .th-post-menu{width:44px;margin-right:-10px}
-.th-post-card .th-post-body{padding-top:12px;padding-bottom:2px;line-height:1.75}
-.th-post-card .th-post-body h2{margin-bottom:6px;font-size:18px;font-weight:650}
+/* The feed reads down the author's column; detail keeps the full reading width. */
+.th-post-card.th-post{display:grid;grid-template-columns:36px minmax(0,1fr);column-gap:10px;padding:12px 16px 6px;border-bottom:1px solid var(--color-border)}
+.th-post>header{grid-column:1/-1;gap:10px}
+.th-post>:not(header){grid-column:2;min-width:0}
+.th-post-card.th-detail{padding:18px 18px 14px}
+.th-post-card .th-category-tag{color:var(--color-primary-strong);max-width:100px}
+.th-post-card .th-post-menu{width:44px;margin-right:-8px}
+.th-post-card .th-post-body{padding:3px 0 4px;line-height:1.65}
+.th-post-card .th-post-body h2{margin-bottom:5px;font-size:17px;font-weight:650}
 .th-post-body .th-read-more{display:flex;align-items:center;gap:4px;margin-top:7px;font-size:12px;font-weight:500;line-height:1.6;color:var(--color-primary)}
-.th-post-card .th-post-interactions{justify-content:space-between;padding-top:6px;margin-top:8px;border-top:1px solid var(--color-divider);gap:6px}
+.th-post-card .th-post-interactions{justify-content:space-between;padding-top:0;margin-top:4px;gap:6px}
 .th-post-card .th-post-interactions :deep(.th-responses){flex:0 1 auto;min-width:0}
 .th-post-card .th-post-actions{gap:4px}.th-post-card .th-action-spacer{display:none}
 .th-post-card .th-post-actions button{min-width:44px;padding-inline:4px}
 .th-post-card .th-full-body{padding-top:18px;padding-bottom:10px;line-height:1.85}
 .th-post-card .th-full-body h2{font-size:23px;line-height:1.5;font-weight:650;margin-bottom:12px;letter-spacing:0}
-@media(max-width:374px){.th-post-card header{gap:7px}.th-post-card .th-category-tag{max-width:86px;padding-inline:5px}.th-post-card .th-post-interactions{gap:2px}.th-post-card .th-post-actions{gap:0}}
+@media(max-width:374px){.th-detail header{gap:7px}.th-post-card .th-category-tag{max-width:86px;padding-inline:5px}.th-post-card .th-post-interactions{gap:2px}.th-post-card .th-post-actions{gap:0}}
 </style>
