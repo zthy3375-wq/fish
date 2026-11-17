@@ -124,6 +124,9 @@ try{
   await page.locator('.home-next-meta time').waitFor();
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(output,`campus-home-connected-${width}.png`),animations:'disabled'});
+  assert(await page.locator('.home-timeline-toggle').getAttribute('aria-expanded')==='false',`${width}: home timeline starts collapsed so services stay close`);
+  await page.locator('.home-timeline-toggle').focus();await page.keyboard.press('Enter');
+  assert(await page.locator('.home-timeline-toggle').getAttribute('aria-expanded')==='true',`${width}: keyboard opens today course timeline`);
   const range=await page.locator('.course-time-caption time').allTextContents();
   const toMinutes=t=>{const [h,m]=t.split(':').map(Number);return h*60+m};
   const [startMinute,endMinute]=range.slice(0,2).map(toMinutes);
@@ -146,6 +149,8 @@ try{
   await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
   await page.waitForFunction(()=>!!document.querySelector('.home-timeline .is-current'));
 
+  await page.locator('.home-timeline-toggle').click();
+  assert(await page.locator('.home-timeline-toggle').getAttribute('aria-expanded')==='false',`${width}: course timeline collapses without losing course state`);
   assert(await page.locator('.home-course-panel .home-study-links').count()===1,`${width}: study actions share course card`);
   assert(await page.locator('.home-body>.school-connection').count()===0,`${width}: connected home hides redundant account card`);
   assert(await page.locator('.home-course-panel').evaluate(el=>{const life=document.querySelector('#home-life-title').closest('section'),tasks=document.querySelector('.today-tasks');return !!(el.compareDocumentPosition(life)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(life.compareDocumentPosition(tasks)&Node.DOCUMENT_POSITION_FOLLOWING)}),`${width}: home orders courses, services, then plans`);
@@ -160,6 +165,18 @@ try{
   assert(homeLayout.timelineBottom<=homeLayout.studyTop&&!homeLayout.overflow,`${width}: today's timeline stays clear of shortcuts without page overflow`);
   assert(await page.locator('.home-timeline button').count()===1&&JSON.stringify(await page.locator('.home-timeline .course-time-caption time').allTextContents())===JSON.stringify(['11:15','15:10']),`${width}: today's course name and start remain on the timeline`);
   await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
+  const homeTargets=await page.locator('.home-timeline-head button,.home-study-links button,.life-card,.life-utilities button').evaluateAll(els=>els.every(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.width>=44}));
+  assert(homeTargets,`${width}: home course and service actions have 44px touch targets`);
+  const oldTheme=await page.locator('html').getAttribute('data-theme');
+  await page.locator('html').evaluate(el=>el.dataset.theme='dark');
+  await page.screenshot({path:path.join(output,`campus-home-dark-${width}.png`),animations:'disabled'});
+  await page.locator('html').evaluate((el,theme)=>{if(theme)el.setAttribute('data-theme',theme);else el.removeAttribute('data-theme')},oldTheme);
+  await page.locator('.life-utilities').scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(output,`campus-home-services-${width}.png`),animations:'disabled'});
+  await page.locator('main').evaluate(el=>el.scrollTop=0);
+  await page.locator('.home-timeline-toggle').click();
+  const timelineClear=await page.locator('.home-timeline').evaluate(el=>el.getBoundingClientRect().bottom<=document.querySelector('.home-study-links').getBoundingClientRect().top);
+  assert(timelineClear,`${width}: expanded timeline stays above study actions`);
   await page.locator('.home-timeline button').click();
   assert(await page.getByRole('dialog').getByRole('heading',{name:'大学物理',exact:true}).isVisible(),`${width}: retained home timeline opens course details`);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();

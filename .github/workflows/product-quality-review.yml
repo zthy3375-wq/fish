@@ -1,7 +1,7 @@
 name: Product quality review (no publication)
 on:
   push:
-    branches: [feat/product-quality-20261117]
+    branches: [feat/product-quality-20261117, feat/home-redesign-20261117]
     paths: ["src/**", "android/**", "public/**", "index.html", "capacitor.config.ts", "scripts/**", "tests/**", ".github/workflows/product-quality-review.yml"]
   workflow_dispatch:
 permissions:
@@ -17,11 +17,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        snapshot: [after]
+        snapshot: [before, after]
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.snapshot == 'before' && '62e6d80df085170d1d80e67c0a64ef634552515c' || github.sha }}
+          ref: ${{ matrix.snapshot == 'before' && 'be91f15b4ceaadcd5437fc7c29444db4b00b6b6c' || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22

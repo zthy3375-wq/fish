@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onMounted,computed} from 'vue';
-import {Droplets,WashingMachine,Map,Package,ChevronRight,ArrowUpRight} from 'lucide-vue-next';
+import {Droplets,WashingMachine,Map,Package,ChevronRight} from 'lucide-vue-next';
 import {initPangguai,pangguai} from '../composables/pangguai';
 import {initQuzhi,quzhi} from '../composables/quzhi';
 import {quzhiMoney} from '../services/quzhi-client';
@@ -12,14 +12,41 @@ onMounted(()=>{void initQuzhi();void initPangguai()});
 <template>
  <div class="life-services">
   <div class="life-wallets">
-   <button class="life-card life-shower" @click="$emit('open','quzhi-wallet')"><span class="life-brand"><Droplets :size="18"/><strong>趣智校园</strong><ArrowUpRight :size="14"/></span><span class="life-balance-label">洗澡余额</span><b>{{quzhi.connected&&quzhi.wallet?.total!=null?'¥'+quzhiMoney(quzhi.wallet.total):quzhi.connected?'待查询':'连接账户'}}</b><small>{{quzhi.expired?'登录已失效 · 请重新连接':quzhi.connected?'上次查询 · 充值与记录':'洗澡 · 余额与充值'}}</small></button>
-   <button class="life-card life-laundry" @click="$emit('open','pangguai-wallet')"><span class="life-brand"><WashingMachine :size="18"/><strong>胖乖生活</strong><ArrowUpRight :size="14"/></span><span class="life-balance-label">饮水余额</span><b>{{pangguai.connected?(water!==null?'¥'+water:'暂未获取'):'连接账户'}}</b><small>{{pangguai.expired?'登录已失效 · 请重新连接':pangguai.connected?'上次查询 · 饮水与洗衣':'饮水 · 洗衣 · 扫码'}}</small></button>
+   <button class="life-card life-shower" @click="$emit('open','quzhi-wallet')">
+    <span class="life-service-icon"><Droplets :size="22"/></span>
+    <span class="life-service-copy"><strong>趣智校园</strong><small>{{quzhi.expired?'登录已失效 · 请重新连接':'洗澡 · 余额与充值'}}</small></span>
+    <span class="life-wallet-value"><b :class="{'is-disconnected':!quzhi.connected}">{{quzhi.connected&&quzhi.wallet?.total!=null?'¥'+quzhiMoney(quzhi.wallet.total):quzhi.connected?'待查询':'连接账户'}}</b><span class="life-balance-label">{{quzhi.connected?'洗澡余额 · 上次查询':'去连接'}}</span></span>
+    <ChevronRight class="life-row-arrow" :size="16"/>
+   </button>
+   <button class="life-card life-laundry" @click="$emit('open','pangguai-wallet')">
+    <span class="life-service-icon"><WashingMachine :size="22"/></span>
+    <span class="life-service-copy"><strong>胖乖生活</strong><small>{{pangguai.expired?'登录已失效 · 请重新连接':'饮水 · 洗衣 · 扫码'}}</small></span>
+    <span class="life-wallet-value"><b :class="{'is-disconnected':!pangguai.connected}">{{pangguai.connected?(water!==null?'¥'+water:'暂未获取'):'连接账户'}}</b><span class="life-balance-label">{{pangguai.connected?'饮水余额 · 上次查询':'去连接'}}</span></span>
+    <ChevronRight class="life-row-arrow" :size="16"/>
+   </button>
   </div>
-  <div class="life-utilities"><button class="life-parcel" @click="$emit('open','parcel')"><span class="parcel-icon"><Package :size="23"/></span><span><strong>取快递</strong><small>淘宝 · 拼多多出库码</small></span><ChevronRight :size="16"/></button><button class="life-map" @click="$emit('open','campus-map')"><Map :size="20"/><span><strong>校园平面图</strong><small>东区 · 西区</small></span><ChevronRight :size="15"/></button></div>
+  <div class="life-utilities">
+   <button class="life-parcel" @click="$emit('open','parcel')"><Package :size="20"/><span><strong>取快递</strong><small>淘宝 · 拼多多出库码</small></span><ChevronRight :size="14"/></button>
+   <button class="life-map" @click="$emit('open','campus-map')"><Map :size="20"/><span><strong>校园平面图</strong><small>东区 · 西区</small></span><ChevronRight :size="14"/></button>
+  </div>
  </div>
 </template>
 <style scoped>
-.life-services{margin:0}.life-wallets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.life-card{position:relative;text-align:left;padding:12px!important;border:1px solid #dfd5f1;border-radius:20px;min-width:0;color:var(--color-text);min-height:120px!important}.life-shower{background:linear-gradient(125deg,#eee5ff,#f8f4ff)}.life-laundry{background:linear-gradient(125deg,#e4f2eb,#f5faf7);border-color:#d9e8df}.life-card .life-brand{position:static;display:flex;gap:7px;align-items:center;color:#58399b;font-size:13px}.life-laundry .life-brand{color:#39634f}.life-brand strong{font-size:14px;flex:1;line-height:1.5}.life-brand svg:last-child{opacity:.7}.life-card .life-balance-label{position:static;display:block;margin-top:8px;font-size:10px;color:#726480}.life-laundry .life-balance-label{color:#5a7063}.life-card>b{display:block;margin-top:2px!important;font-size:25px!important;font-weight:700;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;letter-spacing:-.5px}.life-card>small{display:block!important;font-size:9px;color:var(--color-muted);line-height:1.5;margin-top:4px}.life-utilities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.life-utilities button{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 12px;border:1px solid var(--color-border);border-radius:18px;background:var(--color-surface);color:var(--color-text);text-align:left;min-width:0}.life-utilities .life-parcel{background:#fff5e9;border-color:#efe2ce}.life-utilities button>span:not(.parcel-icon){flex:1;min-width:0}.parcel-icon{width:33px;height:30px;display:grid;place-items:center;color:#91623b}.life-utilities strong{font-size:14px;display:block}.life-utilities small{font-size:9px;color:var(--color-muted);display:block;margin-top:3px;line-height:1.5}.life-map>svg:first-child{color:var(--color-primary)}.life-utilities svg{flex-shrink:0}
-:global([data-theme=dark]) .life-card{background:var(--color-highlight);border-color:var(--color-border)}:global([data-theme=dark]) .life-card .life-brand{color:var(--color-primary)}:global([data-theme=dark]) .life-card .life-balance-label{color:var(--color-muted)}:global([data-theme=dark]) .life-utilities .life-parcel{background:#393024;border-color:#564737}
-@media(max-width:374px){.life-card{padding:12px!important}.life-brand strong{font-size:13px}.life-brand{gap:5px!important}.life-utilities button{gap:6px;padding:9px}.life-utilities strong{font-size:13px}.life-utilities small{font-size:9px}.parcel-icon{width:28px}.life-card>b{font-size:23px!important}}
+.life-services{background:var(--color-surface);border:1px solid var(--color-border);border-radius:16px;overflow:hidden}
+.life-wallets{display:grid}
+.life-card{display:flex;align-items:center;gap:12px;min-width:0;min-height:72px;padding:12px 14px;text-align:left;color:var(--color-text);background:transparent}
+.life-card+ .life-card{border-top:1px solid var(--color-divider)}
+.life-service-icon{display:grid;place-items:center;flex:0 0 40px;height:40px;border-radius:12px;background:var(--color-tint);color:var(--color-primary)}
+.life-laundry .life-service-icon{background:var(--course-green-bg);color:var(--course-green)}
+.life-service-copy{flex:1;min-width:0}.life-service-copy strong{display:block;font-size:15px;font-weight:650;line-height:1.5}.life-service-copy small{display:block;color:var(--color-muted);font-size:11px;line-height:1.6;margin-top:2px;overflow-wrap:anywhere}
+.life-wallet-value{flex:0 1 auto;text-align:right;min-width:0}.life-wallet-value b{display:block;font-size:19px;line-height:1.3;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.life-wallet-value .is-disconnected{font-size:13px;color:var(--color-primary)}
+.life-balance-label{display:block;color:var(--color-muted);font-size:10px;line-height:1.6;margin-top:3px}.life-row-arrow{color:var(--color-muted);flex-shrink:0}
+.life-utilities{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-top:1px solid var(--color-divider)}
+.life-utilities button{display:flex;align-items:center;gap:9px;min-width:0;min-height:64px;padding:10px 14px;text-align:left;color:var(--color-text)}
+.life-utilities button+button{border-left:1px solid var(--color-divider)}
+.life-utilities button>span{flex:1;min-width:0}.life-utilities svg{flex-shrink:0;color:var(--color-primary)}.life-utilities svg:last-child{color:var(--color-muted)}
+.life-utilities strong{display:block;font-size:13px;font-weight:600;line-height:1.5}.life-utilities small{display:block;margin-top:2px;font-size:10px;line-height:1.6;color:var(--color-muted)}
+.life-card:active,.life-utilities button:active{background:var(--color-highlight);transform:none}.life-card:focus-visible,.life-utilities button:focus-visible{outline-offset:-3px}
+@media(max-width:374px){.life-card{padding-inline:12px;gap:9px}.life-service-icon{flex-basis:36px;height:36px}.life-wallet-value b{font-size:18px}.life-utilities button{padding-inline:12px;gap:7px}.life-utilities button>svg:first-child{width:18px}.life-balance-label{font-size:10px}}
+@media(min-width:540px){.life-card{gap:16px;padding-inline:18px}.life-service-copy small{font-size:12px}.life-utilities button{padding-inline:18px}}
 </style>

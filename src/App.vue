@@ -61,6 +61,7 @@ import {
   Info,
   Bell,
   ChevronRight,
+  ChevronDown,
   ArrowRight,
   ArrowUpRight,
   Clock3,
@@ -313,6 +314,7 @@ const next = computed(() =>
   nextOccurrence(data.value.courses, now.value, semester.value),
 );
 const homeFocus = computed(()=>current.value ?? next.value?.course);
+const homeTimelineOpen = ref(false);
 const exams = computed(() => upcomingExams(data.value.exams, now.value));
 const weekCount = computed(
   () => data.value.courses.filter((c) => c.weeks.includes(week.value)).length,
@@ -667,15 +669,18 @@ onUnmounted(() => {
               <section class="home-course-panel" aria-label="课程速览">
                 <button v-if="homeFocus" class="home-next" :aria-label="'查看'+(current?'当前':'下一节')+'课程 '+homeFocus.name" @click="details(homeFocus)">
                   <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'还剩'+currentProgress?.remainingMinutes+'分钟':next?untilLabel(next.minutes):''}}</span></span>
-                  <strong class="home-next-title">{{homeFocus.name}}</strong>
-                  <span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><time>{{homeFocus.start}}–{{homeFocus.end}}</time><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span>
+                  <span class="home-next-main">
+                    <span class="home-course-clock home-next-meta"><time>{{homeFocus.start}}</time><span>至 {{homeFocus.end}}</span></span>
+                    <span class="home-course-copy"><strong class="home-next-title">{{homeFocus.name}}</strong><span class="home-next-meta"><span><MapPin/>{{homeFocus.room||'教室待定'}}</span><span><UserRound/>{{homeFocus.teacher||'教师待定'}}</span><span v-if="!current&&next&&dateLabel(next.date)!==dateLabel(now)">{{dateLabel(next.date)}} 周{{weekdays[dayNumber(next.date)-1]}}</span></span></span>
+                    <ChevronRight class="home-course-chevron" :size="18"/>
+                  </span>
                 </button>
-                <div v-else class="home-next"><span class="home-next-head"><span><GraduationCap :size="18"/>课程安排</span></span><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{!academicCache.connected||!schoolTerm?.data?'前往“我的”连接学校或刷新课表。':'查看课表，安排自己的校园时光。'}}</p></div>
-                <div class="home-timeline-head"><span>今日课程 · {{todayCourses.length}} 节</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
-                <HomeCourseTimeline v-if="todayCourses.length" :courses="todayCourses" :now="now" @select="details"/>
-              <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="20"/><span><strong>学习通</strong><small>作业与考试</small></span><ChevronRight/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="20"/><span><strong>成绩与学业</strong><small>成绩 · 学分 · 学籍</small></span><ChevronRight/></button></div>
+                <div v-else class="home-next home-next-empty"><strong class="home-next-title">{{academicCache.connected&&!schoolTerm?.data?'课表等待同步':'暂时没有后续课程'}}</strong><p class="home-next-meta">{{!academicCache.connected||!schoolTerm?.data?'连接学校后，可在这里查看课程安排。':'未找到后续课程，可在课表中查看或添加课程。'}}</p><button class="home-empty-action" @click="go(academicCache.connected||data.courses.length?'schedule':'profile')">{{academicCache.connected||data.courses.length?'打开课表':'连接学校'}} <ChevronRight :size="15"/></button></div>
+                <div class="home-timeline-head"><button v-if="todayCourses.length" class="home-timeline-toggle" :aria-expanded="homeTimelineOpen" aria-controls="home-timeline-content" @click="homeTimelineOpen=!homeTimelineOpen">今日课程 · {{todayCourses.length}} 节 <ChevronDown :size="15" :class="{'is-open':homeTimelineOpen}"/></button><span v-else>今天没有课程</span><button @click="go('schedule')">查看课表 <ChevronRight :size="13"/></button></div>
+                <div v-if="todayCourses.length" id="home-timeline-content" v-show="homeTimelineOpen"><HomeCourseTimeline :courses="todayCourses" :now="now" @select="details"/></div>
+              <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="19"/><strong>学习通</strong><ChevronRight :size="14"/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="19"/><strong>成绩与学业</strong><ChevronRight :size="14"/></button></div>
               </section>
-              <section aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2><span>每天用得上的小事</span></div><LifeServices @open="open"/></section>
+              <section class="home-life-section" aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2></div><LifeServices @open="open"/></section>
               <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
 
 
