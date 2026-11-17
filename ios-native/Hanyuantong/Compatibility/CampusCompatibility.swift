@@ -95,6 +95,22 @@ struct CampusPhotoItem: Equatable {
     let id = UUID()
     let provider: NSItemProvider
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func loadBoundedData(maximumBytes: Int) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
+                do {
+                    if let error { throw error }
+                    guard let url, maximumBytes > 0,
+                          let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                          size > 0, size <= maximumBytes else { throw CocoaError(.fileReadTooLarge) }
+                    // The provider URL is temporary: read inside its callback, before it expires.
+                    let data = try Data(contentsOf: url, options: .mappedIfSafe)
+                    guard data.count <= maximumBytes else { throw CocoaError(.fileReadTooLarge) }
+                    continuation.resume(returning: data)
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
     func loadData() async throws -> Data? {
         try await withCheckedThrowingContinuation { continuation in
             provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in

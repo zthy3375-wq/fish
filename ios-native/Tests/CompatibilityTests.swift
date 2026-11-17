@@ -4,6 +4,20 @@ import UniformTypeIdentifiers
 @testable import Hanyuantong
 
 final class CompatibilityTests: XCTestCase {
+    func testBoundedPhotoReadRejectsSizeBeforeDecoding() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data(repeating: 1, count: 21).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(forTypeIdentifier: UTType.image.identifier, fileOptions: [], visibility: .all) { completion in
+            completion(file, false, nil)
+            return nil
+        }
+        do {
+            _ = try await CampusPhotoItem(provider: provider).loadBoundedData(maximumBytes: 20)
+            XCTFail("Oversized photo must be rejected before decoding")
+        } catch { XCTAssertNotNil(error) }
+    }
     func testPhotoSelectionIdentityDoesNotReuseAnotherSelection() {
         let provider = NSItemProvider()
         let item = CampusPhotoItem(provider: provider)

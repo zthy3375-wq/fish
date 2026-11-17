@@ -1,7 +1,6 @@
 import SwiftUI
 import AVFoundation
 import PhotosUI
-import CoreTransferable
 import UniformTypeIdentifiers
 import Vision
 import ImageIO
@@ -25,7 +24,7 @@ struct PangguaiScannerView: View {
                 HStack {
                     Button { torch.toggle() } label: { Label(torch ? "关闭手电":"手电筒", systemImage: torch ? "flashlight.off.fill":"flashlight.on.fill") }
                     Spacer()
-                    CampusPhotoPicker(selection: $photo, matching: .images, photoLibrary: .shared()) { Label("从照片识别", systemImage: "photo") }.disabled(readingPhoto)
+                    CampusPhotoPicker(selection: $photo, matching: .images) { Label("从照片识别", systemImage: "photo") }.disabled(readingPhoto)
                 }.buttonStyle(.bordered).padding()
                 Text("扫码只查询设备，不会扣款或启动。").font(.caption).foregroundStyle(CampusTheme.muted)
             }.padding().background(CampusTheme.background).navigationTitle("扫一扫").navigationBarTitleDisplayMode(.inline)
@@ -34,8 +33,7 @@ struct PangguaiScannerView: View {
                     guard let photo else { return }
                     readingPhoto = true; defer { readingPhoto = false }
                     do {
-                        guard let picked = try await photo.loadTransferable(type: PGBoundedPickedImage.self) else { throw PGFailure.qr }
-                        let data = picked.data
+                        let data = try await photo.loadBoundedData(maximumBytes: 20_000_000)
                         try Task.checkCancellation()
                         let value = try await Task.detached(priority: .userInitiated) { try PGImageQRReader.read(data) }.value
                         try Task.checkCancellation(); if !resolved { accept(value) }
@@ -48,19 +46,6 @@ struct PangguaiScannerView: View {
         guard !resolved else { return }
         guard (try? PangguaiProtocol.deviceCode(code)) != nil else { status = PGFailure.qr.message; return }
         resolved = true; onCode(code); dismiss()
-    }
-}
-
-private struct PGBoundedPickedImage: Transferable {
-    let data: Data
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .image) { received in
-            let size = try received.file.resourceValues(forKeys: [.fileSizeKey]).fileSize
-            guard let size, size > 0, size <= 20_000_000 else { throw PGFailure.qr }
-            let data = try Data(contentsOf: received.file, options: .mappedIfSafe)
-            guard data.count <= 20_000_000 else { throw PGFailure.qr }
-            return PGBoundedPickedImage(data: data)
-        }
     }
 }
 

@@ -95,10 +95,6 @@ jobs:
           # The two task flows already passed above against these exact build products.
           # Unit tests ran in their own invocation; exercise every other UI flow once.
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/xcodebuild.log"
-      - name: Compile unsigned iPhone build
-        if: ${{ !cancelled() && steps.verify.outcome == 'success' }}
-        run: |
-          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/ios-device" CODE_SIGNING_ALLOWED=NO build
       - name: Package simulator app
         if: success()
         run: ditto -c -k --keepParent "$RUNNER_TEMP/ios-build/Build/Products/Debug-iphonesimulator/Hanyuantong.app" "$RUNNER_TEMP/Hanyuantong-iOS-Simulator.zip"
