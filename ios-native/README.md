@@ -2,6 +2,10 @@
 
 最初基于正式 Android 1.2.1 对应 main `780bbc8` 创建，现纳入两端联合维护的独立 Swift + SwiftUI 工程，最低部署目标 iOS 15.4，仅 iPhone。没有 Flutter、Capacitor、Vue 运行时依赖。复用现有应用图标、校园头图、平面图以及已核验的学校协议读取脚本；两端共享脚本在固定结果出口输出 resolvedTerm 元数据，避免课表失败时将其他学期的考试误并入缓存，不改变请求端点或参数。WebKit 用于教务、学习通和快递的官方认证与页面读取；首页、课表、待办、账户与本地结果展示为原生 SwiftUI。
 
+## 2026-11-17 iOS 15.4兼容
+
+App与Widget最低部署目标均为15.4；导航、表单、文字分享、图片选择及社区底栏已有兼容实现，未删功能。物理iPhone目标Release编译、模拟器编译、原生单测和现有UI回归通过；15.4运行时/实机尚未验收。详见[兼容说明](../docs/IOS15-COMPATIBILITY.md)和[验证记录](VALIDATION.md)。没有可分发IPA/TestFlight，历史固定源码IPA工作流仍属于旧基线。
+
 ## 2026-11-16 社区测试基线
 
 当前分支 `feat/community-buddies-20261116` / 草稿 PR #73，基于 PR #72，与 Android test.12 同步。原生社区已包含独立邯院通账号、图文与匿名发言、楼中楼、点赞收藏、消息与讨论关注、头像与轻量回应、四分区与兴趣标签，以及公开主页关注、关注动态、本人关注名单、单选投票、评论/楼中楼配图，以及搭子招募与私人报名管理。学校账号与社区账号保持分离。实现及交付边界见 [test.12 记录](../docs/COMMUNITY-BUDDIES.md)，原生编译和测试证据见 [VALIDATION.md](VALIDATION.md)。没有可分发 IPA/TestFlight。

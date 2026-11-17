@@ -8,12 +8,14 @@
 | --- | --- |
 | Android 线上版本 | 1.2.4 / 150，已发布强制更新；最低支持版本 150 |
 | 本分支 Android | 基于test.15 /165的产品优化源码；本轮不生成或发布APK，正式更新仍为1.2.4 |
-| iPhone | `ios-native/` 原生 Swift/SwiftUI，最低 iOS 16；模拟器与未签名构建验证，不等于真机可安装 |
+| iPhone | `ios-native/` 原生 Swift/SwiftUI，最低部署目标 iOS 15.4；模拟器与未签名构建验证，不等于真机可安装 |
 | 开发分支 | `feat/product-quality-20261117`，基于PR #74；五Tab保持，未合入main |
 
 [schema 10 后台启用](docs/COMMUNITY-ACTIVATION-20261116.md) · [阅读与发帖设计](docs/COMMUNITY-READING-DESIGN.md) · [关注、粉丝与私信](docs/COMMUNITY-MESSAGES.md) · [安卓社区页面优化](docs/COMMUNITY-ANDROID-POLISH.md) · [搭子招募](docs/COMMUNITY-BUDDIES.md) · [投票与评论配图](docs/COMMUNITY-POLLS-COMMENTS.md) · [关注用户与动态](docs/COMMUNITY-FOLLOWING.md) · [兴趣分区与首页整理](docs/COMMUNITY-DISCOVERY.md) · [头像与轻量回应](docs/COMMUNITY-PARTICIPATION.md) · [社区回访功能与验证](docs/COMMUNITY-RETURN.md) · [树洞开发与验证](docs/TREEHOLE.md) · [1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
 
 [产品优化交付与截图](docs/product-quality/RESULTS.md) · [设计规范](DESIGN.md) · [验证记录](docs/product-quality/VALIDATION.md)
+
+[iOS15.4兼容说明](docs/IOS15-COMPATIBILITY.md)
 
 ## 功能与架构
 
