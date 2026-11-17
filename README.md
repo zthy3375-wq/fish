@@ -9,19 +9,21 @@
 | 项目 | 状态 |
 | --- | --- |
 | Android 线上版本 | 1.2.4 / 150，已发布强制更新；最低支持版本 150 |
-| 本分支 Android | 首页改版test.17 /167；已交付原签名测试包与前后截图，正式更新仍为1.2.4 |
+| 本分支 Android | 社区主流程改版test.18 /168；已交付原签名测试包与前后截图，正式更新仍为1.2.4 |
 | iPhone | `ios-native/` 原生 Swift/SwiftUI，最低 iOS 16；模拟器与未签名构建验证，不等于真机可安装 |
-| 开发分支 | `feat/home-redesign-20261117` / PR #77；基于原产品优化和iOS16基线，五Tab保持，未合入main |
+| 开发分支 | `feat/community-redesign-20261117` / 草稿PR #78；继承首页PR #77，五Tab保持，未合入main |
 
 [schema 10 后台启用](docs/COMMUNITY-ACTIVATION-20261116.md) · [阅读与发帖设计](docs/COMMUNITY-READING-DESIGN.md) · [关注、粉丝与私信](docs/COMMUNITY-MESSAGES.md) · [安卓社区页面优化](docs/COMMUNITY-ANDROID-POLISH.md) · [搭子招募](docs/COMMUNITY-BUDDIES.md) · [投票与评论配图](docs/COMMUNITY-POLLS-COMMENTS.md) · [关注用户与动态](docs/COMMUNITY-FOLLOWING.md) · [兴趣分区与首页整理](docs/COMMUNITY-DISCOVERY.md) · [头像与轻量回应](docs/COMMUNITY-PARTICIPATION.md) · [社区回访功能与验证](docs/COMMUNITY-RETURN.md) · [树洞开发与验证](docs/TREEHOLE.md) · [1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
 
 [产品优化交付与截图](docs/product-quality/RESULTS.md) · [设计规范](DESIGN.md) · [验证记录](docs/product-quality/VALIDATION.md)
 
-[本轮首页设计与范围](docs/home-redesign/BRIEF.md) · [验证记录](docs/home-redesign/VALIDATION.md)
+[本轮社区设计与范围](docs/community-redesign/BRIEF.md) · [社区验证与APK证据](docs/community-redesign/VALIDATION.md) · [社区独立复核](docs/community-redesign/FINISH-REVIEW.md)
+
+[上一轮首页设计与范围](docs/home-redesign/BRIEF.md) · [验证记录](docs/home-redesign/VALIDATION.md)
 
 ## 功能与架构
 
-最新 [test.15 浏览器与触控复核](docs/COMMUNITY-TEST15-REVIEW.md)：社区 209、私信/粉丝 27、触控 72 项通过，客户端未改，已交付测试包继续有效。
+最新 [test.18 社区与触控验收](docs/community-redesign/VALIDATION.md)：社区215、私信/粉丝27、触控72项通过；本轮改动与设备待验范围见记录。历史[test.15复核](docs/COMMUNITY-TEST15-REVIEW.md)保留供追溯。
 
 | 模块 | Android | iPhone |
 | --- | --- | --- |

@@ -1,0 +1,70 @@
+name: Community redesign review (no publication)
+on:
+  push:
+    branches: [feat/community-redesign-20261117]
+    paths: ['src/**', 'scripts/**', 'tests/**', 'package*.json', '.github/workflows/community-redesign-review.yml']
+permissions:
+  contents: read
+concurrency:
+  group: community-redesign-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        snapshot: [before, after]
+    env:
+      COMMUNITY_REDESIGN_BASELINE: ${{ matrix.snapshot == 'before' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use exact test.17 product source for the before comparison
+        if: matrix.snapshot == 'before'
+        run: |
+          set -euo pipefail
+          baseline=265e4f9fb08195e50faf500201330781da8254aa
+          git restore --source "$baseline" --staged --worktree -- src public tests package.json package-lock.json
+          comparison_tree=$(git write-tree)
+          test "$(git rev-parse "$comparison_tree:src")" = "$(git rev-parse "$baseline:src")"
+          test "$(git rev-parse "$comparison_tree:public")" = "$(git rev-parse "$baseline:public")"
+          # The same browser fixtures/capture script run against both product snapshots.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get install -y fonts-noto-cjk fonts-noto-color-emoji
+      - run: npm run build
+      - name: Community reading, comments, attachments and account boundaries
+        run: node scripts/treehole-browser-check.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: community-redesign-${{ matrix.snapshot }}
+          path: /tmp/handan-community-v15-qa
+          if-no-files-found: error
+          retention-days: 14
+      - name: Messages and followers
+        if: ${{ !cancelled() }}
+        run: node scripts/community-messages-browser-check.mjs
+      - name: Touch and short-screen editing
+        if: ${{ !cancelled() }}
+        run: |
+          node scripts/treehole-preview.mjs /tmp/community-review-preview.html
+          node scripts/treehole-preview-check.mjs /tmp/community-review-preview.html
+          node scripts/treehole-touch-check.mjs /tmp/community-review-preview.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: community-redesign-extra-${{ matrix.snapshot }}
+          path: |
+            /tmp/handan-community-messages-*-qa
+            /tmp/handan-community-*-preview
+          retention-days: 14

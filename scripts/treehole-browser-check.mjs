@@ -25,6 +25,7 @@ const server=staticServer(async(req,res)=>{try{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));mediaOrigin=`http://127.0.0.1:${server.address().port}`;const url=mediaOrigin+'/#/community';
 const browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined});
 const checks=[];let active;
+const redesignBaseline=process.env.COMMUNITY_REDESIGN_BASELINE==='1';
 async function client(width){
  const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
  const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[],requests:[],holdNextPage:false,releasePage:null,failNextPage:false,holdNextDetail:false,releaseDetail:null,failNextDetail:false};
@@ -80,7 +81,7 @@ try{
   await a.page.getByRole('button',{name:'发帖',exact:true}).click();await a.page.getByLabel('想说的话').fill('今天图书馆靠窗的位置很安静。下课后，给自己一点慢下来的时间。');
   assert.equal(await nav.count(),0);checks.push(`${width}: composing hides main navigation to protect the draft`);
   await a.page.getByLabel('帖子标题').fill('图书馆的午后');await a.page.getByLabel('选择分区').selectOption('study');await a.page.getByLabel('添加图片').setInputFiles({name:'campus-fixture.webp',mimeType:'image/webp',buffer:fixture});await a.page.locator('.th-draft-images img').waitFor();
-  await a.page.getByRole('checkbox',{name:'匿名发布',exact:true}).check();await a.page.screenshot({path:path.join(output,`treehole-compose-${width}.png`),animations:'disabled'});a.state.dropNextPost=true;
+  await a.page.getByRole('checkbox',{name:'匿名发布',exact:true}).check();await a.page.waitForFunction(()=>document.querySelector('.th-compose-footnote .th-draft-status')?.textContent.includes('草稿已保存'));await a.page.screenshot({path:path.join(output,`treehole-compose-${width}.png`),animations:'disabled'});a.state.dropNextPost=true;
   await a.page.getByRole('button',{name:'匿名发布',exact:true}).click();await a.page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();
   assert.equal(await a.page.getByLabel('想说的话').inputValue(),'今天图书馆靠窗的位置很安静。下课后，给自己一点慢下来的时间。');
   await a.page.getByRole('button',{name:'匿名发布',exact:true}).click();await a.page.getByRole('heading',{name:'评论',exact:true}).waitFor();
@@ -198,21 +199,55 @@ try{
  async function seed(title,body,category,photos=[]){const ids=[];for(const data of photos){ids.push((await call('media.upload',{data,requestId:crypto.randomUUID()})).image.id);}return (await call('posts.create',{title,body,category,images:ids,anonymous:false,requestId:crypto.randomUUID()})).post;}
  const many=await seed('秋天的校园，想多待一会儿','从图书馆出来，刚好遇见夕阳。照片用的是项目里的校园插画，作为九图显示测试。','daily',Array(9).fill(campusJPEG));
  const long=await seed('周末活动清单：一张长截图','整理了几个校园活动。长图点开可以看完整内容，欢迎补充。','buddies',[noticeJPEG]);
- await seed('想找几位一起做校园项目的同学','想做一个真正能用的小项目，慢慢打磨界面和体验。设计、前端、安卓或者只是有想法的同学，都可以聊聊。\n希望能从身边的小问题开始。','study');
+ await seed('想找几位一起做校园项目的同学','想做一个真正能用的小项目，慢慢打磨界面和体验。设计、前端、安卓或者只是有想法的同学，都可以聊聊。\n希望能从身边的小问题开始。先一起交流各自的想法，再确定第一步要解决什么，做完之后也欢迎大家继续反馈。','study');
  const two=await seed('两张图也应该排得舒服','同一张校园插画用于测试双图比例。','daily',[campusJPEG,campusJPEG]);
  const roots=[];for(const text of ['长图里的信息很多，竖着看应该完整保留。','评论再长也要有舒服的行距，点赞和回复入口保持清楚。这里加一段足够长的文字，检查小屏幕上换行后会不会挤在一起。']){roots.push((await call('comments.create',{postId:long.id,body:text,anonymous:false,requestId:crypto.randomUUID()})).comment);}
  for(let i=0;i<4;i++)await call('comments.create',{postId:long.id,body:['谢谢整理，周末打算去看看。','想知道有没有一起拍照的同学。','先收藏了，等安排出来再看。','这条回复用来检查展开和收起。'][i],anonymous:i%2===0,requestId:crypto.randomUUID(),replyTo:roots[0].id});
  await visual.page.reload();await visual.page.getByRole('heading',{name:two.title,exact:true}).waitFor();
  for(const width of [360,390,430]){
-  await visual.page.setViewportSize({width,height:844});await visual.page.screenshot({path:path.join(output,`treehole-content-feed-${width}.png`),fullPage:true,animations:'disabled'});assert.equal(await visual.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await visual.page.setViewportSize({width,height:844});await visual.page.evaluate(()=>{scrollTo(0,0);if(document.activeElement instanceof HTMLElement)document.activeElement.blur()});await visual.page.screenshot({path:path.join(output,`treehole-content-feed-${width}.png`),animations:'disabled'});
+  const priorTheme=await visual.page.locator('html').getAttribute('data-theme');await visual.page.locator('html').evaluate(el=>el.dataset.theme='dark');
+  await visual.page.screenshot({path:path.join(output,`community-dark-${width}.png`),animations:'disabled'});
+  if(!redesignBaseline){
+   const contrast=await visual.page.locator('.th-fab').evaluate(el=>{
+    const style=getComputedStyle(el),lum=color=>{const rgb=color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4});return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2]};
+    const a=lum(style.color),b=lum(style.backgroundColor);return(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+   });assert(contrast>=4.5,`dark compose contrast ${contrast}`);
+  }
+  await visual.page.evaluate(()=>scrollTo({top:240,behavior:'instant'}));await visual.page.waitForFunction(()=>document.querySelector('.th-fab')?.classList.contains('is-collapsed'));
+  await visual.page.screenshot({path:path.join(output,`community-dark-collapsed-${width}.png`),animations:'disabled'});
+  await visual.page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await visual.page.waitForFunction(()=>!document.querySelector('.th-fab')?.classList.contains('is-collapsed'));
+
+  await visual.page.locator('html').evaluate((el,theme)=>{if(theme)el.setAttribute('data-theme',theme);else el.removeAttribute('data-theme')},priorTheme);
+  if(!redesignBaseline){
+   const clipped=visual.page.locator('.th-post').filter({hasText:'想找几位一起做校园项目的同学'});
+   await clipped.locator('.th-read-more').waitFor();
+   assert.equal(await visual.page.locator('.th-post').filter({hasText:two.title}).locator('.th-read-more').count(),0);
+   assert.equal(await visual.page.locator('.th-post').filter({hasText:many.title}).locator('.th-media-total').innerText(),'9 张');
+   checks.push(`${width}: only genuinely clipped excerpts show read-more and photo counts reflect actual attachments`);
+  }assert.equal(await visual.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   const dual=visual.page.locator('.th-post').filter({hasText:two.title});assert.equal(await dual.locator('.th-images.two button').count(),2);
   const nine=visual.page.locator('.th-post').filter({hasText:many.title});assert.equal(await nine.locator('.th-images button').count(),9);
   const tall=visual.page.locator('.th-post').filter({hasText:long.title});assert.equal(await tall.locator('.th-long-image').innerText(),'长图');assert((await tall.locator('.th-images button').boundingBox()).height<=325);
+  await tall.locator('.th-post-body').click();await visual.page.locator('.th-detail').waitFor();
+  await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'正文',exact:true}).click();await visual.page.waitForFunction(()=>scrollY<2);
+  await visual.page.screenshot({path:path.join(output,`community-body-${width}.png`),animations:'disabled'});
+  await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();
   await tall.getByRole('button',{name:/查看评论/}).click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();await visual.page.waitForFunction(()=>document.querySelector('.th-discussion-title').getBoundingClientRect().top<120);const full=await visual.page.locator('.th-detail .th-images button').boundingBox();assert(Math.abs(full.width/full.height-.3)<.01);assert.equal(await visual.page.getByLabel('你的回复',{exact:true}).count(),0);
   await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'评论',exact:true}).click();await visual.page.waitForFunction(()=>document.querySelector('.th-discussion-title').getBoundingClientRect().top<120);assert.equal(await visual.page.locator('.th-detail-tabs').getByRole('button',{name:'评论',exact:true}).getAttribute('aria-pressed'),'true');
   await visual.page.locator('.th-comment').first().waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);await visual.page.screenshot({path:path.join(output,`treehole-content-comments-${width}.png`),animations:'disabled'});
   await visual.page.getByRole('button',{name:'全部 4 条回复',exact:true}).click();await visual.page.getByRole('button',{name:'收起回复',exact:true}).waitFor();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),4);await visual.page.getByRole('button',{name:'收起回复',exact:true}).click();assert.equal(await visual.page.locator('.th-comment').first().locator('.th-nested-reply').count(),2);
-  await visual.page.locator('.th-reply-entry').click();await visual.page.getByLabel('你的回复',{exact:true}).fill('编辑器展开后再选择匿名，阅读时保留更多空间。');await visual.page.screenshot({path:path.join(output,`treehole-content-editor-${width}.png`),animations:'disabled'});await visual.page.getByLabel('你的回复',{exact:true}).fill('');await visual.page.getByRole('button',{name:'收起回复编辑器'}).click();
+  await visual.page.locator('.th-reply-entry').click();await visual.page.getByLabel('你的回复',{exact:true}).fill('编辑器展开后再选择匿名，阅读时保留更多空间。');await visual.page.waitForFunction(()=>!document.querySelector('.th-sheet-motion-enter-active'));
+  if(!redesignBaseline){
+   const tile=visual.page.locator('.th-comment-photo-picker'),bounds=await tile.boundingBox(),icon=await tile.locator('svg').boundingBox(),label=await tile.locator('span').boundingBox();
+   assert(Math.abs(icon.x+icon.width/2-(bounds.x+bounds.width/2))<2&&label.y-icon.y-icon.height>=3,'reply photo icon and count form a separated centered group');
+  }
+  await visual.page.screenshot({path:path.join(output,`treehole-content-editor-${width}.png`),animations:'disabled'});await visual.page.evaluate(()=>{document.documentElement.style.setProperty('--native-safe-top','32px');document.documentElement.style.setProperty('--native-safe-bottom','24px')});
+  await visual.page.setViewportSize({width,height:520});
+  await visual.page.waitForFunction(()=>{const r=document.querySelector('.th-reply-box .th-send').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight});
+  assert.equal(await visual.page.locator('.th-reply-sheet').evaluate(el=>el.scrollWidth>el.clientWidth),false);
+  await visual.page.screenshot({path:path.join(output,`community-short-reply-${width}.png`),animations:'disabled'});checks.push(`${width}: reply publishing remains visible in a 520px viewport with system safe areas`);
+  await visual.page.setViewportSize({width,height:844});await visual.page.evaluate(()=>{document.documentElement.style.removeProperty('--native-safe-top');document.documentElement.style.removeProperty('--native-safe-bottom')});await visual.page.getByLabel('你的回复',{exact:true}).fill('');await visual.page.getByRole('button',{name:'收起回复编辑器'}).click();
   await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();await visual.page.locator('.th-post').filter({hasText:many.title}).locator('.th-post-body').click();await visual.page.getByRole('heading',{name:'评论',exact:true}).waitFor();assert.equal(await visual.page.locator('.carousel button').count(),9);
   await visual.page.locator('.carousel').evaluate(el=>el.scrollTo({left:el.clientWidth*2,behavior:'instant'}));await visual.page.waitForFunction(()=>document.querySelector('.th-media-pagination strong').textContent==='3 / 9');await visual.page.getByRole('button',{name:'查看图片 3，共 9 张',exact:true}).click();await visual.page.getByRole('button',{name:'下一张',exact:true}).click();assert.equal(await visual.page.locator('.th-gallery-bar>span').innerText(),'4 / 9');await visual.page.getByRole('button',{name:'关闭大图'}).click();await visual.page.getByRole('button',{name:'返回社区',exact:true}).click();
   checks.push(`${width}: long image keeps full aspect, two/nine photos, selected comment tab, preview-two/expand-four and carousel/gallery indices`);
@@ -228,7 +263,13 @@ try{
   await visibleCard().scrollIntoViewIfNeeded();await vp.waitForTimeout(260);visual.state.holdNextDetail=true;
   const box=await visibleCard().boundingBox();
   if(region==='image')await visibleCard().locator('.th-images button').first().click();
-  else {const point=region==='author'?await visibleCard().locator('.th-post-byline').boundingBox():region==='footer'?await visibleCard().locator('.th-action-spacer').boundingBox():{x:box.x+2,y:box.y+60,width:8,height:8};await vp.mouse.click(point.x+point.width/2,point.y+point.height/2);}
+  else {
+   // Hit actual non-control footer space, not an incidental spacer that a layout can hide.
+   const action=region==='footer'?await visibleCard().locator('.th-post-actions button').first().boundingBox():null;
+   const point=region==='footer'?{x:action.x-2,y:action.y+action.height/2}:region==='author'?await visibleCard().locator('.th-post-byline').boundingBox():{x:box.x+6,y:box.y+64};
+   assert.equal(await vp.evaluate(p=>!!document.elementFromPoint(p.x,p.y)?.closest('button'),point),false,'card navigation hit must stay outside child controls');
+   await vp.mouse.click(point.x,point.y);
+  }
   await vp.locator('.th-detail').waitFor();await vp.locator('.th-comment-loading').waitFor();
   assert.equal(await vp.locator('.th-detail h2').innerText(),two.title);assert(!await vp.getByRole('button',{name:'返回社区',exact:true}).isDisabled());assert.equal(await vp.getByRole('dialog').count(),0);
   while(!visual.state.releaseDetail)await new Promise(r=>setTimeout(r,10));
@@ -322,7 +363,9 @@ try{
   const a=await client(width),page=a.page;active=page;await register(page,`discovery_${width}`,'兴趣同学');
   const nav=page.getByRole('navigation',{name:'帖子分区'}),tabs=page.getByRole('group',{name:'兴趣标签'});
   assert.deepEqual(await nav.getByRole('button').allTextContents(),['全部','校园日常','兴趣娱乐','搭子广场','匿名树洞']);
-  for(const button of await nav.getByRole('button').all()){const box=await button.boundingBox();assert(box.x>=0&&box.x+box.width<=width&&box.height>=44);}
+  // Registration changes screens; measure hit targets after their transition settles.
+  await page.waitForFunction(width=>Array.from(document.querySelectorAll('.th-category-nav button')).every(el=>{const r=el.getBoundingClientRect();return r.x>=-.001&&r.right<=width+.001&&r.height>=44-.001}),width);
+  for(const button of await nav.getByRole('button').all()){const box=await button.boundingBox();assert(box.x>=-.001&&box.x+box.width<=width+.001&&box.height>=44-.001,JSON.stringify({width,label:await button.innerText(),box}));}
   const create=(category,extra={})=>api.execute('posts.create',{category,body:'发现合成内容 '+category,anonymous:false,requestId:crypto.randomUUID(),...extra},a.state.token,`discovery-${width}`);
   await create('help');await create('study',{anonymous:true});await create('entertainment',{interest:'music',body:'音乐合成内容'});
   await nav.getByRole('button',{name:'校园日常',exact:true}).click();await page.getByRole('group',{name:'校园内容筛选'}).getByRole('button',{name:'学习交流',exact:true}).click();await page.locator('.th-post').first().waitFor();assert((await page.locator('.th-post').allTextContents()).every(t=>t.includes('学习交流')));checks.push(`${width}: compact four-section navigation preserves legacy study and anonymous identity`);
@@ -405,7 +448,8 @@ try{
   await page.locator('.th-reply-entry').click();await page.getByLabel('添加评论图片').setInputFiles([{name:'one.webp',mimeType:'image/webp',buffer:fixture},{name:'two.webp',mimeType:'image/webp',buffer:fixture},{name:'three.webp',mimeType:'image/webp',buffer:fixture}]);await page.waitForFunction(()=>document.querySelectorAll('.th-comment-photo-editor img').length===3);
   assert.equal(await page.getByLabel('添加评论图片').count(),0);await page.getByRole('button',{name:'移除评论图片 3',exact:true}).click();await page.getByRole('button',{name:'移除评论图片 2',exact:true}).click();
   a.state.failCommentUpload=true;await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();assert.equal(await page.locator('.th-comment-photo-editor img').count(),1);
-  a.state.dropComment=true;await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.locator('.th-comment .th-media').waitFor();
+  if(!redesignBaseline){assert((await page.locator('.th-reply-box .th-upload-status').innerText()).includes('已上传 0 / 1'));await page.screenshot({path:path.join(output,`community-upload-failed-${width}.png`),animations:'disabled'});}
+  a.state.dropComment=true;if(redesignBaseline)await page.getByRole('button',{name:'发布回复',exact:true}).click();else await page.getByRole('button',{name:'重试回复',exact:true}).click();await page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();await page.getByRole('button',{name:'发布回复',exact:true}).click();await page.locator('.th-comment .th-media').waitFor();
   assert.equal((await db.query('SELECT count(*)::int AS n FROM hyt_comments WHERE post_id=$1',[pid])).rows[0].n,1);assert.equal((await db.query("SELECT count(*)::int AS n FROM hyt_media WHERE post_id=$1 AND comment_id IS NOT NULL",[pid])).rows[0].n,1);
   await page.locator('.th-comment .th-media button').first().click();await page.locator('.th-gallery').waitFor();assert(await page.locator('.th-gallery img').evaluate(i=>i.complete&&i.naturalWidth>0));await page.getByRole('button',{name:'关闭大图'}).click();
   checks.push(`${width}: three-image picker limit, upload failure, lost comment retry, image-only comment and full gallery`);
