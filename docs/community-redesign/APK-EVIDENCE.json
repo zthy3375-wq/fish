@@ -1,0 +1,27 @@
+{
+  "package": "org.handancampus.app",
+  "version": "1.3.0-test.18",
+  "versionCode": 168,
+  "debuggable": false,
+  "bytes": 12496078,
+  "sha256": "02e5fa79a510a9e54b625810f66f3ef4b9e6291d987a108a77f517e81be2f1ba",
+  "embeddedWebFiles": 30,
+  "embeddedWebBytesMatchLocalBuild": true,
+  "alignmentVerified": true,
+  "sourceCommit": "685d98853eec000c944a29bcbb301a3605612723",
+  "localEquivalent": "6121799600123a497e71b7a1025542399e079311",
+  "testedTree": "d1bd03a6b49cfa0589bcb23f0a1ea03d54dd950f",
+  "prMergeCommit": "1bc25c187ef54f4976ea8e0bf514b3d353f7ebc0",
+  "workflowRun": 44020348023,
+  "unsignedArtifact": 14301196678,
+  "unsignedArtifactZipSha256": "8312a2c3a8c34479cc827a4ec6441e2c1643d495d0e79288bb8bb8450e786ba9",
+  "certificateSha256": "4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9",
+  "signatureSchemesVerified": [
+    "v1",
+    "v2",
+    "v3"
+  ],
+  "filename": "Hanyuantong-v1.3.0-test.18-Community.apk",
+  "distribution": "private-test-only",
+  "deviceInstallationVerified": false
+}
