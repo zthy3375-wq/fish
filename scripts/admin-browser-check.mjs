@@ -70,7 +70,7 @@ try{
   await db.query("UPDATE hyt_members SET role='moderator' WHERE username=$1",['admin_review_'+width]);
   const subject=await api.execute('register',{username:'admin_subject_'+width,nickname:'测试同学',password:'synthetic-long-password',agreed:true},'','seed'+width);
   const call=(action,body)=>api.execute(action,body,subject.sessionToken,'seed'+width);
-  const p=(await call('posts.create',{title:'图书馆讨论需要核实',body:'这是隔离测试内容，用于检查管理员能否看到完整上下文。',anonymous:true,requestId:crypto.randomUUID()})).post;
+  const p=(await call('posts.create',{title:`图书馆讨论需要核实 · ${width}`,body:'这是隔离测试内容，用于检查管理员能否看到完整上下文。',anonymous:true,requestId:crypto.randomUUID()})).post;
   const c=(await call('comments.create',{postId:p.id,body:'这是被举报评论，不能只看到一句举报理由。',anonymous:true,requestId:crypto.randomUUID()})).comment;
   await call('reports.create',{postId:p.id,commentId:c.id,reason:'举报人的判断，需要进一步核实'});
   await page.reload();await page.locator('.th-self').click();await page.getByRole('button',{name:process.env.ADMIN_BASELINE==='1'?'处理举报':'管理中心',exact:true}).click();
