@@ -56,3 +56,8 @@
 
 .th-detail-tabs button[aria-pressed=true]{color:var(--color-primary-strong)}
 .th-reply-entry{color:var(--color-muted)}
+
+/* Filled actions use the same theme-aware foreground as publish/reply buttons. */
+.th-fab{color:var(--color-raised,#fff)}
+/* Keep the image picker above the generic community label rule. */
+.treehole .th-comment-photo-editor>label{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;margin:0;font-size:11px;font-weight:400;color:var(--color-muted)}

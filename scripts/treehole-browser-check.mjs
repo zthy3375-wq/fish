@@ -208,6 +208,16 @@ try{
   await visual.page.setViewportSize({width,height:844});await visual.page.evaluate(()=>{scrollTo(0,0);if(document.activeElement instanceof HTMLElement)document.activeElement.blur()});await visual.page.screenshot({path:path.join(output,`treehole-content-feed-${width}.png`),animations:'disabled'});
   const priorTheme=await visual.page.locator('html').getAttribute('data-theme');await visual.page.locator('html').evaluate(el=>el.dataset.theme='dark');
   await visual.page.screenshot({path:path.join(output,`community-dark-${width}.png`),animations:'disabled'});
+  if(!redesignBaseline){
+   const contrast=await visual.page.locator('.th-fab').evaluate(el=>{
+    const style=getComputedStyle(el),lum=color=>{const rgb=color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4});return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2]};
+    const a=lum(style.color),b=lum(style.backgroundColor);return(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+   });assert(contrast>=4.5,`dark compose contrast ${contrast}`);
+  }
+  await visual.page.evaluate(()=>scrollTo({top:240,behavior:'instant'}));await visual.page.waitForFunction(()=>document.querySelector('.th-fab')?.classList.contains('is-collapsed'));
+  await visual.page.screenshot({path:path.join(output,`community-dark-collapsed-${width}.png`),animations:'disabled'});
+  await visual.page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await visual.page.waitForFunction(()=>!document.querySelector('.th-fab')?.classList.contains('is-collapsed'));
+
   await visual.page.locator('html').evaluate((el,theme)=>{if(theme)el.setAttribute('data-theme',theme);else el.removeAttribute('data-theme')},priorTheme);
   if(!redesignBaseline){
    const clipped=visual.page.locator('.th-post').filter({hasText:'想找几位一起做校园项目的同学'});
