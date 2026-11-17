@@ -248,7 +248,13 @@ try{
   await visibleCard().scrollIntoViewIfNeeded();await vp.waitForTimeout(260);visual.state.holdNextDetail=true;
   const box=await visibleCard().boundingBox();
   if(region==='image')await visibleCard().locator('.th-images button').first().click();
-  else {const point=region==='author'?await visibleCard().locator('.th-post-byline').boundingBox():region==='footer'?await visibleCard().locator('.th-action-spacer').boundingBox():{x:box.x+2,y:box.y+60,width:8,height:8};await vp.mouse.click(point.x+point.width/2,point.y+point.height/2);}
+  else {
+   // Hit actual non-control footer space, not an incidental spacer that a layout can hide.
+   const action=region==='footer'?await visibleCard().locator('.th-post-actions button').first().boundingBox():null;
+   const point=region==='footer'?{x:action.x-2,y:action.y+action.height/2}:region==='author'?await visibleCard().locator('.th-post-byline').boundingBox():{x:box.x+6,y:box.y+64};
+   assert.equal(await vp.evaluate(p=>!!document.elementFromPoint(p.x,p.y)?.closest('button'),point),false,'card navigation hit must stay outside child controls');
+   await vp.mouse.click(point.x,point.y);
+  }
   await vp.locator('.th-detail').waitFor();await vp.locator('.th-comment-loading').waitFor();
   assert.equal(await vp.locator('.th-detail h2').innerText(),two.title);assert(!await vp.getByRole('button',{name:'返回社区',exact:true}).isDisabled());assert.equal(await vp.getByRole('dialog').count(),0);
   while(!visual.state.releaseDetail)await new Promise(r=>setTimeout(r,10));
