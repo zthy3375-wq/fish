@@ -1,5 +1,10 @@
 """Remove only the analytics hourly timer and verify its absence."""
+import base64
+import io
 import os
+import sys
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 import time
 
 from tencentcloud.common.credential import Credential
@@ -41,6 +46,26 @@ def find_timer(client):
 def main():
     client = scf_client.ScfClient(Credential(os.environ["TENCENTCLOUD_SECRETID"],
         os.environ["TENCENTCLOUD_SECRETKEY"], os.environ["TENCENTCLOUD_SESSIONTOKEN"]), "ap-shanghai")
+    if len(sys.argv) == 2:
+        name = sys.argv[1]
+        if name not in ("hyt-analytics-canary", "hyt-analytics"):
+            raise ValueError("Unexpected analytics function")
+        root = Path("cloudbase/functions/analytics")
+        archive = io.BytesIO()
+        with ZipFile(archive, "w", ZIP_DEFLATED) as bundle:
+            for path in sorted(root.rglob("*")):
+                if path.is_file() and not path.is_symlink():
+                    bundle.write(path, path.relative_to(root))
+        update = models.UpdateFunctionCodeRequest()
+        update.FunctionName = name
+        update.Namespace = NAMESPACE
+        update.ZipFile = base64.b64encode(archive.getvalue()).decode("ascii")
+        if len(update.ZipFile) > 20_000_000:
+            raise ValueError("Function archive exceeds the SCF limit")
+        update.CodeSource = "ZipFile"
+        result = client.UpdateFunctionCode(update)
+        print(f"{name}: SCF accepted code update {result.RequestId}")
+        return
     if find_timer(client):
         delete = request(models.DeleteTriggerRequest)
         delete.TriggerName = TIMER
@@ -55,4 +80,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except TencentCloudSDKException as error:
+        sys.exit("Tencent API error: " + error.get_code())

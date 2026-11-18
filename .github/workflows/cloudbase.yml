@@ -17,8 +17,6 @@ jobs:
           node-version: 22
       - name: Test analytics contracts
         run: node --test cloudbase/tests/analytics.verify.mjs
-      - name: Install official CLI
-        run: npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
       - run: python3 -m pip install --disable-pip-version-check tencentcloud-sdk-python-scf
       - name: Retire and verify analytics
         env:
