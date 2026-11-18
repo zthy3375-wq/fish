@@ -7,7 +7,7 @@ import {createCommunity} from '../functions/community/core.mjs';
 import {developerBinding} from '../../scripts/cloudbase/bind-developer.mjs';
 const schema=await readFile(new URL('../community-schema.sql',import.meta.url),'utf8');
 let calls=0;let db,api,owner,moderator,alice,bob,other;
-const call=(u,a,b={})=>api.execute(a,b,u.sessionToken,'qa');
+const call=(u,a,b={})=>api.execute(a,{...b,timeAwards:true},u.sessionToken,'qa');
 const reg=name=>api.execute('register',{username:name,nickname:name,password:'test-long-password',agreed:true,role:'developer',developer_since:'2001-01-01'},'',name);
 const change=(actor,target,operation,more={})=>call(actor,'honors.change',{memberId:target.user.id,operation,reason:'验收操作',requestId:randomUUID(),...more});
 const post=(u,text,anonymous=false)=>call(u,'posts.create',{body:text,requestId:randomUUID(),anonymous});
@@ -107,6 +107,7 @@ test('server clock and registration date govern month/year, scoped to the authen
  await db.query("UPDATE hyt_members SET created_at=now()-interval '8760 hours' WHERE id=$1",[member.user.id]);
  await Promise.all([hall(member),call(member,'me',{entry:true}),hall(member)]);
  const later=await hall(member);assert.equal(later.awards.month,first.awards.month);assert(later.awards.year);assert.equal(later.progress.days,365);
+ const legacy=await api.execute('honors.hall',{},member.sessionToken,'qa');assert.equal(legacy.hall.total,1);assert.equal(legacy.hall.awards.month,undefined);assert.deepEqual(legacy.hall.showcase,[]);
  await call(member,'honors.ack',{codes:['year','month']});
  assert.deepEqual((await db.query("SELECT code,seen FROM hyt_awards WHERE member_id=$1 AND code IN ('month','year') ORDER BY code",[member.user.id])).rows,[{code:'month',seen:true},{code:'year',seen:true}]);
 });

@@ -25,16 +25,17 @@ try{
  execFileSync('python3',['scripts/cloudbase/update-community-code.py'],{stdio:'inherit'});
  let ready=false;for(let i=0;i<35;i++){
   const c=(await request('config').catch(()=>({body:{}}))).body;
-  if(c.timeAwards&&c.honorsEnabled&&c.schema===12&&c.simpleRegistration){ready=true;break;}await delay(2500);
+  if(c.legacyTimeProjection&&c.timeAwards&&c.honorsEnabled&&c.schema===12&&c.simpleRegistration){ready=true;break;}await delay(2500);
  }
  assert(ready,'community code activation');
  const entry=await request('me',{entry:true},oldSession);assert.equal(entry.status,200);assert.equal(entry.body.user.id,uid);assert(Array.isArray(entry.body.posts));
  const login=await request('login',{username,password});assert.equal(login.body.user.id,uid);
- const token=login.body.sessionToken;const cabinet=await request('honors.hall',{},token);assert.equal(cabinet.status,200);assert(cabinet.body.hall.awards.arrival);
+ const token=login.body.sessionToken;const cabinet=await request('honors.hall',{timeAwards:true},token);assert.equal(cabinet.status,200);assert(cabinet.body.hall.awards.arrival);
  assert.equal(cabinet.body.hall.total,1);assert.equal(cabinet.body.hall.progress.days,0);assert.equal((await request('honors.wear',{honor:null,showcase:['month']},token)).status,400);assert.equal(cabinet.body.hall.badges.official,null);
  const wear=await request('honors.wear',{honor:null,showcase:['arrival']},token);assert.deepEqual(wear.body.hall.showcase,['arrival']);
  assert.equal((await request('honors.manage',{},token)).status,403);
  assert.equal((await request('honors.wear',{honor:'seed',showcase:['popular']},token)).status,400);
+ const legacy=await request('honors.hall',{},token);assert.equal(legacy.body.hall.progress.days,undefined);assert.equal(legacy.body.hall.total,1);
  console.log('PASS public HTTPS: original session, password login, combined feed, real award, showcase, member denial and locked selection denial');
 }finally{
  if(uid){

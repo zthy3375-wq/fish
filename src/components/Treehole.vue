@@ -21,7 +21,7 @@ import TreeholeBoards from './TreeholeBoards.vue';
 import TreeholeBoardPicker from './TreeholeBoardPicker.vue';
 import TreeholeLike from './TreeholeLike.vue';
 import OfficialBadges from './honors/OfficialBadges.vue';
-import {feedback as honorFeedback,cloudChanged} from '../services/achievementJournal';
+import {feedback as honorFeedback} from '../services/achievementJournal';
 import {pendingAwards,markPresented} from '../services/achievementDelivery';
 import {byCode} from '../domain/globalAchievements';
 import HonorHall from './honors/HonorHall.vue';
@@ -46,7 +46,7 @@ const pollSnapshots=new Map<string,TreeholePoll>();
 const honorsEnabled=ref(false),hallMember=ref(''),awardQueue=ref<string[]>([]),shownAwards=new Set<string>();
 function showHall(id:string){rememberRoute();hallMember.value=id;screen.value='honors';}
 function showHonorAdmin(){rememberRoute();screen.value='honorAdmin';}
-function applyHonorUpdate(r:TreeholeResult){cloudChanged();
+function applyHonorUpdate(r:TreeholeResult){
  const change=r.updatedIdentity||(r.user?.badges?{id:r.user.id,badges:r.user.badges,showcase:r.user.showcase||[]}:null);
  feedNeedsRefresh=true;if(!change)return;
  const update=(author:TreeholePost['author'])=>{if(!author.anonymous&&author.id===change.id)author.badges=change.badges;};
@@ -56,7 +56,7 @@ function applyHonorUpdate(r:TreeholeResult){cloudChanged();
  if(profile.value?.id===change.id)Object.assign(profile.value,change);
  for(const route of routeHistory){if(route.profile?.id===change.id)Object.assign(route.profile,change);for(const p of [...route.profilePosts,...(route.detail?[route.detail]:[])])update(p.author);for(const c of route.comments){update(c.author);for(const child of c.replies||[])update(child.author);}}
 }
-function collectAwards(r:TreeholeResult){if(r.unlocks?.length)cloudChanged();if(!r.awardOwner||r.awardOwner!==(r.user?.id||user.value?.id))return;
+function collectAwards(r:TreeholeResult){if(!r.awardOwner||r.awardOwner!==(r.user?.id||user.value?.id))return;
  for(const code of pendingAwards(r,r.awardOwner))if(!awardQueue.value.includes(code)&&!shownAwards.has(code))awardQueue.value.push(code);}
 let ackTimer:number|undefined;const awaitingAck=new Set<string>();
 function seenAward(code:string){if(user.value)markPresented(user.value.id,code);awardQueue.value=awardQueue.value.filter(x=>x!==code);shownAwards.add(code);awaitingAck.add(code);clearTimeout(ackTimer);
@@ -241,7 +241,7 @@ async function run(work:()=>Promise<void>){
  try{await work();}catch(e){if(alive){error.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'){clearAccount();}}}
  finally{if(alive)busy.value=false;}
 }
-function clearAccount(){cloudChanged();if(user.value)try{sessionStorage.removeItem('hyt-hall-v1:'+user.value.id);}catch{}clearTimeout(ackTimer);awaitingAck.clear();shownAwards.clear();awardQueue.value=[];hallMember.value='';optionalRecovery.value='';lastUnreadAt=-Infinity;boardPicker.value=null;draftRevision++;postUpload.value=null;commentUpload.value=null;social.value=null;socialError.value='';peopleKind.value='following';messageUnread.value=0;messageDrafts.value={};messageMember.value=undefined;continueScope.value='participated';fabCollapsed.value=false;buddySnapshots.clear();pendingBuddies.value={};buddyDraft.value=null;buddyRoster.value=null;pollSnapshots.clear();pendingVotes.value={};pollDraft.value=null;commentImages.value=[];followingRevision++;following.value=[];followingNext.value=null;followingLoading.value=false;followingError.value='';pendingFollows.value={};scope.value='all';query.value='';avatarCandidate.value=null;pendingResponses.value={};accountEpoch++;inboxRevision++;inboxLoading.value=false;inboxError.value='';notifications.value=[];unreadCount.value=0;inboxNext.value=null;profile.value=null;profilePosts.value=[];profileNext.value=null;focusedThread.value=null;focusedCommentId.value='';routeHistory.length=0;restoringScroll=null;watchPending.value=false;bio.value='';detailRequest++;detailEpoch++;detailLoading.value=false;detailError.value='';feedRevision.value++;feedLoadingMore.value=false;feedPageError.value='';feedNext.value=null;commentNext.value=null;appliedFeedKey='';feedNeedsRefresh=false;feedScroll=0;feedAnchor=null;pendingReactions.value={};pendingLikes.value={};loadingThreads.value={};loadedThreads.clear();replyExpanded.value=false;draftReady.value=false;postTitle.value='';images.value=[];category.value='all';interest.value='';sort.value='latest';showPassword.value=false;searchOpen.value=false;auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';commentImages.value=[];reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
+function clearAccount(){if(user.value)try{sessionStorage.removeItem('hyt-hall-v1:'+user.value.id);}catch{}clearTimeout(ackTimer);awaitingAck.clear();shownAwards.clear();awardQueue.value=[];hallMember.value='';optionalRecovery.value='';lastUnreadAt=-Infinity;boardPicker.value=null;draftRevision++;postUpload.value=null;commentUpload.value=null;social.value=null;socialError.value='';peopleKind.value='following';messageUnread.value=0;messageDrafts.value={};messageMember.value=undefined;continueScope.value='participated';fabCollapsed.value=false;buddySnapshots.clear();pendingBuddies.value={};buddyDraft.value=null;buddyRoster.value=null;pollSnapshots.clear();pendingVotes.value={};pollDraft.value=null;commentImages.value=[];followingRevision++;following.value=[];followingNext.value=null;followingLoading.value=false;followingError.value='';pendingFollows.value={};scope.value='all';query.value='';avatarCandidate.value=null;pendingResponses.value={};accountEpoch++;inboxRevision++;inboxLoading.value=false;inboxError.value='';notifications.value=[];unreadCount.value=0;inboxNext.value=null;profile.value=null;profilePosts.value=[];profileNext.value=null;focusedThread.value=null;focusedCommentId.value='';routeHistory.length=0;restoringScroll=null;watchPending.value=false;bio.value='';detailRequest++;detailEpoch++;detailLoading.value=false;detailError.value='';feedRevision.value++;feedLoadingMore.value=false;feedPageError.value='';feedNext.value=null;commentNext.value=null;appliedFeedKey='';feedNeedsRefresh=false;feedScroll=0;feedAnchor=null;pendingReactions.value={};pendingLikes.value={};loadingThreads.value={};loadedThreads.clear();replyExpanded.value=false;draftReady.value=false;postTitle.value='';images.value=[];category.value='all';interest.value='';sort.value='latest';showPassword.value=false;searchOpen.value=false;auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';commentImages.value=[];reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
 function feedCriteria(){return {scope:scope.value,query:query.value,...treeholeFeedFilters(category.value,interest.value,discoveryEnabled.value),sort:sort.value};}
 function feedKey(){return JSON.stringify(feedCriteria());}
 function appendUnique<T extends {id:string}>(current:T[],incoming:T[]){
@@ -575,7 +575,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
 
 <template>
  <section class="treehole" aria-label="邯院通树洞" :aria-busy="busy" :class="{'keyboard-navigation':keyboardNavigation,'is-composing':screen==='compose','has-replies':screen==='detail'&&detail&&!recovery,'with-tab-navigation':props.tabRoot&&screen==='feed'}" @pointerdown.capture="keyboardNavigation=false" @keydown.capture="($event.key==='Tab'||$event.key.startsWith('Arrow'))&&(keyboardNavigation=true)" @touchstart.passive="edgeDown" @touchmove.passive="edgeMove" @touchend.passive="edgeEnd" @touchcancel="edgeStart=null;edgeOffset=0">
-  <AchievementNotice v-if="user" :codes="awardQueue" v-bind="honorFeedback" @seen="seenAward"/>
+  <AchievementNotice v-if="user" :codes="awardQueue" v-bind="honorFeedback" @seen="seenAward" @shown="markPresented(user.id,$event)"/>
   <div :inert="dialogOpen">
    <header class="th-nav">
     <button v-if="!props.tabRoot||screen!=='feed'" class="th-icon" :aria-label="screen==='feed'?'返回上一页':'返回社区'" :disabled="busy||!!recovery" @click="navigationBack"><ArrowLeft :size="22"/></button>

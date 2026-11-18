@@ -36,5 +36,5 @@ export function treeholeError(error:unknown){const code=(error as {code?:string;
 export function treeholeErrorCode(error:unknown){return (error as {code?:string})?.code||(error as Error)?.message;}
 export async function treeholeRequest(action:string,body:Record<string,unknown>={}):Promise<TreeholeResult>{
  if(!Capacitor.isPluginAvailable('Treehole'))throw new Error('native_required');
- return native.request({action,body});
+ return native.request({action,body:{...body,timeAwards:true}});
 }

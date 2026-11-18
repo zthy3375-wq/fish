@@ -47,9 +47,9 @@ it('requires actual school data and isolates school, learning, and signed-out hi
 it('requires completed personal task and two checked steps, suppresses repeats',async()=>{
  const e=await import('../src/services/achievementEvidence'),j=await import('../src/services/achievementJournal'),s=emptyTasks();
  const t={completed:true,completedAt:new Date().toISOString(),steps:[{completed:true},{completed:false}]} as CampusTask;
- s.tasks=[t];e.observeTasks(s,false);expect(j.localStamps.value.tasks).toBeUndefined();
- t.steps![1].completed=true;t.source='chaoxing';e.observeTasks(s,false);expect(j.localStamps.value.tasks).toBeUndefined();
- delete t.source;e.observeTasks(s,false);await vi.waitFor(()=>expect(j.localStamps.value.tasks).toBeTruthy());
+ s.tasks=[t];const previous=structuredClone(s);e.observeTasks(s,previous);expect(j.localStamps.value.tasks).toBeUndefined();
+ t.steps![1].completed=true;t.source='chaoxing';e.observeTasks(s,previous);expect(j.localStamps.value.tasks).toBeUndefined();
+ delete t.source;e.observeTasks(s,previous);await vi.waitFor(()=>expect(j.localStamps.value.tasks).toBeTruthy());
 });
 it('separates notification acknowledgments between different community users',async()=>{
  const d=await import('../src/services/achievementDelivery');const r={awardOwner:'a',unlocks:['month','year','offline']};

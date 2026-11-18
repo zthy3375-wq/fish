@@ -50,7 +50,6 @@ export function initTasks() { if (tasksReady.value)
     return Promise.resolve(); if (initJob)
     return initJob; initJob = (async () => { try {
     taskSnapshot.value = await taskStore.load();
-    observeTasks(taskSnapshot.value,true);
     await loadView();
     tasksReady.value = true;
     taskError.value = '';
@@ -64,11 +63,12 @@ catch {
 finally {
     initJob = null;
 } })(); return initJob; }
-export async function changeTasks(action: () => Promise<TaskSnapshot>) { if (!tasksReady.value)
+export async function changeTasks(action: () => Promise<TaskSnapshot>,isUserEdit=true) { if (!tasksReady.value)
     throw Error('待办尚未读取，请先重试'); tasksBusy.value = ++writes > 0; try {
     const next = await action();
+    const before=taskSnapshot.value;
     taskSnapshot.value = next;
-    observeTasks(next,false);
+    if(isUserEdit)observeTasks(next,before);
     taskError.value = '';
     await reconcileTaskReminders();
     return next;

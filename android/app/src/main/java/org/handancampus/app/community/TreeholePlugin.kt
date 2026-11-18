@@ -48,7 +48,7 @@ class TreeholePlugin : Plugin() {
     }
     private fun journal(scope: String): SchoolSessionVault {
         require(scope == "device" || scope.matches(Regex("(school|learning)-[A-Za-z0-9_-]{8,96}")))
-        return SchoolSessionVault(context, "hyt_collection_$scope", "hyt.collection.journal")
+        return SchoolSessionVault(context, "hyt_collection_$scope", "hyt.collection.journal.$scope")
     }
     @PluginMethod fun journalRead(call: PluginCall) {
         executor.execute {

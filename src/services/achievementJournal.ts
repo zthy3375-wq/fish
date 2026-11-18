@@ -18,8 +18,6 @@ const books=shallowReactive(new Map<string,Journal>());
 const inflight=new Map<string,Promise<Journal>>();
 export const storageIssue=ref('');
 export const scopes=ref({device:'device',school:'',learning:''});
-export const cloudHallRevision=ref(0);
-export function cloudChanged(){cloudHallRevision.value++;}
 export const feedback=ref({sound:false,motion:true,haptics:true});
 try {const v=JSON.parse(localStorage.getItem('hyt-award-feedback')||'{}');feedback.value={sound:v.sound===true,motion:v.motion!==false,haptics:v.haptics!==false};}catch{}
 watch(feedback,v=>{try{localStorage.setItem('hyt-award-feedback',JSON.stringify(v));}catch{}},{deep:true});

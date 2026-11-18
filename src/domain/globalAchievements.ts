@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { BookOpen, CalendarCheck, CalendarDays, ClipboardCheck, Droplets, Fish, Flower2, GraduationCap, KeyRound, Map as MapIcon, NotebookPen, RadioTower, Shell, ShowerHead, Sunrise, WashingMachine, Waves, WifiOff } from 'lucide-vue-next';
+import { BookOpen, CalendarCheck, CalendarDays, ClipboardCheck, Droplets, Egg, ContactRound, Fish, Flower2, GraduationCap, KeyRound, Map as MapIcon, NotebookPen, RadioTower, Shell, ShowerHead, Sunrise, WashingMachine, Waves, WifiOff } from 'lucide-vue-next';
 import { awards } from './communityHonors';
 
 export type Source = 'device' | 'school' | 'learning' | 'community';
@@ -17,7 +17,7 @@ export const catalog:Collectible[] = [
   local('welcome','你好，邯院','初识','普通','device',Sunrise,'#d58a26','首次打开带有收藏馆的邯院通','小金鱼为你留了一张空白纪念册。'),
   ...awards.filter(a=>a.code==='arrival').map(community),
   local('identity','身份确认','初识','普通','school',KeyRound,'#bd861d','成功连接学校教务系统','通往教务处的小门打开了。'),
-  local('profile','小金鱼的朋友','初识','普通','device',Fish,'#d27655','在本机填写昵称与专业，并保存资料','以后就这样称呼你。'),
+  local('profile','小金鱼的朋友','初识','普通','device',ContactRound,'#d27655','在本机填写昵称与专业，并保存资料','以后就这样称呼你。'),
   local('schedule','我的第一张课表','学习','普通','school',CalendarDays,'#527ab2','成功获取并保存一张含课程的学校课表','新学期有了坐标。'),
   local('offline','断网也不怕','学习','稀有','school',WifiOff,'#526faa','断网时打开已缓存的学校课表','信号消失，下一节课还在。'),
   local('exam','考试将至','学习','普通','school',CalendarCheck,'#a46930','打开考试安排，并看到学校返回的考试','在学期末的日历上圈一个日期。'),
@@ -36,7 +36,7 @@ export const catalog:Collectible[] = [
 ];
 function community(a:typeof awards[number]):Collectible {
   const names:Record<string,string>={arrival:'破壳而出',hello:'搭个话吧',neighbor:'温暖的回应'};
-  return {...a,name:names[a.code]??a.name,source:'community',group:a.code==='arrival'?'初识':'社区',color:a.code==='liked'?'#c76c79':'#8670a7'};
+  return {...a,icon:a.code==='arrival'?Egg:a.icon,name:names[a.code]??a.name,source:'community',group:a.code==='arrival'?'初识':'社区',color:a.code==='liked'?'#c76c79':'#8670a7'};
 }
 export const byCode = new Map(catalog.map(a=>[a.code,a]));
 export const lifeCodes=['bath','laundry','map'];
