@@ -14,6 +14,11 @@ const valid=computed(()=>pangguai.value.connected&&!pangguai.value.expired),bloc
 const waterTicket=computed(()=>drinkingWaterTicket(pangguai.value.tickets??[]));
 const waterBalance=computed(()=>drinkingWaterAmount(waterTicket.value?.balance));
 const otherTickets=computed(()=>(pangguai.value.tickets??[]).filter(ticket=>ticket!==waterTicket.value));
+const archivedWater=computed(()=>{
+ const history=pangguai.value.waterHistory??[];
+ const last=pangguai.value.water;
+ return last?.phase==='archived_unverified'&&!history.some(row=>row.id===last.id)?[last,...history.slice().reverse()]:history.slice().reverse();
+});
 let listener:PluginListenerHandle|undefined,disposed=false,awaitingReturn=false,active=true;
 let retry:ReturnType<typeof setTimeout>|undefined;
 function updated(value?:number){return value?new Date(value).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Shanghai'}):'尚未更新'}
@@ -49,6 +54,11 @@ onUnmounted(()=>{disposed=true;clearTimeout(retry);void listener?.remove()});
     <p v-if="!pangguai.orders?.length" class="pg-hint">{{pangguai.ordersUpdatedAt?'暂无消费记录':'消费记录尚未取得'}}</p>
     <article v-for="order in pangguai.orders" :key="order.id" class="pg-order"><div><strong>{{order.name||'胖乖消费'}}</strong><small>{{order.time}} · {{order.status}}</small></div><b>¥{{pgAmount(order.amount)}}</b></article>
     <p v-if="pangguai.ordersUpdatedAt" class="pg-hint">最近 20 条 · 金额为现金实付 · {{updated(pangguai.ordersUpdatedAt)}}</p>
+    <details v-if="archivedWater.length" class="pg-archived-water">
+     <summary>本机接水记录（{{archivedWater.length}}）</summary>
+     <p class="pg-hint">以下是已手动移出的设备记录。实际费用请以上方消费明细或胖乖账单为准。</p>
+     <ul><li v-for="row in archivedWater" :key="row.id"><strong>{{row.deviceName}} · {{row.outlet}}</strong><small>{{updated(row.archivedAt??row.updatedAt)}}</small><small v-if="row.orderNo">订单 {{row.orderNo}}</small></li></ul>
+    </details>
    </section>
    <div v-if="confirm" class="pg-confirm" role="group" aria-label="确认胖乖充值账户"><h3>为 {{confirm.name}} 充值</h3><p>当前账户 {{pangguai.phone}}。将打开此商户的支付宝充值页，请核对支付宝手机号和金额后付款。</p><div><button class="secondary" @click="confirm=undefined">取消</button><button class="primary" :disabled="blocked" @click="recharge">前往付款</button></div></div>
    <p v-if="notice" class="pg-status" role="status">{{notice}}</p>
@@ -61,4 +71,5 @@ onUnmounted(()=>{disposed=true;clearTimeout(retry);void listener?.remove()});
 <style scoped>
 .pg-wallet{padding:8px 0 20px}.pg-title h2{margin:7px 0}.pg-title>p{font-size:13px}.pg-status{padding:10px 12px;background:var(--color-tint,#f1f3f9);border-radius:12px;font-size:12px;line-height:1.7}.pg-welcome{text-align:center;padding:30px 4px}.pg-welcome svg{color:var(--color-primary)}.pg-welcome p,.pg-hint{color:var(--color-muted);font-size:12px;line-height:1.6}.pg-identity,.pg-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.pg-identity{margin:16px 0 8px;font-size:13px}.pg-balance{padding:20px;border-radius:22px;background:linear-gradient(120deg,#e9f6f2,#f5f8fd);border:1px solid #dcebe6}.pg-balance>span,.pg-balance>small{font-size:12px;color:#526d66}.pg-balance>strong{display:block;font-size:42px;line-height:1.7;overflow-wrap:anywhere}.pg-balance>strong.pg-unknown{font-size:28px;padding:12px 0}.pg-balance strong small{font-size:22px;margin-right:5px}.pg-balance .primary{margin-top:18px}.pg-tabs{display:flex;gap:6px;background:var(--color-bg);padding:4px;border-radius:12px;margin:22px 0 12px}.pg-tabs button{flex:1;min-height:40px;border:0;background:transparent;border-radius:9px;color:var(--color-muted);font-size:13px}.pg-tabs [aria-selected=true]{background:var(--color-surface,#fff);color:var(--color-text);box-shadow:0 2px 6px #0000000a;font-weight:650}.pg-merchant,.pg-order,.pg-program{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 0;border-bottom:1px solid var(--color-border,#e6e9ef)}.pg-merchant>div,.pg-order>div,.pg-program>span:first-child{min-width:0}.pg-merchant h3,.pg-device h3,.pg-confirm h3{font-size:14px;margin:0 0 7px;overflow-wrap:anywhere}.pg-merchant strong{font-size:24px}.pg-merchant strong small{font-size:12px;font-weight:400}.pg-merchant p{font-size:11px;color:var(--color-muted);margin:6px 0 0}.pg-merchant button{flex-shrink:0;display:flex;align-items:center;gap:4px;min-height:40px}.pg-order strong,.pg-program strong{font-size:13px;overflow-wrap:anywhere}.pg-order small,.pg-program small{display:block;font-size:11px;color:var(--color-muted);margin-top:5px}.pg-order b{font-size:14px;white-space:nowrap}.pg-device,.pg-confirm{padding:16px;border:1px solid var(--color-border,#e6e9ef);border-radius:16px;margin:18px 0}.pg-device>p,.pg-confirm p{font-size:12px;color:var(--color-muted);line-height:1.6}.pg-program>span:last-child{text-align:right;font-size:13px;flex-shrink:0}.pg-confirm>div{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}.pg-management{margin-top:24px;font-size:13px}.pg-management summary{padding:10px 0}.pg-help{margin:auto;font-size:12px}
 .pg-device-selected .pg-balance{padding:12px 16px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 12px}.pg-device-selected .pg-balance>strong{grid-column:2;grid-row:1 / 3;font-size:28px;line-height:1.3}.pg-device-selected .pg-balance>strong small{font-size:16px}.pg-device-selected .pg-balance>small{grid-column:1}.pg-device-selected .pg-balance .primary{grid-column:1 / -1;margin-top:8px;min-height:40px;padding:8px 12px}
+.pg-archived-water{margin-top:16px;font-size:13px}.pg-archived-water summary{padding:12px 0;cursor:pointer}.pg-archived-water ul{list-style:none;padding:0}.pg-archived-water li{padding:8px 0;overflow-wrap:anywhere}.pg-archived-water small{display:block;margin-top:3px;color:var(--color-muted)}
 </style>
