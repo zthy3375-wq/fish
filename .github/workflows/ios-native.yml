@@ -9,11 +9,11 @@ permissions:
   contents: read
 concurrency:
   group: ios-native-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   native-ios:
     runs-on: macos-15-intel
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Verify project and identical school query assets
@@ -24,7 +24,8 @@ jobs:
           cmp android/app/src/main/assets/handan-academic.js ios-native/Hanyuantong/Resources/handan-academic.js
           cmp android/app/src/main/assets/handan-rendered-reader.js ios-native/Hanyuantong/Resources/handan-rendered-reader.js
       - name: Enforce iOS 15.4 API availability on physical-device target
-        timeout-minutes: 12
+        id: device_build
+        timeout-minutes: 18
         run: |
           set -o pipefail
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/ios-compat-device" CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=15.4 build | tee "$RUNNER_TEMP/ios15-availability.log"
@@ -36,6 +37,17 @@ jobs:
               with (bundle / 'Info.plist').open('rb') as f: info = plistlib.load(f)
               assert info['MinimumOSVersion'] == '15.4', (bundle.name, info['MinimumOSVersion'])
           PYTHON
+      - name: Package unsigned device app
+        run: |
+          mkdir -p "$RUNNER_TEMP/package/Payload"
+          ditto "$RUNNER_TEMP/ios-compat-device/Build/Products/Release-iphoneos/Hanyuantong.app" "$RUNNER_TEMP/package/Payload/Hanyuantong.app"
+          cd "$RUNNER_TEMP/package"
+          ditto -c -k --keepParent Payload "$RUNNER_TEMP/Hanyuantong-iOS-unsigned.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-device-app
+          path: ${{ runner.temp }}/Hanyuantong-iOS-unsigned.ipa
+          retention-days: 14
       - name: Select SDK-matched iPhone simulator
         timeout-minutes: 5
         run: |
@@ -73,28 +85,40 @@ jobs:
           print(f'Selected SDK {sdk}; test runtime iOS {version}; simulator-only deployment target {deployment}')
           PYTHON
       - name: Compile simulator app and tests before boot
-        timeout-minutes: 8
+        timeout-minutes: 14
         run: |
           set -o pipefail
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" build-for-testing | tee "$RUNNER_TEMP/ios-compile.log"
       - name: Boot selected iPhone simulator
+        id: boot
         timeout-minutes: 5
         run: |
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
       - name: Native unit regression
         timeout-minutes: 12
         run: |
           set -o pipefail
+          node ios-native/Scripts/acceptance_community.mjs > "$RUNNER_TEMP/local-community.log" 2>&1 &
+          service_pid=$!
+          trap 'kill "$service_pid" 2>/dev/null || true' EXIT
+          curl --fail --retry 12 --retry-delay 1 --retry-connrefused http://127.0.0.1:18642/ready
           # Keep the app-hosted unit bundle separate from UI tests: installing both
           # in one test invocation can race the simulator app launch (run 43612196671).
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeUnits.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongTests test-without-building | tee "$RUNNER_TEMP/native-unit-tests.log"
       - name: Focused task UI regression
+        if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
         timeout-minutes: 8
         run: |
           set -o pipefail
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/FocusedTasks.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/focused-task-tests.log"
       - name: Remaining UI regression
+        if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
         timeout-minutes: 8
         run: |
           set -o pipefail
@@ -102,26 +126,15 @@ jobs:
           # Unit tests ran in their own invocation; exercise every other UI flow once.
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/xcodebuild.log"
       - name: Check collection on a second iPhone size
+        if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
         run: |
           set -o pipefail
           xcrun simctl shutdown "$DEVICE"
           xcrun simctl boot "$SECOND_DEVICE" || true
           xcrun simctl bootstatus "$SECOND_DEVICE" -b
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$SECOND_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/Second.xcresult" IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/HonorParityUITests test-without-building
-      - name: Package unsigned device app
-        if: success()
-        run: |
-          mkdir -p "$RUNNER_TEMP/package/Payload"
-          ditto "$RUNNER_TEMP/ios-compat-device/Build/Products/Release-iphoneos/Hanyuantong.app" "$RUNNER_TEMP/package/Payload/Hanyuantong.app"
-          cd "$RUNNER_TEMP/package"
-          ditto -c -k --keepParent Payload "$RUNNER_TEMP/Hanyuantong-iOS-unsigned.ipa"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: unsigned-device-app
-          path: ${{ runner.temp }}/Hanyuantong-iOS-unsigned.ipa
-          retention-days: 14
       - name: Package simulator app
-        if: success()
+        if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
         run: ditto -c -k --keepParent "$RUNNER_TEMP/ios-build/Build/Products/Debug-iphonesimulator/Hanyuantong.app" "$RUNNER_TEMP/Hanyuantong-iOS-Simulator.zip"
       - name: Export simulator screenshots
         if: always()

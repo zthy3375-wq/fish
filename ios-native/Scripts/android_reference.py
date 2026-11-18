@@ -1,4 +1,5 @@
 """Capture this branch's unmodified Android debug build on a clean offline emulator."""
+import hashlib
 import re
 import subprocess
 import sys
@@ -43,9 +44,16 @@ def capture(name):
 
 adb("shell","cmd","connectivity","airplane-mode","enable")
 adb("shell","am","start","-n","org.handancampus.app/.MainActivity")
-for label,name in [("首页","home"),("课表","schedule"),("社区","community"),("待办","tasks"),("我的","profile")]:
+screens = [("首页","home","校园生活"),("课表","schedule","课程表"),("社区","community","重试"),
+           ("待办","tasks","任务清单"),("我的","profile","查看全部荣誉殿堂藏品")]
+digests=set()
+for label,name,marker in screens:
     tap(label,True)
+    locate(marker)
     capture(name)
+    digest=hashlib.sha256((output/(name+".png")).read_bytes()).digest()
+    if digest in digests: raise RuntimeError("Previous screen was captured twice: " + name)
+    digests.add(digest)
 tap("查看全部荣誉殿堂藏品")
 locate("成就收藏馆")
 capture("gallery")

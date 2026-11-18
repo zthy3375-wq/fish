@@ -36,3 +36,36 @@ struct CampusAgendaView:View {
         }.navigationTitle("统一日程").sheet(item:$task) { TaskEditorView(task:$0) }
     }
 }
+
+struct SemesterCalendar:View {
+    @EnvironmentObject var campus:CampusStore
+    @Environment(\.dismiss) var dismiss
+    private var start:Date { campus.isConnected ? campus.schoolSemesterStart : campus.semesterStart }
+    private var weeks:Int {
+        if campus.isConnected { return min(60,campus.courses.filter{$0.source == "school"}.flatMap(\.weeks).max() ?? 0) }
+        return min(60,campus.personalWeekCount)
+    }
+    var body:some View {
+        List {
+            Section("第一周周一") {
+                Text(CampusTheme.date(start,format:"yyyy年M月d日"))
+                Text(campus.isConnected ? "按校准日期及已保存学校课程的教学周显示。" : "按当前个人学期设置显示。").font(.footnote).foregroundStyle(.secondary)
+            }
+            if weeks == 0 { Text("同步学校课表后显示教学周。") }
+            else {
+                ForEach(1...max(1,weeks),id:\.self) { week in
+                    if let monday=ScheduleMath.calendar.date(byAdding:.weekOfYear,value:week-1,to:start),
+                       let sunday=ScheduleMath.calendar.date(byAdding:.day,value:6,to:monday) {
+                        Button { campus.selectedDate=monday; dismiss(); campus.selectedTab = .schedule } label: {
+                            HStack {
+                                Text("第 \(week) 周"); Spacer()
+                                Text(CampusTheme.date(monday,format:"M.d") + " – " + CampusTheme.date(sunday,format:"M.d"))
+                                    .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                            }
+                        }.accessibilityHint("打开这一周的课表")
+                    }
+                }
+            }
+        }.navigationTitle("学期校历")
+    }
+}

@@ -34,6 +34,11 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var now = Date()
     @State private var timelineOpen=false
+    @State private var swimming=false
+    @Environment(\.accessibilityReduceMotion) private var systemReduce
+    @AppStorage("medal.reduce") private var reduceMotion=false
+    private var allowsSwimming:Bool { scenePhase == .active && store.selectedTab == .home && !systemReduce && !reduceMotion }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -77,7 +82,14 @@ struct HomeView: View {
                     do { try await Task.sleep(nanoseconds: 15_000_000_000) } catch { break }
                 }
             }
-            .onAppear { now = Date() }
+            .onAppear { now=Date(); animateFish(allowsSwimming) }
+            .onChange(of:allowsSwimming) { animateFish($0) }
+            .onDisappear { animateFish(false) }
+
+    }
+    private func animateFish(_ active:Bool) {
+        if !active { var transaction=Transaction(); transaction.disablesAnimations=true; withTransaction(transaction) {swimming=false} }
+        else { withAnimation(.easeInOut(duration:2.0).repeatForever(autoreverses:true)) {swimming=true} }
     }
     private func focusCard(_ focus: HomeCourseFocus) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -152,7 +164,7 @@ struct HomeView: View {
                 Spacer()
                 HStack { Text(CampusTheme.date(now)); Spacer(); Text("第\(store.week(for: now))周") }.font(.caption).foregroundStyle(.white)
             }.padding(22)
-            VStack { Spacer(); HStack { Spacer(); DiscoverySurface("puff",label:"首页小金鱼",taps:5,canDream:true) { CampusHeroFish().frame(width:108,height:68) } } }
+            VStack { Spacer(); HStack { Spacer(); DiscoverySurface("puff",label:"首页小金鱼",taps:5,canDream:true) { CampusHeroFish().frame(width:108,height:68).rotationEffect(.degrees(swimming ? 2 : -1)).offset(y:swimming ? -3 : 0) } } }
                 .padding(.trailing, 14).padding(.bottom, 48)
         }.frame(height: 275).clipShape(RoundedRectangle(cornerRadius: 22))
     }

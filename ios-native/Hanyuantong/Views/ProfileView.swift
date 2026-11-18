@@ -42,6 +42,7 @@ struct ProfileView: View {
             }
             Section("学校服务") { Link("邯郸学院官网",destination:URL(string:"https://www.hdc.edu.cn/")!); NavigationLink("统一日程") { CampusAgendaView() } }
             Section("学校课表设置") {
+                NavigationLink("学期校历") { SemesterCalendar() }
                 DatePicker("学校第一周周一", selection: Binding(get: { store.schoolSemesterStart }, set: { store.calibrateSchoolStart($0) }), displayedComponents: .date)
                     .environment(\.timeZone, ScheduleMath.calendar.timeZone)
                 Text("请与学校校历核对，按北京时间计算学校教学周。此处不修改个人学期。").font(.caption).foregroundStyle(CampusTheme.muted)

@@ -32,6 +32,23 @@ final class TreeholeTests: XCTestCase {
         return TreeholeService(vault: vault, session: URLSession(configuration: config))
     }
     override func tearDown() { TreeholeTestProtocol.handler = nil; TreeholeTestProtocol.pauseNext = false; TreeholeTestProtocol.resume = nil; TreeholeTestProtocol.paused = nil }
+    @MainActor func testColdGalleryReadsAuthenticatedIdentityWithoutFetchingFeed() async throws {
+        let vault=TreeholeMemoryVault(); vault.token=String(repeating:"z",count:43)
+        let api=service(vault)
+        var count=0
+        TreeholeTestProtocol.handler={req in
+            count+=1; XCTAssertEqual(req.url?.lastPathComponent,"me")
+            let data=Data(#"{"user":{"id":"16C4C633-9417-4C1D-981E-6269A16DAE89","username":"测试","nickname":"同学","role":"member"}}"#.utf8)
+            return (200,data)
+        }
+        let store=TreeholeStore(api:api)
+        try await store.restoreGalleryIdentity()
+        XCTAssertEqual(store.user?.username,"测试")
+        XCTAssertLessThanOrEqual(count,1)
+        vault.token=String(repeating:"y",count:43)
+        let other=await api.cachedIdentity()
+        XCTAssertNil(other)
+    }
     func testNativeLoginStoresTokenAndRemovesItFromEnvelope() async throws {
         let vault = TreeholeMemoryVault(), token = String(repeating: "a", count: 43)
         TreeholeTestProtocol.handler = { request in
@@ -561,4 +578,66 @@ final class TreeholeTests: XCTestCase {
         _ = try await api.request("buddies.close", ["postId":"p", "closed":false])
     }
 
+}
+
+// Only the test URLSession installs this protocol. Its only destination is the local CI database.
+private final class CommunityLoopbackProtocol:URLProtocol {
+    private var transfer:URLSessionDataTask?
+    override class func canInit(with request:URLRequest)->Bool { true }
+    override class func canonicalRequest(for request:URLRequest)->URLRequest { request }
+    override func startLoading() {
+        var outgoing=request
+        guard let action=outgoing.url?.lastPathComponent,TreeholeService.actions.contains(action) else {
+            client?.urlProtocol(self,didFailWithError:URLError(.unsupportedURL));return
+        }
+        outgoing.url=URL(string:"http://127.0.0.1:18642/v1/")!.appendingPathComponent(action)
+        if outgoing.httpBody == nil,let stream=outgoing.httpBodyStream {
+            stream.open(); defer {stream.close()}
+            var data=Data(),buf=[UInt8](repeating:0,count:4096)
+            while true {let length=stream.read(&buf,maxLength:buf.count);if length<=0{break};data.append(buf,count:length)}
+            outgoing.httpBodyStream=nil;outgoing.httpBody=data
+        }
+        transfer=URLSession.shared.dataTask(with:outgoing){ [weak self] data,response,error in
+            guard let self else{return}
+            if let error {self.client?.urlProtocol(self,didFailWithError:error);return}
+            if let response {self.client?.urlProtocol(self,didReceive:response,cacheStoragePolicy:.notAllowed)}
+            if let data {self.client?.urlProtocol(self,didLoad:data)}
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+        transfer?.resume()
+    }
+    override func stopLoading(){transfer?.cancel()}
+}
+
+extension TreeholeTests {
+    @MainActor func testIsolatedCommunityRegistrationPostingHonorsAndMessages() async throws {
+        let cfg=URLSessionConfiguration.ephemeral
+        cfg.protocolClasses=[CommunityLoopbackProtocol.self]
+        let session=URLSession(configuration:cfg)
+        let a=TreeholeService(vault:TreeholeMemoryVault(),session:session)
+        let b=TreeholeService(vault:TreeholeMemoryVault(),session:session)
+        let pass=UUID().uuidString
+        let name="7同学"+String(UUID().uuidString.prefix(8))
+        let ar=try await a.request("register",["username":name,"password":pass,"agreed":true])
+        let br=try await b.request("register",["username":"乙"+String(UUID().uuidString.prefix(8)),"password":pass,"agreed":true])
+        let sender=try XCTUnwrap(ar.user?.id), peer=try XCTUnwrap(br.user?.id)
+        _=try await a.request("logout")
+        let login=try await a.request("login",["username":name,"password":pass])
+        XCTAssertEqual(login.user?.id,sender)
+        let r=try await a.request("posts.create",["body":"校园测试中的第一篇有效帖子","anonymous":false,"requestId":UUID().uuidString])
+        let post=try XCTUnwrap(r.post?.id)
+        _=try await b.request("comments.create",["body":"来自另一账号的有效评论","anonymous":false,"postId":post,"requestId":UUID().uuidString])
+        for _ in 0..<2 { _=try await b.request("reactions.set",["postId":post,"kind":"like","enabled":true]) }
+        let hall=try await a.request("honors.hall")
+        XCTAssertNotNil(hall.hall?.awards["firstpost"]);XCTAssertEqual(hall.hall?.progress?["likes"],1)
+        do{_=try await b.request("honors.manage");XCTFail("Member received management data")}catch let e as TreeholeError{XCTAssertEqual(e.code,"forbidden")}
+        let opened=try await a.request("messages.open",["memberId":peer])
+        let thread=try XCTUnwrap(opened.conversation?.id)
+        let body=["conversationId":thread,"requestId":UUID().uuidString,"body":"你好，这是本地测试私信。"]
+        let first=try await a.request("messages.send",body)
+        let retry=try await a.request("messages.send",body)
+        XCTAssertEqual(try XCTUnwrap(first.message?.id),retry.message?.id)
+        let history=try await b.request("messages.list",["conversationId":thread])
+        XCTAssertEqual(history.messages?.count,1);XCTAssertEqual(history.messages?.first?.mine,false)
+    }
 }

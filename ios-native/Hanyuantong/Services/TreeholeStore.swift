@@ -105,6 +105,19 @@ import Combine
         let old=epoch
         if let cached=await api.cachedIdentity(), old == epoch, !ready, !busy, user == nil { user=cached }
     }
+    /// An upgraded installation can already have a valid Keychain token before its first visit to Community.
+    func restoreGalleryIdentity() async throws {
+        guard user == nil else { return }
+        let expected=epoch
+        if let cached=await api.cachedIdentity() {
+            if epoch == expected && user == nil { user=cached }
+            return
+        }
+        do {
+            let response=try await api.request("me")
+            if !Task.isCancelled,epoch == expected,user == nil {user=response.user}
+        } catch let error as TreeholeError where error.code == "session_expired" { return }
+    }
     func enter() {
         perform {
             do {
