@@ -3,7 +3,7 @@ import {ref,computed,nextTick,onMounted,onUnmounted} from 'vue';
 import {Search,ChevronRight,ArrowLeft,RefreshCw,ShieldCheck} from 'lucide-vue-next';
 import {treeholeError,treeholeErrorCode,type TreeholePost,type TreeholeComment,type TreeholeReport,type TreeholeResult,type TreeholeModeration} from '../services/treehole';
 const props=defineProps<{request:(action:string,body?:Record<string,unknown>)=>Promise<TreeholeResult>;initialTarget?:{postId:string;commentId?:string|null}|null}>();
-const emit=defineEmits<{changed:[];expired:[]}>();
+const emit=defineEmits<{changed:[removedPostId?:string];expired:[]}>();
 const tab=ref<'reports'|'content'|'history'>('reports'),reports=ref<TreeholeReport[]>([]),posts=ref<TreeholePost[]>([]),history=ref<TreeholeModeration[]>([]),query=ref(''),busy=ref(false),error=ref(''),notice=ref(''),more=ref(false);
 const target=ref<{postId:string;commentId?:string|null;reportId?:string|null;reportReason?:string}|null>(null),post=ref<TreeholePost|null>(null),comment=ref<TreeholeComment|null>(null),comments=ref<TreeholeComment[]>([]),parentComment=ref<TreeholeComment|null>(null),removed=ref(false),reason=ref(''),decision=ref(''),confirm=ref(false);
 const labels:Record<string,string>={remove:'删除内容',lock:'暂停整篇回复',unlock:'恢复整篇回复',ban:'禁言作者 7 天',dismiss:'无需处理',grant_moderator:'授予管理员'};
@@ -27,7 +27,15 @@ async function context(next:NonNullable<typeof target.value>){const result=await
 function open(next:NonNullable<typeof target.value>){void run(()=>context(next))}
 function back(){if(busy.value)return;target.value=null;confirm.value=false;error.value='';void restoreQueue()}
 function changedInput(){confirm.value=false;requestId=crypto.randomUUID()}
-async function submit(){if(!target.value||!confirm.value)return;const selected={...target.value},key=requestId;await props.request('admin.action',{...selected,requestId:key,decision:decision.value,reason:reason.value.trim()});if(!alive)return;emit('changed');target.value=null;confirm.value=false;notice.value='处理已完成，操作记录已保存';await load();await restoreQueue()}
+async function submit(){
+ if(!target.value||!confirm.value)return;
+ const selected={...target.value},action=decision.value;
+ await props.request('admin.action',{...selected,requestId,decision:action,reason:reason.value.trim()});
+ if(!alive)return;
+ emit('changed',action==='remove'&&!selected.commentId?selected.postId:undefined);
+ target.value=null;confirm.value=false;notice.value='处理已完成，操作记录已保存';
+ await load();await restoreQueue();
+}
 function date(value:string){return new Date(value).toLocaleString('zh-CN',{hour12:false})}
 onMounted(()=>{void run(()=>props.initialTarget?context(props.initialTarget):load())});
 </script>
@@ -45,11 +53,11 @@ onMounted(()=>{void run(()=>props.initialTarget?context(props.initialTarget):loa
   <template v-else>
    <button class="admin-back" :disabled="busy" @click="back"><ArrowLeft :size="18"/>返回管理列表</button>
    <div v-if="target.reportReason" class="admin-report"><small>举报人的反馈</small><p>{{target.reportReason}}</p></div>
-   <p v-if="removed" class="admin-empty">原帖已删除，配图可能已清理。仍可将举报标记为无需处理。</p>
+   <p v-if="removed" class="admin-empty">原帖已删除，配图可能已清理。{{target.reportId?'仍可将举报标记为无需处理。':''}}</p>
    <article v-if="parentComment" class="admin-report"><small>这条评论回复的内容 · {{parentComment.author.name}}</small><p>{{parentComment.body}}</p></article>
    <article v-if="comment" class="admin-report"><small>正在处理的评论 · {{comment.author.name}}</small><p>{{comment.body}}</p><div class="admin-images"><a v-for="image in comment.images||[]" :key="image.id" :href="image.url||undefined" target="_blank" rel="noopener noreferrer"><img v-if="image.url" :src="image.url" alt="被管理评论的配图"/></a></div></article>
    <article v-if="post" class="admin-context"><small>{{post.author.name}} · {{date(post.createdAt)}}{{post.locked?' · 已暂停回复':''}}</small><h3 v-if="post.title">{{post.title}}</h3><p>{{post.body}}</p><div class="admin-images"><a v-for="image in post.images||[]" :key="image.id" :href="image.url||undefined" target="_blank" rel="noopener noreferrer"><img v-if="image.url" :src="image.url" alt="被管理帖子的配图"/><span v-else>配图暂不可用</span></a></div></article>
-   <form class="admin-decision" @submit.prevent="confirm?run(submit):(confirm=true)"><h3>处理决定</h3><fieldset class="action-choices"><legend>选择操作</legend><label v-for="key in availableActions" :key="key" :class="{danger:key==='remove'||key==='ban'}"><input v-model="decision" type="radio" name="moderation-action" :value="key" :disabled="busy" @change="changedInput"/>{{key==='remove'?(target.commentId?'删除这条评论':'删除这篇帖子'):labels[key]}}</label></fieldset><label>处理理由<textarea v-model="reason" required minlength="2" maxlength="300" rows="3" :disabled="busy" placeholder="填写你的判断，不会自动沿用举报理由" @input="changedInput"/></label><p v-if="decision==='remove'" class="admin-danger">删除将清理内容和配图，当前版本不支持恢复。</p><p v-if="decision==='lock'||decision==='unlock'" class="admin-muted">此操作影响整篇帖子，包含其下所有评论的回复入口。</p><div v-if="confirm" class="admin-confirm" role="alert"><strong>确认{{labels[decision]}}？</strong><p>操作对象 · {{target.commentId?'评论':'帖子'}}</p><blockquote>{{subject}}</blockquote><p>{{reason}}</p><button type="button" :disabled="busy" @click="confirm=false">返回修改</button></div><button class="admin-primary" :disabled="busy||!decision||reason.trim().length<2">{{confirm?'确认执行':'核对处理内容'}}</button></form>
+   <form v-if="availableActions.length" class="admin-decision" @submit.prevent="confirm?run(submit):(confirm=true)"><h3>处理决定</h3><fieldset class="action-choices"><legend>选择操作</legend><label v-for="key in availableActions" :key="key" :class="{danger:key==='remove'||key==='ban'}"><input v-model="decision" type="radio" name="moderation-action" :value="key" :disabled="busy" @change="changedInput"/>{{key==='remove'?(target.commentId?'删除这条评论':'删除这篇帖子'):labels[key]}}</label></fieldset><label>处理理由<textarea v-model="reason" required minlength="2" maxlength="300" rows="3" :disabled="busy" placeholder="填写你的判断，不会自动沿用举报理由" @input="changedInput"/></label><p v-if="decision==='remove'" class="admin-danger">删除将清理内容和配图，当前版本不支持恢复。</p><p v-if="decision==='lock'||decision==='unlock'" class="admin-muted">此操作影响整篇帖子，包含其下所有评论的回复入口。</p><div v-if="confirm" class="admin-confirm" role="alert"><strong>确认{{labels[decision]}}？</strong><p>操作对象 · {{target.commentId?'评论':'帖子'}}</p><blockquote>{{subject}}</blockquote><p>{{reason}}</p><button type="button" :disabled="busy" @click="confirm=false">返回修改</button></div><button class="admin-primary" :disabled="busy||!decision||reason.trim().length<2">{{confirm?'确认执行':'核对处理内容'}}</button></form>
    <section v-if="!target.commentId&&comments.length" class="admin-comments"><h3>最近上下文 · 最早 {{comments.length}} 条评论</h3><button v-for="c in comments" :key="c.id" class="admin-row" :disabled="busy||c.deleted" @click="open({postId:target.postId,commentId:c.id})"><div><small>{{c.author.name}}{{c.replyTo?' · 楼中楼回复':''}}</small><p>{{c.body}}</p></div><ChevronRight :size="18"/></button><p class="admin-muted">更多评论可在社区帖子中选择“管理此内容”。</p></section>
   </template>
  </section>

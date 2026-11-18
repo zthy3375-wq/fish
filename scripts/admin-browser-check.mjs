@@ -71,6 +71,12 @@ try{
   const subject=await api.execute('register',{username:'admin_subject_'+width,nickname:'测试同学',password:'synthetic-long-password',agreed:true},'','seed'+width);
   const call=(action,body)=>api.execute(action,body,subject.sessionToken,'seed'+width);
   const p=(await call('posts.create',{title:`图书馆讨论需要核实 · ${width}`,body:'这是隔离测试内容，用于检查管理员能否看到完整上下文。',anonymous:true,requestId:crypto.randomUUID()})).post;
+  const directPost=(await call('posts.create',{
+   title:`待处理的未举报测试帖 · ${width}`,
+   body:'这条测试帖没有被举报，用来检查管理员能否直接删除。',
+   anonymous:true,
+   requestId:crypto.randomUUID(),
+  })).post;
   const c=(await call('comments.create',{postId:p.id,body:'这是被举报评论，不能只看到一句举报理由。',anonymous:true,requestId:crypto.randomUUID()})).comment;
   await call('reports.create',{postId:p.id,commentId:c.id,reason:'举报人的判断，需要进一步核实'});
   await page.reload();await page.locator('.th-self').click();await page.getByRole('button',{name:process.env.ADMIN_BASELINE==='1'?'处理举报':'管理中心',exact:true}).click();
@@ -88,7 +94,52 @@ try{
   await page.getByRole('button',{name:new RegExp(p.title)}).click();await page.getByRole('radio',{name:'恢复整篇回复',exact:true}).check();await page.getByLabel('处理理由',{exact:true}).fill('确认讨论可继续');await page.getByRole('button',{name:'核对处理内容',exact:true}).click();await page.getByRole('button',{name:'确认执行',exact:true}).click();await page.getByText('处理已完成，操作记录已保存',{exact:true}).waitFor();
   await page.locator('html').evaluate(el=>el.dataset.theme='dark');await page.screenshot({path:path.join(output,`admin-dark-${width}.png`),animations:'disabled'});await page.setViewportSize({width,height:520});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(output,`admin-short-${width}.png`),animations:'disabled'});
   await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.locator('.th-post').filter({hasText:p.title}).getByRole('button',{name:'帖子操作',exact:true}).click();await page.getByRole('button',{name:'管理此内容',exact:true}).click();await page.getByRole('heading',{name:p.title,exact:true}).waitFor();
-  checks.push(`${width}: real report context, independent reason, two-step confirmation, lock/history/search/unlock, dark and short viewport`);assert.deepEqual(a.errors,[]);await a.context.close();
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();
+  const directCard=page.locator('.th-post').filter({hasText:directPost.title});
+  await directCard.getByRole('button',{name:'帖子操作',exact:true}).click();
+  await page.getByRole('button',{name:'管理此内容',exact:true}).click();
+  await page.getByRole('heading',{name:directPost.title,exact:true}).waitFor();
+  const deletionReason='核对原帖后完成直接删帖验收';
+  await page.getByRole('radio',{name:'删除这篇帖子',exact:true}).check();
+  await page.getByLabel('处理理由',{exact:true}).fill(deletionReason);
+  await page.getByRole('button',{name:'核对处理内容',exact:true}).click();
+  await page.locator('.admin-confirm blockquote').filter({hasText:directPost.title}).waitFor();
+  assert.equal((await call('posts.get',{postId:directPost.id})).post.id,directPost.id);
+  await page.getByRole('button',{name:'确认执行',exact:true}).scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(output,`admin-direct-delete-confirm-${width}.png`),animations:'disabled'});
+  await page.getByRole('button',{name:'确认执行',exact:true}).click();
+  await page.getByText('处理已完成，操作记录已保存',{exact:true}).waitFor();
+  await assert.rejects(call('posts.get',{postId:directPost.id}),{code:'not_found'});
+  const removal=a.state.requests.find(({action,body})=>action==='admin.action'&&body.postId===directPost.id);
+  assert.equal(removal.body.reportId,undefined);
+  const {history}=await api.execute('admin.history',{},a.state.token,'assert');
+  const matching=history.filter(event=>event.postId===directPost.id);
+  assert.equal(matching.length,1);
+  assert.equal(matching[0].action,'remove');
+  assert.equal(matching[0].reason,deletionReason);
+  await page.getByRole('button',{name:'操作记录',exact:true}).click();
+  const deletionLog=page.locator('.admin-record').filter({hasText:deletionReason}).first();
+  await deletionLog.waitFor();
+  await page.screenshot({path:path.join(output,`admin-direct-delete-history-${width}.png`),animations:'disabled'});
+  await deletionLog.getByRole('button',{name:'查看操作对象',exact:true}).click();
+  await page.getByText('原帖已删除，配图可能已清理。',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('处理理由',{exact:true}).count(),0);
+  // A failed refresh must not resurrect an already deleted card in the feed.
+  a.state.failNextFeed=true;
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'连接失败，请检查网络后重试'}).waitFor();
+  assert.equal(await directCard.count(),0);
+  await page.locator('.th-post').filter({hasText:p.title}).waitFor();
+
+  if(width===390){
+   const regular=await client(width);
+   regular.state.token=subject.sessionToken;
+   await regular.page.reload();
+   await regular.page.locator('.th-post').filter({hasText:p.title}).getByRole('button',{name:'帖子操作',exact:true}).click();
+   assert.equal(await regular.page.getByRole('button',{name:'管理此内容',exact:true}).count(),0);
+   await regular.context.close();
+  }
+  checks.push(`${width}: real report context, two-step confirmation, lock/history/search/unlock, and direct unreported post removal with audit and refresh failure`);assert.deepEqual(a.errors,[]);await a.context.close();
  }
  await writeFile(path.join(output,'checks.json'),JSON.stringify({checks,synthetic:true,backend:'PGlite + HTTP',baseline:process.env.ADMIN_BASELINE==='1'},null,2));
  console.log(JSON.stringify({passed:checks.length,baseline:process.env.ADMIN_BASELINE==='1'}));
