@@ -1,0 +1,30 @@
+name: Global test.28 existing academic and community interactions
+on:
+  push:
+    branches: [ops/global-collection-upgrade-20261118]
+    paths: ['.github/workflows/global-web-regression.yml']
+permissions:
+  contents: read
+jobs:
+  existing-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 61005b4e2ce26f3f5116f938b9ac0c0cb540215f
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm ci --prefix cloudbase/functions/community --ignore-scripts
+      - run: npm run build
+      - run: npx playwright install chromium
+      - run: node scripts/academic-browser-check.mjs
+      - run: node scripts/admin-browser-check.mjs
+      - run: node scripts/treehole-browser-check.mjs
+      - run: node scripts/community-messages-browser-check.mjs
+      - run: |
+          node scripts/treehole-preview.mjs /tmp/community-review-preview.html
+          node scripts/treehole-preview-check.mjs /tmp/community-review-preview.html
+          node scripts/treehole-touch-check.mjs /tmp/community-review-preview.html
