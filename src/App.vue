@@ -768,7 +768,7 @@ onUnmounted(() => {
               @select="(id) => (id === 'app-update' ? checkUpdates(true) : open(id))"
             />
             <p class="footnote source-footnote">
-              <ShieldCheck :size="13" />不保存教务密码 · 无广告 · 匿名统计可关闭
+              <ShieldCheck :size="13" />不保存教务密码 · 无广告
             </p>
             </div>
           </template>

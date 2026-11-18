@@ -44,3 +44,26 @@ it('old response services keep useful and hug while an unavailable joy never wri
 it('adding a poll expands only its editor and prevents publication until the choices are complete',async()=>{
  await mount();button('发帖').click();await wait(()=>!!button('添加投票'));button('添加投票').click();await nextTick();expect(root.querySelector('[aria-label="编辑投票"]')).not.toBeNull();expect(root.querySelector<HTMLButtonElement>('.th-publish')!.disabled).toBe(true);for(const [label,value] of [['投票问题','周末去哪'],['投票选项 1','图书馆'],['投票选项 2','操场']]){const input=root.querySelector<HTMLInputElement>('[aria-label="'+label+'"]')!;input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));await nextTick();}await nextTick();expect(root.querySelector<HTMLButtonElement>('.th-publish')!.disabled).toBe(false);button('移除投票').click();await nextTick();expect(root.querySelector('[aria-label="编辑投票"]')).toBeNull();
 });
+
+it('fetches fresh unread counts on explicit refresh and throttles passive visibility changes',async()=>{
+ const visibility=vi.spyOn(document,'hidden','get').mockReturnValue(false);
+ const previous=bridge.execute.getMockImplementation()!;
+ let reads=0;
+ bridge.execute.mockImplementation((...args)=>{
+  if(args[0]==='notifications.unread'){
+   reads++;
+   return Promise.resolve({unreadCount:reads===1?0:2,messageUnreadCount:0});
+  }
+  return previous(...args);
+ });
+ try{
+  await mount();
+  await wait(()=>reads===1);
+  document.dispatchEvent(new Event('visibilitychange'));
+  await nextTick();
+  expect(reads).toBe(1);
+  button('刷新树洞').click();
+  await wait(()=>root.querySelector('.th-unread-badge')?.textContent==='2');
+  expect(reads).toBe(2);
+ }finally{visibility.mockRestore();}
+});
