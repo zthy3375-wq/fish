@@ -18,10 +18,10 @@ async function request(action,body,token){
 const config=(await request('config')).body;assert.ok([10,12].includes(config.schema));assert.equal(config.simpleRegistration,true);
 const identity=await fetch('https://'+env+'.api.tcloudbasegateway.com/v1/rdb/exec-pgsql',{method:'POST',headers:{Authorization:'Bearer '+process.env.CLOUDBASE_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({sql:'SELECT current_user AS role',parameters:[]}),signal:AbortSignal.timeout(25000)});
 assert.ok(identity.ok);const role=(await identity.json())[0]?.role;
-const username='honors_verify_'+randomBytes(10).toString('hex'),password=randomBytes(24).toString('base64url');
+const username='honor_qa_'+randomBytes(8).toString('hex'),password=randomBytes(24).toString('base64url');
 let uid;
 try{
- const fixture=await request('register',{username,password,agreed:true});assert.equal(fixture.status,201);
+ const fixture=await request('register',{username,password,agreed:true});assert.equal(fixture.status,201,fixture.body.error||'create smoke fixture');
  uid=fixture.body.user.id;assert.match(uid,/^[a-f0-9-]{36}$/);const oldSession=fixture.body.sessionToken;assert.equal(fixture.body.user.role,'member');
  await sql(buildHonorMigration(previous,next,role));console.log('Atomic migration succeeded; pre-existing business row fingerprints preserved and direct gateway grants denied');
  execFileSync('python3',['scripts/cloudbase/update-community-code.py'],{stdio:'inherit'});
