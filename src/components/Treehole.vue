@@ -22,7 +22,7 @@ import TreeholeBoardPicker from './TreeholeBoardPicker.vue';
 import TreeholeLike from './TreeholeLike.vue';
 import TreeholePostCard from './TreeholePostCard.vue';
 import {treeholeTimestamp} from '../domain/treeholePresentation';
-import {treeholeRequest as request,treeholeError,treeholeErrorCode,type TreeholeResponseKind,type TreeholeUser,type TreeholePost,type TreeholeComment,type TreeholeReport,type TreeholeNotification,type TreeholeProfile,type TreeholeFollow,type TreeholeSocial,type TreeholeMessageDraft,type TreeholePoll,type TreeholePollDraft,type TreeholeBuddy,type TreeholeBuddyDraft,type TreeholeBuddyMember} from '../services/treehole';
+import {treeholeRequest as request,treeholeError,treeholeErrorCode,type TreeholeResult,type TreeholeResponseKind,type TreeholeUser,type TreeholePost,type TreeholeComment,type TreeholeReport,type TreeholeNotification,type TreeholeProfile,type TreeholeFollow,type TreeholeSocial,type TreeholeMessageDraft,type TreeholePoll,type TreeholePollDraft,type TreeholeBuddy,type TreeholeBuddyDraft,type TreeholeBuddyMember} from '../services/treehole';
 
 const props=withDefaults(defineProps<{tabRoot?:boolean}>(),{tabRoot:false});
 const keyboardNavigation=ref(false),joyEnabled=ref(false),postInput=ref<HTMLTextAreaElement>();
@@ -74,14 +74,14 @@ const emit=defineEmits<{exit:[];tabNavigation:[visible:boolean]}>();
 const searchOpen=ref(false),showPassword=ref(false),replyInput=ref<HTMLTextAreaElement>(),searchInput=ref<HTMLInputElement>();
 const dialogElement=ref<HTMLElement>(),dialogMotion=ref('th-sheet-motion');
 const user=ref<TreeholeUser|null>(null),busy=ref(false),ready=ref(false),error=ref(''),notice=ref('');
-const registration=ref(false),inviteRequired=ref(false),auth=ref<'login'|'register'|'recover'>('login');
-const username=ref(''),password=ref(''),nickname=ref(''),invite=ref(''),agreed=ref(false),recoveryInput=ref(''),recovery=ref('');
+const registration=ref(false),combinedUnread=ref(false),auth=ref<'login'|'register'|'recover'>('login');
+const username=ref(''),password=ref(''),nickname=ref(''),optionalRecovery=ref(''),recoveryInput=ref(''),recovery=ref('');
 type Screen='feed'|'compose'|'detail'|'account'|'moderate'|'inbox'|'profile'|'following'|'messages';
 const screen=ref<Screen>('feed');
 const engagementEnabled=ref(false),unreadCount=ref(0),notifications=ref<TreeholeNotification[]>([]),inboxFilter=ref('all'),inboxLoading=ref(false),inboxError=ref(''),inboxNext=ref<Record<string,string>|null>(null);
 const profile=ref<TreeholeProfile|null>(null),profilePosts=ref<TreeholePost[]>([]),profileNext=ref<Record<string,string>|null>(null),bio=ref('');
 const focusedThread=ref<TreeholeComment|null>(null),focusedCommentId=ref(''),watchPending=ref(false);
-let inboxRevision=0,unreadBusy=false,unreadTimer:ReturnType<typeof setInterval>|undefined;
+let lastUnreadAt=-Infinity,inboxRevision=0,unreadBusy=false,unreadTimer:ReturnType<typeof setInterval>|undefined;
 const routeHistory:Array<{screen:Screen;scroll:number;detail:TreeholePost|null;comments:TreeholeComment[];commentNext:Record<string,string>|null;profile:TreeholeProfile|null;profilePosts:TreeholePost[];profileNext:Record<string,string>|null;context:TreeholeComment|null}>=[];
 const scopeLabels:Record<string,string>={joined:'我报名的',mine:'我的帖子',saved:'我的收藏',participated:'我参与的',watching:'关注的讨论',following:'关注动态'};
 const posts=ref<TreeholePost[]>([]),scope=ref('all'),query=ref(''),feedNext=ref<Record<string,string>|null>(null);
@@ -214,7 +214,7 @@ async function run(work:()=>Promise<void>){
  try{await work();}catch(e){if(alive){error.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'){clearAccount();}}}
  finally{if(alive)busy.value=false;}
 }
-function clearAccount(){boardPicker.value=null;draftRevision++;postUpload.value=null;commentUpload.value=null;social.value=null;socialError.value='';peopleKind.value='following';messageUnread.value=0;messageDrafts.value={};messageMember.value=undefined;continueScope.value='participated';fabCollapsed.value=false;buddySnapshots.clear();pendingBuddies.value={};buddyDraft.value=null;buddyRoster.value=null;pollSnapshots.clear();pendingVotes.value={};pollDraft.value=null;commentImages.value=[];followingRevision++;following.value=[];followingNext.value=null;followingLoading.value=false;followingError.value='';pendingFollows.value={};scope.value='all';query.value='';avatarCandidate.value=null;pendingResponses.value={};accountEpoch++;inboxRevision++;inboxLoading.value=false;inboxError.value='';notifications.value=[];unreadCount.value=0;inboxNext.value=null;profile.value=null;profilePosts.value=[];profileNext.value=null;focusedThread.value=null;focusedCommentId.value='';routeHistory.length=0;restoringScroll=null;watchPending.value=false;bio.value='';detailRequest++;detailEpoch++;detailLoading.value=false;detailError.value='';feedRevision.value++;feedLoadingMore.value=false;feedPageError.value='';feedNext.value=null;commentNext.value=null;appliedFeedKey='';feedNeedsRefresh=false;feedScroll=0;feedAnchor=null;pendingReactions.value={};pendingLikes.value={};loadingThreads.value={};loadedThreads.clear();replyExpanded.value=false;draftReady.value=false;postTitle.value='';images.value=[];category.value='all';interest.value='';sort.value='latest';showPassword.value=false;searchOpen.value=false;auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';commentImages.value=[];reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
+function clearAccount(){optionalRecovery.value='';lastUnreadAt=-Infinity;boardPicker.value=null;draftRevision++;postUpload.value=null;commentUpload.value=null;social.value=null;socialError.value='';peopleKind.value='following';messageUnread.value=0;messageDrafts.value={};messageMember.value=undefined;continueScope.value='participated';fabCollapsed.value=false;buddySnapshots.clear();pendingBuddies.value={};buddyDraft.value=null;buddyRoster.value=null;pollSnapshots.clear();pendingVotes.value={};pollDraft.value=null;commentImages.value=[];followingRevision++;following.value=[];followingNext.value=null;followingLoading.value=false;followingError.value='';pendingFollows.value={};scope.value='all';query.value='';avatarCandidate.value=null;pendingResponses.value={};accountEpoch++;inboxRevision++;inboxLoading.value=false;inboxError.value='';notifications.value=[];unreadCount.value=0;inboxNext.value=null;profile.value=null;profilePosts.value=[];profileNext.value=null;focusedThread.value=null;focusedCommentId.value='';routeHistory.length=0;restoringScroll=null;watchPending.value=false;bio.value='';detailRequest++;detailEpoch++;detailLoading.value=false;detailError.value='';feedRevision.value++;feedLoadingMore.value=false;feedPageError.value='';feedNext.value=null;commentNext.value=null;appliedFeedKey='';feedNeedsRefresh=false;feedScroll=0;feedAnchor=null;pendingReactions.value={};pendingLikes.value={};loadingThreads.value={};loadedThreads.clear();replyExpanded.value=false;draftReady.value=false;postTitle.value='';images.value=[];category.value='all';interest.value='';sort.value='latest';showPassword.value=false;searchOpen.value=false;auth.value='login';user.value=null;posts.value=[];detail.value=null;comments.value=[];body.value='';commentBody.value='';commentImages.value=[];reply.value=null;recovery.value='';password.value='';newPassword.value='';recoveryInput.value='';screen.value='feed';menu.value=null;reportTarget.value=null;}
 function feedCriteria(){return {scope:scope.value,query:query.value,...treeholeFeedFilters(category.value,interest.value,discoveryEnabled.value),sort:sort.value};}
 function feedKey(){return JSON.stringify(feedCriteria());}
 function appendUnique<T extends {id:string}>(current:T[],incoming:T[]){
@@ -265,9 +265,9 @@ function previousRoute(){
  if(previous.screen==='following')void loadFollowing();if(previous.screen==='account')void refreshSocial();
 }
 async function refreshUnread(){
- if(!engagementEnabled.value||!user.value||!active||document.hidden||unreadBusy)return;
- const epoch=accountEpoch;unreadBusy=true;
- try{const r=await api('notifications.unread');if(alive&&epoch===accountEpoch)unreadCount.value=r.unreadCount??0;if(alive&&epoch===accountEpoch&&messagesEnabled.value){const dm=await api('messages.unread');if(alive&&epoch===accountEpoch)messageUnread.value=dm.messageUnreadCount||0;}}
+ if(!engagementEnabled.value||!user.value||!active||document.hidden||unreadBusy||Date.now()-lastUnreadAt<180000)return;
+ const epoch=accountEpoch;unreadBusy=true;lastUnreadAt=Date.now();
+ try{const r=await api('notifications.unread',combinedUnread.value?{withMessages:true}:{});if(alive&&epoch===accountEpoch)unreadCount.value=r.unreadCount??0;if(alive&&epoch===accountEpoch&&typeof r.messageUnreadCount==='number')messageUnread.value=r.messageUnreadCount;else if(alive&&epoch===accountEpoch&&messagesEnabled.value){const dm=await api('messages.unread');if(alive&&epoch===accountEpoch)messageUnread.value=dm.messageUnreadCount||0;}}
  catch(e){if(treeholeErrorCode(e)==='session_expired')actionError(e,epoch);}
  finally{unreadBusy=false;}
 }
@@ -275,7 +275,7 @@ async function loadInbox(more=false){
  if(inboxLoading.value||!user.value)return;
  const epoch=accountEpoch,revision=++inboxRevision,filter=inboxFilter.value;
  inboxLoading.value=true;inboxError.value='';
- try{const r=await api('notifications.list',{filter,...(more?inboxNext.value:{})});if(!alive||epoch!==accountEpoch||revision!==inboxRevision)return;notifications.value=more?appendUnique(notifications.value,r.notifications||[]):r.notifications||[];inboxNext.value=r.next||null;unreadCount.value=r.unreadCount??0;if(alive&&epoch===accountEpoch&&messagesEnabled.value){const dm=await api('messages.unread');if(alive&&epoch===accountEpoch)messageUnread.value=dm.messageUnreadCount||0;}}
+ try{const r=await api('notifications.list',{filter,...(combinedUnread.value?{withMessages:true}:{}),...(more?inboxNext.value:{})});if(!alive||epoch!==accountEpoch||revision!==inboxRevision)return;notifications.value=more?appendUnique(notifications.value,r.notifications||[]):r.notifications||[];inboxNext.value=r.next||null;unreadCount.value=r.unreadCount??0;if(alive&&epoch===accountEpoch&&typeof r.messageUnreadCount==='number')messageUnread.value=r.messageUnreadCount;else if(alive&&epoch===accountEpoch&&messagesEnabled.value){const dm=await api('messages.unread');if(alive&&epoch===accountEpoch)messageUnread.value=dm.messageUnreadCount||0;}}
  catch(e){if(epoch===accountEpoch&&revision===inboxRevision){inboxError.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired')actionError(e,epoch);}}
  finally{if(epoch===accountEpoch&&revision===inboxRevision)inboxLoading.value=false;}
 }
@@ -331,15 +331,34 @@ async function toggleWatch(post:TreeholePost){
  try{const r=await api('threads.watch',{postId:post.id,enabled:!post.watching});if(!alive||epoch!==accountEpoch||!r.post)return;for(const cached of [...posts.value,...profilePosts.value])if(cached.id===post.id)cached.watching=r.post.watching;if(detail.value?.id===post.id)detail.value.watching=r.post.watching;notice.value=r.post.watching?'已关注，有新回复时会出现在互动消息':'已取消关注，直接回复你仍会提醒';if(scope.value==='watching')feedNeedsRefresh=true;void refreshUnread();}
  catch(e){actionError(e,epoch);}finally{if(epoch===accountEpoch)watchPending.value=false;}
 }
+function applyConfig(config:TreeholeResult){
+ registration.value=config.registrationEnabled===true&&config.simpleRegistration===true;
+ combinedUnread.value=config.combinedUnread===true;
+ imagesEnabled.value=!!config.imagesEnabled;engagementEnabled.value=!!config.engagementEnabled;avatarsEnabled.value=!!config.avatarsEnabled;responsesEnabled.value=!!config.responsesEnabled;joyEnabled.value=config.responseKinds?.includes('joy')===true;discoveryEnabled.value=!!config.discoveryEnabled;boardsEnabled.value=discoveryEnabled.value&&config.boardsEnabled===true;followingEnabled.value=!!config.followingEnabled;socialEnabled.value=!!config.socialEnabled;messagesEnabled.value=!!config.messagesEnabled;pollsEnabled.value=!!config.pollsEnabled;buddiesEnabled.value=!!config.buddiesEnabled;commentImagesEnabled.value=!!config.commentImagesEnabled;moderationEnabled.value=!!config.moderationEnabled;
+}
 async function initialize(){await run(async()=>{
- const config=await api('config');if(!alive)return;registration.value=!!config.registrationEnabled;inviteRequired.value=!!config.requiresInvite;imagesEnabled.value=!!config.imagesEnabled;engagementEnabled.value=!!config.engagementEnabled;avatarsEnabled.value=!!config.avatarsEnabled;responsesEnabled.value=!!config.responsesEnabled;joyEnabled.value=config.responseKinds?.includes('joy')===true;discoveryEnabled.value=!!config.discoveryEnabled;boardsEnabled.value=discoveryEnabled.value&&config.boardsEnabled===true;followingEnabled.value=!!config.followingEnabled;socialEnabled.value=!!config.socialEnabled;messagesEnabled.value=!!config.messagesEnabled;pollsEnabled.value=!!config.pollsEnabled;buddiesEnabled.value=!!config.buddiesEnabled;commentImagesEnabled.value=!!config.commentImagesEnabled;moderationEnabled.value=!!config.moderationEnabled;
- try{const r=await api('me');if(!alive)return;user.value=r.user!;nickname.value=r.user!.nickname;await restoreDraft();await feed();}
- catch(e){if(treeholeErrorCode(e)!=='session_expired')throw e;}
- ready.value=true;void refreshUnread();
+ let entry:TreeholeResult|undefined;
+ try{entry=await api('me',{entry:true,boardTopics:true})}catch(e){if(treeholeErrorCode(e)!=='session_expired')throw e}
+ if(!alive)return;
+ const config=entry?.config??await api('config');
+ if(!alive)return;
+ applyConfig(config);ready.value=true;
+ if(!entry?.user)return;
+ user.value=entry.user;nickname.value=entry.user.nickname;
+ if(entry.config&&Array.isArray(entry.posts)){
+  posts.value=entry.posts;feedNext.value=entry.next??null;appliedFeedKey=feedKey();feedNeedsRefresh=false;
+  await restoreDraft();
+ }else await Promise.all([feed(),restoreDraft()]);
+ void refreshUnread();
 });}
 function authenticate(){void run(async()=>{
- const r=await api(auth.value,{username:username.value,password:password.value,nickname:nickname.value,invite:invite.value,agreed:agreed.value,recoveryCode:recoveryInput.value});
- password.value='';recoveryInput.value='';if(!alive)return;user.value=r.user!;nickname.value=r.user!.nickname;recovery.value=r.recoveryCode||'';screen.value='feed';posts.value=[];scope.value='all';query.value='';await restoreDraft();await feed();void refreshUnread();
+ const mode=auth.value;
+ const payload={username:username.value,password:password.value,...(mode==='register'?{agreed:true}:{}),...(mode==='recover'?{recoveryCode:recoveryInput.value}:{})};
+ const r=await api(mode,payload);
+ password.value='';recoveryInput.value='';if(!alive||!r.user)return;
+ user.value=r.user;nickname.value=r.user.nickname;optionalRecovery.value=mode==='register'?r.recoveryCode||'':'';
+ recovery.value=mode==='recover'?r.recoveryCode||'':'';screen.value='feed';posts.value=[];scope.value='all';query.value='';
+ await Promise.all([feed(),restoreDraft()]);void refreshUnread();
 });}
 function changeScope(next:string){if(busy.value)return;scope.value=next;if(next==='all')sort.value='latest';void run(()=>feed());}
 function compose(anon=false){postUpload.value=null;replyExpanded.value=false;reply.value=null;commentBody.value='';commentImages.value=[];commentAnon.value=false;commentKey.value=crypto.randomUUID();if(!body.value&&!postTitle.value&&!images.value.length&&!pollDraft.value&&!buddyDraft.value){anonymous.value=anon||category.value==='treehole';postCategory.value=category.value==='all'?'daily':category.value;postInterest.value=interest.value;postKey.value=crypto.randomUUID();}screen.value='compose';error.value='';}
@@ -481,7 +500,7 @@ watch([accountEntry,ready,busy,user,recovery],()=>{
 function account(){screen.value='account';void refreshSocial();void refreshUnread();nickname.value=user.value?.nickname||'';bio.value=user.value?.bio||'';password.value='';newPassword.value='';accountAction.value='overview';}
 function saveAccount(){void run(async()=>{
  if(accountAction.value==='profile'){const r=await api('profile.update',{nickname:nickname.value,...(engagementEnabled.value?{bio:bio.value}:{})});user.value=r.user!;feedNeedsRefresh=true;notice.value='资料已更新';}
- else if(accountAction.value==='password'){const r=await api('password.change',{password:password.value,newPassword:newPassword.value});password.value='';newPassword.value='';recovery.value=r.recoveryCode||'';notice.value='密码已更新，其他设备已退出';}
+ else if(accountAction.value==='password'){const r=await api('password.change',{password:password.value,newPassword:newPassword.value});password.value='';newPassword.value='';optionalRecovery.value='';recovery.value=r.recoveryCode||'';notice.value='密码已更新，其他设备已退出';}
  else confirmAction.value={title:'注销邯院通账号？你的帖子、评论、私信历史和登录状态将被删除，学校课表不受影响。',run:async()=>{await api('account.delete',{password:password.value});await clearDraft();confirmAction.value=null;clearAccount();notice.value='账号已注销';}};
 });}
 function logout(){confirmAction.value={title:'退出邯院通账号？',run:async()=>{await api('logout');await clearDraft();confirmAction.value=null;clearAccount();}};}
@@ -516,7 +535,7 @@ function requestBack(){
  if(!user.value&&auth.value!=='login'){auth.value='login';password.value='';return true;}return false;
 }
 function flushDraft(){clearTimeout(draftTimer);saveDraft();if(!document.hidden)void refreshUnread();}
-function bindEvents(){document.addEventListener('visibilitychange',flushDraft);document.addEventListener('keydown',trapKeys,true);window.addEventListener('resize',sizePostInput,{passive:true});window.addEventListener('scroll',trackDetailScroll,{passive:true});window.addEventListener('wheel',manualScroll,{passive:true});if(!unreadTimer)unreadTimer=setInterval(()=>void refreshUnread(),60000);}
+function bindEvents(){document.addEventListener('visibilitychange',flushDraft);document.addEventListener('keydown',trapKeys,true);window.addEventListener('resize',sizePostInput,{passive:true});window.addEventListener('scroll',trackDetailScroll,{passive:true});window.addEventListener('wheel',manualScroll,{passive:true});if(!unreadTimer)unreadTimer=setInterval(()=>void refreshUnread(),180000);}
 function unbindEvents(){document.removeEventListener('visibilitychange',flushDraft);document.removeEventListener('keydown',trapKeys,true);window.removeEventListener('resize',sizePostInput);window.removeEventListener('scroll',trackDetailScroll);window.removeEventListener('wheel',manualScroll);cancelAnimationFrame(scrollFrame);clearInterval(unreadTimer);unreadTimer=undefined;}
 defineExpose({requestBack,refresh});
 onMounted(()=>{void initialize();bindEvents();});
@@ -546,15 +565,13 @@ onUnmounted(()=>{clearTimeout(draftTimer);saveDraft();alive=false;active=false;c
       <div class="th-welcome"><div class="th-welcome-art" aria-hidden="true"><span class="th-bubble"><MessageCircle :size="37"/></span><span class="th-mask"><VenetianMask :size="29"/></span><Sparkles class="th-spark" :size="22"/></div><p class="th-eyebrow">邯院通 · 校园社区</p><h2>{{auth==='login'?'说说校园里的那些事':auth==='register'?'遇见校园里的同频人':'把账号找回来'}}</h2><p>分享日常，认真倾听。<br>用昵称相遇，也可以匿名说说心里话。</p></div>
       <form class="th-card th-auth" @submit.prevent="authenticate">
        <div class="th-form-heading"><h3>{{auth==='login'?'登录邯院通':auth==='register'?'创建邯院通账号':'找回邯院通账号'}}</h3><span>与教务账号独立</span></div>
-       <label>登录账号<input v-model="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="24" placeholder="字母开头，4–24 位" required :disabled="busy"/></label>
-       <label v-if="auth==='register'">公开昵称<input v-model="nickname" autocomplete="nickname" minlength="2" maxlength="20" placeholder="同学们看到的名字" required :disabled="busy"/></label>
+       <label>登录账号<input v-model="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" placeholder="中文、数字、邮箱或其他账号" required :disabled="busy"/></label>
        <label v-if="auth==='recover'">账号恢复码<input v-model="recoveryInput" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="64" placeholder="注册时保存的恢复码" required :disabled="busy"/></label>
        <label>{{auth==='recover'?'新密码':'密码'}}<span class="th-password"><input v-model="password" :type="showPassword?'text':'password'" :autocomplete="auth==='login'?'current-password':'new-password'" minlength="10" maxlength="128" placeholder="至少 10 位" required :disabled="busy"/><button type="button" :aria-label="showPassword?'隐藏密码':'显示密码'" :disabled="busy" @click="showPassword=!showPassword"><EyeOff v-if="showPassword" :size="18"/><Eye v-else :size="18"/></button></span></label>
-       <label v-if="auth==='register'&&inviteRequired">内测邀请码<input v-model="invite" autocomplete="off" placeholder="输入邀请码，一起逛逛树洞" required :disabled="busy"/></label>
-       <label v-if="auth==='register'" class="th-check"><input v-model="agreed" type="checkbox" required :disabled="busy"/><span>我已阅读并同意树洞规则与账号服务说明</span></label>
-       <button class="th-primary th-wide" type="submit" :disabled="busy||auth==='register'&&(!agreed||!registration)">{{auth==='login'?'登录树洞':auth==='register'?'创建账号':'重设密码并登录'}}<ChevronRight :size="17"/></button>
+       <p v-if="auth==='register'" class="th-muted">点击「创建账号」即同意下方社区规则。公开昵称会自动生成，可随时修改。</p>
+       <button class="th-primary th-wide" type="submit" :disabled="busy||auth==='register'&&!registration">{{auth==='login'?'登录树洞':auth==='register'?'创建账号':'重设密码并登录'}}<ChevronRight :size="17"/></button>
        <div class="th-auth-links"><button v-if="auth!=='register'&&registration" type="button" :disabled="busy" @click="auth='register';password='';showPassword=false;error=''">注册账号</button><button v-if="auth!=='login'" type="button" :disabled="busy" @click="auth='login';password='';showPassword=false;error=''">返回登录</button><button v-if="auth==='login'" type="button" :disabled="busy" @click="auth='recover';password='';showPassword=false;error=''">忘记密码</button></div>
-       <p v-if="!registration" class="th-muted">树洞正在准备内测，暂未开放新账号注册。</p>
+       <p v-if="!registration" class="th-muted">新账号注册暂未开放，已有账号可以直接登录。</p>
       </form>
       <details class="th-rules"><summary><ShieldCheck :size="15"/>树洞规则与匿名说明</summary><p>尊重同学，勿发布他人隐私、辱骂、骚扰、垃圾广告或违法内容。可举报、删除自己的内容和注销账号。匿名会对其他用户隐藏昵称与账号，后台保留账号关联用于处理举报；不同帖子使用不同匿名代号。同一帖子内的匿名发言可关联。昵称发帖后改为匿名回复时，请留意内容本身是否暴露身份。</p><p>账号服务保存登录账号、昵称、密码加密摘要、帖子、关注关系、私信、互动与举报记录，用于登录及社区服务。私信不公开展示，内容存储在社区服务端；发送方和接收方使用邯院通昵称。教务账号与课表不会上传到社区。可以在账号设置中注销。</p></details>
      </template>
@@ -632,7 +649,7 @@ onUnmounted(()=>{clearTimeout(draftTimer);saveDraft();alive=false;active=false;c
         <div v-if="buddiesEnabled" class="th-profile-shortcuts"><button :disabled="busy" @click="accountFeed('joined')"><MessagesSquare :size="22"/><strong>我报名的</strong><small>查看进展、回来继续聊</small></button></div>
         <div class="th-profile-shortcuts"><button :disabled="busy" @click="accountFeed('mine')"><PenLine :size="22"/><strong>我的帖子</strong><small>记录校园里的日常</small></button><button :disabled="busy" @click="accountFeed('saved')"><Bookmark :size="22"/><strong>我的收藏</strong><small>留住喜欢的内容</small></button></div>
         <div v-if="engagementEnabled" class="th-profile-shortcuts"><button :disabled="busy" @click="accountFeed('participated')"><MessagesSquare :size="22"/><strong>我参与的</strong><small>把上次的话接着聊</small></button><button :disabled="busy" @click="showInbox"><Bell :size="22"/><strong>互动消息 <span v-if="unreadCount">{{unreadCount}}</span></strong><small>回应与讨论的后续</small></button></div>
-        <section class="th-settings"><button v-if="followingEnabled" :disabled="busy" @click="showFollowing()"><AtSign :size="19"/><span>我关注的人</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="accountAction='profile'"><PenLine :size="19"/><span>修改昵称</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="accountAction='password'"><LockKeyhole :size="19"/><span>修改密码与恢复码</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="run(async()=>{await api('blocks.clear');feedNeedsRefresh=true;notice='已恢复屏蔽的内容'})"><Eye :size="19"/><span>恢复已屏蔽的内容</span><ChevronRight :size="17"/></button><button v-if="user.role==='moderator'" :disabled="busy" @click="moderate"><ShieldCheck :size="19"/><span>{{moderationEnabled?'管理中心':'处理举报'}}</span><ChevronRight :size="17"/></button></section>
+        <section class="th-settings"><button v-if="optionalRecovery" :disabled="busy" @click="recovery=optionalRecovery;optionalRecovery=''"><ShieldCheck :size="19"/><span>保存账号恢复码（选填）</span><ChevronRight :size="17"/></button><button v-if="followingEnabled" :disabled="busy" @click="showFollowing()"><AtSign :size="19"/><span>我关注的人</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="accountAction='profile'"><PenLine :size="19"/><span>修改昵称</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="accountAction='password'"><LockKeyhole :size="19"/><span>修改密码与恢复码</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="run(async()=>{await api('blocks.clear');feedNeedsRefresh=true;notice='已恢复屏蔽的内容'})"><Eye :size="19"/><span>恢复已屏蔽的内容</span><ChevronRight :size="17"/></button><button v-if="user.role==='moderator'" :disabled="busy" @click="moderate"><ShieldCheck :size="19"/><span>{{moderationEnabled?'管理中心':'处理举报'}}</span><ChevronRight :size="17"/></button></section>
         <button class="th-logout" :disabled="busy" @click="logout"><LogOut :size="17"/>退出邯院通账号</button><button class="th-account-delete" :disabled="busy" @click="accountAction='delete'">注销账号</button>
        </template>
        <form v-else class="th-card" @submit.prevent="saveAccount"><h3>{{accountAction==='profile'?'换个喜欢的昵称':accountAction==='password'?'更新账号密码':'注销邯院通账号'}}</h3><label v-if="accountAction==='profile'">公开昵称<input v-model="nickname" minlength="2" maxlength="20" required :disabled="busy"/></label><label v-if="accountAction==='profile'&&engagementEnabled">个人简介<textarea v-model="bio" maxlength="120" rows="3" placeholder="简单介绍自己（选填）" :disabled="busy"/></label><template v-if="accountAction!=='profile'"><label>当前密码<input v-model="password" type="password" autocomplete="current-password" required minlength="10" :disabled="busy"/></label><label v-if="accountAction==='password'">新密码<input v-model="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required :disabled="busy"/></label><p v-else class="th-muted">注销将删除你的树洞帖子、评论、双方私信历史和登录状态。学校课表保留。</p></template><button class="th-primary th-wide" :disabled="busy">{{accountAction==='delete'?'继续注销':'保存'}}</button></form>

@@ -37,7 +37,7 @@ export function createServer(community,{allowedOrigins=[]}={}){
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const db=async(action,data,token)=>{const rows=await sql('SELECT public.hyt_community($1,$2::jsonb,$3) AS result',[action,JSON.stringify(data),token]);return rows[0]?.result;};
- const community=createCommunity({db,storage:cloudMedia(),registrationEnabled:process.env.COMMUNITY_REGISTRATION==='open',inviteHash:process.env.COMMUNITY_INVITE_HASH||'',rateSalt:process.env.COMMUNITY_RATE_SALT});
+ const community=createCommunity({db,storage:cloudMedia(),registrationEnabled:process.env.COMMUNITY_REGISTRATION==='open',rateSalt:process.env.COMMUNITY_RATE_SALT});
  const origins=['https://localhost','capacitor://localhost',...(process.env.COMMUNITY_WEB_ORIGINS||'').split(',').filter(Boolean)];
  createServer(community,{allowedOrigins:origins}).listen(Number(process.env.PORT||9000),'0.0.0.0');
 }

@@ -173,6 +173,9 @@ try{
   assert(await page.locator('.home-timeline button').count()===1&&JSON.stringify(await page.locator('.home-timeline .course-time-caption time').allTextContents())===JSON.stringify(['11:15','15:10']),`${width}: today's course name and start remain on the timeline`);
   await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur()});
   await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
+  const [shower,water]=await page.locator('.life-wallets .life-card').evaluateAll(cards=>cards.map(card=>{const {x,y,width,height}=card.getBoundingClientRect();return {x,y,width,height}}));
+  assert(Math.abs(shower.y-water.y)<2&&water.x>=shower.x+shower.width&&shower.height>=110,`${width}: both wallet tiles share a row and are directly tappable`);
+  await page.locator('.life-services').screenshot({path:path.join(output,`wallet-tiles-${width}.png`),animations:'disabled'});
   const homeTargets=await page.locator('.home-timeline-head button,.home-study-links button,.life-card,.life-utilities button').evaluateAll(els=>els.every(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.width>=44}));
   assert(homeTargets,`${width}: home course and service actions have 44px touch targets`);
   const oldTheme=await page.locator('html').getAttribute('data-theme');

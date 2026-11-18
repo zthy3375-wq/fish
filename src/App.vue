@@ -7,7 +7,7 @@ import HomeCourseTimeline from './components/HomeCourseTimeline.vue';
 import {courseProgress} from './domain/course-progress';
 import {scheduleViews} from './composables/view-state';
 import AnalyticsSettings from './components/AnalyticsSettings.vue';
-import {initAnalytics,flushAnalytics,recordFeature,refreshAnalytics} from './composables/analytics';
+import {retryLegacyDeletion} from './composables/analytics';
 import AppUpdateDialog from './components/AppUpdateDialog.vue';
 import {initializeUpdates,checkUpdates,updatesOpen,dismissUpdate,updateDeferred,updateDeferredReason} from './composables/updates';
 import {initPangguai,pangguai,pgBusy} from './composables/pangguai';
@@ -552,7 +552,7 @@ function escape(e: KeyboardEvent) {
   if(e.key === "Escape"){if(modal.value)requestClose();else if(agendaView.editor)taskDetailRef.value?.requestBack();}
 }
 const recalibrate = foregroundRefresh(async () => {
-  await Promise.allSettled([flushAnalytics(), refreshAnalytics(), checkUpdates(), syncLearning(), reloadTasks()]);
+  await Promise.allSettled([retryLegacyDeletion(), checkUpdates(), syncLearning(), reloadTasks()]);
   now.value = campusNow();
   if (document.visibilityState === "visible") {
     await refreshSchedule();
@@ -578,13 +578,8 @@ watch(()=>[modal.value,agendaView.editor,pgBusy.value,pangguai.value.water?.phas
   updateDeferred.value=!!modal.value||!!agendaView.editor||pgBusy.value||!!(phase&&!['settled','ended_zero','closed_unknown','archived_unverified'].includes(phase));
   updateDeferredReason.value=pgBusy.value?'正在处理接水或支付，请等待操作结束后再下载和安装。':phase&&!['settled','ended_zero','closed_unknown','archived_unverified'].includes(phase)?'检测到未结束的接水记录。请先在接水页面核对状态；若已在机身结算，可使用“已在机身结算，恢复扫码”。':updateDeferred.value?'请先完成当前操作或保存编辑，再下载和安装更新。':'';
 },{immediate:true});
-watch(()=>[page.value,section.value,modal.value] as const,([p,s,m])=>{
- if(m){const feature=({'quzhi-wallet':'shower','pangguai-wallet':'wallet',parcel:'parcel','campus-map':'map'} as const)[m as 'quzhi-wallet'];if(feature)void recordFeature(feature);return;}
- if(s==='learning')void recordFeature('learning');else if(s==='grades')void recordFeature('grades');else if(p==='schedule')void recordFeature('schedule');else if(p==='tasks')void recordFeature('tasks');
-});
-let analyticsTimer:ReturnType<typeof setInterval>;
 onMounted(async () => {
-  void initAnalytics();analyticsTimer=setInterval(()=>{if(document.visibilityState==='visible')void flushAnalytics()},60000);
+  void retryLegacyDeletion();
   void initPangguai().then(()=>initializeUpdates());
   load();
   void initTasks().catch(()=>{});
@@ -620,7 +615,6 @@ onUnmounted(() => {
   disposed = true;
   clearTimeout(toastTimer);
   clearInterval(clockTimer);
-  clearInterval(analyticsTimer);
   nativeBack?.remove();
   nativeForeground?.remove();
   media.removeEventListener("change", systemChange);
@@ -667,7 +661,6 @@ onUnmounted(() => {
           <template v-if="page === 'home'">
             <CampusHero :date="`${dateLabel(now)} · 周${weekdays[dayNumber(now)-1]}`" :week="week>=1&&week<=semester.weekCount?`第 ${week} 教学周`:'学期外'" :unread="!read&&prefs.notifications" :obscured="!!modal||updatesOpen||agendaView.editor" @notifications="open('notifications')"/>
             <div class="home-body">
-              <AnalyticsSettings prompt @policy="open('privacy')"/>
               <section class="home-course-panel" aria-label="课程速览">
                 <button v-if="homeFocus" class="home-next" :aria-label="'查看'+(current?'当前':'下一节')+'课程 '+homeFocus.name" @click="details(homeFocus)">
                   <span class="home-next-head"><span><GraduationCap :size="18"/>{{current?'正在上课':'下一节课'}}</span><span class="home-countdown">{{current?'还剩'+currentProgress?.remainingMinutes+'分钟':next?untilLabel(next.minutes):''}}</span></span>
@@ -1056,7 +1049,7 @@ onUnmounted(() => {
             <p>邯院通是免费的独立学生项目，提供课表、待办和校园生活服务。学校与生活服务数据以对应平台为准；付款前请核对设备、账户与金额。请勿分享账号密码、验证码或登录凭证。</p>
             <p>树洞使用独立邯院通账号。服务端保存登录账号、公开昵称、密码加密摘要、帖子、评论、互动及举报记录；教务账号和课表不传给社区。匿名发言向其他用户隐藏账号与昵称，后台保留关联用于处理举报。同一帖子内的匿名代号一致，不同帖子使用不同代号。可在树洞账号设置修改昵称、退出或注销。注销会删除作者内容、移除登录状态，并保留必要的去身份举报处理记录。</p>
             <AnalyticsSettings/>
-            <p>匿名使用统计需你主动允许。开启后上报随机安装标识、应用版本、北京时间日期和预定义功能的累计操作次数，用于统计活跃设备与改善体验；不上传学号、密码、课程内容、余额、订单或设备硬件标识。每日汇总统计近90天，过期明细随后续上报清理，匿名设备记录用于累计统计。可在“我的 → 隐私政策”关闭统计或删除已上报记录。为防滥用，服务端短期保留每日加盐后的网络地址摘要，不保存原始地址到统计数据库。</p>
+            <p>本版本已停止收集应用活跃情况和功能使用次数。</p>
             <p>
               学校密码只在官方页面输入。Android 原生模块使用系统密钥库加密保存学校会话，供本人数据查询复用。退出学校账号后清除会话与学校缓存。
             </p>

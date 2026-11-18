@@ -1,6 +1,5 @@
 /* Home owns its composition; shared product tokens and five-tab navigation stay unchanged. */
 .home-body{position:relative;display:grid;gap:20px;padding-top:14px}
-.home-body .analytics-card{margin:0}
 .home-course-panel{background:var(--color-surface);border:1px solid var(--color-border);border-radius:16px;overflow:hidden}
 .home-next{display:block;width:100%;text-align:left;padding:14px 16px;background:var(--color-highlight);color:var(--color-text)}
 .home-next:active{background:var(--color-tint);transform:none}
