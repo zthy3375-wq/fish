@@ -272,12 +272,16 @@ const taskDetailRef=ref<InstanceType<typeof TaskDetail>>();
 function planLearning(task:CampusTask){taskDetailRef.value?.edit(task)}
 function editDailyTask(task?:CampusTask,day?:string){taskDetailRef.value?.edit(task,day)}
 const globalCollectionRef=ref<InstanceType<typeof GlobalCollection>>();
-async function openCollection(code?:string){
+const requestedMedal=ref('');
+function openCollection(code=''){
   if(modal.value)close();
+  requestedMedal.value=code;
   if(page.value!=='profile'||section.value!=='honors')move('profile','honors');
-  await nextTick();
-  if(code)globalCollectionRef.value?.openMedal(code);
 }
+watch([globalCollectionRef,requestedMedal,page,section],([collection,code,current,part])=>{
+  if(current!=='profile'||part!=='honors'){requestedMedal.value='';return;}
+  if(collection&&code){requestedMedal.value='';collection.openMedal(code);}
+},{flush:'post'});
 setBeforeBack(()=>globalCollectionRef.value?.closeDetail()||(!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false));
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
