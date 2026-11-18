@@ -74,7 +74,7 @@ struct TreeholeError: LocalizedError {
     let code: String
     var errorDescription: String? {
         ["buddy_time": "请选择未来 90 天内的活动时间", "buddy_full": "已经招满了，可以稍后再看看", "buddy_closed": "已停止报名，仍可在帖子下继续交流", "buddy_host": "发起人不占报名名额", "poll_closed": "投票已结束", "following_limit": "关注已达到上限，请先整理关注名单", "invalid_image": "图片暂不支持，请换一张照片或截图", "image_too_large": "图片较大，请缩小后重试", "image_unavailable": "图片已过期，请重新添加", "upload_limit": "今天上传的图片较多，请明天再试", "images_unavailable": "图片服务暂不可用", "session_expired": "请登录邯院通账号", "invalid_credentials": "账号、密码或恢复码不正确",
-         "username_unavailable": "这个登录账号已被使用，请换一个", "invalid_username": "账号需以字母开头，使用 4–24 位字母、数字或下划线",
+         "username_unavailable": "这个登录账号已被使用，请换一个", "invalid_username": "账号最多 32 个字符，请使用可见文字、数字或符号",
          "password_length": "密码需为 10–128 位", "invalid_request": "请检查填写内容和字数", "agreement_required": "请先同意树洞规则",
          "registration_closed": "树洞注册暂未开放", "invite_invalid": "内测邀请码不正确", "too_many_requests": "操作较频繁，请稍后重试",
          "posting_too_fast": "发言较频繁，请休息一会儿", "account_muted": "账号暂时禁言，可以继续浏览", "not_found": "内容已删除、已隐藏或暂时不可用",

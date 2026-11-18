@@ -68,7 +68,7 @@ struct TasksView: View {
             }
         }
         .searchable(text: $filter.search, prompt: "搜索标题、课程或备注")
-        .scrollContentBackground(.hidden).background(CampusTheme.background)
+        .campusScrollBackground().background(CampusTheme.background)
         .navigationTitle("我的待办").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

@@ -5,11 +5,11 @@ struct RootView: View {
     @EnvironmentObject var store: CampusStore
     var body: some View {
         TabView(selection: $store.selectedTab) {
-            NavigationStack { HomeView() }.tabItem { Label("首页", systemImage: "house") }.tag(AppTab.home)
-            NavigationStack { ScheduleView() }.tabItem { Label("课表", systemImage: "calendar") }.tag(AppTab.schedule)
-            NavigationStack { TreeholeView() }.tabItem { Label("社区", systemImage: "bubble.left.and.bubble.right") }.tag(AppTab.community)
-            NavigationStack { TasksView() }.tabItem { Label("待办", systemImage: "checklist") }.tag(AppTab.tasks)
-            NavigationStack { ProfileView() }.tabItem { Label("我的", systemImage: "person") }.tag(AppTab.profile)
+            CampusNavigation { HomeView() }.tabItem { Label("首页", systemImage: "house") }.tag(AppTab.home)
+            CampusNavigation { ScheduleView() }.tabItem { Label("课表", systemImage: "calendar") }.tag(AppTab.schedule)
+            CampusNavigation { TreeholeView() }.tabItem { Label("社区", systemImage: "bubble.left.and.bubble.right") }.tag(AppTab.community)
+            CampusNavigation { TasksView() }.tabItem { Label("待办", systemImage: "checklist") }.tag(AppTab.tasks)
+            CampusNavigation { ProfileView() }.tabItem { Label("我的", systemImage: "person") }.tag(AppTab.profile)
         }
 
         .tint(CampusTheme.primary)
@@ -67,7 +67,7 @@ struct HomeView: View {
                     NavigationLink { LearningCenterView(store: learning) } label: { HStack { Label("学习通", systemImage: "books.vertical"); Spacer(); Text("作业 · 考试").font(.caption).foregroundStyle(CampusTheme.muted) }.padding(.vertical, 12) }
                 }.campusCard()
             }.padding(20).frame(maxWidth: 680)
-        }.background(CampusTheme.background).toolbar(.hidden, for: .navigationBar)
+        }.background(CampusTheme.background).campusNavigationBarHidden()
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 while !Task.isCancelled {

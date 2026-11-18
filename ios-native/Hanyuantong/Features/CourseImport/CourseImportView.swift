@@ -60,8 +60,8 @@ struct CourseImportView: View {
                         Text("替换会删除当前全部个人课程，仅保留本次导入内容。待办与学校同步数据保留。建议先到“个人备份与恢复”导出备份；替换无法自动撤销。")
                             .font(.caption).foregroundStyle(.red)
                     }
-                } else { LabeledContent("导入方式", value: "合并到个人课表") }
-                LabeledContent("教学周", value: "1–\(weekCount) 周")
+                } else { CampusLabeledValue("导入方式", value: "合并到个人课表") }
+                CampusLabeledValue("教学周", value: "1–\(weekCount) 周")
                 Text("学期起点：\(semesterLabel)")
                     .font(.caption).foregroundStyle(.secondary)
                 Button { showingPicker = true } label: { Label("选择 CSV / XLSX / ICS 文件", systemImage: "doc.badge.plus") }

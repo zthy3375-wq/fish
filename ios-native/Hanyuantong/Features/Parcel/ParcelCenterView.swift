@@ -67,7 +67,7 @@ struct ParcelCenterView: View {
             ParcelOfficialPage(session: session, cookies: store.cookies(for: session.provider), identity: identityMode, close: store.close)
         }
         .sheet(item: $enlarged) { value in
-            NavigationStack {
+            CampusNavigation {
                 VStack(spacing: 24) {
                     Text(value.provider.title).font(.headline)
                     Text(value.item.station.isEmpty ? "驿站待核对" : value.item.station)
@@ -103,7 +103,7 @@ private struct ParcelOfficialPage: View {
     let identity: Bool
     let close: () -> Void
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             VStack(spacing: 0) {
                 HStack {
                     Button("待取包裹") { session.open(identity: false) }

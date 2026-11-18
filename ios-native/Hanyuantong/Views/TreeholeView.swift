@@ -16,12 +16,10 @@ struct TreeholeView: View {
     @State private var username = ""
     @State private var password = ""
     @State private var nickname = ""
-    @State private var invitation = ""
     @State private var recoveryInput = ""
     @State private var newPassword = ""
-    @State private var agreed = false
     @StateObject private var draft = TreeholeDraftStore()
-    @State private var pickedPhotos: [PhotosPickerItem] = []
+    @State private var pickedPhotos: [CampusPhotoItem] = []
     @State private var gallery: TreeholeGallerySelection?
     @Environment(\.scenePhase) private var scenePhase
     private var anonymous: Bool { draft.value.anonymous }
@@ -37,7 +35,7 @@ struct TreeholeView: View {
     @State private var replyAnonymous = false
     private var bodyText: String { draft.value.body }
     @State private var replyPhotos: [TreeholeDraftPhoto] = []
-    @State private var pickedReplyPhotos: [PhotosPickerItem] = []
+    @State private var pickedReplyPhotos: [CampusPhotoItem] = []
     private var hasReply: Bool { !replyText.isEmpty || !replyPhotos.isEmpty }
     @State private var replyText = ""
     @State private var reportReason = ""
@@ -66,7 +64,7 @@ struct TreeholeView: View {
         ScrollViewReader { proxy in lifecycle(scrolling(proxy)) }
     }
     private func scrolling(_ proxy: ScrollViewProxy) -> some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 16) {
                 if tree.busy { ProgressView("正在处理…").frame(maxWidth: .infinity) }
                 if let message = tree.message {
@@ -126,7 +124,7 @@ struct TreeholeView: View {
                   value.translation.width > 90, abs(value.translation.height) < 30 else { return }
             back()
         })
-        .scrollDismissesKeyboard(.interactively)
+        .campusKeyboardDismissal()
         .refreshable {
             guard screen == "feed", tree.user != nil, !tree.busy else { return }
             tree.busy = true; tree.message = nil
@@ -138,26 +136,8 @@ struct TreeholeView: View {
         }
         .background(screen == "feed" || screen == "detail" || screen == "compose" ? TreeholeTheme.surface : TreeholeTheme.background).navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(tree.busy || screen != "feed")
-        .toolbar(screen == "feed" && tree.recovery == nil ? .visible : .hidden, for: .tabBar)
-        .toolbar {
-            if screen == "detail" {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 28) {
-                        detailTabButton("正文", value: "body") { scrollIntentUntil = Date().addingTimeInterval(0.65); withAnimation(pageAnimation) { proxy.scrollTo("post", anchor: .top) } }
-                        detailTabButton("评论", value: "comments") { scrollIntentUntil = Date().addingTimeInterval(0.65); withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }
-                    }
-                }
-            }
-            if screen != "feed" { ToolbarItem(placement: .navigationBarLeading) { Button { back() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("返回社区").disabled(tree.busy) } }
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if screen == "compose" { Button("发布", action: publish).fontWeight(.semibold).disabled(tree.busy || !buddyValid || (bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.value.photos.isEmpty && draft.value.poll == nil) || (draft.value.poll != nil && (!tree.pollsEnabled || draft.value.poll?.valid != true))) }
-                else if screen == "feed", let user = tree.user {
-                    Button { withAnimation { searchOpen.toggle() } } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索帖子")
-                    if tree.engagementEnabled { Button(action: showInbox) { Image(systemName: "bell").overlay(alignment: .topTrailing) { if tree.unreadCount > 0 { Text(tree.unreadCount > 99 ? "99+" : "\(tree.unreadCount)").font(.system(size: 9, weight: .bold)).padding(3).background(TreeholeTheme.primary, in: Capsule()).foregroundStyle(.white).offset(x: 9, y: -9) } } }.accessibilityLabel("互动消息") }
-                    Button { nickname = user.nickname; bio = user.bio ?? ""; password = ""; newPassword = ""; accountPage = "overview"; screen = "account" } label: { TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 32) }.accessibilityLabel("我的树洞")
-                }
-            }
-        }
+        .campusTabBarHidden(screen != "feed" || tree.recovery != nil)
+        .toolbar { communityToolbar(proxy) }
         .overlay(alignment: .bottomTrailing) {
             if screen == "feed" && tree.user != nil {
                 Button(action: startPost) { Label("发树洞", systemImage: "square.and.pencil").font(.subheadline.weight(.semibold)).padding(.horizontal, 19).padding(.vertical, 16) }
@@ -169,6 +149,27 @@ struct TreeholeView: View {
             if screen == "detail", let post = tree.current, tree.user != nil { replyBar(post) { scrollIntentUntil = Date().addingTimeInterval(0.65); detailTab = "comments"; withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }.disabled(tree.busy) }
         }
     }
+    @ToolbarContentBuilder
+    private func communityToolbar(_ proxy: ScrollViewProxy) -> some ToolbarContent {
+            ToolbarItem(placement: .principal) {
+                if screen == "detail" {
+                    HStack(spacing: 28) {
+                        detailTabButton("正文", value: "body") { scrollIntentUntil = Date().addingTimeInterval(0.65); withAnimation(pageAnimation) { proxy.scrollTo("post", anchor: .top) } }
+                        detailTabButton("评论", value: "comments") { scrollIntentUntil = Date().addingTimeInterval(0.65); withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }
+                    }
+                } else { Text(title).font(.headline) }
+            }
+            ToolbarItem(placement: .navigationBarLeading) { if screen != "feed" { Button { back() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("返回社区").disabled(tree.busy) } }
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if screen == "compose" { Button("发布", action: publish).font(.body.weight(.semibold)).disabled(tree.busy || !buddyValid || (bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.value.photos.isEmpty && draft.value.poll == nil) || (draft.value.poll != nil && (!tree.pollsEnabled || draft.value.poll?.valid != true))) }
+                else if screen == "feed", let user = tree.user {
+                    Button { withAnimation { searchOpen.toggle() } } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索帖子")
+                    if tree.engagementEnabled { Button(action: showInbox) { Image(systemName: "bell").overlay(alignment: .topTrailing) { if tree.unreadCount > 0 { Text(tree.unreadCount > 99 ? "99+" : "\(tree.unreadCount)").font(.system(size: 9, weight: .bold)).padding(3).background(TreeholeTheme.primary, in: Capsule()).foregroundStyle(.white).offset(x: 9, y: -9) } } }.accessibilityLabel("互动消息") }
+                    Button { nickname = user.nickname; bio = user.bio ?? ""; password = ""; newPassword = ""; accountPage = "overview"; screen = "account" } label: { TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 32) }.accessibilityLabel("我的树洞")
+                }
+            }
+        }
+
     private func lifecycle<Content: View>(_ content: Content) -> some View {
         content
         .task { draft.bind(tree.user?.id); if !tree.ready { tree.enter() } }
@@ -195,7 +196,7 @@ struct TreeholeView: View {
             }.padding(24).interactiveDismissDisabled()
         }
         .sheet(isPresented: $replyExpanded, onDismiss: { replyFocused = false }) {
-            if let post = tree.current { ScrollView { replyEditor(post) }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).interactiveDismissDisabled(tree.busy) }
+            if let post = tree.current { ScrollView { replyEditor(post) }.campusReplySheet().interactiveDismissDisabled(tree.busy) }
         }
         .sheet(item: $buddyRosterPost) { post in TreeholeBuddyRoster(post: post).environmentObject(tree) }
         .sheet(item: $reportTarget) { target in reportSheet(target) }
@@ -219,21 +220,22 @@ struct TreeholeView: View {
             }.padding(.vertical, 12)
             Text(auth == "login" ? "说说校园里的那些事" : auth == "register" ? "创建邯院通账号" : "找回邯院通账号").font(.title2.bold())
             Text("树洞使用独立的邯院通账号，昵称由你决定。学校账号继续用于课表和成绩。").font(.subheadline).foregroundStyle(.secondary)
-            TextField("登录账号 · 4–24 位字母、数字或下划线", text: $username).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
-            if auth == "register" { TextField("公开昵称 · 2–20 字", text: $nickname).textContentType(.nickname) }
+            TextField("登录账号", text: $username).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
             if auth == "recover" { TextField("账号恢复码", text: $recoveryInput).textInputAutocapitalization(.never).autocorrectionDisabled() }
             SecureField(auth == "recover" ? "新密码 · 至少 10 位" : "密码 · 至少 10 位", text: $password).textContentType(auth == "login" ? .password : .newPassword)
-            if auth == "register" && tree.requiresInvite { TextField("内测邀请码", text: $invitation).textInputAutocapitalization(.never) }
             DisclosureGroup("树洞规则与匿名说明") {
                 Text(Self.rules).font(.caption).foregroundStyle(.secondary).padding(.top, 8)
             }
-            if auth == "register" { Toggle("我已阅读并同意树洞规则与账号服务说明", isOn: $agreed).font(.caption) }
+            if auth == "register" { Text("点击创建账号即表示同意上方社区规则。").font(.caption) }
             Button(auth == "login" ? "登录树洞" : auth == "register" ? "创建账号" : "重设密码并登录") {
                 tree.perform {
-                    let result = try await tree.api.request(auth, ["username": username, "password": password, "nickname": nickname, "invite": invitation, "agreed": agreed, "recoveryCode": recoveryInput])
+                    var payload: [String: Any] = ["username": username, "password": password]
+                    if auth == "register" { payload["agreed"] = true }
+                    if auth == "recover" { payload["recoveryCode"] = recoveryInput }
+                    let result = try await tree.api.request(auth, payload)
                     password = ""; recoveryInput = ""; tree.user = result.user; tree.recovery = result.recoveryCode; try await tree.feed(); await tree.refreshUnread()
                 }
-            }.buttonStyle(.borderedProminent).disabled(username.isEmpty || password.count < 10 || (auth == "register" && (!agreed || !tree.registration || nickname.count < 2)))
+            }.buttonStyle(.borderedProminent).disabled(username.isEmpty || password.utf16.count < 10 || (auth == "register" && !tree.registration))
             HStack {
                 if auth != "register" && tree.registration { Button("注册账号") { auth = "register"; password = "" } }
                 Spacer()
@@ -320,7 +322,7 @@ struct TreeholeView: View {
             Divider()
             ZStack(alignment: .topLeading) {
                 if bodyText.isEmpty { Text("分享校园里的新鲜事…").foregroundStyle(.tertiary).padding(.top, 8).padding(.leading, 5).allowsHitTesting(false) }
-                TextEditor(text: $draft.value.body).scrollContentBackground(.hidden).frame(minHeight: 190).accessibilityLabel("想说的话").onChange(of: bodyText) { draft.value.body = String($0.prefix(3000)) }
+                TextEditor(text: $draft.value.body).campusScrollBackground().frame(minHeight: 190).accessibilityLabel("想说的话").onChange(of: bodyText) { draft.value.body = String($0.prefix(3000)) }
             }.font(.body).lineSpacing(7)
             if !draft.value.photos.isEmpty {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
@@ -337,7 +339,7 @@ struct TreeholeView: View {
                 }.font(.caption).padding(.horizontal, 10).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 10))
             }
             if tree.imagesEnabled && draft.value.photos.count < 9 {
-                PhotosPicker(selection: $pickedPhotos, maxSelectionCount: 9 - draft.value.photos.count, matching: .images) { Label("添加图片 · \(draft.value.photos.count)/9", systemImage: "photo.on.rectangle").font(.subheadline).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 10)) }
+                CampusPhotoPicker(selection: $pickedPhotos, maxSelectionCount: 9 - draft.value.photos.count, matching: .images) { Label("添加图片 · \(draft.value.photos.count)/9", systemImage: "photo.on.rectangle").font(.subheadline).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 10)) }
             }
             buddyEditor
             if draft.value.poll != nil {
@@ -358,12 +360,12 @@ struct TreeholeView: View {
             Button { draft.value.buddy = TreeholeBuddyDraft() } label: { Label("设置时间、地点和报名", systemImage: "person.2").frame(minHeight: 44) }
         }
     }
-    private func loadPhotos(_ items: [PhotosPickerItem]) {
+    private func loadPhotos(_ items: [CampusPhotoItem]) {
         guard !items.isEmpty else { return }
         tree.perform {
             defer { pickedPhotos = [] }
             for item in items.prefix(max(0, 9 - draft.value.photos.count)) {
-                guard let bytes = try await item.loadTransferable(type: Data.self) else { throw TreeholeError(code: "invalid_image") }
+                guard let bytes = try await item.loadData() else { throw TreeholeError(code: "invalid_image") }
                 draft.value.photos.append(try TreeholeDraftStore.prepare(bytes)); draft.flush()
             }
         }
@@ -408,17 +410,17 @@ struct TreeholeView: View {
                 }
             }
             if tree.commentImagesEnabled && replyPhotos.count < 3 {
-                PhotosPicker(selection: $pickedReplyPhotos, maxSelectionCount: 3 - replyPhotos.count, matching: .images) { Label("添加图片 · \(replyPhotos.count)/3", systemImage: "photo").font(.caption).frame(minHeight: 44) }.disabled(tree.busy)
+                CampusPhotoPicker(selection: $pickedReplyPhotos, maxSelectionCount: 3 - replyPhotos.count, matching: .images) { Label("添加图片 · \(replyPhotos.count)/3", systemImage: "photo").font(.caption).frame(minHeight: 44) }.disabled(tree.busy)
             }
         }
     }
-    private func loadReplyPhotos(_ items: [PhotosPickerItem]) {
+    private func loadReplyPhotos(_ items: [CampusPhotoItem]) {
         guard !items.isEmpty, tree.commentImagesEnabled else { return }
         let member = tree.user?.id, postId = tree.current?.id
         tree.perform {
             defer { pickedReplyPhotos = [] }
             for item in items.prefix(max(0, 3 - replyPhotos.count)) {
-                guard let bytes = try await item.loadTransferable(type: Data.self) else { throw TreeholeError(code: "invalid_image") }
+                guard let bytes = try await item.loadData() else { throw TreeholeError(code: "invalid_image") }
                 guard member == tree.user?.id, postId == tree.current?.id else { throw CancellationError() }
                 replyPhotos.append(try TreeholeDraftStore.prepare(bytes))
             }
@@ -556,7 +558,7 @@ struct TreeholeView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack { Text(replyTo.map { "回复 " + $0.author.name } ?? "写评论").font(.subheadline.weight(.semibold)); Spacer(); Button { replyFocused = false; replyExpanded = false } label: { Image(systemName: "xmark").padding(8) }.accessibilityLabel("收起回复编辑器").disabled(tree.busy) }
             if let replyTo { HStack { Text(replyTo.body).font(.caption).lineLimit(1); Spacer(); Button { self.replyTo = nil } label: { Image(systemName: "xmark") }.accessibilityLabel("取消回复") }.foregroundStyle(.secondary) }
-            TextField("说说你的想法…", text: $replyText, axis: .vertical).lineLimit(3...5).focused($replyFocused).font(.body).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 7)).accessibilityLabel("你的回复").onChange(of: replyText) { replyText = String($0.prefix(1000)) }.disabled(tree.busy)
+            CampusMultilineField("说说你的想法…", text: $replyText, minimum: 3, maximum: 5).focused($replyFocused).font(.body).padding(12).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 7)).accessibilityLabel("你的回复").onChange(of: replyText) { replyText = String($0.prefix(1000)) }.disabled(tree.busy)
             replyPhotoEditor
             HStack(spacing: 10) {
                 Button { replyAnonymous.toggle() } label: { Label(tree.current?.category == "treehole" ? "本区统一匿名" : forceAnonymous ? "保持楼主匿名身份" : replyAnonymous ? "匿名回复" : "昵称回复", systemImage: replyAnonymous || forceAnonymous ? "theatermasks" : "person.crop.circle").font(.caption2).padding(9).background(TreeholeTheme.background, in: Capsule()) }.disabled(tree.busy || forceAnonymous).accessibilityValue(replyAnonymous || forceAnonymous ? "匿名" : "昵称")
@@ -670,7 +672,7 @@ struct TreeholeView: View {
                 if accountPage == "profile" {
                     Text("其他同学会看到这个昵称。").font(.subheadline).foregroundStyle(.secondary)
                     TextField("公开昵称", text: $nickname).textContentType(.nickname)
-                    if tree.engagementEnabled { TextField("个人简介（选填）", text: $bio, axis: .vertical).lineLimit(2...4).onChange(of: bio) { bio = String($0.prefix(120)) } }
+                    if tree.engagementEnabled { CampusMultilineField("个人简介（选填）", text: $bio, minimum: 2, maximum: 4).onChange(of: bio) { bio = String($0.prefix(120)) } }
                     Button("保存资料") { tree.perform { var body = ["nickname": nickname]; if tree.engagementEnabled { body["bio"] = bio }; tree.user = try await tree.api.request("profile.update", body).user; tree.feedNeedsRefresh = true; accountPage = "overview" } }.buttonStyle(.borderedProminent).disabled(nickname.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
                 } else if accountPage == "password" {
                     Text("修改后其他设备会退出登录，并生成新的恢复码。").font(.subheadline).foregroundStyle(.secondary)
@@ -690,7 +692,7 @@ struct TreeholeView: View {
     }
     private func accountFeed(_ scope: String) { tree.perform { try await tree.selectScope(scope); routes = []; searchOpen = false; screen = "feed" } }
     private func reportSheet(_ target: TreeholeTarget) -> some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("举报原因") { TextEditor(text: $reportReason).frame(minHeight: 120).onChange(of: reportReason) { reportReason = String($0.prefix(300)) }; Text("例如：泄露隐私、骚扰、垃圾广告").font(.caption) }
                 if let message = tree.message { Text(message).foregroundStyle(.red) }
