@@ -1,0 +1,42 @@
+name: Android release UI with live community
+on:
+  push:
+    branches: [ops/community-open-entry-20261118]
+    paths: ['.github/workflows/android-open-community-smoke.yml','scripts/android-open-community-smoke.py']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hanyuantong-unsigned-release-c5d315db5cf11bdc0641a991d08f8cf02e67785a
+          path: ${{ runner.temp }}/release-input
+          run-id: 44267137645
+          github-token: ${{ github.token }}
+      - name: Sign the same release build for the disposable emulator
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/emulator.jks" -storepass emulatoronly -keypass emulatoronly -alias android -keyalg RSA -validity 2 -dname 'CN=Disposable Android QA'
+          java -jar "$RUNNER_TEMP/release-input/apksigner.jar" sign --ks "$RUNNER_TEMP/emulator.jks" --ks-pass pass:emulatoronly --out "$RUNNER_TEMP/emulator-app.apk" "$RUNNER_TEMP/release-input/app-release-unsigned.apk"
+          java -jar "$RUNNER_TEMP/release-input/apksigner.jar" verify "$RUNNER_TEMP/emulator-app.apk"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb shell wm size 1080x2400
+            adb shell wm density 420
+            adb install "$RUNNER_TEMP/emulator-app.apk"
+            python3 scripts/android-open-community-smoke.py
