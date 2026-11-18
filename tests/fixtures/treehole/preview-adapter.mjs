@@ -7,6 +7,11 @@ export function adapter(campus){
  posts.push({...post('buddy-8','慢跑同学','下课一起去操场慢跑','按自己的节奏跑两圈，结束后一起走走。','buddies'),buddy:{version:0,location:'东操场入口',startsAt:new Date(Date.now()+86400000).toISOString(),capacity:2,count:0,joined:false,closed:false,expired:false}});
  const comments=[{id:'comment-1',postId:'post-1',body:'图书馆出来的那条路！傍晚的光线很舒服。',author:{name:'晚风',anonymous:false,mine:false},createdAt:new Date(Date.now()-1800000).toISOString(),replyTo:null,rootId:null,deleted:false,isOriginalPoster:false,liked:false,likeCount:8,replyCount:2,replies:[{id:'reply-1',postId:'post-1',body:'我也喜欢那里，下次想带相机去。',author:{name:'落日收集员',anonymous:false,mine:false},createdAt:new Date().toISOString(),replyTo:'comment-1',rootId:'comment-1',deleted:false,isOriginalPoster:true,likeCount:2,liked:false},{id:'reply-2',postId:'post-1',body:'最近的落叶也好看。',author:{name:'小橘',anonymous:false,mine:false},createdAt:new Date().toISOString(),replyTo:'comment-1',rootId:'comment-1',deleted:false,isOriginalPoster:false,likeCount:0,liked:false}]},{id:'comment-2',postId:'post-1',body:'今天也辛苦啦，记得抬头看看天空。',author:{name:'匿名同学 · 微光',anonymous:true,mine:false},createdAt:new Date(Date.now()-900000).toISOString(),replyTo:null,rootId:null,deleted:false,isOriginalPoster:false,liked:false,likeCount:5,replyCount:0,replies:[]}];
  posts.push({...post('interest-6','周末玩家','最近在玩什么？','分享一款让你舍不得放下的游戏吧。','entertainment'),interest:'games'},post('quiet-7','匿名同学 · 微风','慢慢找到自己的节奏','有时候走得慢一点，也没关系。','treehole',true));
+ posts.push(
+  {...post('graduate-9','晨读同学','考研第一周怎么安排？','本科课程还有两门，这周先试着每天留出两小时做英语和数学。','study'),interest:'graduate'},
+  {...post('reading-10','晚风','一起聊聊《百年孤独》','有没有哪一段让你读完想停下来想一会儿？','entertainment'),interest:'reading'},
+  {...post('fitness-11','慢跑同学','记录今天的腿部训练','在健身房第一次试了保加利亚分腿蹲，下次打算把动作放慢一点。','entertainment'),interest:'fitness'},
+ );
  posts[0].commentCount=4;posts[0].watching=true;posts[0].newReplyCount=2;
  const notifications=[
   {id:'notice-1',kind:'reply',postId:'post-1',commentId:'reply-2',rootId:'comment-1',actor:comments[0].replies[1].author,excerpt:'最近的落叶也好看。',postTitle:posts[0].title,createdAt:new Date(Date.now()-180000).toISOString(),readAt:null},
@@ -22,7 +27,7 @@ export function adapter(campus){
  async function request(action,b={}){
   await new Promise(r=>setTimeout(r,action==='posts.get'?650:100));
   const p=posts.find(p=>p.id===b.postId);
-  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:10,responseKinds:['useful','joy','hug'],socialEnabled:true,messagesEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:true,followingEnabled:true,discoveryEnabled:true,avatarsEnabled:true,responsesEnabled:true};
+  if(action==='config')return {imagesEnabled:true,registrationEnabled:false,engagementEnabled:true,schema:11,boardsEnabled:true,responseKinds:['useful','joy','hug'],socialEnabled:true,messagesEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:true,followingEnabled:true,discoveryEnabled:true,avatarsEnabled:true,responsesEnabled:true};
   if(action==='follows.stats')return {social:{followingCount:followed.size,followerCount:1}};
   if(action==='followers.list')return {followers:[{id:posts[0].author.id,nickname:posts[0].author.name,bio:'分享校园里的小美好。',followedAt:new Date().toISOString(),following:followed.has(posts[0].author.id)}],next:null};
   if(action==='messages.open'){let t=dmThreads.find(t=>t.member.id===b.memberId);if(!t){const p=posts.find(p=>p.author.id===b.memberId);t={id:crypto.randomUUID(),member:{id:b.memberId,nickname:p?.author.name||'预览同学'},lastSeq:'0',updatedAt:new Date().toISOString(),lastMessage:null,unreadCount:0};dmThreads.push(t);}return {conversation:copy(t)};}

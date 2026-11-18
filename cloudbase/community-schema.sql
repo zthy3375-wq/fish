@@ -97,7 +97,10 @@ ALTER TABLE public.hyt_posts ADD COLUMN IF NOT EXISTS category text NOT NULL DEF
 -- v5 adds discovery metadata without rewriting any existing category or identity.
 ALTER TABLE public.hyt_posts ADD COLUMN IF NOT EXISTS interest text NOT NULL DEFAULT '';
 ALTER TABLE public.hyt_posts DROP CONSTRAINT IF EXISTS hyt_posts_interest_check;
-ALTER TABLE public.hyt_posts ADD CONSTRAINT hyt_posts_interest_check CHECK(interest='' OR (category='entertainment' AND interest IN ('games','anime','film','music','photo','sports')));
+ALTER TABLE public.hyt_posts ADD CONSTRAINT hyt_posts_interest_check CHECK(
+ interest='' OR (category='study' AND interest='graduate')
+ OR (category='entertainment' AND interest IN ('reading','fitness','games','anime','film','music','photo','sports'))
+);
 ALTER TABLE public.hyt_posts DROP CONSTRAINT IF EXISTS hyt_posts_treehole_anonymous_check;
 ALTER TABLE public.hyt_posts ADD CONSTRAINT hyt_posts_treehole_anonymous_check CHECK(category<>'treehole' OR anonymous);
 CREATE INDEX IF NOT EXISTS hyt_posts_interest ON public.hyt_posts(interest,created_at DESC,id DESC) WHERE deleted_at IS NULL AND interest<>'';

@@ -4,7 +4,9 @@ import {promisify} from 'node:util';
 
 const categories=['daily','help','study','buddies','entertainment','treehole'];
 const sections=['daily','entertainment','buddies','treehole'];
-const interests=['games','anime','film','music','photo','sports'];
+const interestsByCategory={study:['graduate'],entertainment:['reading','fitness','games','anime','film','music','photo','sports']};
+const interests=Object.values(interestsByCategory).flat();
+const boardTopics=new Set(['graduate','reading','fitness']);
 const derive=promisify(scrypt);
 let activeKDF=0;
 async function deriveBounded(value,salt){if(activeKDF>=2)throw new CommunityError(429,'too_many_requests');activeKDF++;try{return await derive(value,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024});}finally{activeKDF--;}}
@@ -58,7 +60,7 @@ function sanitize(action,b){
   const scope=b.scope??'all';if(!['all','mine','saved','participated','watching','author','following','joined'].includes(scope))fail();
   const category=b.category??'all',sort=b.sort??'latest';if(!['all',...categories].includes(category)||!['latest','hot'].includes(sort))fail();
   const section=b.section??'all',interest=b.interest??'';if(!['all',...sections].includes(section)||(interest!==''&&!interests.includes(interest)))fail();
-  if(interest&&section!=='entertainment')fail();
+  if(interest==='graduate'?(section!=='daily'||category!=='study'):interest&&section!=='entertainment')fail();
   const out={scope,category,section,interest,sort,query:b.query?text(b.query,1,80):'',...(scope==='author'?{memberId:id(b.memberId)}:{})};
   if(b.snapshotTime!=null)out.snapshotTime=time(b.snapshotTime);
   if(b.beforeRank!=null){if(typeof b.beforeRank!=='string'||!/^\d{1,12}(\.\d{1,8})?$/.test(b.beforeRank))fail();out.beforeRank=b.beforeRank;}
@@ -73,7 +75,7 @@ function sanitize(action,b){
  if(action==='posts.create'){
   const images=b.images??[];if(!Array.isArray(images)||images.length>9||new Set(images).size!==images.length)fail();images.forEach(x=>id(x));
   const category=b.category??'daily';if(!categories.includes(category))fail();
-  const interest=b.interest??'';if(typeof interest!=='string'||interest&&(!interests.includes(interest)||category!=='entertainment'))fail();
+  const interest=b.interest??'';if(typeof interest!=='string'||interest&&!interestsByCategory[category]?.includes(interest))fail();
   const anonymous=boolean(b.anonymous);if(category==='treehole'&&!anonymous)fail();
   let poll=null;
   if(b.poll!=null){const d=b.poll;if(typeof d!=='object'||Array.isArray(d)||!Array.isArray(d.options)||d.options.length<2||d.options.length>6||![24,72,168].includes(d.durationHours))fail();
@@ -183,9 +185,15 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(storage&&['posts.delete','comments.delete','account.delete','admin.resolve','admin.action','media.discard','media.upload','avatar.set'].includes(action)){
    try {const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}}catch{console.warn('Community image cleanup will retry');}
   }
+  // Older clients can browse topic posts through their parent category without unknown labels.
+  if(input.boardTopics!==true){
+   for(const post of [...(r.posts||[]),...(r.post?[r.post]:[])]){
+    if(boardTopics.has(post.interest))post.interest='';
+   }
+  }
   if(sessionToken)r.sessionToken=sessionToken;
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:11,moderationEnabled:true,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
+ return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:11,moderationEnabled:true,boardsEnabled:true,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
 }

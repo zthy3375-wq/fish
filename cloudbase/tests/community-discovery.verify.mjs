@@ -6,7 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {createCommunity} from '../functions/community/core.mjs';
 let pg,api,a,b;
 const schema=await readFile(new URL('../community-schema.sql',import.meta.url),'utf8');
-const call=(who,action,body={})=>api.execute(action,body,who.sessionToken,'discovery');
+const call=(who,action,body={})=>api.execute(action,{boardTopics:true,...body},who.sessionToken,'discovery');
 const post=(category='daily',extra={})=>call(a,'posts.create',{body:'合成发现帖子',category,anonymous:false,requestId:randomUUID(),...extra}).then(r=>r.post);
 before(async()=>{pg=new PGlite();await pg.exec(schema);api=createCommunity({registrationEnabled:true,db:async(action,body,hash)=>(await pg.query('SELECT hyt_community($1,$2::jsonb,$3) AS result',[action,JSON.stringify(body),hash])).rows[0].result});const register=username=>api.execute('register',{username,nickname:username,password:'synthetic-discovery-password',agreed:true},'',username);a=await register('discovery_author');b=await register('discovery_reader');});
 afterEach(async()=>pg.exec('DELETE FROM hyt_community_rate; DELETE FROM hyt_blocks; TRUNCATE hyt_posts CASCADE;'));
@@ -27,6 +27,27 @@ test('interest tags filter together with search and personal collections',async(
  assert.equal((await call(b,'posts.list',{section:'entertainment',interest:'games',query:'音乐'})).posts.length,0);
  assert.equal((await call(b,'posts.get',{postId:music.id})).post.interest,'music');
  assert.equal((await call(b,'posts.list',{section:'entertainment'})).posts.length,3);
+});
+test('new boards save and filter real posts while keeping their legacy category',async()=>{
+ const existing=await post('study',{body:'原有学习交流'});
+ const boards=[['study','graduate','daily'],['entertainment','reading','entertainment'],['entertainment','fitness','entertainment']];
+ for(const [category,interest,section] of boards){
+  const payload={interest,body:'专题 '+interest,requestId:randomUUID()};
+  const created=await post(category,payload);
+  const legacy=await call(b,'posts.get',{postId:created.id,boardTopics:false});
+  assert.equal(legacy.post.category,category);assert.equal(legacy.post.interest,'');
+  const options={category,interest,section,query:interest,sort:'hot'};
+  assert.deepEqual((await call(b,'posts.list',options)).posts.map(p=>p.id),[created.id]);
+  assert.equal((await call(b,'posts.get',{postId:created.id})).post.interest,interest);
+  assert.equal((await post(category,payload)).id,created.id);
+  await assert.rejects(post('help',payload),{code:'invalid_request'});
+  assert((await call(b,'posts.list')).posts.some(p=>p.id===created.id));
+ }
+ assert((await call(b,'posts.list',{category:'study'})).posts.some(p=>p.id===existing.id&&p.interest===''));
+ await assert.rejects(call(b,'posts.list',{section:'entertainment',interest:'graduate'}),{code:'invalid_request'});
+ await pg.exec(schema);
+ assert.equal((await call(b,'posts.list',{section:'daily',category:'study',interest:'graduate'})).posts.length,1);
+ assert.equal(api.config().boardsEnabled,true);
 });
 test('anonymous section requires anonymity; other sections retain optional identity',async()=>{
  await assert.rejects(post('treehole'),{code:'invalid_request'});
