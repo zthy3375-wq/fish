@@ -462,7 +462,15 @@ function saveAccount(){void run(async()=>{
  else confirmAction.value={title:'注销邯院通账号？你的帖子、评论、私信历史和登录状态将被删除，学校课表不受影响。',run:async()=>{await api('account.delete',{password:password.value});await clearDraft();confirmAction.value=null;clearAccount();notice.value='账号已注销';}};
 });}
 function logout(){confirmAction.value={title:'退出邯院通账号？',run:async()=>{await api('logout');await clearDraft();confirmAction.value=null;clearAccount();}};}
-function adminChanged(){feedNeedsRefresh=true;detail.value=null;routeHistory.length=0;}
+function adminChanged(removedPostId?:string){
+ if(removedPostId){
+  // Discard any page request that started before the server confirmed deletion.
+  feedRevision.value++;feedLoadingMore.value=false;
+  posts.value=posts.value.filter(post=>post.id!==removedPostId);
+  profilePosts.value=profilePosts.value.filter(post=>post.id!==removedPostId);
+ }
+ feedNeedsRefresh=true;detail.value=null;routeHistory.length=0;
+}
 function manageContent(){if(!actionPost.value)return;adminTarget.value={postId:actionPost.value.id,commentId:actionComment.value?.id};menu.value=null;screen.value='moderate';}
 function moderate(){adminTarget.value=null;if(moderationEnabled.value){screen.value='moderate';return;}void run(async()=>{const r=await api('admin.reports');reports.value=r.reports||[];screen.value='moderate';});}
 function resolveReport(r:TreeholeReport,decision:string){confirmAction.value={title:`确认${({remove:'删除内容',lock:'暂停回复',ban:'禁言 7 天',dismiss:'忽略举报'} as Record<string,string>)[decision]}？`,run:async()=>{
