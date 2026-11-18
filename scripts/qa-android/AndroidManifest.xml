@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.handancampus.releasecheck">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
+  <application android:label="Campus release UI check"/>
+  <instrumentation android:name=".ReleaseCheck" android:targetPackage="org.handancampus.app" android:functionalTest="true"/>
+</manifest>
