@@ -67,7 +67,7 @@ struct TreeholeView: View {
     private func scrolling(_ proxy: ScrollViewProxy) -> some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 16) {
-                if tree.busy { ProgressView("正在处理…").frame(maxWidth: .infinity) }
+                if tree.busy { ProgressView(tree.ready ? "正在处理…" : "正在连接社区").frame(maxWidth: .infinity) }
                 if let message = tree.message {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(message).font(.subheadline).foregroundStyle(.red)
@@ -75,7 +75,7 @@ struct TreeholeView: View {
                         else if tree.user != nil && screen == "feed" { Button("重新加载") { tree.perform { try await tree.feed() } } }
                     }.campusCard().accessibilityElement(children: .combine)
                 }
-                if tree.user == nil && tree.ready { authentication }
+                if tree.user == nil { authentication }
                 if let user = tree.user {
                     switch screen {
                     case "compose": composer
@@ -243,14 +243,14 @@ struct TreeholeView: View {
                     let result = try await tree.api.request(auth, payload)
                     password = ""; recoveryInput = ""; tree.user = result.user; tree.recovery = result.recoveryCode; try await tree.feed(); await tree.refreshUnread()
                 }
-            }.buttonStyle(.borderedProminent).disabled(username.isEmpty || password.utf16.count < 10 || (auth == "register" && !tree.registration))
+            }.buttonStyle(.borderedProminent).disabled(tree.busy || username.isEmpty || password.utf16.count < 10 || (auth == "register" && !tree.registration))
             HStack {
                 if auth != "register" && tree.registration { Button("注册账号") { auth = "register"; password = "" } }
                 Spacer()
                 if auth == "login" { Button("忘记密码") { auth = "recover"; password = "" } }
                 else { Button("返回登录") { auth = "login"; password = "" } }
             }.font(.subheadline)
-            if !tree.registration { Text("树洞正在准备内测，暂未开放新账号注册。").font(.caption).foregroundStyle(.secondary) }
+            if tree.ready && !tree.registration { Text("社区暂未开放新账号注册。").font(.caption).foregroundStyle(.secondary) }
         }.textFieldStyle(.roundedBorder).padding(8).campusCard()
     }
     private var feed: some View {

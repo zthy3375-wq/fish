@@ -20,9 +20,12 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(shelf.waitForExistence(timeout:6))
         capture("profile",app); shelf.tap()
         let hidden=app.buttons["隐藏"]
-        XCTAssertTrue(hidden.waitForExistence(timeout:6) || app.scrollViews.buttons["隐藏"].exists)
+        XCTAssertTrue(app.navigationBars["荣誉殿堂"].waitForExistence(timeout:6))
+        XCTAssertTrue(app.staticTexts["成就收藏馆"].exists)
+        XCTAssertFalse(app.navigationBars["成就详情"].exists)
+        XCTAssertTrue(hidden.waitForExistence(timeout:6))
         capture("gallery",app)
-        if !hidden.isHittable { app.scrollViews["medal-groups"].swipeLeft() }
+        XCTAssertTrue(hidden.isHittable)
         hidden.tap()
         XCTAssertTrue(app.buttons.containing(NSPredicate(format:"label CONTAINS %@", "???")).firstMatch.exists)
         app.terminate(); app.launch(); app.tabBars.buttons["我的"].tap(); app.buttons["open-honor-shelf"].tap()

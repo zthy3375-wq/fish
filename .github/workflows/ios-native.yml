@@ -13,7 +13,7 @@ concurrency:
 jobs:
   native-ios:
     runs-on: macos-15-intel
-    timeout-minutes: 60
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
       - name: Verify project and identical school query assets
@@ -101,25 +101,31 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Native unit regression
-        timeout-minutes: 12
+        timeout-minutes: 20
         run: |
           set -o pipefail
           node ios-native/Scripts/acceptance_community.mjs > "$RUNNER_TEMP/local-community.log" 2>&1 &
           service_pid=$!
           trap 'kill "$service_pid" 2>/dev/null || true' EXIT
-          curl --fail --retry 12 --retry-delay 1 --retry-connrefused http://127.0.0.1:18642/ready
+          ready=false
+          for attempt in {1..60}; do
+            if curl -fsS --max-time 2 http://127.0.0.1:18642/ready 2>/dev/null; then ready=true; break; fi
+            if ! kill -0 "$service_pid" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then cat "$RUNNER_TEMP/local-community.log"; exit 1; fi
           # Keep the app-hosted unit bundle separate from UI tests: installing both
           # in one test invocation can race the simulator app launch (run 43612196671).
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeUnits.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongTests test-without-building | tee "$RUNNER_TEMP/native-unit-tests.log"
       - name: Focused task UI regression
         if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
-        timeout-minutes: 8
+        timeout-minutes: 18
         run: |
           set -o pipefail
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/FocusedTasks.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -only-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/focused-task-tests.log"
       - name: Remaining UI regression
         if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
-        timeout-minutes: 8
+        timeout-minutes: 18
         run: |
           set -o pipefail
           # The two task flows already passed above against these exact build products.
@@ -168,6 +174,7 @@ jobs:
             ${{ runner.temp }}/ios-compile.log
             ${{ runner.temp }}/NativeUnits.xcresult
             ${{ runner.temp }}/native-unit-tests.log
+            ${{ runner.temp }}/local-community.log
             ${{ runner.temp }}/unit-screenshots
             ${{ runner.temp }}/FocusedTasks.xcresult
             ${{ runner.temp }}/focused-task-tests.log

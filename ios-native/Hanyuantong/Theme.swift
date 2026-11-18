@@ -3,13 +3,13 @@ import UIKit
 
 enum CampusTheme {
     // Normal-contrast values mirror the current Android tokens. No light-theme redesign.
-    static let background = adaptive(light: 0xf7f8fb, dark: 0x171c24, highLight: 0xffffff, highDark: 0x000000)
-    static let surface = adaptive(light: 0xfdfdff, dark: 0x1e2530, highLight: 0xffffff, highDark: 0x111720)
-    static let text = adaptive(light: 0x283445, dark: 0xe1e7ef, highLight: 0x131f30, highDark: 0xffffff)
-    static let muted = adaptive(light: 0x6d7889, dark: 0xa6b1c2, highLight: 0x455267, highDark: 0xd5dfed)
-    static let primary = adaptive(light: 0x4f6f94, dark: 0xa4bbd9, highLight: 0x365978, highDark: 0xcadcf4)
-    static let tint = adaptive(light: 0xeaf0f8, dark: 0x303e53, highLight: 0xe0e8f4, highDark: 0x202e43)
-    static let border = adaptive(light: 0xdce1e9, dark: 0x3a4556, highLight: 0x788596, highDark: 0x91a1b8)
+    static let background = adaptive(light: 0xf7f6fa, dark: 0x171c24, highLight: 0xffffff, highDark: 0x000000)
+    static let surface = adaptive(light: 0xffffff, dark: 0x1e2530, highLight: 0xffffff, highDark: 0x111720)
+    static let text = adaptive(light: 0x262233, dark: 0xe1e7ef, highLight: 0x131f30, highDark: 0xffffff)
+    static let muted = adaptive(light: 0x696477, dark: 0xa6b1c2, highLight: 0x455267, highDark: 0xd5dfed)
+    static let primary = adaptive(light: 0x6843b5, dark: 0xa4bbd9, highLight: 0x365978, highDark: 0xcadcf4)
+    static let tint = adaptive(light: 0xeee8f8, dark: 0x303e53, highLight: 0xe0e8f4, highDark: 0x202e43)
+    static let border = adaptive(light: 0xe3dfeb, dark: 0x3a4556, highLight: 0x788596, highDark: 0x91a1b8)
     static let onPrimary = adaptive(light: 0xffffff, dark: 0x171c24)
     static let walletPurple = adaptive(light: 0xeee5ff, dark: 0x352f44)
     static let walletGreen = adaptive(light: 0xe4f2eb, dark: 0x2c3c37)

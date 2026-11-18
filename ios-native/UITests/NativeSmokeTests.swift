@@ -74,9 +74,9 @@ final class NativeSmokeTests: XCTestCase {
     func testPersonalTaskEditSaveDiscardAndRelaunch() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        let title = "TaskEdit-" + String(UUID().uuidString.prefix(8))
-        let savedCourse = "Synthetic Course"
-        let savedNotes = "Saved edit notes"
+        let title = "T-" + String(UUID().uuidString.prefix(8))
+        let savedCourse = "Math"
+        let savedNotes = "Read"
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["待办"].waitForExistence(timeout: 10))
         app.tabBars.buttons["待办"].tap()
@@ -98,7 +98,7 @@ final class NativeSmokeTests: XCTestCase {
         let savedField = taskEditorField("task-notes-editor", in: app)
         XCTAssertEqual(savedField.value as? String, savedNotes)
 
-        savedField.tap(); savedField.typeText("-unsaved")
+        savedField.tap(); savedField.typeText("-x")
         let unsavedValue = try XCTUnwrap(savedField.value as? String)
         XCTAssertNotEqual(unsavedValue, savedNotes)
         app.buttons["取消"].tap()

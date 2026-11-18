@@ -49,6 +49,8 @@ struct HonorShelfLink: View {
     @EnvironmentObject private var campus:CampusStore
     @EnvironmentObject private var learning:LearningStore
     @ObservedObject private var journal=MedalJournal.shared
+    @State private var opened = false
+    @State private var selectedCode: String?
     private var displayMedals:[CampusMedal] {
         let privatePins = personal ? journal.pinned(school:campus.schoolMedalScope,learning:learning.cache.account) : []
         var codes=privatePins + pins.filter { !privatePins.contains($0) }
@@ -66,7 +68,7 @@ struct HonorShelfLink: View {
     }
     var body:some View {
         VStack(alignment:.leading,spacing:10) {
-            NavigationLink { MedalCollection(memberID:memberID) } label: {
+            Button { selectedCode=nil; opened=true } label: {
                 HStack(spacing:14) {
                     Image(systemName:"rosette").font(.title).foregroundStyle(Color(hex:0xa77828))
                         .frame(width:50,height:54).background(Color(hex:0xd2a44e).opacity(0.12),in:RoundedRectangle(cornerRadius:13))
@@ -76,19 +78,22 @@ struct HonorShelfLink: View {
                     }
                     Spacer(); Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
                 }
-            }.buttonStyle(.plain).accessibilityIdentifier("open-honor-shelf")
+            }.buttonStyle(.borderless).accessibilityIdentifier("open-honor-shelf")
             if !displayMedals.isEmpty {
                 HStack(spacing:8) {
                     ForEach(displayMedals) { medal in
-                        NavigationLink { MedalCollection(memberID:memberID,initialCode:medal.code) } label:{
+                        Button { selectedCode=medal.code; opened=true } label:{
                             HStack(spacing:4) { Image(systemName:medal.symbol);Text(medal.name).lineLimit(2) }
                                 .font(.caption).frame(maxWidth:.infinity,minHeight:44)
                                 .background(Color(hex:0xb8974f).opacity(0.10),in:RoundedRectangle(cornerRadius:10))
-                        }.buttonStyle(.plain).accessibilityLabel("查看成就，"+medal.name)
+                        }.buttonStyle(.borderless).accessibilityLabel("查看成就，"+medal.name)
                     }
                 }
             }
         }.padding(.vertical,6)
+        .background(NavigationLink(isActive:$opened) {
+            MedalCollection(memberID:memberID,initialCode:selectedCode)
+        } label: { EmptyView() }.hidden().accessibilityHidden(true))
     }
 }
 
@@ -145,12 +150,15 @@ struct MedalCollection: View {
                     let count = medals.filter { date($0) != nil }.count
                     HStack { Text("成就收藏馆").font(.title2.bold()); Spacer(); Text("\(count) / \(medals.count)").monospacedDigit() }
                     ProgressView(value:Double(count),total:Double(max(1,medals.count))).tint(.purple)
-                    ScrollView(.horizontal,showsIndicators:false) {
-                        HStack { ForEach(["全部","初识","学习","生活","社区","时光","隐藏"],id:\.self) { key in
-                            Button(key) { group = key }.font(.subheadline.weight(.medium)).padding(.horizontal,12).frame(minHeight:44)
-                                .background(group == key ? Color.primary.opacity(0.10) : .clear,in:Capsule())
+                    LazyVGrid(columns:[GridItem(.adaptive(minimum:60),spacing:4)],alignment:.leading,spacing:2) {
+                        ForEach(["全部","初识","学习","生活","社区","时光","隐藏"],id:\.self) { key in
+                            Button { group=key } label: {
+                                Text(key).font(.subheadline.weight(.medium))
+                                    .frame(maxWidth:.infinity,minHeight:44).contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                                .background(group == key ? CampusTheme.tint : .clear,in:Capsule())
                                 .accessibilityAddTraits(group == key ? .isSelected : [])
-                        } }
+                        }
                     }.accessibilityIdentifier("medal-groups")
                 } else { Text("展示成就").font(.headline) }
                 if medals.isEmpty && !loading { Text(own ? "收藏目录读取失败" : "还没有展示成就").foregroundStyle(.secondary) }

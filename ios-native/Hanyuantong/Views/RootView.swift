@@ -41,25 +41,29 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 14) {
                 hero
                 if let focus = HomeCourseFocus.select(courses: store.courses, personalStart: store.semesterStart, schoolStart: store.schoolSemesterStart, now: now) {
                     NavigationLink { CourseDetailView(course: focus.course, occurrenceDate: focus.start) } label: { focusCard(focus) }.buttonStyle(.plain)
                 }
                 let today = store.courses(on:now)
                 if today.isEmpty {
-                    CampusEmpty(title:"今天暂无课程",detail:store.isConnected ? "享受自己的校园时光" : "连接教务系统，或在课表中添加个人课程",symbol:"sun.max")
+                    VStack(alignment:.leading,spacing:3) {
+                        Label("今天暂无课程",systemImage:"sun.max").font(.headline)
+                        Button(store.isConnected ? "查看课表" : "连接教务或添加课程") { store.selectedTab = .schedule }
+                            .font(.subheadline).frame(minHeight:44)
+                    }.frame(maxWidth:.infinity,alignment:.leading).campusCard()
                 } else {
                     DisclosureGroup(isExpanded:$timelineOpen) {
                         ForEach(today) { course in NavigationLink { CourseDetailView(course:course) } label: { CourseRow(course:course) } }
                     } label: { HStack { Text("今日课程").font(.headline); Spacer(); Text("\(today.count) 节").font(.caption).foregroundStyle(.secondary) } }.campusCard()
                 }
-                Text("学习与教务").font(.headline)
-                VStack(spacing: 0) {
-                    NavigationLink { AcademicRecordsView() } label: { Label("成绩与考试", systemImage: "graduationcap").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12) }
-                    Divider()
-                    NavigationLink { LearningCenterView(store: learning) } label: { HStack { Label("学习通", systemImage: "books.vertical"); Spacer(); Text("作业 · 考试").font(.caption).foregroundStyle(CampusTheme.muted) }.padding(.vertical, 12) }
-                }.campusCard()
+                HStack(spacing:12) {
+                    NavigationLink { LearningCenterView(store:learning) } label: { Label("学习通",systemImage:"books.vertical") }
+                    Spacer(); Divider().frame(height:20); Spacer()
+                    NavigationLink { AcademicRecordsView() } label: { Label("成绩与学业",systemImage:"graduationcap") }
+                }.font(.subheadline.weight(.medium)).frame(minHeight:44).padding(.horizontal,14)
+                    .background(CampusTheme.surface,in:RoundedRectangle(cornerRadius:16))
                 Text("校园生活").font(.headline)
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
@@ -73,7 +77,7 @@ struct HomeView: View {
                 }.buttonStyle(.plain)
                 todayTasks
                 upcomingExams
-            }.padding(20).frame(maxWidth: 680)
+            }.padding(.horizontal,16).padding(.vertical,8).frame(maxWidth:680)
         }.background(CampusTheme.background).campusNavigationBarHidden()
             .task(id: scenePhase == .active && store.selectedTab == .home) {
                 guard scenePhase == .active, store.selectedTab == .home else { return }
@@ -153,7 +157,7 @@ struct HomeView: View {
         ZStack(alignment: .topLeading) {
             GeometryReader { proxy in
                 Image("campus-autumn").resizable().scaledToFill()
-                    .frame(width: proxy.size.width, height: 275).clipped()
+                    .frame(width: proxy.size.width, height: 194).clipped()
             }.accessibilityHidden(true)
             LinearGradient(colors: [.white.opacity(0.5), .clear, .black.opacity(0.25)], startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 8) {
@@ -163,10 +167,10 @@ struct HomeView: View {
                 Text("校园里的事，\n简单一点。").font(.system(size: 24, weight: .semibold)).lineSpacing(5)
                 Spacer()
                 HStack { Text(CampusTheme.date(now)); Spacer(); Text("第\(store.week(for: now))周") }.font(.caption).foregroundStyle(.white)
-            }.padding(22)
-            VStack { Spacer(); HStack { Spacer(); DiscoverySurface("puff",label:"首页小金鱼",taps:5,canDream:true) { CampusHeroFish().frame(width:108,height:68).rotationEffect(.degrees(swimming ? 2 : -1)).offset(y:swimming ? -3 : 0) } } }
-                .padding(.trailing, 14).padding(.bottom, 48)
-        }.frame(height: 275).clipShape(RoundedRectangle(cornerRadius: 22))
+            }.padding(14)
+            VStack { Spacer(); HStack { Spacer(); DiscoverySurface("puff",label:"首页小金鱼",taps:5,canDream:true) { CampusHeroFish().frame(width:84,height:52).rotationEffect(.degrees(swimming ? 2 : -1)).offset(y:swimming ? -3 : 0) } } }
+                .padding(.trailing, 14).padding(.bottom, 25)
+        }.frame(height: 194).clipShape(RoundedRectangle(cornerRadius: 22))
     }
     private func wallet(_ name: String, _ label: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
