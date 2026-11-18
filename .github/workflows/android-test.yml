@@ -134,7 +134,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - run: sudo apt-get install -y fonts-noto-cjk fonts-noto-color-emoji
+      - run: bash scripts/install-ui-fonts.sh
       - run: node scripts/academic-browser-check.mjs
       - run: npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund
       - run: node scripts/admin-browser-check.mjs

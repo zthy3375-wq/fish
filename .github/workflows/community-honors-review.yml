@@ -23,7 +23,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci && npm ci --prefix cloudbase/functions/community --ignore-scripts
-      - run: sudo apt-get install -y fonts-noto-cjk fonts-noto-color-emoji
+      - run: bash scripts/install-ui-fonts.sh
       - run: npx playwright install chromium
       - name: Build previous profile and capture the same three viewport widths
         env:
