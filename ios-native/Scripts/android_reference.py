@@ -17,8 +17,9 @@ def tree():
     adb("shell", "uiautomator", "dump", "/sdcard/parity-window.xml")
     return ET.fromstring(adb("exec-out", "cat", "/sdcard/parity-window.xml"))
 
-def locate(label, bottom=False):
-    for attempt in range(8):
+def locate(label, bottom=False, timeout=35):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         matches = []
         try:
             for node in tree().iter("node"):
@@ -30,6 +31,7 @@ def locate(label, bottom=False):
             pass
         if matches: return (max if bottom else min)(matches)
         time.sleep(1)
+    (output / "failed-screen.png").write_bytes(adb("exec-out", "screencap", "-p"))
     raise RuntimeError("Android screen did not expose " + label)
 
 def tap(label, bottom=False):
@@ -43,7 +45,11 @@ def capture(name):
     (output/(name+".png")).write_bytes(data)
 
 adb("shell","cmd","connectivity","airplane-mode","enable")
+adb("shell","input","keyevent","KEYCODE_WAKEUP")
+adb("shell","wm","dismiss-keyguard")
 adb("shell","am","start","-n","org.handancampus.app/.MainActivity")
+# A newly installed WebView can take longer to expose its accessibility tree on a cold emulator.
+locate("首页", bottom=True, timeout=100)
 screens = [("首页","home","校园生活"),("课表","schedule","课程表"),("社区","community","重试"),
            ("待办","tasks","任务清单"),("我的","profile","查看全部荣誉殿堂藏品")]
 digests=set()

@@ -99,8 +99,10 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertEqual(savedField.value as? String, savedNotes)
 
         savedField.tap(); savedField.typeText("-x")
-        let unsavedValue = try XCTUnwrap(savedField.value as? String)
-        XCTAssertNotEqual(unsavedValue, savedNotes)
+        let unsavedValue = savedNotes + "-x"
+        let completedInput = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@",unsavedValue),object:savedField)
+        XCTAssertEqual(XCTWaiter.wait(for:[completedInput],timeout:8),.completed,
+                       "The final keyboard event must reach the text editor before reopening its confirmation.")
         app.buttons["取消"].tap()
         XCTAssertTrue(app.buttons["放弃修改"].waitForExistence(timeout: 5))
         app.buttons["继续编辑"].tap()
