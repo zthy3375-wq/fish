@@ -25,7 +25,7 @@ export async function checkHonors({client,db,api,baseline,output}){
     if(!ownerExists)await call('honors.change',{operation:'grant',memberId:member.id,kind:'seed',reason:'参与社区内测',requestId:randomUUID()});
     await page.reload();await page.locator('.th-nav .th-self:not([disabled])').waitFor();
     await page.locator('.unlock-toast').first().waitFor();
-    await page.screenshot({path:path.join(output,'notice-'+width+'.png')});
+    await page.waitForTimeout(450);await page.screenshot({path:path.join(output,'notice-'+width+'.png')});
     await page.waitForFunction(()=>!document.querySelector('.unlock-toast'),undefined,{timeout:12000});
     await page.getByRole('button',{name:/查看 .*的主页/}).first().click();
     const publicButton=page.locator('button.hon-hall-link');await publicButton.waitFor();
@@ -38,7 +38,7 @@ export async function checkHonors({client,db,api,baseline,output}){
    await page.locator('.th-profile-shortcuts button').filter({hasText:'荣誉殿堂'}).click();
    await page.locator('.hon-grid').waitFor();await page.getByRole('button',{name:'第一声',exact:true}).click();
    await page.getByRole('button',{name:/展示到主页/}).click();await page.getByRole('button',{name:/从主页取下/}).waitFor();
-   await page.screenshot({animations:'disabled',path:path.join(output,'hall-'+width+'.png')});
+   await page.locator('.hon-page').screenshot({animations:'disabled',path:path.join(output,'hall-'+width+'.png')});
    assert.equal(await page.locator('.hon-grid button').count(),8);
    assert.equal(await page.locator('.hon-page').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);
    await page.getByRole('button',{name:'稀有',exact:true}).click();assert.equal(await page.locator('.hon-grid button').count(),3);
