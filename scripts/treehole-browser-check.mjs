@@ -10,7 +10,7 @@ import {createCommunity} from '../cloudbase/functions/community/core.mjs';
 import {createServer} from '../cloudbase/functions/community/server.mjs';
 import {browseBoard,choosePostBoard,composeDestination,feedNavigation} from './treehole-board-controls.mjs';
 
-const root=path.resolve('dist'),output='/tmp/handan-community-v15-qa';await mkdir(output,{recursive:true});
+const root=path.resolve(process.env.HYT_UI_DIST||'dist'),output='/tmp/handan-community-v15-qa';await mkdir(output,{recursive:true});
 const db=new PGlite();await db.exec(await readFile('cloudbase/community-schema.sql','utf8'));
 const objects=new Map();let mediaOrigin='';
 const storage={put:async(k,v)=>objects.set(k,v),url:async k=>mediaOrigin+'/fixtures/'+k,remove:async k=>objects.delete(k)};
@@ -64,6 +64,11 @@ async function client(width){
  return {page,context,state,errors};
 }
 
+if(process.env.HYT_HONORS_ONLY){
+ try{const {checkHonors}=await import('./community-honors-ui.mjs');await checkHonors({client,db,api,baseline:process.env.HYT_HONORS_ONLY==='before',output:process.env.HYT_HONOR_SHOTS||'/tmp/hyt-honors-ui'});}
+ finally{await browser.close();await new Promise(resolve=>server.close(resolve));await new Promise(resolve=>backend.close(resolve));await db.close();}
+ process.exit(0);
+}
 try{
  if(!process.env.HYT_POLLS_ONLY&&!process.env.HYT_BUDDIES_ONLY){
  for(const width of [360,390,430]){

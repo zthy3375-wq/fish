@@ -72,7 +72,7 @@ test('strict arguments, additive migration and role permissions protect message 
  for(const beforeSeq of ['-1','0',1,'1 OR 1=1','9999999999999999999999'])await assert.rejects(call(a,'messages.list',{conversationId:t.id,beforeSeq}),{code:'invalid_request'});
  await pg.exec("DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF; END $$;");await pg.exec(schema);assert.equal((await call(b,'messages.list',{conversationId:t.id})).messages.length,1);
  for(const table of ['hyt_dm_messages','hyt_dm_threads','hyt_dm_reads'])assert.equal((await pg.query("SELECT has_table_privilege('anon',$1,'SELECT') AS allowed",[table])).rows[0].allowed,false);
- assert(api.config().messagesEnabled&&api.config().socialEnabled);assert.equal(api.config().schema,11);
+ assert(api.config().messagesEnabled&&api.config().socialEnabled);assert.equal(api.config().schema,12);
 });
 
 test('own follower list paginates equal timestamps without duplicates and never accepts another owner',async()=>{

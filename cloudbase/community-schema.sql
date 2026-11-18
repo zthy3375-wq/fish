@@ -218,14 +218,130 @@ LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
  SELECT public.hyt_media_json(i) FROM public.hyt_members m JOIN public.hyt_media i ON i.id=m.avatar_id
  WHERE m.id=uid AND m.deleted_at IS NULL AND i.ready AND i.deleted_at IS NULL AND i.purpose='avatar';
 $$;
+-- Identity and honor records are attached to stable member IDs. The developer bootstrap
+-- has no HTTP route. Existing moderators retain their current capabilities on migration.
+ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS developer_since timestamptz;
+ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS moderator_since timestamptz;
+ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS mod_caps text[] NOT NULL DEFAULT ARRAY['content','reports','users','recommend'];
+ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS worn_honor text;
+ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS showcase text[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS awards_initialized boolean NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS hyt_one_developer ON public.hyt_members ((true)) WHERE developer_since IS NOT NULL;
+CREATE TABLE IF NOT EXISTS public.hyt_honors (
+ member_id uuid REFERENCES public.hyt_members(id), kind text CHECK(kind IN ('seed','creator','contributor')),
+ granted_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(member_id,kind)
+);
+CREATE TABLE IF NOT EXISTS public.hyt_honor_history (
+ id uuid PRIMARY KEY, actor uuid NOT NULL REFERENCES public.hyt_members(id), target uuid NOT NULL REFERENCES public.hyt_members(id),
+ change jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS hyt_honor_history_target ON public.hyt_honor_history(target,created_at DESC);
+CREATE TABLE IF NOT EXISTS public.hyt_recommendations (
+ member_id uuid PRIMARY KEY REFERENCES public.hyt_members(id), actor uuid NOT NULL REFERENCES public.hyt_members(id),
+ reason text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.hyt_awards (
+ member_id uuid REFERENCES public.hyt_members(id), code text NOT NULL, earned_at timestamptz NOT NULL DEFAULT now(),
+ seen boolean NOT NULL DEFAULT false, PRIMARY KEY(member_id,code)
+);
+CREATE INDEX IF NOT EXISTS hyt_honor_posts ON public.hyt_posts(author_id,id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS hyt_honor_saves ON public.hyt_reactions(member_id,post_id) WHERE kind='save';
+CREATE INDEX IF NOT EXISTS hyt_honor_comments ON public.hyt_comments(author_id,id) WHERE deleted_at IS NULL;
+-- New reactions share one newcomer credit per recipient per UTC day, irrespective of how
+-- many fresh accounts supply them. Older edges require existing server notification evidence.
+ALTER TABLE public.hyt_reactions ADD COLUMN IF NOT EXISTS credit text;
+ALTER TABLE public.hyt_comment_likes ADD COLUMN IF NOT EXISTS credit text;
+CREATE OR REPLACE FUNCTION public.hyt_credit() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
+DECLARE object_id uuid;
+BEGIN
+ IF TG_TABLE_NAME='hyt_reactions' THEN
+  IF NEW.kind<>'like' THEN RETURN NEW; END IF;
+  object_id=NEW.post_id;
+ ELSE object_id=NEW.comment_id; END IF;
+ IF EXISTS (SELECT 1 FROM public.hyt_members WHERE id=NEW.member_id AND created_at <= now()-interval '24 hours') THEN
+  NEW.credit=object_id::text||':'||NEW.member_id;
+ ELSE NEW.credit='new:'||(now() AT TIME ZONE 'UTC')::date; END IF;
+ RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS hyt_credit_like ON public.hyt_reactions;
+CREATE TRIGGER hyt_credit_like BEFORE INSERT ON public.hyt_reactions FOR EACH ROW EXECUTE FUNCTION public.hyt_credit();
+DROP TRIGGER IF EXISTS hyt_credit_like ON public.hyt_comment_likes;
+CREATE TRIGGER hyt_credit_like BEFORE INSERT ON public.hyt_comment_likes FOR EACH ROW EXECUTE FUNCTION public.hyt_credit();
+CREATE OR REPLACE FUNCTION public.hyt_badges(m public.hyt_members) RETURNS jsonb LANGUAGE sql STABLE AS $$
+ SELECT jsonb_build_object('official',CASE WHEN m.developer_since IS NOT NULL THEN jsonb_build_object('code','developer','at',m.developer_since)
+ WHEN m.role='moderator' THEN jsonb_build_object('code','moderator','at',coalesce(m.moderator_since,
+ (SELECT min(created_at) FROM public.hyt_moderation WHERE moderator_id=m.id AND action='grant_moderator'))) END,
+ 'worn',(SELECT jsonb_build_object('code',kind,'at',granted_at) FROM public.hyt_honors WHERE member_id=m.id AND kind=m.worn_honor));
+$$;
+CREATE OR REPLACE FUNCTION public.hyt_progress(uid uuid,metric text) RETURNS int LANGUAGE plpgsql STABLE AS $$
+DECLARE total int;
+BEGIN
+ IF metric='registered' THEN RETURN 1;
+ ELSIF metric='posts' THEN
+  SELECT count(*) INTO total FROM (SELECT 1 FROM public.hyt_posts WHERE author_id=uid AND deleted_at IS NULL LIMIT 5) p;
+ ELSIF metric='threads' OR metric='comment' THEN
+  -- An identical normalized reply pasted into many discussions gives credit once.
+  -- One post can earn at most one discussion credit; use a deterministic canonical occurrence.
+  SELECT count(*) INTO total FROM (SELECT DISTINCT post_id FROM (
+   SELECT DISTINCT ON (norm) post_id FROM (
+    SELECT c.post_id,c.created_at,c.id,CASE WHEN c.body='' AND EXISTS(SELECT 1 FROM public.hyt_media i WHERE i.comment_id=c.id AND i.ready AND i.deleted_at IS NULL) THEN 'image:'||c.id ELSE regexp_replace(lower(c.body),'[[:space:][:punct:]]','','g') END norm
+    FROM public.hyt_comments c JOIN public.hyt_posts p ON p.id=c.post_id
+    WHERE c.author_id=uid AND c.deleted_at IS NULL AND p.deleted_at IS NULL
+   ) comments WHERE length(norm)>=2 AND norm !~ '^(.)\1+$' ORDER BY norm,created_at,id
+  ) eligible LIMIT 10) counted;
+ ELSIF metric='saves' THEN
+  SELECT count(*) INTO total FROM (SELECT 1 FROM public.hyt_reactions r JOIN public.hyt_posts p ON p.id=r.post_id
+   WHERE r.member_id=uid AND r.kind='save' AND p.deleted_at IS NULL LIMIT 20) s;
+ ELSIF metric='likes' THEN
+  SELECT count(*) INTO total FROM (SELECT DISTINCT credit FROM (
+   SELECT coalesce(r.credit,CASE WHEN n.created_at>=u.created_at+interval '24 hours' THEN p.id::text||':'||u.id ELSE 'new:'||(n.created_at AT TIME ZONE 'UTC')::date END) credit
+   FROM public.hyt_posts p JOIN public.hyt_reactions r ON r.post_id=p.id AND r.kind='like'
+   JOIN public.hyt_members u ON u.id=r.member_id AND u.deleted_at IS NULL
+   LEFT JOIN public.hyt_notifications n ON r.credit IS NULL AND n.recipient_id=uid AND n.event_key='post-like:'||p.id||':'||u.id
+   WHERE p.author_id=uid AND u.id<>uid AND p.deleted_at IS NULL
+   UNION ALL
+   SELECT coalesce(l.credit,CASE WHEN n.created_at>=u.created_at+interval '24 hours' THEN c.id::text||':'||u.id ELSE 'new:'||(n.created_at AT TIME ZONE 'UTC')::date END)
+   FROM public.hyt_comments c JOIN public.hyt_posts p ON p.id=c.post_id AND p.deleted_at IS NULL
+   JOIN public.hyt_comment_likes l ON l.comment_id=c.id JOIN public.hyt_members u ON u.id=l.member_id AND u.deleted_at IS NULL
+   LEFT JOIN public.hyt_notifications n ON l.credit IS NULL AND n.recipient_id=uid AND n.event_key='comment-like:'||c.id||':'||u.id
+   WHERE c.author_id=uid AND u.id<>uid AND c.deleted_at IS NULL
+  ) credits WHERE credit IS NOT NULL LIMIT 30) s;
+ END IF;
+ RETURN coalesce(total,0);
+END $$;
+CREATE OR REPLACE FUNCTION public.hyt_award_check(uid uuid,metric text,historical boolean DEFAULT false) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE n int;
+BEGIN
+ -- Serialize grants for the same recipient, without taking their member row on another user's like.
+ PERFORM pg_advisory_xact_lock(hashtextextended(uid::text||':awards',0));
+ IF NOT EXISTS (SELECT 1 FROM (VALUES ('registered','arrival'),('posts','firstpost'),('posts','sprout'),('threads','hello'),('threads','neighbor'),('likes','liked'),('likes','popular'),('saves','collector')) codes(m,k)
+  WHERE m=metric AND NOT EXISTS(SELECT 1 FROM public.hyt_awards WHERE member_id=uid AND code=k)) THEN RETURN; END IF;
+ n=public.hyt_progress(uid,metric);
+ INSERT INTO public.hyt_awards(member_id,code,earned_at,seen)
+ SELECT uid,k,CASE WHEN k='arrival' THEN (SELECT created_at FROM public.hyt_members WHERE id=uid) ELSE now() END,historical
+ FROM (VALUES ('registered','arrival',1),('posts','firstpost',1),('posts','sprout',5),('threads','hello',1),('threads','neighbor',10),
+ ('likes','liked',1),('likes','popular',30),('saves','collector',20)) v(m,k,threshold)
+ WHERE m=metric AND n>=threshold ON CONFLICT DO NOTHING;
+END $$;
+CREATE OR REPLACE FUNCTION public.hyt_award_pending(uid uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$
+ SELECT jsonb_build_object('awardOwner',uid,'unlocks',coalesce(jsonb_agg(code ORDER BY earned_at,code),'[]')) FROM public.hyt_awards WHERE member_id=uid AND NOT seen;
+$$;
+CREATE OR REPLACE FUNCTION public.hyt_hall(u public.hyt_members,viewer uuid) RETURNS jsonb LANGUAGE sql STABLE AS $$
+ SELECT jsonb_build_object('id',u.id,'nickname',u.nickname,'badges',public.hyt_badges(u),'showcase',u.showcase,
+ 'honors',coalesce((SELECT jsonb_agg(jsonb_build_object('code',kind,'at',granted_at) ORDER BY granted_at) FROM public.hyt_honors WHERE member_id=u.id),'[]'),
+ 'total',(SELECT count(*) FROM public.hyt_awards WHERE member_id=u.id),
+ 'awards',coalesce((SELECT jsonb_object_agg(code,earned_at) FROM public.hyt_awards WHERE member_id=u.id AND (viewer=u.id OR code=ANY(u.showcase))),'{}'))
+ || CASE WHEN viewer=u.id THEN jsonb_build_object('progress',jsonb_build_object('posts',public.hyt_progress(u.id,'posts'),'threads',public.hyt_progress(u.id,'threads'),'likes',public.hyt_progress(u.id,'likes'),'saves',public.hyt_progress(u.id,'saves'),'registered',1)) ELSE '{}' END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.hyt_member_json(m public.hyt_members) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
- SELECT jsonb_build_object('id',m.id,'username',m.username,'nickname',m.nickname,'role',m.role,'bannedUntil',m.banned_until,'bio',m.bio,'avatar',public.hyt_avatar_json(m.id));
+ SELECT jsonb_build_object('id',m.id,'badges',public.hyt_badges(m),'caps',CASE WHEN m.role='moderator' THEN m.mod_caps ELSE '{}'::text[] END,'username',m.username,'nickname',m.nickname,'role',m.role,'bannedUntil',m.banned_until,'bio',m.bio,'avatar',public.hyt_avatar_json(m.id));
 $$;
 CREATE OR REPLACE FUNCTION public.hyt_author_json(uid uuid, pid uuid, anon boolean, viewer uuid) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
  SELECT jsonb_build_object('name',CASE WHEN anon THEN '匿名同学 · '||coalesce(a.label,'隐藏') ELSE m.nickname END,
- 'anonymous',anon,'mine',uid=viewer)||CASE WHEN anon THEN '{}'::jsonb ELSE jsonb_build_object('id',uid,'avatar',public.hyt_avatar_json(uid)) END
+ 'anonymous',anon,'mine',uid=viewer)||CASE WHEN anon THEN '{}'::jsonb ELSE jsonb_build_object('badges',public.hyt_badges(m),'id',uid,'avatar',public.hyt_avatar_json(uid)) END
  FROM public.hyt_members m LEFT JOIN public.hyt_thread_aliases a ON a.member_id=m.id AND a.post_id=pid WHERE m.id=uid;
 $$;
 CREATE OR REPLACE FUNCTION public.hyt_post_json(p public.hyt_posts, viewer uuid) RETURNS jsonb
@@ -298,7 +414,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.hyt_profile_json(u public.hyt_members,viewer uuid) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
- SELECT jsonb_build_object('id',u.id,'nickname',u.nickname,'bio',u.bio,'avatar',public.hyt_avatar_json(u.id),
+ SELECT jsonb_build_object('showcase',u.showcase,'badges',public.hyt_badges(u),'id',u.id,'nickname',u.nickname,'bio',u.bio,'avatar',public.hyt_avatar_json(u.id),
  'following',EXISTS(SELECT 1 FROM public.hyt_follows f WHERE f.member_id=viewer AND f.followed_id=u.id),
  'postCount',(SELECT count(*) FROM public.hyt_posts p WHERE p.author_id=u.id AND NOT p.anonymous AND p.deleted_at IS NULL
  AND NOT EXISTS(SELECT 1 FROM public.hyt_hidden_threads h WHERE h.member_id=viewer AND h.post_id=p.id)));
@@ -328,7 +444,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.hyt_community(a text,b jsonb,th text) RETURNS jsonb
 LANGUAGE plpgsql SET search_path=pg_catalog,public AS $fn$
 #variable_conflict use_column
-DECLARE m public.hyt_members%ROWTYPE; p public.hyt_posts%ROWTYPE; c public.hyt_comments%ROWTYPE;
+DECLARE subject public.hyt_members%ROWTYPE; metric text; m public.hyt_members%ROWTYPE; p public.hyt_posts%ROWTYPE; c public.hyt_comments%ROWTYPE;
  report public.hyt_reports%ROWTYPE; target uuid; result jsonb; n int; k text; stamp timestamptz; limit_n int; anon boolean; img public.hyt_media%ROWTYPE; root uuid; snapshot timestamptz; dm public.hyt_dm_threads%ROWTYPE; msg public.hyt_dm_messages%ROWTYPE;
 BEGIN
  IF a='rate' THEN
@@ -353,11 +469,12 @@ BEGIN
   RETURN jsonb_build_object('status',200,'id',m.id,'passwordHash',m.password_hash,'recoveryHash',m.recovery_hash);
  END IF;
  IF a='register' THEN
-  INSERT INTO public.hyt_members(username,nickname,password_hash,recovery_hash)
-  VALUES(b->>'username',b->>'nickname',b->>'passwordHash',b->>'recoveryHash') ON CONFLICT(username) DO NOTHING RETURNING * INTO m;
+  INSERT INTO public.hyt_members(username,nickname,password_hash,recovery_hash,awards_initialized)
+  VALUES(b->>'username',b->>'nickname',b->>'passwordHash',b->>'recoveryHash',true) ON CONFLICT(username) DO NOTHING RETURNING * INTO m;
   IF NOT FOUND THEN RETURN '{"status":409,"error":"username_unavailable"}'::jsonb; END IF;
   INSERT INTO public.hyt_sessions(hash,member_id,expires_at) VALUES(th,m.id,now()+interval '30 days');
-  RETURN jsonb_build_object('status',201,'user',public.hyt_member_json(m));
+  PERFORM public.hyt_award_check(m.id,'registered');
+  RETURN jsonb_build_object('status',201,'user',public.hyt_member_json(m))||public.hyt_award_pending(m.id);
  END IF;
  IF a IN ('login','recover') THEN
   SELECT * INTO m FROM public.hyt_members WHERE id=(b->>'id')::uuid AND deleted_at IS NULL FOR UPDATE;
@@ -371,6 +488,9 @@ BEGIN
   INSERT INTO public.hyt_sessions(hash,member_id,expires_at) VALUES(th,m.id,now()+interval '30 days');
   RETURN jsonb_build_object('status',200,'user',public.hyt_member_json(m));
  END IF;
+ -- Role changes and moderation are rare. Order their locks before acquiring a caller
+ -- or target row, so a concurrent dismissal cannot race with an administrative mutation.
+ IF a IN ('honors.change','admin.action','admin.resolve') THEN PERFORM pg_advisory_xact_lock(hashtext('hyt-administration')); END IF;
  -- Serialize follow/block changes for the same pair before locking either caller.
  IF a IN ('follows.set','blocks.set','members.block','messages.open','messages.send') THEN
   SELECT s.member_id INTO target FROM public.hyt_sessions s JOIN public.hyt_members u ON u.id=s.member_id
@@ -391,6 +511,87 @@ BEGIN
  ON CONFLICT(key) DO UPDATE SET count=CASE WHEN hyt_community_rate.until_at<=now() THEN 1 ELSE hyt_community_rate.count+1 END,
  until_at=CASE WHEN hyt_community_rate.until_at<=now() THEN excluded.until_at ELSE hyt_community_rate.until_at END RETURNING count INTO n;
  IF n>180 THEN RETURN '{"status":429,"error":"too_many_requests"}'::jsonb; END IF;
+ IF NOT m.awards_initialized AND (a IN ('me','honors.hall') OR (a='posts.list' AND b->>'entry'='true')) THEN
+  FOREACH metric IN ARRAY ARRAY['registered','posts','threads','likes','saves'] LOOP PERFORM public.hyt_award_check(m.id,metric,true); END LOOP;
+  UPDATE public.hyt_members SET awards_initialized=true WHERE id=m.id;
+ END IF;
+ IF a LIKE 'honors.%' THEN
+  IF a='honors.hall' THEN
+   target=coalesce((b->>'memberId')::uuid,m.id);
+   IF EXISTS(SELECT 1 FROM public.hyt_blocks WHERE (member_id,blocked_id) IN ((target,m.id),(m.id,target))) THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
+   SELECT public.hyt_hall(u,m.id) INTO result FROM public.hyt_members u WHERE id=target AND deleted_at IS NULL;
+   IF result IS NULL THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
+   RETURN jsonb_build_object('status',200,'hall',result);
+  END IF;
+  IF a='honors.ack' THEN
+   UPDATE public.hyt_awards SET seen=true WHERE member_id=m.id AND NOT seen AND code IN (SELECT jsonb_array_elements_text(b->'codes'));
+   RETURN '{"status":200}';
+  END IF;
+  IF a='honors.wear' THEN
+   IF (b->>'honor' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.hyt_honors WHERE member_id=m.id AND kind=b->>'honor'))
+    OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(b->'showcase') item WHERE NOT EXISTS(SELECT 1 FROM public.hyt_awards WHERE member_id=m.id AND code=item))
+    OR jsonb_array_length(b->'showcase')>3 THEN RETURN '{"status":400,"error":"invalid_showcase"}'; END IF;
+   UPDATE public.hyt_members SET worn_honor=b->>'honor',showcase=ARRAY(SELECT jsonb_array_elements_text(b->'showcase')) WHERE id=m.id RETURNING * INTO m;
+   RETURN jsonb_build_object('status',200,'hall',public.hyt_hall(m,m.id),'user',public.hyt_member_json(m));
+  END IF;
+  IF m.role<>'moderator' OR m.banned_until>now() THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
+  IF a='honors.manage' THEN
+   IF m.developer_since IS NULL AND NOT ('recommend'=ANY(m.mod_caps) OR 'users'=ANY(m.mod_caps)) THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
+   SELECT coalesce(jsonb_agg(x),'[]') INTO result FROM (
+    SELECT jsonb_build_object('id',u.id,'nickname',u.nickname,'official',(public.hyt_badges(u)->'official'),'caps',CASE WHEN u.role='moderator' THEN u.mod_caps ELSE '{}'::text[] END,
+     'honors',ARRAY(SELECT kind FROM public.hyt_honors WHERE member_id=u.id),'bannedUntil',u.banned_until,
+     'recommendation',r.reason) x
+    FROM public.hyt_members u LEFT JOIN public.hyt_recommendations r ON r.member_id=u.id
+    WHERE u.deleted_at IS NULL AND (CASE WHEN coalesce(b->>'query','')='' THEN (r.member_id IS NOT NULL OR u.role='moderator')
+      ELSE u.id::text=b->>'query' OR u.nickname=b->>'query' END)
+    ORDER BY (r.member_id IS NOT NULL) DESC,u.nickname,u.id LIMIT 30) options;
+   RETURN jsonb_build_object('status',200,'members',result,'audit',CASE WHEN m.developer_since IS NOT NULL THEN
+    (SELECT coalesce(jsonb_agg(x),'[]') FROM (SELECT jsonb_build_object('at',h.created_at,'actor',au.nickname,'target',tu.nickname,'change',h.change) x
+      FROM public.hyt_honor_history h JOIN public.hyt_members au ON au.id=h.actor JOIN public.hyt_members tu ON tu.id=h.target ORDER BY h.created_at DESC LIMIT 30) history) ELSE '[]'::jsonb END);
+  END IF;
+  IF a='honors.change' THEN
+   k=b->>'operation';
+   IF m.developer_since IS NULL AND NOT ((k='recommend' AND 'recommend'=ANY(m.mod_caps)) OR (k IN ('mute','unmute') AND 'users'=ANY(m.mod_caps))) THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
+   target=(b->>'memberId')::uuid;
+   SELECT * INTO subject FROM public.hyt_members WHERE id=target AND deleted_at IS NULL FOR UPDATE;
+   IF NOT FOUND THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
+   IF EXISTS(SELECT 1 FROM public.hyt_honor_history WHERE id=(b->>'requestId')::uuid) THEN
+    IF EXISTS(SELECT 1 FROM public.hyt_honor_history WHERE id=(b->>'requestId')::uuid AND actor=m.id AND hyt_honor_history.target=subject.id AND change=(b-'requestId'-'memberId')) THEN RETURN '{"status":200}'; END IF;
+    RETURN '{"status":409,"error":"request_conflict"}';
+   END IF;
+   IF k IN ('appoint','dismiss','mute','unmute') AND (subject.developer_since IS NOT NULL OR subject.id=m.id OR (subject.role='moderator' AND m.developer_since IS NULL)) THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
+   CASE k
+    WHEN 'appoint' THEN UPDATE public.hyt_members SET role='moderator',mod_caps=ARRAY(SELECT jsonb_array_elements_text(b->'caps')),moderator_since=coalesce(moderator_since,now()) WHERE id=target;
+    WHEN 'dismiss' THEN UPDATE public.hyt_members SET role='member',moderator_since=NULL,mod_caps='{}' WHERE id=target;
+    WHEN 'mute' THEN UPDATE public.hyt_members SET banned_until=now()+interval '7 days' WHERE id=target;
+    WHEN 'unmute' THEN UPDATE public.hyt_members SET banned_until=NULL WHERE id=target;
+    WHEN 'recommend' THEN INSERT INTO public.hyt_recommendations(member_id,actor,reason) VALUES(target,m.id,b->>'reason') ON CONFLICT(member_id) DO UPDATE SET actor=excluded.actor,reason=excluded.reason,created_at=now();
+    WHEN 'decline' THEN DELETE FROM public.hyt_recommendations WHERE member_id=target;
+    WHEN 'grant' THEN
+     IF b->>'kind'='creator' AND NOT EXISTS(SELECT 1 FROM public.hyt_recommendations WHERE member_id=target) THEN RETURN '{"status":409,"error":"recommendation_required"}'; END IF;
+     INSERT INTO public.hyt_honors(member_id,kind) VALUES(target,b->>'kind') ON CONFLICT DO NOTHING;
+     UPDATE public.hyt_members SET worn_honor=b->>'kind' WHERE id=target AND worn_honor IS NULL;
+     IF b->>'kind'='creator' THEN DELETE FROM public.hyt_recommendations WHERE member_id=target; END IF;
+    WHEN 'revoke' THEN
+     IF b->>'kind'='seed' THEN RETURN '{"status":409,"error":"permanent_honor"}'; END IF;
+     DELETE FROM public.hyt_honors WHERE member_id=target AND kind=b->>'kind';
+     UPDATE public.hyt_members SET worn_honor=NULL WHERE id=target AND worn_honor=b->>'kind';
+    ELSE RETURN '{"status":400,"error":"invalid_request"}';
+   END CASE;
+   INSERT INTO public.hyt_honor_history(id,actor,target,change) VALUES((b->>'requestId')::uuid,m.id,target,b-'requestId'-'memberId');
+   RETURN '{"status":200}';
+  END IF;
+ END IF;
+ -- Applies equally to legacy report-resolution and the newer direct moderation routes.
+ IF a LIKE 'admin.%' AND (m.role<>'moderator' OR m.banned_until>now() OR (m.developer_since IS NULL AND (
+  (a IN ('admin.reports','admin.resolve') AND NOT 'reports'=ANY(m.mod_caps)) OR
+  (a IN ('admin.content','admin.context') AND NOT ('content'=ANY(m.mod_caps) OR 'reports'=ANY(m.mod_caps))) OR
+  (a='admin.history' AND NOT ('content'=ANY(m.mod_caps) OR 'reports'=ANY(m.mod_caps))) OR
+  (a='admin.action' AND (CASE WHEN b->>'reportId' IS NULL THEN NOT 'content'=ANY(m.mod_caps) ELSE NOT 'reports'=ANY(m.mod_caps) END)) OR
+  (a IN ('admin.action','admin.resolve') AND b->>'decision'='ban' AND NOT 'users'=ANY(m.mod_caps)) OR
+  (a IN ('admin.action','admin.resolve') AND b->>'decision' IN ('lock','unlock','remove') AND NOT 'content'=ANY(m.mod_caps))
+ ))) THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
+
  IF a='media.reserve' THEN
   IF m.banned_until>now() THEN RETURN '{"status":403,"error":"account_muted"}'::jsonb; END IF;
   SELECT * INTO img FROM public.hyt_media WHERE member_id=m.id AND request_id=(b->>'requestId')::uuid;
@@ -537,7 +738,7 @@ BEGIN
   IF b->>'withMessages'='true' THEN
    k=public.hyt_community('messages.unread','{}'::jsonb,th)->>'messageUnreadCount';
   END IF;
-  IF a='notifications.unread' THEN RETURN jsonb_strip_nulls(jsonb_build_object('status',200,'unreadCount',n,'messageUnreadCount',k::int)); END IF;
+  IF a='notifications.unread' THEN RETURN public.hyt_award_pending(m.id)||jsonb_strip_nulls(jsonb_build_object('status',200,'unreadCount',n,'messageUnreadCount',k::int)); END IF;
   SELECT coalesce(jsonb_agg(public.hyt_notification_json(q,m.id) ORDER BY q.created_at DESC,q.id DESC),'[]'::jsonb) INTO result
   FROM (SELECT * FROM public.hyt_visible_notifications(m.id) WHERE
    (coalesce(b->>'filter','all')='all' OR (b->>'filter'='likes' AND kind IN ('post_like','comment_like','post_response')) OR (b->>'filter'='replies' AND kind IN ('reply','post_reply','thread_reply','buddy')))
@@ -545,6 +746,7 @@ BEGIN
    ORDER BY created_at DESC,id DESC LIMIT 31) q;
   RETURN jsonb_build_object('status',200,'notifications',result,'unreadCount',n) || CASE WHEN k IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('messageUnreadCount',k::int) END;
  END IF;
+ IF a='account.delete' AND m.developer_since IS NOT NULL THEN RETURN '{"status":409,"error":"owner_transfer_required"}'; END IF;
  IF a IN ('password.change','account.delete') THEN
   IF m.password_hash<>b->>'proof' THEN RETURN '{"status":401,"error":"invalid_credentials"}'::jsonb; END IF;
   IF a='password.change' THEN
@@ -597,7 +799,7 @@ BEGIN
     AND (coalesce(b->>'query','')='' OR strpos(lower(p.title||' '||p.body||' '||coalesce((SELECT definition->>'question' FROM public.hyt_polls WHERE post_id=p.id),'')||' '||coalesce((SELECT definition->>'location' FROM public.hyt_buddies WHERE post_id=p.id),'')),lower(b->>'query'))>0)) ranked
     WHERE b->>'beforeTime' IS NULL OR (ranked.rank,ranked.created_at,ranked.id)<(coalesce((b->>'beforeRank')::numeric,0),(b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid)
     ORDER BY ranked.rank DESC,ranked.created_at DESC,ranked.id DESC LIMIT 21) q;
-  RETURN jsonb_build_object('status',200,'posts',result,'snapshotTime',snapshot) || CASE WHEN b->>'entry'='true' THEN jsonb_build_object('user',public.hyt_member_json(m)) ELSE '{}'::jsonb END;
+  RETURN jsonb_build_object('status',200,'posts',result,'snapshotTime',snapshot) || CASE WHEN b->>'entry'='true' THEN public.hyt_award_pending(m.id)||jsonb_build_object('user',public.hyt_member_json(m)) ELSE '{}'::jsonb END;
  END IF;
 
  IF a IN ('admin.context','admin.content','admin.history','admin.action') THEN
@@ -702,7 +904,8 @@ BEGIN
   INSERT INTO public.hyt_thread_aliases(post_id,member_id) VALUES(p.id,m.id);
   INSERT INTO public.hyt_thread_watches(member_id,post_id) VALUES(m.id,p.id) ON CONFLICT DO NOTHING;
   INSERT INTO public.hyt_thread_visits(member_id,post_id) VALUES(m.id,p.id) ON CONFLICT DO NOTHING;
-  RETURN jsonb_build_object('status',201,'post',public.hyt_post_json(p,m.id));
+  PERFORM public.hyt_award_check(m.id,'posts');
+  RETURN jsonb_build_object('status',201,'post',public.hyt_post_json(p,m.id))||public.hyt_award_pending(m.id);
  END IF;
  SELECT * INTO p FROM public.hyt_posts WHERE id=(b->>'postId')::uuid AND deleted_at IS NULL FOR UPDATE;
  IF NOT FOUND OR EXISTS(SELECT 1 FROM public.hyt_hidden_threads h WHERE h.member_id=m.id AND h.post_id=p.id) OR EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=p.author_id AND NOT p.anonymous) THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
@@ -807,7 +1010,7 @@ BEGIN
   IF NOT FOUND THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
   IF (b->>'enabled')::boolean THEN
    INSERT INTO public.hyt_comment_likes VALUES(c.id,m.id) ON CONFLICT DO NOTHING;
-   IF c.author_id<>m.id THEN INSERT INTO public.hyt_notifications(recipient_id,actor_id,post_id,comment_id,kind,event_key)
+   IF c.author_id<>m.id THEN PERFORM public.hyt_award_check(c.author_id,'likes'); INSERT INTO public.hyt_notifications(recipient_id,actor_id,post_id,comment_id,kind,event_key)
     VALUES(c.author_id,m.id,p.id,c.id,'comment_like','comment-like:'||c.id||':'||m.id) ON CONFLICT DO NOTHING; END IF;
   ELSE DELETE FROM public.hyt_comment_likes WHERE comment_id=c.id AND member_id=m.id; END IF;
   RETURN jsonb_build_object('status',200,'comment',public.hyt_comment_json(c,m.id));
@@ -832,7 +1035,8 @@ BEGIN
   INSERT INTO public.hyt_thread_watches(member_id,post_id) VALUES(m.id,p.id) ON CONFLICT DO NOTHING;
   INSERT INTO public.hyt_thread_visits(member_id,post_id) VALUES(m.id,p.id) ON CONFLICT DO NOTHING;
   PERFORM public.hyt_notify_comment(c);
-  RETURN jsonb_build_object('status',201,'comment',public.hyt_comment_json(c,m.id));
+  PERFORM public.hyt_award_check(m.id,'threads');
+  RETURN jsonb_build_object('status',201,'comment',public.hyt_comment_json(c,m.id))||public.hyt_award_pending(m.id);
  END IF;
  IF a='posts.delete' THEN
   IF p.author_id<>m.id THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
@@ -856,10 +1060,11 @@ BEGIN
  IF a='reactions.set' THEN
   IF (b->>'enabled')::boolean THEN
    INSERT INTO public.hyt_reactions VALUES(p.id,m.id,b->>'kind') ON CONFLICT DO NOTHING;
-   IF b->>'kind'='like' AND p.author_id<>m.id THEN INSERT INTO public.hyt_notifications(recipient_id,actor_id,post_id,kind,event_key)
+   IF b->>'kind'='save' THEN PERFORM public.hyt_award_check(m.id,'saves'); END IF;
+   IF b->>'kind'='like' AND p.author_id<>m.id THEN PERFORM public.hyt_award_check(p.author_id,'likes'); INSERT INTO public.hyt_notifications(recipient_id,actor_id,post_id,kind,event_key)
     VALUES(p.author_id,m.id,p.id,'post_like','post-like:'||p.id||':'||m.id) ON CONFLICT DO NOTHING; END IF;
   ELSE DELETE FROM public.hyt_reactions WHERE post_id=p.id AND member_id=m.id AND kind=b->>'kind'; END IF;
-  RETURN jsonb_build_object('status',200,'post',public.hyt_post_json(p,m.id));
+  RETURN jsonb_build_object('status',200,'post',public.hyt_post_json(p,m.id))||public.hyt_award_pending(m.id);
  END IF;
  IF a IN ('reports.create','blocks.set') THEN
   target=p.author_id; anon=p.anonymous;
@@ -892,14 +1097,14 @@ END $fn$;
 -- No direct client role may query author mappings, credentials, or bypass server validation.
 DO $$ DECLARE obj record; role_name text; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN
- ('hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
+ ('hyt_honors','hyt_awards','hyt_honor_history','hyt_recommendations','hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',obj.tablename);
   EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC',obj.tablename);
   FOREACH role_name IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
    IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname=role_name) THEN EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,role_name); END IF;
   END LOOP;
  END LOOP;
- FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN ('hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
+ FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN ('hyt_credit','hyt_badges','hyt_progress','hyt_award_check','hyt_award_pending','hyt_hall','hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
   EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC',obj.signature);
   FOREACH role_name IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
    IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname=role_name) THEN EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,role_name); END IF;

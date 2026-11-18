@@ -34,10 +34,28 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','admin.context','admin.content','admin.history','admin.action','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
+export const clientActions=new Set(['honors.hall','honors.wear','honors.manage','honors.change','honors.ack','register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','admin.context','admin.content','admin.history','admin.action','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
+const awardCodes=['arrival','firstpost','hello','liked','sprout','neighbor','popular','collector'];
+const honorKinds=['seed','creator','contributor'];
+const permissions=['content','reports','users','recommend'];
+function oneOf(value,choices){if(!choices.includes(value))fail();return value;}
+function selection(values,choices,limit){
+ if(!Array.isArray(values)||values.length>limit||new Set(values).size!==values.length)fail();
+ return values.map(value=>oneOf(value,choices));
+}
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
+ if(action==='honors.hall')return {memberId:id(b.memberId,true)};
+ if(action==='honors.ack')return {codes:selection(b.codes,awardCodes,8)};
+ if(action==='honors.wear')return {honor:b.honor===null?null:oneOf(b.honor,honorKinds),showcase:selection(b.showcase,awardCodes,3)};
+ if(action==='honors.manage')return {query:text(b.query??'',0,64)};
+ if(action==='honors.change'){
+  const operation=oneOf(b.operation,['appoint','dismiss','grant','revoke','recommend','decline','mute','unmute']);
+  return {memberId:id(b.memberId),requestId:id(b.requestId),reason:text(b.reason,2,200),operation,
+   ...(operation==='appoint'?{caps:selection(b.caps,permissions,4).sort()}:{}),
+   ...(['grant','revoke'].includes(operation)?{kind:oneOf(b.kind,honorKinds)}:{})};
+ }
  if(action==='profile.update')return {nickname:text(b.nickname,2,20),...(b.bio!==undefined?{bio:text(b.bio,0,120)}:{})};
  if(action==='avatar.set'){if(b.imageId===undefined)fail();return {imageId:id(b.imageId,true)};}
  if(['messages.open','members.block'].includes(action))return {memberId:id(b.memberId)};
@@ -208,6 +226,6 @@ export function createCommunity({db,storage=null,registrationEnabled=false,rateS
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:11,moderationEnabled:true,boardsEnabled:true,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:12,honorsEnabled:true,moderationEnabled:true,boardsEnabled:true,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
  return {execute,config};
 }

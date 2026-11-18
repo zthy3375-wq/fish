@@ -28,10 +28,10 @@ if(!/^[a-zA-Z0-9_-]{1,120}$/.test(dbRole||'')||['anon','authenticated','public']
 const schema=readFileSync('cloudbase/community-schema.sql','utf8');
 cli(['db','execute','--sql','BEGIN;\n'+preservationBegin+schema+`\nDO $$ DECLARE obj record; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN
- ('hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
+ ('hyt_honors','hyt_awards','hyt_honor_history','hyt_recommendations','hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
  EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,'${dbRole}'); END LOOP;
  FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
- ('hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
+ ('hyt_credit','hyt_badges','hyt_progress','hyt_award_check','hyt_award_pending','hyt_hall','hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\n${preservationEnd}\nCOMMIT;`,'--json']);
 console.log('Community schema installed; every pre-existing community row preserved; direct-client access denied');
 await cloudMedia({env:envId,key}).ensureBucket();
