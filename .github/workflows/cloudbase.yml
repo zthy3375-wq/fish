@@ -2,8 +2,8 @@ name: CloudBase analytics deployment
 on:
   workflow_dispatch:
   push:
-    branches: [chore/cloudbase-connection]
-    paths: ['.github/workflows/cloudbase.yml', 'scripts/cloudbase/**', 'cloudbase/**']
+    branches: [ops/retire-analytics-20261118]
+    paths: ['.github/workflows/cloudbase.yml', 'scripts/cloudbase/deploy-analytics.mjs', 'scripts/cloudbase/retire-analytics-timer.py', 'cloudbase/functions/analytics/**']
 permissions:
   contents: read
 jobs:
@@ -15,12 +15,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
       - name: Test analytics contracts
-        run: node --test cloudbase/tests/*.verify.mjs
+        run: node --test cloudbase/tests/analytics.verify.mjs
       - name: Install official CLI
         run: npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
-      - name: Deploy analytics with private credentials
+      - run: python3 -m pip install --disable-pip-version-check tencentcloud-sdk-python-scf
+      - name: Retire and verify analytics
         env:
           CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
           CLOUDBASE_ENV_ID: hanyuantong-d8gjzt1jh12370215
