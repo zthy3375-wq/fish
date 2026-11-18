@@ -23,3 +23,12 @@ hyt_honors 保存当前荣誉，hyt_recommendations 保存待审，hyt_awards �
 ## 迁移与验证
 
 scripts/cloudbase/honor-migration.mjs 生成单事务升级，匹配已知旧 RPC 摘要，保留已有业务行和授权；原角色不自动升为开发者。事务中只处理荣誉与所需管理能力，沿用正在运行的数据库与云函数。迁移演练命令为 node scripts/cloudbase/verify-honor-migration.mjs <旧版 schema SQL 文件>。业务和权限回归为 node --test --test-concurrency=2 cloudbase/tests/community*.mjs。三种手机宽度的前后截图与交互走 Community honor gallery verification。
+
+## 2026-11-18 实际交付
+
+- [腾讯云迁移和真实接口验收](https://github.com/zthy3375-wq/fish/actions/runs/44300146709) 已通过。线上完成数据库 10 → 12 增量更新，保留原会话与业务行。验证从原会话进入、重新登录、获得及佩戴成就、拒绝伪造与越权。测试账号已清理。
+- [开发者绑定](https://github.com/zthy3375-wq/fish/actions/runs/44301175973) 已通过。根据所有者确认、原授权工作流的登录摘要及原始审计 UUID 绑定一人。服务端验证私有、公开、具名和匿名投影以及唯一审计记录。迁移及绑定的一次性触发工作流均已撤下。
+- [截图和三宽度交互](https://github.com/zthy3375-wq/fish/actions/runs/44300367185) 包含 360、390、430px 的原版及新版主页、收藏柜和通知，以及管理页面。原有五项底栏「首页、课表、社区、待办、我的」沿用 test.25；入口位于社区个人主页。
+- [Android 构建](https://github.com/zthy3375-wq/fish/actions/runs/44300367059) 生成 release；离线按原证书完成 v1/v2/v3 签名，版本 1.3.0-test.26/176，30 份内置网页资源逐一匹配。APK SHA-256 为 73ef49c02008168b629dee13094d70245082efd5bc18340d1993fc98a3384f82。
+- [Android 模拟器覆盖安装](https://github.com/zthy3375-wq/fish/actions/runs/44300831391) 用同一临时测试签名注册 test.25 用户，原位升级为 test.26，确认旧会话、八项收藏及真实佩戴，随后强停重启继续显示。未向 CI 提交正式签名私钥。
+- 522 项前端、78 项共享协议、125 项社区服务测试通过；迁移另外演练重跑及网关权限。离线快照限定当前会话及本人账户。既有 npm audit 报告七项高风险及两项中风险依赖链告警，涉及 picomatch 和 uuid，见[质量检查](https://github.com/zthy3375-wq/fish/actions/runs/44300366994)。
