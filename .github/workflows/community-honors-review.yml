@@ -23,7 +23,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci && npm ci --prefix cloudbase/functions/community --ignore-scripts
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - name: Build previous profile and capture the same three viewport widths
         env:
           BASELINE: ${{ github.event.pull_request.base.sha || '919e02ce276c60b67528e9c90c795fc64e58ff55' }}

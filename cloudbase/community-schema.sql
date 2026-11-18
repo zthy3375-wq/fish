@@ -244,6 +244,7 @@ CREATE TABLE IF NOT EXISTS public.hyt_awards (
  member_id uuid REFERENCES public.hyt_members(id), code text NOT NULL, earned_at timestamptz NOT NULL DEFAULT now(),
  seen boolean NOT NULL DEFAULT false, PRIMARY KEY(member_id,code)
 );
+ALTER TABLE public.hyt_awards ADD COLUMN IF NOT EXISTS backfilled boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS hyt_honor_posts ON public.hyt_posts(author_id,id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS hyt_honor_saves ON public.hyt_reactions(member_id,post_id) WHERE kind='save';
 CREATE INDEX IF NOT EXISTS hyt_honor_comments ON public.hyt_comments(author_id,id) WHERE deleted_at IS NULL;
@@ -278,13 +279,18 @@ DECLARE total int;
 BEGIN
  IF metric='registered' THEN RETURN 1;
  ELSIF metric='posts' THEN
-  SELECT count(*) INTO total FROM (SELECT 1 FROM public.hyt_posts WHERE author_id=uid AND deleted_at IS NULL LIMIT 5) p;
+  SELECT count(*) INTO total FROM (SELECT 1 FROM (
+   SELECT DISTINCT CASE WHEN p.body<>'' OR p.title<>'' THEN regexp_replace(lower(p.title||' '||p.body),'[[:space:][:punct:]]','','g')
+    ELSE coalesce((SELECT string_agg(i.digest,',' ORDER BY i.position) FROM public.hyt_media i WHERE i.post_id=p.id AND i.comment_id IS NULL AND i.ready AND i.deleted_at IS NULL),
+    (SELECT definition::text FROM public.hyt_polls WHERE post_id=p.id),(SELECT definition::text FROM public.hyt_buddies WHERE post_id=p.id)) END AS signature
+   FROM public.hyt_posts p WHERE p.author_id=uid AND p.deleted_at IS NULL
+  ) p WHERE nullif(signature,'') IS NOT NULL LIMIT 5) counted;
  ELSIF metric='threads' OR metric='comment' THEN
   -- An identical normalized reply pasted into many discussions gives credit once.
   -- One post can earn at most one discussion credit; use a deterministic canonical occurrence.
   SELECT count(*) INTO total FROM (SELECT DISTINCT post_id FROM (
    SELECT DISTINCT ON (norm) post_id FROM (
-    SELECT c.post_id,c.created_at,c.id,CASE WHEN c.body='' AND EXISTS(SELECT 1 FROM public.hyt_media i WHERE i.comment_id=c.id AND i.ready AND i.deleted_at IS NULL) THEN 'image:'||c.id ELSE regexp_replace(lower(c.body),'[[:space:][:punct:]]','','g') END norm
+    SELECT c.post_id,c.created_at,c.id,CASE WHEN c.body='' AND EXISTS(SELECT 1 FROM public.hyt_media i WHERE i.comment_id=c.id AND i.ready AND i.deleted_at IS NULL) THEN (SELECT string_agg(i.digest,',' ORDER BY i.position) FROM public.hyt_media i WHERE i.comment_id=c.id AND i.ready AND i.deleted_at IS NULL) ELSE regexp_replace(lower(c.body),'[[:space:][:punct:]]','','g') END norm
     FROM public.hyt_comments c JOIN public.hyt_posts p ON p.id=c.post_id
     WHERE c.author_id=uid AND c.deleted_at IS NULL AND p.deleted_at IS NULL
    ) comments WHERE length(norm)>=2 AND norm !~ '^(.)\1+$' ORDER BY norm,created_at,id
@@ -317,8 +323,8 @@ BEGIN
  IF NOT EXISTS (SELECT 1 FROM (VALUES ('registered','arrival'),('posts','firstpost'),('posts','sprout'),('threads','hello'),('threads','neighbor'),('likes','liked'),('likes','popular'),('saves','collector')) codes(m,k)
   WHERE m=metric AND NOT EXISTS(SELECT 1 FROM public.hyt_awards WHERE member_id=uid AND code=k)) THEN RETURN; END IF;
  n=public.hyt_progress(uid,metric);
- INSERT INTO public.hyt_awards(member_id,code,earned_at,seen)
- SELECT uid,k,CASE WHEN k='arrival' THEN (SELECT created_at FROM public.hyt_members WHERE id=uid) ELSE now() END,historical
+ INSERT INTO public.hyt_awards(member_id,code,earned_at,seen,backfilled)
+ SELECT uid,k,CASE WHEN k='arrival' THEN (SELECT created_at FROM public.hyt_members WHERE id=uid) ELSE now() END,historical,historical AND k<>'arrival'
  FROM (VALUES ('registered','arrival',1),('posts','firstpost',1),('posts','sprout',5),('threads','hello',1),('threads','neighbor',10),
  ('likes','liked',1),('likes','popular',30),('saves','collector',20)) v(m,k,threshold)
  WHERE m=metric AND n>=threshold ON CONFLICT DO NOTHING;
@@ -330,13 +336,14 @@ CREATE OR REPLACE FUNCTION public.hyt_hall(u public.hyt_members,viewer uuid) RET
  SELECT jsonb_build_object('id',u.id,'nickname',u.nickname,'badges',public.hyt_badges(u),'showcase',u.showcase,
  'honors',coalesce((SELECT jsonb_agg(jsonb_build_object('code',kind,'at',granted_at) ORDER BY granted_at) FROM public.hyt_honors WHERE member_id=u.id),'[]'),
  'total',(SELECT count(*) FROM public.hyt_awards WHERE member_id=u.id),
+ 'backfilled',ARRAY(SELECT code FROM public.hyt_awards WHERE member_id=u.id AND backfilled AND (viewer=u.id OR code=ANY(u.showcase))),
  'awards',coalesce((SELECT jsonb_object_agg(code,earned_at) FROM public.hyt_awards WHERE member_id=u.id AND (viewer=u.id OR code=ANY(u.showcase))),'{}'))
  || CASE WHEN viewer=u.id THEN jsonb_build_object('progress',jsonb_build_object('posts',public.hyt_progress(u.id,'posts'),'threads',public.hyt_progress(u.id,'threads'),'likes',public.hyt_progress(u.id,'likes'),'saves',public.hyt_progress(u.id,'saves'),'registered',1)) ELSE '{}' END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.hyt_member_json(m public.hyt_members) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
- SELECT jsonb_build_object('id',m.id,'badges',public.hyt_badges(m),'caps',CASE WHEN m.role='moderator' THEN m.mod_caps ELSE '{}'::text[] END,'username',m.username,'nickname',m.nickname,'role',m.role,'bannedUntil',m.banned_until,'bio',m.bio,'avatar',public.hyt_avatar_json(m.id));
+ SELECT jsonb_build_object('id',m.id,'badges',public.hyt_badges(m),'caps',CASE WHEN m.role='moderator' THEN m.mod_caps ELSE '{}'::text[] END,'showcase',m.showcase,'username',m.username,'nickname',m.nickname,'role',m.role,'bannedUntil',m.banned_until,'bio',m.bio,'avatar',public.hyt_avatar_json(m.id));
 $$;
 CREATE OR REPLACE FUNCTION public.hyt_author_json(uid uuid, pid uuid, anon boolean, viewer uuid) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
@@ -579,7 +586,8 @@ BEGIN
     ELSE RETURN '{"status":400,"error":"invalid_request"}';
    END CASE;
    INSERT INTO public.hyt_honor_history(id,actor,target,change) VALUES((b->>'requestId')::uuid,m.id,target,b-'requestId'-'memberId');
-   RETURN '{"status":200}';
+   SELECT jsonb_build_object('id',u.id,'badges',public.hyt_badges(u),'showcase',u.showcase) INTO result FROM public.hyt_members u WHERE id=target;
+   RETURN jsonb_build_object('status',200,'updatedIdentity',result);
   END IF;
  END IF;
  -- Applies equally to legacy report-resolution and the newer direct moderation routes.

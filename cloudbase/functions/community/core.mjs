@@ -141,12 +141,12 @@ function sanitize(action,b){
  return out;
 }
 /** db is a server-only RPC adapter; client-controlled proof, ids and roles are discarded. */
-export function createCommunity({db,storage=null,registrationEnabled=false,rateSalt=randomBytes(32).toString('hex')}){
+export function createCommunity({db,storage=null,registrationEnabled=false,boardsEnabled=true,rateSalt=randomBytes(32).toString('hex')}){
  async function call(action,payload={},token=''){const r=await db(action,payload,token);if(!r||!Number.isInteger(r.status))throw Error('database_response');if(r.status>=400)fail(r.error||'temporarily_unavailable',r.status);return r;}
  const rate=(key,limit,seconds)=>call('rate',{key:createHmac('sha256',rateSalt).update(new Date().toISOString().slice(0,10)+':'+key).digest('hex'),limit,seconds});
  async function execute(action,input={},bearer='',peer='unknown'){
   if(!clientActions.has(action))fail('not_found',404);
-  const b=sanitize(action,input);let tokenHash='';let sessionToken;let recoveryCode;
+  const b=sanitize(action,input);if(!boardsEnabled&&boardTopics.has(b.interest))fail('invalid_request');let tokenHash='';let sessionToken;let recoveryCode;
   if(['register','login','recover'].includes(action)){
    await rate('auth-ip:'+peer,30,900);await rate('auth-name:'+b.username,12,900);
    if(action==='register'){
@@ -226,6 +226,6 @@ export function createCommunity({db,storage=null,registrationEnabled=false,rateS
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:12,honorsEnabled:true,moderationEnabled:true,boardsEnabled:true,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:12,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
  return {execute,config};
 }

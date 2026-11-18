@@ -26,7 +26,7 @@ export const specialAwards=[
  {name:'邯院传说',tier:'传奇',limited:false,icon:MapPin}
 ];
 export const lockedIcon=LockKeyhole;
-export interface HonorHall {id:string;nickname:string;badges:Identity;honors:Badge[];showcase:string[];total:number;awards:Record<string,string>;progress?:Record<string,number>}
+export interface HonorHall {backfilled?:string[];id:string;nickname:string;badges:Identity;honors:Badge[];showcase:string[];total:number;awards:Record<string,string>;progress?:Record<string,number>}
 export interface AdminMember {id:string;nickname:string;official?:Badge|null;caps:string[];honors:BadgeCode[];bannedUntil?:string;recommendation?:string}
 export interface HonorLog {at:string;target:string;actor:string;change:{operation:string;reason:string}}
 export const operations:Record<string,string>={bind:'绑定开发者',appoint:'任命或调整管理员',dismiss:'解除管理员',mute:'禁言七天',unmute:'解除禁言',grant:'授予荣誉',revoke:'撤销荣誉',recommend:'推荐优质创作者',decline:'驳回推荐'};

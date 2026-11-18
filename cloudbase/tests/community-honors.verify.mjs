@@ -6,7 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {createCommunity} from '../functions/community/core.mjs';
 import {developerBinding} from '../../scripts/cloudbase/bind-developer.mjs';
 const schema=await readFile(new URL('../community-schema.sql',import.meta.url),'utf8');
-let db,api,owner,moderator,alice,bob,other;
+let calls=0;let db,api,owner,moderator,alice,bob,other;
 const call=(u,a,b={})=>api.execute(a,b,u.sessionToken,'qa');
 const reg=name=>api.execute('register',{username:name,nickname:name,password:'test-long-password',agreed:true,role:'developer',developer_since:'2001-01-01'},'',name);
 const change=(actor,target,operation,more={})=>call(actor,'honors.change',{memberId:target.user.id,operation,reason:'验收操作',requestId:randomUUID(),...more});
@@ -14,7 +14,7 @@ const post=(u,text,anonymous=false)=>call(u,'posts.create',{body:text,requestId:
 const comment=(u,p,body)=>call(u,'comments.create',{body,postId:p,requestId:randomUUID(),anonymous:false});
 const hall=async(u,target=u)=>(await call(u,'honors.hall',{memberId:target.user.id})).hall;
 const flag=(u,p,kind,enabled=true)=>call(u,'reactions.set',{postId:p,kind,enabled});
-before(async()=>{db=new PGlite();await db.exec(schema);api=createCommunity({registrationEnabled:true,db:async(a,b,t)=>(await db.query('select hyt_community($1,$2,$3) as r',[a,b,t])).rows[0].r});
+before(async()=>{db=new PGlite();await db.exec(schema);api=createCommunity({registrationEnabled:true,db:async(a,b,t)=>{calls++;return (await db.query('select hyt_community($1,$2,$3) as r',[a,b,t])).rows[0].r;}});
  const actors=[];for(const name of ['站长甲','审核乙','作者丙','同学丁','同学戊'])actors.push(await reg(name));
  [owner,moderator,alice,bob,other]=actors;});
 after(()=>db.close());
@@ -85,4 +85,10 @@ test('lazy historic recovery is private, repeatable and does not replay fabricat
  await call(alice,'me',{entry:true});let h=await hall(alice);assert.ok(h.awards.arrival&&h.awards.firstpost);assert.deepEqual((await call(alice,'notifications.unread')).unlocks,[]);
  await call(alice,'me',{entry:true});assert.equal((await hall(alice)).total,h.total);
  await call(bob,'members.block',{memberId:alice.user.id});await assert.rejects(hall(alice,bob),{code:'not_found'});
+});
+
+test('one database round-trip per hall, feed, post, comment, like and save; no telemetry call',async()=>{
+ const u=await reg('测量用户');const one=async fn=>{const before=calls;const r=await fn();assert.equal(calls-before,1);return r;};
+ await one(()=>hall(u));await one(()=>call(u,'me',{entry:true}));
+ const p=(await one(()=>post(u,'成本核对'))).post.id;await one(()=>comment(bob,p,'参与讨论'));await one(()=>flag(bob,p,'like'));await one(()=>flag(bob,p,'save'));
 });

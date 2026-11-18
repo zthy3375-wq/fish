@@ -3,7 +3,7 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {badges,capNames,honorDate,operations,type BadgeCode,type AdminMember,type HonorLog} from '../../domain/communityHonors';
 import {treeholeError,type TreeholeResult,type TreeholeUser} from '../../services/treehole';
 const props=defineProps<{user:TreeholeUser;request:(a:string,b?:Record<string,unknown>)=>Promise<TreeholeResult>}>();
-const emit=defineEmits<{changed:[]}>();
+const emit=defineEmits<{changed:[TreeholeResult]}>();
 const owner=computed(()=>props.user.badges?.official?.code==='developer');
 const query=ref(''),members=ref<AdminMember[]>([]),audit=ref<HonorLog[]>([]),subject=ref<AdminMember>(),reason=ref(''),caps=ref<string[]>([]),kind=ref<BadgeCode>('contributor'),op=ref(''),busy=ref(false),error=ref(''),notice=ref(''),confirmation=ref(''),requestId=ref('');
 const options=computed(()=>{
@@ -22,7 +22,7 @@ async function list(){const r=await props.request('honors.manage',{query:query.v
 async function search(){if(busy.value)return;busy.value=true;error.value='';subject.value=undefined;try{await list();}catch(e){error.value=treeholeError(e);}finally{busy.value=false;}}
 async function submit(){if(!subject.value||busy.value||reason.value.trim().length<2)return;
  if(!confirmation.value){requestId.value=crypto.randomUUID();confirmation.value='确认对「'+subject.value.nickname+'」执行「'+operations[op.value]+'」？';return;}
- busy.value=true;error.value='';try{await props.request('honors.change',{memberId:subject.value.id,operation:op.value,kind:kind.value,caps:caps.value,reason:reason.value.trim(),requestId:requestId.value});subject.value=undefined;confirmation.value='';notice.value='操作已记录';emit('changed');await list();}catch(e){error.value=treeholeError(e);}finally{busy.value=false;}}
+ busy.value=true;error.value='';try{const r=await props.request('honors.change',{memberId:subject.value.id,operation:op.value,kind:kind.value,caps:caps.value,reason:reason.value.trim(),requestId:requestId.value});subject.value=undefined;confirmation.value='';notice.value='操作已记录';emit('changed',r);await list();}catch(e){error.value=treeholeError(e);}finally{busy.value=false;}}
 onMounted(search);
 </script>
 <template><section class="hon-admin"><h2>身份与荣誉管理</h2><form @submit.prevent="search"><label>查找社区成员<input v-model="query" placeholder="完整昵称或社区成员 ID" maxlength="64"/></label><button :disabled="busy">查找</button></form>

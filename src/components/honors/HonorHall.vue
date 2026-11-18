@@ -3,7 +3,7 @@ import {computed,onMounted,ref} from 'vue';
 import {Check,LockKeyhole,Trophy} from 'lucide-vue-next';
 import OfficialBadges from './OfficialBadges.vue';
 import {awards,badges,honorDate,specialAwards,type HonorHall,type BadgeCode} from '../../domain/communityHonors';
-import {treeholeError,type TreeholeResult} from '../../services/treehole';
+import {treeholeError,treeholeErrorCode,type TreeholeResult} from '../../services/treehole';
 const props=defineProps<{viewer:string;member:string;request:(a:string,b?:Record<string,unknown>)=>Promise<TreeholeResult>;enabled:boolean}>();
 const emit=defineEmits<{updated:[TreeholeResult]}>();
 const self=computed(()=>props.viewer===props.member),hall=ref<HonorHall>(),busy=ref(false),failure=ref(''),offline=ref(false);
@@ -15,7 +15,7 @@ function apply(h:HonorHall){hall.value=h;honor.value=h.badges.worn?.code??null;s
 function persist(h:HonorHall){if(self.value)try{sessionStorage.setItem(cacheKey(),JSON.stringify(h));}catch{/* session storage unavailable */}}
 async function load(){if(busy.value||!props.enabled)return;busy.value=true;failure.value='';offline.value=false;
  try{const r=await props.request('honors.hall',{memberId:props.member});if(!r.hall)throw Error('invalid_response');apply(r.hall);persist(r.hall);}
- catch(e){failure.value=treeholeError(e);if(self.value&&!(e instanceof Error&&['session_expired','forbidden'].includes(e.message)))try{const h=JSON.parse(sessionStorage.getItem(cacheKey())||'null');if(h?.id===props.viewer){apply(h);offline.value=true;}}catch{/* empty cache */}}
+ catch(e){failure.value=treeholeError(e);if(self.value&&!['session_expired','forbidden','not_found'].includes(treeholeErrorCode(e)))try{const h=JSON.parse(sessionStorage.getItem(cacheKey())||'null');if(h?.id===props.viewer){apply(h);offline.value=true;}}catch{/* empty cache */}}
  finally{busy.value=false;}}
 async function save(h:BadgeCode|null,items:string[]){if(busy.value||offline.value)return;busy.value=true;failure.value='';
  try{const r=await props.request('honors.wear',{honor:h,showcase:items});if(!r.hall)throw Error('invalid_response');apply(r.hall);persist(r.hall);emit('updated',r);}
@@ -34,7 +34,7 @@ onMounted(load);
  <nav v-if="self" class="hon-segment" aria-label="成就筛选"><button v-for="f in ['全部','已解锁','稀有']" :key="f" :aria-pressed="filter===f" @click="filter=f;selected=''">{{f}}</button></nav>
  <div class="hon-grid"><button v-for="a in visible" :key="a.code" :class="{earned:hall?.awards[a.code],active:selected===a.code}" :aria-pressed="selected===a.code" @click="selected=a.code"><component :is="hall?.awards[a.code]?a.icon:LockKeyhole" :size="25"/><span>{{a.name}}</span><Check v-if="shelf.includes(a.code)" class="hon-pin" :size="12" aria-label="展示中"/></button></div>
  <p v-if="!visible.length">{{self?'这个分类里还没有收藏。':'这位同学还没有选择展示成就。'}}</p>
- <div v-if="selectedAward&&visible.includes(selectedAward)" class="hon-detail"><component :is="selectedAward.icon" :size="33"/><div><h3>{{selectedAward.name}}</h3><p>{{selectedAward.condition}}</p><small>{{selectedAward.tier}} · {{hall?.awards[selectedAward.code]?'已解锁 · '+honorDate(hall.awards[selectedAward.code]):hall?'进度 '+Math.min(hall.progress?.[selectedAward.metric]||0,selectedAward.goal)+' / '+selectedAward.goal:'尚未获取进度'}}</small></div></div>
+ <div v-if="selectedAward&&visible.includes(selectedAward)" class="hon-detail"><component :is="selectedAward.icon" :size="33"/><div><h3>{{selectedAward.name}}</h3><p>{{selectedAward.condition}}</p><small>{{selectedAward.tier}} · {{hall?.awards[selectedAward.code]?(hall.backfilled?.includes(selectedAward.code)?'历史补发于 ':'已解锁 · ')+honorDate(hall.awards[selectedAward.code]):hall?'进度 '+Math.min(hall.progress?.[selectedAward.metric]||0,selectedAward.goal)+' / '+selectedAward.goal:'尚未获取进度'}}</small></div></div>
  <button v-if="self&&selectedAward&&hall?.awards[selectedAward.code]&&visible.includes(selectedAward)" class="hon-action" :disabled="busy||offline||(!shelf.includes(selected)&&shelf.length>=3)" @click="toggle(selected)">{{shelf.includes(selected)?'从主页取下':shelf.length>=3?'已展示三枚':'展示到主页'}} · {{shelf.length}}/3</button>
  </section><details v-if="self" class="hon-panel"><summary><Trophy :size="18"/>特别收藏 · 待开放</summary><div class="hon-future" v-for="a in specialAwards" :key="a.name"><LockKeyhole :size="18"/><span>{{a.name}}</span><small>{{a.tier}}{{a.limited?' · 限定':''}} · 隐藏条件</small></div></details>
 </main></template>
