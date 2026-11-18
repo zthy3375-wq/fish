@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue';
+import {computed,onMounted,nextTick,ref} from 'vue';
 import {Check,LockKeyhole,Trophy} from 'lucide-vue-next';
 import OfficialBadges from './OfficialBadges.vue';
 import {catalog} from '../../domain/globalAchievements';
 import {badges,honorDate,specialAwards,type HonorHall,type BadgeCode} from '../../domain/communityHonors';
 import {treeholeError,treeholeErrorCode,type TreeholeResult} from '../../services/treehole';
-const props=defineProps<{viewer:string;member:string;request:(a:string,b?:Record<string,unknown>)=>Promise<TreeholeResult>;enabled:boolean}>();
+const props=defineProps<{initialCode?:string;viewer:string;member:string;request:(a:string,b?:Record<string,unknown>)=>Promise<TreeholeResult>;enabled:boolean}>();
 const emit=defineEmits<{updated:[TreeholeResult]}>();
 const self=computed(()=>props.viewer===props.member),hall=ref<HonorHall>(),busy=ref(false),failure=ref(''),offline=ref(false);
-const filter=ref('全部'),selected=ref<string>('arrival'),honor=ref<BadgeCode|null>(null),shelf=ref<string[]>([]);
+const filter=ref('全部'),selected=ref<string>(props.initialCode||'arrival'),honor=ref<BadgeCode|null>(null),shelf=ref<string[]>([]);
 const awards=computed(()=>catalog.filter(a=>a.source==="community"&&(a.metric!=="days"||hall.value?.progress?.days!==undefined||hall.value?.showcase.includes(a.code))));
 const selectedAward=computed(()=>awards.value.find(a=>a.code===selected.value));
 const visible=computed(()=>awards.value.filter(a=>(self.value||hall.value?.showcase.includes(a.code))&&(filter.value!=='已解锁'||hall.value?.awards[a.code])&&(filter.value!=='稀有'||a.tier==='稀有')));
 const cacheKey=()=> 'hyt-hall-v1:'+props.viewer;
-function apply(h:HonorHall){hall.value=h;honor.value=h.badges.worn?.code??null;shelf.value=[...h.showcase];if(!self.value)selected.value=h.showcase[0]||'';}
+function apply(h:HonorHall){hall.value=h;honor.value=h.badges.worn?.code??null;shelf.value=[...h.showcase];if(!self.value)selected.value=h.showcase.includes(props.initialCode||'')?props.initialCode!:h.showcase[0]||'';}
 function persist(h:HonorHall){if(self.value)try{sessionStorage.setItem(cacheKey(),JSON.stringify(h));}catch{/* session storage unavailable */}}
 async function load(){if(busy.value||!props.enabled)return;busy.value=true;failure.value='';offline.value=false;
  try{const r=await props.request('honors.hall',{memberId:props.member});if(!r.hall)throw Error('invalid_response');apply(r.hall);persist(r.hall);}
@@ -23,7 +23,8 @@ async function save(h:BadgeCode|null,items:string[]){if(busy.value||offline.valu
  try{const r=await props.request('honors.wear',{honor:h,showcase:items});if(!r.hall)throw Error('invalid_response');apply(r.hall);persist(r.hall);emit('updated',r);}
  catch(e){failure.value=treeholeError(e);}finally{busy.value=false;}}
 function toggle(code:string){const items=shelf.value.includes(code)?shelf.value.filter(s=>s!==code):[...shelf.value,code];if(items.length<=3)void save(honor.value,items);}
-onMounted(load);
+onMounted(async()=>{await load();if(props.initialCode&&selected.value===props.initialCode){await nextTick();focusDetail.value?.focus({preventScroll:true});focusDetail.value?.scrollIntoView({block:'nearest'});}});
+const focusDetail=ref<HTMLElement>();
 </script>
 <template><main class="hon-page">
  <p v-if="!enabled" class="hon-status">当前社区服务尚未开放荣誉殿堂。下方可查看首批成就。</p>
@@ -36,7 +37,7 @@ onMounted(load);
  <nav v-if="self" class="hon-segment" aria-label="成就筛选"><button v-for="f in ['全部','已解锁','稀有']" :key="f" :aria-pressed="filter===f" @click="filter=f;selected=''">{{f}}</button></nav>
  <div class="hon-grid"><button v-for="a in visible" :key="a.code" :class="{earned:hall?.awards[a.code],active:selected===a.code}" :aria-pressed="selected===a.code" @click="selected=a.code"><component :is="hall?.awards[a.code]?a.icon:LockKeyhole" :size="25"/><span>{{a.name}}</span><Check v-if="shelf.includes(a.code)" class="hon-pin" :size="12" aria-label="展示中"/></button></div>
  <p v-if="!visible.length">{{self?'这个分类里还没有收藏。':'这位同学还没有选择展示成就。'}}</p>
- <div v-if="selectedAward&&visible.includes(selectedAward)" class="hon-detail"><component :is="selectedAward.icon" :size="33"/><div><h3>{{selectedAward.name}}</h3><p>{{selectedAward.condition}}</p><small>{{selectedAward.tier}} · {{hall?.awards[selectedAward.code]?(hall.backfilled?.includes(selectedAward.code)?'历史补发于 ':'已解锁 · ')+honorDate(hall.awards[selectedAward.code]):hall?'进度 '+Math.min(hall.progress?.[selectedAward.metric||'']||0,selectedAward.goal)+' / '+selectedAward.goal:'尚未获取进度'}}</small></div></div>
+ <div v-if="selectedAward&&visible.includes(selectedAward)" ref="focusDetail" tabindex="-1" class="hon-detail"><component :is="selectedAward.icon" :size="33"/><div><h3>{{selectedAward.name}}</h3><p>{{selectedAward.condition}}</p><small>{{selectedAward.tier}} · {{hall?.awards[selectedAward.code]?(hall.backfilled?.includes(selectedAward.code)?'历史补发于 ':'已解锁 · ')+honorDate(hall.awards[selectedAward.code]):hall?'进度 '+Math.min(hall.progress?.[selectedAward.metric||'']||0,selectedAward.goal)+' / '+selectedAward.goal:'尚未获取进度'}}</small></div></div>
  <button v-if="self&&selectedAward&&hall?.awards[selectedAward.code]&&visible.includes(selectedAward)" class="hon-action" :disabled="busy||offline||(!shelf.includes(selected)&&shelf.length>=3)" @click="toggle(selected)">{{shelf.includes(selected)?'从主页取下':shelf.length>=3?'已展示三枚':'展示到主页'}} · {{shelf.length}}/3</button>
  </section><details v-if="self" class="hon-panel"><summary><Trophy :size="18"/>特别收藏 · 待开放</summary><div class="hon-future" v-for="a in specialAwards" :key="a.name"><LockKeyhole :size="18"/><span>{{a.name}}</span><small>{{a.tier}}{{a.limited?' · 限定':''}} · 隐藏条件</small></div></details>
 </main></template>
