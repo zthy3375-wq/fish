@@ -17,6 +17,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci && npm run build
+      - name: Capture the full profile with earned medals and Chinese fonts
+        shell: bash
+        run: |
+          mkdir -p ~/.local/share/fonts
+          curl -fsSL --retry 2 --max-time 50 https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf -o ~/.local/share/fonts/profile-cjk.otf
+          fc-cache -f ~/.local/share/fonts
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/global-collection-ui.mjs')
+          s=p.read_text().replace('chromium.launch()', "chromium.launch({channel:'chrome'})")
+          anchor="  await shelf.screenshot("
+          assert anchor in s
+          s=s.replace(anchor, "  await p.evaluate(()=>document.fonts.ready);await p.waitForTimeout(450);await p.screenshot({path:output+'/profile-with-medals-'+width+'.png',animations:'disabled'});\n"+anchor)
+          p.write_text(s)
+          PY
+          node scripts/global-collection-ui.mjs
       - name: Verify mobile profile, accounts, navigation and settings
         shell: bash
         run: |
@@ -31,6 +47,7 @@ jobs:
         with:
           name: profile-phone-check
           path: |
+            /tmp/hyt-honors-ui/profile-with-medals-*.png
             /tmp/handan-v050-qa/profile-top-*.png
             /tmp/handan-v050-qa/profile-bottom-*.png
           if-no-files-found: warn
