@@ -26,7 +26,7 @@ struct HanyuantongApp: App {
                 .onOpenURL { url in
                     if url.scheme == "hanyuantong", url.host == "schedule", url.user == nil, url.password == nil { store.selectedTab = .schedule }
                 }
-                .onChange(of: scenePhase) { if $0 == .active { store.refreshReminders(); analytics.flush() } }
+                .onChange(of: scenePhase) { if $0 == .active { store.refreshReminders(); if analytics.state.deletePending { analytics.flush() } } }
                 .environment(\.locale, Locale(identifier: "zh_CN"))
                 .environment(\.calendar, ScheduleMath.calendar)
                 .environment(\.timeZone, TimeZone(identifier: "Asia/Shanghai")!)

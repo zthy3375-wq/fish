@@ -1,24 +1,21 @@
 // @vitest-environment jsdom
-import {beforeEach,afterEach,it,expect,vi} from 'vitest';
-import {createApp,h,nextTick} from 'vue';
-const native=vi.hoisted(()=>({getState:vi.fn(),setEnabled:vi.fn(),record:vi.fn(),flush:vi.fn(),deleteData:vi.fn()}));
-vi.mock('@capacitor/core',()=>({Capacitor:{isNativePlatform:()=>true,isPluginAvailable:()=>true},registerPlugin:()=>native}));
-import {analytics,analyticsReady,recordFeature,chooseAnalytics,deleteAnalytics} from '../src/composables/analytics';
-import AnalyticsSettings from '../src/components/AnalyticsSettings.vue';
-let app:ReturnType<typeof createApp>,root:HTMLElement;
-beforeEach(()=>{vi.useFakeTimers();vi.clearAllMocks();analytics.value={choice:'unset',deletePending:false,lastSent:0};analyticsReady.value=true;root=document.createElement('div');document.body.append(root);app=createApp({render:()=>h(AnalyticsSettings)});app.mount(root)});
-afterEach(()=>{app.unmount();root.remove();vi.useRealTimers()});
-it('never records before consent or after opting out',async()=>{await recordFeature('water');analytics.value.choice='off';await recordFeature('water');expect(native.record).not.toHaveBeenCalled()});
-it('enables only after the agree button and keeps a skip action',async()=>{
- app.unmount();app=createApp({render:()=>h(AnalyticsSettings,{prompt:true})});app.mount(root);
- expect(root.querySelector('input')).toBeNull();
- const accept=root.querySelector<HTMLButtonElement>('button.primary')!;
- expect(accept.disabled).toBe(false);
- expect(root.textContent).toContain('暂不参与');expect(root.querySelector('[role=dialog]')).toBeNull();
- expect(native.setEnabled).not.toHaveBeenCalled();
- native.setEnabled.mockResolvedValue({choice:'on',deletePending:false,lastSent:0});accept.click();await Promise.resolve();await nextTick();
- expect(native.setEnabled).toHaveBeenCalledWith({enabled:true});expect(root.textContent).toBe('');
+import {beforeEach,expect,it,vi} from 'vitest';
+import {createApp,nextTick} from 'vue';
+const bridge=vi.hoisted(()=>({getState:vi.fn(),deleteData:vi.fn()}));
+vi.mock('@capacitor/core',()=>({Capacitor:{isPluginAvailable:()=>true},registerPlugin:()=>bridge}));
+import {legacy,retryLegacyDeletion} from '../src/composables/analytics';
+import Settings from '../src/components/AnalyticsSettings.vue';
+beforeEach(()=>{vi.clearAllMocks();legacy.value={hasHistory:false,deletePending:false}});
+it('fresh and previously enrolled installations issue no usage requests on resume',async()=>{
+ for(const hasHistory of [false,true]){
+  bridge.getState.mockResolvedValue({hasHistory,deletePending:false});
+  await retryLegacyDeletion();expect(bridge.deleteData).not.toHaveBeenCalled();
+  const root=document.createElement('div'),app=createApp(Settings);app.mount(root);await nextTick();
+  expect(root.querySelector('input')).toBeNull();expect(root.textContent?.includes('删除旧版')).toBe(hasHistory);app.unmount();
+ }
 });
-it('enabling persists native consent and allows only a feature code',async()=>{native.setEnabled.mockResolvedValue({choice:'on',deletePending:false,lastSent:0});native.flush.mockResolvedValue({choice:'on',deletePending:false,lastSent:0});await chooseAnalytics(true);await recordFeature('schedule');expect(native.record).toHaveBeenCalledWith({feature:'schedule'})});
-it('network reporting failure does not throw into the app',async()=>{analytics.value.choice='on';native.record.mockRejectedValue(Error('offline'));await expect(recordFeature('tasks')).resolves.toBeUndefined()});
-it('delete disables tracking and explains deferred retry',async()=>{native.deleteData.mockResolvedValue({choice:'off',deletePending:true,lastSent:0});await deleteAnalytics();await nextTick();expect(root.textContent).toContain('正在请求删除');expect(root.querySelector<HTMLInputElement>('input')?.disabled).toBe(true);await recordFeature('water');expect(native.record).not.toHaveBeenCalled()});
+it('only retries a deletion the user already requested',async()=>{
+ bridge.getState.mockResolvedValue({hasHistory:true,deletePending:true});
+ bridge.deleteData.mockResolvedValue({hasHistory:false,deletePending:false});
+ await retryLegacyDeletion();expect(bridge.deleteData).toHaveBeenCalledOnce();expect(legacy.value.hasHistory).toBe(false);
+});

@@ -74,7 +74,7 @@ struct ProfileView: View {
                 Text("学习 · 生活 · 校园")
                 Text("iPhone 原生开发版。教务数据以学校官方系统为准；各服务需独立登录，真实账号和设备联调尚待完成。").font(.caption).foregroundStyle(CampusTheme.muted)
                 NavigationLink("隐私与本机数据") { PrivacyView() }
-                NavigationLink("匿名使用统计") { AnonymousAnalyticsSettingsView(store: analytics) }
+                if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
                 NavigationLink("帮助与反馈") { NativeHelpView() }
             }
         }.scrollContentBackground(.hidden).background(CampusTheme.background).navigationTitle("我的").navigationBarTitleDisplayMode(.inline)

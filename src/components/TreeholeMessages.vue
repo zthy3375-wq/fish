@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref,computed,onMounted,onUnmounted,nextTick} from 'vue';
+import {ref,computed,onMounted,onActivated,onDeactivated,onUnmounted,nextTick} from 'vue';
 import {MessageCircle,Send,RefreshCw,ChevronRight,ArrowDown,ShieldBan} from 'lucide-vue-next';
 import TreeholeAvatar from './TreeholeAvatar.vue';
 import {treeholeRequest,treeholeError,treeholeErrorCode,type TreeholeConversation,type TreeholeMessage,type TreeholeMessageDraft} from '../services/treehole';
@@ -21,7 +21,7 @@ async function inbox(more=false,quiet=false){
  catch(e){if(g===generation)fail(e);}finally{if(g===generation){loading.value=false;polling=false;}}
 }
 async function acknowledge(){
- const c=conversation.value,last=messages.value.at(-1),g=generation;if(!c||!last||!nearBottom.value||document.hidden||blocked.value||ackBusy||BigInt(last.seq)<=BigInt(ackSeq))return;ackBusy=true;
+ const c=conversation.value,last=messages.value.at(-1),g=generation;if(!c||!last||!nearBottom.value||document.hidden||!visibleTab||blocked.value||ackBusy||BigInt(last.seq)<=BigInt(ackSeq))return;ackBusy=true;
  try{await treeholeRequest('messages.read',{conversationId:c.id,throughSeq:last.seq});if(!alive||g!==generation)return;readError.value=false;const r=await treeholeRequest('messages.unread');if(alive&&g===generation){ackSeq=last.seq;emit('unread',r.messageUnreadCount||0);}}
  catch(e){if(alive&&g===generation){readError.value=true;if(treeholeErrorCode(e)==='session_expired'){alive=false;emit('expired');}}}finally{if(g===generation)ackBusy=false;}
 }
@@ -61,9 +61,18 @@ async function send(){
 async function block(){const c=conversation.value;if(!c||sending.value)return;loading.value=true;const g=generation;
  try{await treeholeRequest('members.block',{memberId:c.member.id});if(!alive||g!==generation)return;delete props.drafts[c.id];text.value='';messages.value=[];blocked.value=true;confirmBlock.value=false;emit('blocked');error.value='已屏蔽对方，双方私信与关注关系已隐藏。';emit('unread',(await treeholeRequest('messages.unread')).messageUnreadCount||0);}catch(e){if(g===generation)fail(e);}finally{if(g===generation)loading.value=false;}}
 function back(){if(sending.value)return true;saveDraft();if(conversation.value&&!props.initialMember){generation++;conversation.value=null;messages.value=[];error.value='';blocked.value=false;loading.value=false;loadingOlder.value=false;polling=false;confirmBlock.value=false;emit('title','私信');void inbox();return true;}return false;}
-function refresh(){if(document.hidden||!alive)return;if(conversation.value)void history(false,true);else if(!inboxNext.value)void inbox(false,true);}
-onMounted(()=>{if(props.initialMember)void openThread(props.initialMember,true);else void inbox();timer=setInterval(refresh,8000);document.addEventListener('visibilitychange',refresh);});
-onUnmounted(()=>{if(alive)saveDraft();alive=false;generation++;clearInterval(timer);document.removeEventListener('visibilitychange',refresh);});
+let visibleTab=true,lastInboxPoll=-Infinity;
+function refresh(force=false){
+ if(document.hidden||!alive||!visibleTab)return;
+ if(conversation.value){void history(false,true);return}
+ if(inboxNext.value||!force&&Date.now()-lastInboxPoll<60000)return;
+ lastInboxPoll=Date.now();void inbox(false,true);
+}
+function onVisibility(){if(!document.hidden)refresh(true)}
+onMounted(()=>{lastInboxPoll=Date.now();if(props.initialMember)void openThread(props.initialMember,true);else void inbox();timer=setInterval(()=>refresh(),8000);document.addEventListener('visibilitychange',onVisibility);});
+onDeactivated(()=>{visibleTab=false});
+onActivated(()=>{if(!visibleTab){visibleTab=true;refresh(true)}});
+onUnmounted(()=>{if(alive)saveDraft();alive=false;generation++;clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);});
 defineExpose({back});
 </script>
 <template>

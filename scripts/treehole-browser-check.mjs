@@ -1,3 +1,4 @@
+import {registerTestAccount as register} from './community-test-account.mjs';
 /** Actual PostgreSQL + HTTP + UI integration; only the native bridge/storage is adapted. */
 import {createServer as staticServer} from 'node:http';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
@@ -33,7 +34,7 @@ async function client(width){
  await context.exposeBinding('__treeholeNative',async(_,options)=>{
   const {action,body}=options;if(action==='buddies.join'&&state.failBuddy){state.failBuddy=false;return {error:'network_unavailable'};}if(action==='polls.vote'&&state.failVote){state.failVote=false;return {error:'network_unavailable'};}if(action==='media.upload'&&body?.purpose==='comment'&&state.failCommentUpload){state.failCommentUpload=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.failFollow){state.failFollow=false;return {error:'network_unavailable'};}if(action==='follows.list'&&state.failFollowList){state.failFollowList=false;return {error:'network_unavailable'};}if(action==='posts.list'&&!body?.beforeId&&state.failNextFeed){state.failNextFeed=false;return {error:'network_unavailable'};}if(action==='notifications.unread'&&state.expireUnread){state.expireUnread=false;return {error:'session_expired'};}if(action==='media.upload'&&state.failAvatarUpload){state.failAvatarUpload=false;return {error:'network_unavailable'};}if(action==='responses.set'&&state.failResponse){state.failResponse=false;return {error:'network_unavailable'};}state.actions.push(action);state.requests.push({action,body});if(action==='posts.get'&&state.failNextDetail){state.failNextDetail=false;return {error:'network_unavailable'};}if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
-  const result=await fetch(endpoint+'/v1/'+action,{method:action==='config'?'GET':'POST',headers,...(action==='config'?{}:{body:JSON.stringify(body)})});
+  const result=await fetch(endpoint+'/v1/'+action,{method:action==='config'?'GET':'POST',headers,...(action==='config'?{}:{body:JSON.stringify(action==='me'&&(state.legacyConfig||state.preBoardsConfig)?{}:body)})});
   const json=await result.json();if(action==='buddies.join'&&state.holdBuddy){state.holdBuddy=false;await new Promise(resolve=>state.releaseBuddy=resolve);}if(action==='buddies.join'&&state.dropBuddy){state.dropBuddy=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.holdFollow){state.holdFollow=false;await new Promise(resolve=>state.releaseFollow=resolve);}if(action==='avatar.set'&&state.holdAvatarSet){state.holdAvatarSet=false;await new Promise(resolve=>state.releaseAvatarSet=resolve);}if(action==='config'&&(state.legacyConfig||state.preBoardsConfig))delete json.boardsEnabled;if(action==='config'&&state.legacyConfig){delete json.moderationEnabled;delete json.responseKinds;delete json.messagesEnabled;delete json.socialEnabled;delete json.avatarsEnabled;delete json.responsesEnabled;delete json.discoveryEnabled;delete json.followingEnabled;delete json.buddiesEnabled;delete json.pollsEnabled;delete json.commentImagesEnabled;}if(action==='posts.get'&&state.holdNextDetail){state.holdNextDetail=false;await new Promise(resolve=>state.releaseDetail=resolve);}if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
   if(json.sessionToken){state.token=json.sessionToken;delete json.sessionToken;}
   if(action==='logout'||action==='account.delete')state.token=null;
@@ -57,13 +58,7 @@ async function client(width){
  await page.goto(url);await page.getByRole('heading',{name:'说说校园里的那些事'}).waitFor();
  return {page,context,state,errors};
 }
-async function register(page,username,nickname){
- await page.getByRole('button',{name:'注册账号',exact:true}).click();
- await page.getByLabel('登录账号',{exact:true}).fill(username);await page.getByLabel('公开昵称',{exact:true}).fill(nickname);
- await page.getByLabel('密码',{exact:true}).fill('synthetic-long-password');await page.getByRole('checkbox',{name:/我已阅读/}).check();
- await page.getByRole('button',{name:'创建账号',exact:true}).click();await page.getByRole('heading',{name:'保存你的账号恢复码'}).waitFor();
- await page.getByRole('button',{name:'我已保存恢复码'}).click();await page.getByRole('heading',{name:'邯院社区',exact:true}).waitFor();
-}
+
 try{
  if(!process.env.HYT_POLLS_ONLY&&!process.env.HYT_BUDDIES_ONLY){
  for(const width of [360,390,430]){
@@ -514,7 +509,7 @@ try{
  for(const width of [360,390,430]){
   const a=await client(width),b=await client(width),page=a.page;await register(page,'buddy_author_'+width,'搭子发起人'+width);await register(b.page,'buddy_reader_'+width,'报名同学'+width);
   await page.getByRole('button',{name:'发帖',exact:true}).click();await choosePostBoard(page,'buddies');await page.getByRole('button',{name:'设置时间、地点和报名',exact:true}).click();
-  assert(await page.getByRole('button',{name:'以昵称发布',exact:true}).isDisabled());assert.equal(await page.getByRole('button',{name:'添加投票',exact:true}).count(),0);assert(await page.getByLabel('选择分区').isDisabled());
+  assert(await page.getByRole('button',{name:'以昵称发布',exact:true}).isDisabled());assert.equal(await page.getByRole('button',{name:'添加投票',exact:true}).count(),0);assert(await page.getByRole('button',{name:'选择分区',exact:true}).isDisabled());
   await page.getByLabel('想说的话').fill('下课去操场慢跑，按自己的节奏就好。');await page.getByLabel('搭子集合地点').fill('东操场入口');await page.getByLabel('招募人数').selectOption('1');
   const date=new Date(Date.now()+24*3600000+8*3600000).toISOString().slice(0,16);await page.getByLabel('搭子活动时间').fill(date);
   await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();await page.reload();await page.locator('.th-draft-resume').click();assert.equal(await page.getByLabel('搭子集合地点').inputValue(),'东操场入口');assert.equal(await page.getByLabel('搭子活动时间').inputValue(),date);checks.push(`${width}: buddy composer validates required fields, prevents poll/category conflict, and restores campus-time draft`);
