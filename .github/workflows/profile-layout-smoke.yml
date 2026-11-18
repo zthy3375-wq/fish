@@ -1,0 +1,37 @@
+name: Android profile layout verification
+on:
+  push:
+    branches: [qa/profile-overview-test32]
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Verify mobile profile, accounts, navigation and settings
+        shell: bash
+        run: |
+          if command -v google-chrome >/dev/null; then
+            export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$(command -v google-chrome)"
+          else
+            npx playwright install chromium
+          fi
+          node scripts/academic-browser-check.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: profile-phone-check
+          path: |
+            /tmp/handan-v050-qa/profile-top-*.png
+            /tmp/handan-v050-qa/profile-bottom-*.png
+          if-no-files-found: warn
+          retention-days: 7
