@@ -2,6 +2,10 @@
 import {record,feedback,privatePins,localQueue,dismiss} from './services/achievementJournal';
 import {schoolView} from './services/achievementEvidence';
 import {byCode} from './domain/globalAchievements';
+import DiscoveryMoment from './components/honors/DiscoveryMoment.vue';
+import ReleaseHistory from './components/ReleaseHistory.vue';
+import {discover} from './services/hiddenDiscovery';
+import {tapSequence} from './domain/discoveryGestures';
 import AchievementNotice from './components/honors/AchievementNotice.vue';
 import {foregroundRefresh} from './services/foreground-refresh';
 import {keyboardViewport} from './services/keyboard-viewport';
@@ -430,9 +434,9 @@ function checkSchoolView(){
  if(!loading.value&&!error.value)schoolView(academicCache.value,page.value==='schedule'?'schedule':page.value==='academic'?section.value:'',!navigator.onLine);
 }
 watch([page,section,loading,academicCache],checkSchoolView,{flush:'post'});
-let fishTouches=0;
-watch(modal,()=>{fishTouches=0});
-function wakeFish(){if(++fishTouches===3)void record('goldfish');}
+const versionTaps=tapSequence(7);
+watch(modal,()=>versionTaps.reset());
+function tapVersion(){if(versionTaps.tap())void discover('goldfish');}
 const scrollPositions=new Map<string,{main:number;window:number}>();
 watch(()=>`${page.value}/${section.value}`,async(key,oldKey)=>{
  if(page.value!=='community')communityAccountEntry.value=false;
@@ -647,7 +651,7 @@ onUnmounted(() => {
 </script>
 <template>
   <AppUpdateDialog/>
-  <AchievementNotice v-if="page!=='community'" :codes="localQueue" v-bind="feedback" @seen="dismiss"/>
+  <DiscoveryMoment/><AchievementNotice v-if="page!=='community'" :codes="localQueue" v-bind="feedback" @seen="dismiss"/>
   <TaskDetail ref="taskDetailRef" @saved="notify"/>
   <div
     class="app-shell"
@@ -716,6 +720,7 @@ onUnmounted(() => {
                     ? 'schedule-family'
                     : section
                 "
+                :reliable="Boolean(schoolTerm?.data)||(schedule.mode==='personal'&&!academicCache.connected)"
                 :practice="schoolTerm?.data?.practice ?? []"
                 :table="table"
                 :semester="semester"
@@ -1085,10 +1090,11 @@ onUnmounted(() => {
               我知道了
             </button></template
           >
-          <template v-else-if="modal==='feedback'"><h2>问题反馈</h2><p>请将问题截图、发生步骤、手机型号和版本号发送给邀请你参加内测的开发者。不要发送密码或验证码。</p><p>邯院通 {{appVersion}}</p><button class="primary full" @click="close">我知道了</button></template>
+          <ReleaseHistory v-else-if="modal==='changelog'" @back="open('about')"/><template v-else-if="modal==='feedback'"><h2>问题反馈</h2><p>请将问题截图、发生步骤、手机型号和版本号发送给邀请你参加内测的开发者。不要发送密码或验证码。</p><p>邯院通 {{appVersion}}</p><button class="primary full" @click="close">我知道了</button></template>
           <template v-else
-            ><button class="fish-signature" aria-label="小金鱼" @click="wakeFish"><img class="brand-mark" src="/icon.svg" alt=""/><Fish :size="15" aria-hidden="true"/></button>
-            <h2>邯院通 <small>v{{appVersion}}</small></h2>
+            ><span class="fish-signature" aria-hidden="true"><img class="brand-mark" src="/icon.svg" alt=""/><Fish :size="15" aria-hidden="true"/></span>
+            <h2>邯院通 <button class="about-version" @click="tapVersion">v{{appVersion}}</button></h2>
+            <button class="text-button" @click="open('changelog')">更新日志</button>
             <p>
               为同学，由同学。独立开发的学生校园助手，未获邯郸学院官方认证或合作授权。
             </p>
@@ -1104,4 +1110,4 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped>.private-shelf{display:flex;align-items:center;gap:7px}.fish-signature{position:relative;display:inline-flex;align-items:center}.fish-signature svg{color:#ba8050;margin-left:5px}.collection-entry>svg:first-child{color:#a7824a}</style>
+<style scoped>.about-version{font:inherit;font-size:14px;color:var(--color-muted);background:transparent;border:0;padding:6px;touch-action:manipulation}.private-shelf{display:flex;align-items:center;gap:7px}.fish-signature{position:relative;display:inline-flex;align-items:center}.fish-signature svg{color:#ba8050;margin-left:5px}.collection-entry>svg:first-child{color:#a7824a}</style>

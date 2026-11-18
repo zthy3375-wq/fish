@@ -29,7 +29,7 @@ onMounted(load);
  <p v-if="!enabled" class="hon-status">当前社区服务尚未开放荣誉殿堂。下方可查看首批成就。</p>
  <p v-if="failure" role="alert" class="hon-status">{{offline?'显示本次登录最近保存的收藏。 ':''}}{{failure}} <button @click="load">重试</button></p>
  <p v-if="busy&&!hall" role="status">正在读取荣誉殿堂…</p>
- <section v-if="hall" class="hon-panel"><h2>{{self?'我的身份':hall.nickname+'的身份'}}</h2><OfficialBadges :items="[hall.badges.official,...hall.honors]"/><p v-if="!hall.badges.official&&!hall.honors.length">还没有获得官方身份或荣誉。</p>
+ <section v-if="hall" class="hon-panel"><h2>{{self?'我的身份':hall.nickname+'的身份'}}</h2><OfficialBadges full :items="[hall.badges.official,...hall.honors]"/><p v-if="!hall.badges.official&&!hall.honors.length">还没有获得官方身份或荣誉。</p>
  <label v-if="self&&hall.honors.length" class="hon-wear">发言时佩戴<select :value="honor||''" :disabled="busy||offline" @change="save((($event.target as HTMLSelectElement).value||null) as BadgeCode|null,shelf)"><option value="">不佩戴荣誉</option><option v-for="h in hall.honors" :key="h.code" :value="h.code">{{badges[h.code].name}}</option></select></label></section>
  <section class="hon-panel"><header><div><h2>{{self?'我的成就':'展示成就'}}</h2><p>{{self?'记录你与邯院通的每一次相遇':'由这位同学亲自挑选'}}</p></div><strong v-if="hall">{{self?hall.total+'/'+awards.length:hall.showcase.length+'/3'}}</strong></header>
  <progress v-if="self&&hall" :value="hall.total" :max="awards.length" aria-label="成就收藏进度"/>

@@ -99,7 +99,9 @@ try{
   await a.page.locator('.th-reply-entry').click();
   const locked=a.page.getByRole('checkbox',{name:'保持楼主匿名身份'});assert(await locked.isChecked());assert(await locked.isDisabled());
   await a.page.getByLabel('你的回复',{exact:true}).fill('这是楼主自己的回复。');await a.page.getByRole('button',{name:'发布回复',exact:true}).click();await a.page.getByText('这是楼主自己的回复。',{exact:true}).waitFor();
-  assert.equal(await a.page.locator('.th-comment strong em').first().innerText(),'楼主');checks.push(`${width}: anonymous author replies retain alias`);
+  const authorReply=a.page.locator('.th-comment').filter({has:a.page.getByText('这是楼主自己的回复。',{exact:true})});
+  assert.match(await authorReply.locator('.th-comment-meta small').innerText(),/· 楼主$/);
+  assert.equal(await authorReply.locator('header .hyt-badge').count(),0);checks.push(`${width}: anonymous author replies retain alias`);
   await a.page.screenshot({path:path.join(output,`treehole-detail-${width}.png`),animations:'disabled'});
   await a.page.setViewportSize({width,height:400});await a.page.locator('.th-reply-entry').click();await a.page.getByLabel('你的回复',{exact:true}).focus();
   await a.page.waitForFunction(()=>!document.querySelector('.th-sheet-motion-enter-active'));

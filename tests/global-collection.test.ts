@@ -5,9 +5,9 @@ import {emptyAcademicCache} from '../src/services/academic-sync-engine';
 import {emptyLearning} from '../src/domain/learning';
 import {emptyTasks,type CampusTask} from '../src/domain/agenda';
 beforeEach(()=>{vi.resetModules();localStorage.clear()});
-it('has 25 unique launch conditions, seven groups, and a concealed discovery',()=>{
- expect(catalog.length).toBe(25);expect(byCode.size).toBe(25);expect(new Set(catalog.map(a=>a.group)).size).toBe(6);
- expect(catalog.filter(a=>a.hidden).map(a=>a.code)).toEqual(['goldfish']);
+it('has 32 unique collectibles including eight hidden discoveries',()=>{
+ expect(catalog.length).toBe(32);expect(byCode.size).toBe(32);expect(new Set(catalog.map(a=>a.group)).size).toBe(6);
+ expect(catalog.filter(a=>a.hidden).map(a=>a.code)).toEqual(['goldfish','puff','dream','timewalk','freeday','mapfish','emptyfish','lastline']);
 });
 it('records the device celebrations once, derives the three-service goal and enforces three private pins',async()=>{
  const j=await import('../src/services/achievementJournal');
@@ -56,4 +56,28 @@ it('separates notification acknowledgments between different community users',as
  expect(d.pendingAwards(r,'b')).toEqual([]);expect(d.pendingAwards(r,'a')).toEqual(['month','year']);
  d.markPresented('a','month');expect(d.pendingAwards(r,'a')).toEqual(['year']);
  expect(d.pendingAwards({...r,awardOwner:'b'},'b')).toEqual(['month','year']);
+});
+it('retains a test.28 discovery and pin and saves each new egg once before presenting it',async()=>{
+ const stamp={at:'2026-11-01T12:34:56Z',historical:false};
+ localStorage.setItem('hyt-collection-v1:device',JSON.stringify({stamps:{goldfish:stamp},pins:['goldfish']}));
+ const j=await import('../src/services/achievementJournal'),d=await import('../src/services/hiddenDiscovery');
+ await d.discover('goldfish');expect(d.moment.value).toBeNull();
+ await Promise.all([d.discover('dream'),d.discover('dream')]);
+ expect(j.localStamps.value.dream).toBeDefined();expect(j.localQueue.value).toEqual([]);expect(d.moment.value).toBe('dream');
+ await vi.waitFor(()=>expect(j.localQueue.value).toEqual(['dream']),{timeout:1800});
+ await d.discover('dream');expect(d.moment.value).toBeNull();expect(j.localStamps.value.goldfish).toEqual(stamp);
+ expect(j.privatePins.value).toEqual(['goldfish']);
+});
+it('requires consecutive gestures and a manually visited first week in this term',async()=>{
+ const {tapSequence,weekJourney}=await import('../src/domain/discoveryGestures');
+ const taps=tapSequence(5);
+ expect([0,1,2,1000,1010,1020,1030,1040,1050].map(n=>taps.tap(n))).toEqual([false,false,false,false,false,false,false,true,false]);
+ const w=weekJourney();expect(w.move(1,7,7)).toBe(false);expect(w.move(7,1,7)).toBe(false);w.reset();expect(w.move(1,7,7)).toBe(false);
+ expect(w.move(7,1,7)).toBe(false);expect(w.move(1,7,7)).toBe(true);expect(w.move(7,7,7)).toBe(false);
+});
+it('limits compact identity to one verified role and one worn honor while the hall lists all honors',async()=>{
+ const {visibleBadges}=await import('../src/domain/communityHonors');
+ const items=(['moderator','developer','seed','seed','creator','contributor','unknown'] as const).map(code=>({code,at:null})) as never;
+ expect(visibleBadges(items).map(x=>x.code)).toEqual(['developer','seed']);
+ expect(visibleBadges(items,true).map(x=>x.code)).toEqual(['developer','seed','creator','contributor']);
 });

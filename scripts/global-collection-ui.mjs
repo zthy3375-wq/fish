@@ -20,7 +20,7 @@ try{
   await p.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   await p.getByRole('button',{name:/荣誉殿堂/}).click();
   await p.locator('[data-code=welcome].unlocked').waitFor();
-  assert.equal(await p.locator('.cabinet-grid button').count(),25);
+  assert.equal(await p.locator('.cabinet-grid button').count(),32);
   await p.locator('[data-code=life].unlocked').waitFor();
   await p.waitForFunction(()=>!document.querySelector('.unlock-toast'),undefined,{timeout:30000});
   await p.screenshot({path:output+'/global-'+width+'.png'});
@@ -36,7 +36,7 @@ try{
   await p.getByRole('dialog').getByRole('button',{name:/展示到我的页面/}).waitFor();
   await p.keyboard.press('Escape');
   await p.getByRole('button',{name:'隐藏',exact:true}).click();
-  await p.getByRole('button',{name:/未知奇遇/}).click();
+  await p.getByRole('button',{name:/隐藏成就/}).first().click();
   assert.equal(await p.getByRole('dialog').getByText('获取条件').count(),0);
   await p.keyboard.press('Escape');
   await p.getByRole('button',{name:'初识',exact:true}).click();
