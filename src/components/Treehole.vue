@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ref,computed,onMounted,onUnmounted,onActivated,onDeactivated,watch,nextTick} from 'vue';
-import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ChevronLeft,Bell,BellOff,MessagesSquare,ChevronDown,ChartNoAxesColumnIncreasing,CalendarPlus} from 'lucide-vue-next';
+import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ChevronLeft,Bell,BellOff,MessagesSquare,ChevronDown,ChartNoAxesColumnIncreasing,CalendarPlus,Award,Settings} from 'lucide-vue-next';
 import TreeholeMessages from './TreeholeMessages.vue';
 import TreeholeAdmin from './TreeholeAdmin.vue';
 const moderationEnabled=ref(false),adminTarget=ref<{postId:string;commentId?:string|null}|null>(null);
@@ -127,14 +127,14 @@ const feedLoadingMore=ref(false),feedPageError=ref(''),feedRevision=ref(0);
 let appliedFeedKey='',feedNeedsRefresh=false;
 const detail=ref<TreeholePost|null>(null),comments=ref<TreeholeComment[]>([]),commentNext=ref<Record<string,string>|null>(null),reply=ref<TreeholeComment|null>(null);
 const body=ref(''),anonymous=ref(false),commentBody=ref(''),commentAnon=ref(false),postKey=ref<string>(crypto.randomUUID()),commentKey=ref<string>(crypto.randomUUID());
-const reports=ref<TreeholeReport[]>([]),newPassword=ref(''),accountAction=ref<'overview'|'profile'|'password'|'delete'>('overview');
+const reports=ref<TreeholeReport[]>([]),newPassword=ref(''),accountAction=ref<'overview'|'profile'|'settings'|'password'|'delete'>('overview');
 const menu=ref<string|null>(null),reportTarget=ref<{postId:string;commentId?:string}|null>(null),reason=ref(''),discard=ref(false);
 const confirmAction=ref<{title:string;run:()=>Promise<void>}|null>(null);
 let alive=true,active=true;
 const identity=computed(()=>anonymous.value?'匿名同学':user.value?.nickname||'邯院通昵称');
 const forceCommentAnon=computed(()=>detail.value?.category==='treehole'||!!detail.value?.anonymous&&!!detail.value?.author.mine);
 function date(value:string){return treeholeTimestamp(value);}
-const title=computed(()=>({honors:'荣誉殿堂',honorAdmin:'身份管理',compose:'发帖',detail:'帖子详情',account:'我的社区',moderate:'社区管理',inbox:'互动消息',profile:'同学主页',following:peopleKind.value==='followers'?'我的粉丝':'我关注的人',messages:messageTitle.value,feed:'邯院社区'})[screen.value]);
+const title=computed(()=>({honors:'荣誉殿堂',honorAdmin:'身份管理',compose:'发帖',detail:'帖子详情',account:({overview:'我的社区',profile:'编辑资料',settings:'社区设置',password:'修改密码与恢复码',delete:'注销账号'})[accountAction.value],moderate:'社区管理',inbox:'互动消息',profile:'同学主页',following:peopleKind.value==='followers'?'我的粉丝':'我关注的人',messages:messageTitle.value,feed:'邯院社区'})[screen.value]);
 const dialogOpen=computed(()=>!!(boardPicker.value||buddyRoster.value||menu.value||confirmAction.value||reportTarget.value||discard.value||gallery.value||replyExpanded.value));
 function publishTabNavigation(){emit('tabNavigation',screen.value==='feed'&&!recovery.value&&!dialogOpen.value);}
 watch([screen,recovery,dialogOpen],publishTabNavigation,{immediate:true});
@@ -531,6 +531,17 @@ watch([accountEntry,ready,busy,user,recovery],()=>{
  if(screen.value!=='compose'&&!commentBody.value.trim()&&!commentImages.value.length)account();
 },{flush:'post'});
 function account(){screen.value='account';void refreshSocial();void refreshUnread();nickname.value=user.value?.nickname||'';bio.value=user.value?.bio||'';password.value='';newPassword.value='';accountAction.value='overview';}
+function openAccountPanel(panel: typeof accountAction.value){
+ accountAction.value=panel;
+ password.value='';newPassword.value='';error.value='';notice.value='';
+ if(panel==='profile'){nickname.value=user.value?.nickname||'';bio.value=user.value?.bio||'';}
+ void nextTick(()=>window.scrollTo({top:0,behavior:'instant'}));
+}
+function confirmRestoreBlocks(){
+ confirmAction.value={title:'恢复全部已屏蔽的内容？',run:async()=>{
+  await api('blocks.clear');feedNeedsRefresh=true;confirmAction.value=null;notice.value='已恢复屏蔽的内容';
+ }};
+}
 function saveAccount(){void run(async()=>{
  if(accountAction.value==='profile'){const r=await api('profile.update',{nickname:nickname.value,...(engagementEnabled.value?{bio:bio.value}:{})});user.value=r.user!;feedNeedsRefresh=true;notice.value='资料已更新';}
  else if(accountAction.value==='password'){const r=await api('password.change',{password:password.value,newPassword:newPassword.value});password.value='';newPassword.value='';optionalRecovery.value='';recovery.value=r.recoveryCode||'';notice.value='密码已更新，其他设备已退出';}
@@ -562,7 +573,11 @@ function requestBack(){
  if(confirmAction.value){confirmAction.value=null;return true;}if(reportTarget.value){reportTarget.value=null;return true;}if(discard.value){discard.value=false;return true;}
  if(menu.value){menu.value=null;return true;}
  if((screen.value==='compose'&&(body.value.trim()||postTitle.value.trim()||images.value.length||pollDraft.value||buddyDraft.value))||(screen.value==='detail'&&(commentBody.value.trim()||commentImages.value.length))){discard.value=true;return true;}
- if(screen.value==='account'&&accountAction.value!=='overview'){accountAction.value='overview';password.value='';newPassword.value='';return true;}
+ if(screen.value==='account'&&accountAction.value!=='overview'){
+  cancelAvatar();
+  openAccountPanel(['password','delete'].includes(accountAction.value)?'settings':'overview');
+  return true;
+ }
  if(screen.value==='messages'&&messagesView.value?.back())return true;
  if(screen.value!=='feed'){previousRoute();return true;}
  if(searchOpen.value){searchOpen.value=false;return true;}
@@ -587,6 +602,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
     <div v-if="screen==='detail'" class="th-detail-tabs"><button :aria-pressed="detailTab==='body'" @click="windowTop">正文</button><button :aria-pressed="detailTab==='comments'" @click="scrollDiscussion">评论</button></div><h1 v-else>{{title}}</h1>
     <template v-if="user&&screen==='feed'&&!recovery"><button class="th-icon" aria-label="搜索帖子" :aria-expanded="searchOpen" :disabled="busy" @click="toggleSearch"><Search :size="21"/></button><button v-if="engagementEnabled" class="th-icon th-inbox-entry" aria-label="互动消息" :disabled="busy" @click="showInbox"><Bell :size="21"/><span v-if="unreadCount+messageUnread" class="th-unread-badge">{{unreadCount+messageUnread>99?'99+':unreadCount+messageUnread}}</span></button><button class="th-self" :aria-label="user.nickname" :disabled="busy" @click="account"><TreeholeAvatar :name="user.nickname" :url="user.avatar?.url" :size="34"/></button></template>
     <button v-else-if="user&&screen==='compose'&&!recovery" class="th-publish" form="treehole-compose" :aria-label="anonymous?'匿名发布':'以昵称发布'" :disabled="busy||!pollValid||!buddyValid||!!buddyDraft&&!buddiesEnabled||(!body.trim()&&!images.length&&!pollDraft)||!!pollDraft&&!pollsEnabled">{{busy&&postUpload?(postUpload.phase==='uploading'?'上传中':'发布中'):'发布'}}</button>
+    <button v-else-if="user&&screen==='account'&&accountAction==='overview'&&!recovery" class="th-icon" aria-label="社区设置" :disabled="busy" @click="openAccountPanel('settings')"><Settings :size="21"/></button>
     <span v-else class="th-nav-spacer"/>
     <div v-if="busy" class="th-progress" role="status" aria-label="正在处理"/>
    </header>
@@ -674,25 +690,93 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
 
       </template>
       <template v-else-if="screen==='account'">
-       <div class="th-profile"><TreeholeAvatar :name="user.nickname" :url="user.avatar?.url" :size="68"/><h2 class="honor-byline"><span class="honor-name" :title="user.nickname">{{user.nickname}}</span><OfficialBadges v-if="user.badges" :items="[user.badges.official,user.badges.worn]"/></h2><p><AtSign :size="13"/>{{user.username}}</p><span>邯院通账号 · 昵称由你决定</span></div>
-       <HonorShowcase v-if="accountAction==='overview'" class="self-case" :honor="featuredHonor(user.badges)" :medals="publicMedals(user.showcase)" @hall="showHall(user.id)" @medal="showHall(user.id,$event)"/>
-       <div v-if="socialEnabled&&accountAction==='overview'" class="th-social-stats"><button aria-label="我的关注列表" :disabled="busy" @click="showFollowing()"><strong>{{social?.followingCount??'—'}}</strong><span>关注</span></button><button aria-label="我的粉丝列表" :disabled="busy" @click="showFollowing('followers')"><strong>{{social?.followerCount??'—'}}</strong><span>粉丝</span></button><button v-if="messagesEnabled" aria-label="我的私信" :disabled="busy" @click="showMessages()"><strong>{{messageUnread||0}}</strong><span>未读私信</span></button></div><p v-if="socialError" class="th-social-error" role="alert">{{socialError}} <button @click="refreshSocial">重试统计</button></p>
-       <section v-if="avatarsEnabled&&accountAction==='overview'" class="th-avatar-editor" aria-label="设置头像">
-        <template v-if="avatarCandidate"><img :src="'data:image/jpeg;base64,'+avatarCandidate.data" alt="新头像预览"/><p>预览头像 · 居中裁切</p><div><button class="th-primary" :disabled="busy" @click="saveAvatar">使用这张头像</button><button :disabled="busy" @click="cancelAvatar">取消</button></div></template>
-        <label v-else class="th-avatar-upload" :class="{disabled:busy}"><ImagePlus :size="18"/>更换头像<input type="file" accept="image/*" aria-label="选择头像图片" :disabled="busy" @change="chooseAvatar"/></label>
-        <button v-if="user.avatar&&!avatarCandidate" :disabled="busy" @click="removeAvatar">恢复默认头像</button><small>公开昵称发言使用此头像，匿名发言仍使用匿名图标。</small>
-       </section>
-       <p v-if="user.bannedUntil&&new Date(user.bannedUntil)>new Date()" class="th-alert">禁言至 {{date(user.bannedUntil)}}</p>
        <template v-if="accountAction==='overview'">
-        <div class="th-profile-shortcuts"><button v-if="honorsEnabled&&user.role==='moderator'&&(user.badges?.official?.code==='developer'||user.caps?.some(c=>['recommend','users'].includes(c)))" @click="showHonorAdmin"><ShieldCheck :size="21"/><strong>身份与荣誉管理</strong><small>成员和授权记录</small></button></div>
-        <details class="hon-prefs"><summary>成就反馈设置</summary><label><input type="checkbox" v-model="honorFeedback.sound"/>解锁提示音</label><label><input type="checkbox" v-model="honorFeedback.haptics"/>轻微震动</label><label><input type="checkbox" :checked="!honorFeedback.motion" @change="honorFeedback.motion=!($event.target as HTMLInputElement).checked"/>减少动画</label><small>我的社区成员 ID · <code>{{user.id}}</code></small></details>
-        <div v-if="buddiesEnabled" class="th-profile-shortcuts"><button :disabled="busy" @click="accountFeed('joined')"><MessagesSquare :size="22"/><strong>我报名的</strong><small>查看进展、回来继续聊</small></button></div>
-        <div class="th-profile-shortcuts"><button :disabled="busy" @click="accountFeed('mine')"><PenLine :size="22"/><strong>我的帖子</strong><small>记录校园里的日常</small></button><button :disabled="busy" @click="accountFeed('saved')"><Bookmark :size="22"/><strong>我的收藏</strong><small>留住喜欢的内容</small></button></div>
-        <div v-if="engagementEnabled" class="th-profile-shortcuts"><button :disabled="busy" @click="accountFeed('participated')"><MessagesSquare :size="22"/><strong>我参与的</strong><small>把上次的话接着聊</small></button><button :disabled="busy" @click="showInbox"><Bell :size="22"/><strong>互动消息 <span v-if="unreadCount">{{unreadCount}}</span></strong><small>回应与讨论的后续</small></button></div>
-        <section class="th-settings"><button v-if="optionalRecovery" :disabled="busy" @click="recovery=optionalRecovery;optionalRecovery=''"><ShieldCheck :size="19"/><span>保存账号恢复码（选填）</span><ChevronRight :size="17"/></button><button v-if="followingEnabled" :disabled="busy" @click="showFollowing()"><AtSign :size="19"/><span>我关注的人</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="accountAction='profile'"><PenLine :size="19"/><span>修改昵称</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="accountAction='password'"><LockKeyhole :size="19"/><span>修改密码与恢复码</span><ChevronRight :size="17"/></button><button :disabled="busy" @click="run(async()=>{await api('blocks.clear');feedNeedsRefresh=true;notice='已恢复屏蔽的内容'})"><Eye :size="19"/><span>恢复已屏蔽的内容</span><ChevronRight :size="17"/></button><button v-if="user.role==='moderator'" :disabled="busy" @click="moderate"><ShieldCheck :size="19"/><span>{{moderationEnabled?'管理中心':'处理举报'}}</span><ChevronRight :size="17"/></button></section>
-        <button class="th-logout" :disabled="busy" @click="logout"><LogOut :size="17"/>退出邯院通账号</button><button class="th-account-delete" :disabled="busy" @click="accountAction='delete'">注销账号</button>
+        <section class="account-identity th-profile" aria-label="社区个人资料">
+         <TreeholeAvatar :name="user.nickname" :url="user.avatar?.url" :size="54"/>
+         <div class="account-identity-text">
+          <h2 class="honor-byline"><span class="honor-name" :title="user.nickname">{{user.nickname}}</span><OfficialBadges v-if="user.badges" :items="[user.badges.official,user.badges.worn]"/></h2>
+          <p>@{{user.username}}</p>
+         </div>
+         <button class="account-edit" :disabled="busy" @click="openAccountPanel('profile')">编辑资料</button>
+        </section>
+        <div v-if="socialEnabled" class="account-stats th-social-stats">
+         <button aria-label="我的关注列表" :disabled="busy" @click="showFollowing()"><strong>{{social?.followingCount??'—'}}</strong><span>关注</span></button>
+         <button aria-label="我的粉丝列表" :disabled="busy" @click="showFollowing('followers')"><strong>{{social?.followerCount??'—'}}</strong><span>粉丝</span></button>
+         <button v-if="messagesEnabled" aria-label="我的私信" :disabled="busy" @click="showMessages()"><strong>{{messageUnread}}</strong><span>未读私信</span></button>
+        </div>
+        <p v-if="socialError" class="th-social-error" role="alert">{{socialError}} <button @click="refreshSocial">重试统计</button></p>
+        <p v-if="user.bannedUntil&&new Date(user.bannedUntil)>new Date()" class="th-alert">禁言至 {{date(user.bannedUntil)}}</p>
+        <HonorShowcase v-if="honorsEnabled" class="self-case" personal :honor="featuredHonor(user.badges)" :medals="publicMedals(user.showcase)" @hall="showHall(user.id)" @medal="showHall(user.id,$event)"/>
+        <section class="account-section" aria-labelledby="account-activity-title">
+         <h2 id="account-activity-title">我的活动</h2>
+         <div class="account-shortcuts">
+          <button :disabled="busy" @click="accountFeed('mine')"><PenLine/>我的帖子</button>
+          <button :disabled="busy" @click="accountFeed('saved')"><Bookmark/>我的收藏</button>
+          <button v-if="engagementEnabled" :disabled="busy" @click="accountFeed('participated')"><MessagesSquare/>我参与的</button>
+          <button v-if="buddiesEnabled" :disabled="busy" @click="accountFeed('joined')"><CalendarPlus/>我报名的</button>
+         </div>
+         <div class="account-rows">
+          <button v-if="engagementEnabled" :disabled="busy" @click="showInbox"><Bell/><span>互动消息</span><b v-if="unreadCount">{{unreadCount}}</b><ChevronRight/></button>
+          <button v-if="followingEnabled&&!socialEnabled" :disabled="busy" @click="showFollowing()"><AtSign/><span>我关注的人</span><ChevronRight/></button>
+         </div>
+        </section>
+        <section v-if="user.role==='moderator'" class="account-section" aria-labelledby="account-admin-title">
+         <h2 id="account-admin-title">管理工具</h2>
+         <div class="account-rows">
+          <button :disabled="busy" @click="moderate"><ShieldCheck/><span>{{moderationEnabled?'管理中心':'处理举报'}}</span><ChevronRight/></button>
+          <button v-if="honorsEnabled&&(user.badges?.official?.code==='developer'||user.caps?.some(c=>['recommend','users'].includes(c)))" :disabled="busy" @click="showHonorAdmin"><Award/><span>身份与荣誉管理</span><ChevronRight/></button>
+         </div>
+        </section>
        </template>
-       <form v-else class="th-card" @submit.prevent="saveAccount"><h3>{{accountAction==='profile'?'换个喜欢的昵称':accountAction==='password'?'更新账号密码':'注销邯院通账号'}}</h3><label v-if="accountAction==='profile'">公开昵称<input v-model="nickname" minlength="2" maxlength="20" required :disabled="busy"/></label><label v-if="accountAction==='profile'&&engagementEnabled">个人简介<textarea v-model="bio" maxlength="120" rows="3" placeholder="简单介绍自己（选填）" :disabled="busy"/></label><template v-if="accountAction!=='profile'"><label>当前密码<input v-model="password" type="password" autocomplete="current-password" required minlength="10" :disabled="busy"/></label><label v-if="accountAction==='password'">新密码<input v-model="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required :disabled="busy"/></label><p v-else class="th-muted">注销将删除你的树洞帖子、评论、双方私信历史和登录状态。学校课表保留。</p></template><button class="th-primary th-wide" :disabled="busy">{{accountAction==='delete'?'继续注销':'保存'}}</button></form>
+       <template v-else-if="accountAction==='settings'">
+        <section class="account-section" aria-labelledby="account-security-title">
+         <h2 id="account-security-title">账号与隐私</h2>
+         <div class="account-rows">
+          <button v-if="optionalRecovery" :disabled="busy" @click="recovery=optionalRecovery;optionalRecovery=''"><ShieldCheck/><span>保存账号恢复码（选填）</span><ChevronRight/></button>
+          <button :disabled="busy" @click="openAccountPanel('password')"><LockKeyhole/><span>修改密码与恢复码</span><ChevronRight/></button>
+          <button :disabled="busy" @click="confirmRestoreBlocks"><Eye/><span>恢复已屏蔽的内容</span><ChevronRight/></button>
+         </div>
+        </section>
+        <section class="account-section" aria-labelledby="account-feedback-title">
+         <h2 id="account-feedback-title">成就反馈设置</h2>
+         <div class="account-preferences">
+          <label class="account-pref">解锁提示音<input type="checkbox" v-model="honorFeedback.sound"/></label>
+          <label class="account-pref">轻微震动<input type="checkbox" v-model="honorFeedback.haptics"/></label>
+          <label class="account-pref">减少动画<input type="checkbox" :checked="!honorFeedback.motion" @change="honorFeedback.motion=!($event.target as HTMLInputElement).checked"/></label>
+         </div>
+        </section>
+        <div class="account-section account-rows">
+         <button :disabled="busy" @click="logout"><LogOut/><span>退出邯院通账号</span><ChevronRight/></button>
+         <button :disabled="busy" @click="openAccountPanel('delete')"><Trash2/><span>注销账号</span><ChevronRight/></button>
+        </div>
+        <p class="account-member-id">社区成员 ID <code>{{user.id}}</code></p>
+       </template>
+       <template v-else>
+        <section v-if="avatarsEnabled&&accountAction==='profile'" class="th-avatar-editor account-avatar" aria-label="设置头像">
+         <template v-if="avatarCandidate">
+          <img :src="'data:image/jpeg;base64,'+avatarCandidate.data" alt="新头像预览"/>
+          <div><button class="th-primary" :disabled="busy" @click="saveAvatar">使用这张头像</button><button :disabled="busy" @click="cancelAvatar">取消</button></div>
+         </template>
+         <template v-else>
+          <TreeholeAvatar :name="user.nickname" :url="user.avatar?.url" :size="60"/>
+          <div><label class="th-avatar-upload" :class="{disabled:busy}"><ImagePlus :size="17"/>更换头像<input type="file" accept="image/*" aria-label="选择头像图片" :disabled="busy" @change="chooseAvatar"/></label>
+          <button v-if="user.avatar" :disabled="busy" @click="removeAvatar">恢复默认头像</button></div>
+         </template>
+         <small>匿名发言使用匿名图标。</small>
+        </section>
+        <form class="th-card account-form" @submit.prevent="saveAccount">
+         <template v-if="accountAction==='profile'">
+          <label>公开昵称<input v-model="nickname" minlength="2" maxlength="20" required :disabled="busy"/></label>
+          <label v-if="engagementEnabled">个人简介<textarea v-model="bio" maxlength="120" rows="3" placeholder="简单介绍自己（选填）" :disabled="busy"/></label>
+         </template>
+         <template v-else>
+          <label>当前密码<input v-model="password" type="password" autocomplete="current-password" required minlength="10" :disabled="busy"/></label>
+          <label v-if="accountAction==='password'">新密码<input v-model="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required :disabled="busy"/></label>
+          <p v-else class="th-muted">注销将删除你的树洞帖子、评论、双方私信历史和登录状态。学校课表保留。</p>
+         </template>
+         <button class="th-primary th-wide" :disabled="busy||!!avatarCandidate">{{accountAction==='delete'?'继续注销':'保存'}}</button>
+        </form>
+       </template>
       </template>
       <TreeholeAdmin v-else-if="screen==='moderate'&&moderationEnabled" :request="api" :initial-target="adminTarget" @changed="adminChanged" @expired="clearAccount"/>
       <section v-else-if="screen==='moderate'"><div class="th-feed-intro"><h2>举报处理</h2><p>认真对待每一次反馈。</p></div><p v-if="!reports.length" class="th-empty">暂无待处理举报。</p><article v-for="r in reports" :key="r.id" class="th-card"><p class="th-full-body">{{r.body}}</p><p class="th-muted">举报原因：{{r.reason}}</p><div class="th-moderation-actions"><button v-for="(name,key) in {remove:'删除',lock:'锁帖',ban:'禁言 7 天',dismiss:'忽略'}" :key="key" :disabled="busy" @click="resolveReport(r,key)">{{name}}</button></div></article></section>
@@ -718,12 +802,9 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
   </Transition>
  </section>
 </template>
-<style scoped src="./Treehole.css">.public-case{width:100%;margin:12px 0 8px}.self-case{margin:8px 0}.th-profile-shortcuts:empty{display:none}
-</style>
-<style scoped src="./TreeholeRedesign.css">.public-case{width:100%;margin:12px 0 8px}.self-case{margin:8px 0}.th-profile-shortcuts:empty{display:none}
-</style>
-
+<style scoped src="./Treehole.css"></style>
+<style scoped src="./TreeholeRedesign.css"></style>
+<style scoped src="./CommunityAccount.css"></style>
 <style scoped>
-.hon-featured{display:flex;gap:6px;color:#936724}.hon-hall-link,.hon-prefs label{display:inline-flex;align-items:center;gap:6px;padding:8px}.hon-hall-link{color:#795698;background:#f4eef8;border-radius:12px}.hon-prefs{padding:9px;font-size:13px}.hon-prefs small{display:block;color:var(--color-muted);overflow-wrap:anywhere}.hon-prefs code{user-select:all}
-.public-case{width:100%;margin:12px 0 8px}.self-case{margin:8px 0}.th-profile-shortcuts:empty{display:none}
+.public-case{width:100%;margin:12px 0 8px}
 </style>
