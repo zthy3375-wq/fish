@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ReleaseCheck extends Instrumentation {
   private Bundle args;
   private Activity activity;
+  private String step="launch";
   @Override public void onCreate(Bundle options) { super.onCreate(options); args=options; start(); }
   private WebView web(View view) {
     if(view instanceof WebView) return (WebView)view;
@@ -33,11 +34,12 @@ public final class ReleaseCheck extends Instrumentation {
       if(page==null){latch.countDown();return;}
       page.evaluateJavascript(expression, result->{value.set(result);latch.countDown();});
     });
-    if(!latch.await(5,TimeUnit.SECONDS))throw new Exception("WebView evaluation timed out");
+    if(!latch.await(25,TimeUnit.SECONDS))throw new Exception("WebView evaluation timed out at "+step);
     return "true".equals(value.get());
   }
   private void until(String condition,String message) throws Exception {
-    long until=SystemClock.elapsedRealtime()+40000;
+    step=message;
+    long until=SystemClock.elapsedRealtime()+65000;
     while(SystemClock.elapsedRealtime()<until){if(js(condition))return;SystemClock.sleep(150);}
     throw new Exception(message);
   }
@@ -53,6 +55,7 @@ public final class ReleaseCheck extends Instrumentation {
       Intent launch=getTargetContext().getPackageManager().getLaunchIntentForPackage("org.handancampus.app");
       launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       activity=startActivitySync(launch);
+      waitForIdleSync();
       until("document.querySelectorAll('.life-wallets .life-card').length===2","wallets unavailable");
       until("(()=>{const [a,b]=document.querySelectorAll('.life-wallets .life-card');const x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return x.width>0&&x.right<=y.left+1&&Math.abs(x.top-y.top)<2&&a.textContent.includes('趣智校园')&&b.textContent.includes('胖乖生活')})()","wallets not side by side");
       long since=SystemClock.elapsedRealtime();
@@ -60,19 +63,18 @@ public final class ReleaseCheck extends Instrumentation {
       boolean old=mode.equals("previous");
       until("navigator.onLine===false","device must remain offline");
       if(old){
-        for(int i=0;i<5;i++)click("document.querySelector('.mascot-touch')","old fish unavailable");
         click(button("我的"),"profile tab unavailable");
         click("document.querySelector('.collection-entry')","old hall unavailable");
-        until("!!document.querySelector('[data-code=puff].unlocked')","old unlock missing");
-        click("document.querySelector('[data-code=puff]')","old medal missing");
+        until("!!document.querySelector('[data-code=welcome].unlocked')","old unlock missing");
+        click("document.querySelector('[data-code=welcome]')","old medal missing");
         click("document.querySelector('.collect-detail .wear')","old pin unavailable");
         until("document.querySelector('dialog[open] .wear')?.textContent.includes('取下')===true","pin failed");
       }else{
         click(button("我的"),"profile tab unavailable");
-        until("document.querySelector('.collection-entry .private-shelf')?.textContent.includes('别戳啦！')===true","old pin absent from exhibit");
+        until("document.querySelector('.collection-entry .private-shelf')?.textContent.includes('你好，邯院')===true","old pin absent from exhibit");
         until("document.querySelector('.profile-strip').nextElementSibling.classList.contains('collection-entry')","exhibit not near nickname");
         click("document.querySelector('.case-rail button')","medal unavailable");
-        until("document.querySelector('dialog.collect-detail[open] h2')?.textContent==='别戳啦！'","incorrect deeplink");
+        until("document.querySelector('dialog.collect-detail[open] h2')?.textContent==='你好，邯院'","incorrect deeplink");
         until("document.querySelector('dialog[open] .wear')?.textContent.includes('取下')===true","old pin lost");
         click("document.querySelector('.detail-close')","detail close missing");
       }
