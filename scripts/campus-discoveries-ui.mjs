@@ -33,7 +33,16 @@ try{
  await btn('日视图').click();await p.locator('.week-days button').last().click();await stamp('freeday');
  await nav('待办').click();const empty=btn('清单里的小鱼');await empty.waitFor();await p.getByLabel('搜索任务').fill('不存在的任务');assert.equal(await empty.count(),0);
  await p.getByLabel('搜索任务').fill('');await empty.click();await stamp('emptyfish');
- await nav('首页').click();await p.locator('.life-services').getByRole('button',{name:/校园平面图/}).click();await btn('水边的小金鱼').click();await stamp('mapfish');await btn('关闭').click();
+ await nav('首页').click();await p.locator('.life-services').getByRole('button',{name:/校园平面图/}).click();await btn('水边的小金鱼').click();await stamp('mapfish');
+ for(const [campus,pixels] of [['西',864],['东',709],['西',864]]){
+   await btn(campus+'校区平面图').click();
+   await p.waitForFunction(w=>document.querySelector('.leaflet-image-layer')?.naturalWidth===w,pixels);
+   const image=p.locator('.leaflet-image-layer');const before=await image.evaluate(el=>el.getBoundingClientRect().width);
+   await p.locator('.leaflet-control-zoom-in').click();
+   await p.waitForFunction(w=>document.querySelector('.leaflet-image-layer').getBoundingClientRect().width>w,before);
+   await btn('显示全图').click();
+ }
+ console.log('PASS repeated campus switches, zoom and fit bounds');await btn('关闭').click();
  await nav('我的').click();await btn('关于邯院通').click();
  const version=p.locator('.about-version');for(let n=0;n<7;n++)await version.click();await stamp('goldfish');
  await btn('更新日志').click();const pages=p.locator('.release-pages'),end=p.locator('.colophon');assert(await end.isDisabled());await pages.evaluate(e=>e.scrollTo(0,e.scrollHeight));await end.click();await stamp('lastline');await btn('关闭').click();
