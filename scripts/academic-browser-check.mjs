@@ -480,7 +480,7 @@ try{
   await page.getByRole('button',{name:'退出学校账号',exact:true}).click();
   await page.getByRole('button',{name:'连接',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: school logout preserves personal tasks`);
-  await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
+  await page.locator('.profile-accounts').getByRole('button',{name:'学习通',exact:true}).click();
   await page.getByRole('button',{name:'同步管理',exact:true}).click();
   await page.locator('.learning-manage-details>summary').click();
   await page.getByRole('button',{name:'退出学习通连接',exact:true}).click();
