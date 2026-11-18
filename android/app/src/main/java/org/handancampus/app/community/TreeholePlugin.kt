@@ -33,6 +33,23 @@ class TreeholePlugin : Plugin() {
                 } else if (action in setOf("posts.create","comments.create","posts.delete","comments.delete","reactions.set","honors.change") || (result.optJSONArray("unlocks")?.length() ?: 0) > 0) {
                     runCatching { hallVault.restore()?.let { hallVault.save(JSObject(it).put("dirty", true).toString()) } }
                 }
+                // Reuse authenticated self projections for the offline personal exhibit.
+                // Token replacement and logout clear this vault before another account can read it.
+                if (action in setOf("me", "login", "register", "recover", "profile.update") && result.has("user")) {
+                    runCatching {
+                        val user = result.getJSONObject("user")
+                        val id = user.getString("id")
+                        val owner = JSObject().put("id", id)
+                            .put("badges", user.optJSONObject("badges") ?: JSObject())
+                            .put("showcase", user.optJSONArray("showcase") ?: org.json.JSONArray())
+                        val cached = hallVault.restore()?.let { JSObject(it) } ?: JSObject()
+                        val oldOwner = cached.optJSONObject("owner") ?: cached.optJSONObject("hall")
+                        val snapshot = if (oldOwner == null || oldOwner.optString("id") == id) cached else JSObject()
+                        if (snapshot.optJSONObject("owner")?.toString() != owner.toString()) {
+                            hallVault.save(snapshot.put("owner", owner).toString())
+                        }
+                    }
+                }
                 call.resolve(JSObject(result.toString()))
             }
             catch (e: TreeholeFailure) { call.reject(e.code, e.code) }

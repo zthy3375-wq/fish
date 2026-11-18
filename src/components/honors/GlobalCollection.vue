@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import {computed,nextTick,onMounted,onUnmounted,ref,shallowRef} from 'vue';
 import {Bookmark,Check,ChevronRight,HelpCircle,LockKeyhole,RefreshCw,Trophy,X} from 'lucide-vue-next';
-import {catalog,groups,lifeCodes,sourceNames,type Collectible,type Group} from '../../domain/globalAchievements';
-import {cachedHall,feedback,localQueue,localStamps,privatePins,scopes,storageIssue,togglePrivate} from '../../services/achievementJournal';
+import {byCode,catalog,groups,lifeCodes,sourceNames,type Collectible,type Group} from '../../domain/globalAchievements';
+import {cachedHall,feedback,localQueue,localStamps,privatePins,viewHidden,scopes,storageIssue,togglePrivate} from '../../services/achievementJournal';
 import {treeholeRequest,treeholeError,treeholeErrorCode} from '../../services/treehole';
 import {honorDate,type HonorHall} from '../../domain/communityHonors';
 import {pendingAwards,markPresented} from '../../services/achievementDelivery';
@@ -57,11 +57,15 @@ async function load(force=false){
 }
 async function show(a:Collectible){
  selected.value=a;
+ if(earned.value[a.code])viewHidden(a.code);
  await nextTick();
  if(active&&detail.value&&!detail.value.open)detail.value.showModal();
 }
 function closeDetail(){if(!detail.value?.open)return false;detail.value.close();return true;}
-defineExpose({closeDetail});
+function openMedal(code:string){
+ const medal=byCode.get(code);if(medal)void show(medal);
+}
+defineExpose({closeDetail,openMedal});
 const online=ref(navigator.onLine);
 function networkChanged(){online.value=navigator.onLine;}
 async function pin(a:Collectible){
@@ -80,7 +84,7 @@ onUnmounted(()=>{active=false;window.removeEventListener('online',networkChanged
 </script>
 <template>
 <div class="collection">
- <AchievementNotice :codes="localQueue.length?[]:pending" v-bind="feedback" @shown="hall && markPresented(hall.id,$event)" @seen="seen"/>
+ <AchievementNotice :codes="localQueue.length?[]:pending" can-open @open="openMedal" v-bind="feedback" @shown="hall && markPresented(hall.id,$event)" @seen="seen"/>
  <section class="cabinet">
   <header><div><h2>成就收藏馆</h2><p>你的每一段校园经历，都值得被记住</p></div><Trophy :size="23" aria-hidden="true"/></header>
   <div class="progress-heading"><div><strong>{{count}}</strong><span> / {{catalog.length}}</span><small>{{hall?'已解锁成就':'本机已确认成就'}}</small></div><b>{{percent}}% 完成</b></div>

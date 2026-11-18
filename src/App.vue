@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {record,feedback,privatePins,localQueue,dismiss} from './services/achievementJournal';
+import {record,feedback,localQueue,dismiss} from './services/achievementJournal';
 import {schoolView} from './services/achievementEvidence';
-import {byCode} from './domain/globalAchievements';
+import PersonalShowcase from './components/honors/PersonalShowcase.vue';
 import DiscoveryMoment from './components/honors/DiscoveryMoment.vue';
 import ReleaseHistory from './components/ReleaseHistory.vue';
 import {discover} from './services/hiddenDiscovery';
@@ -54,7 +54,7 @@ import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { App as NativeApp } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
-  Trophy, Fish, GraduationCap,
+  Fish, GraduationCap,
   BookOpen,
   CalendarDays,
   ChartNoAxesColumnIncreasing,
@@ -272,6 +272,12 @@ const taskDetailRef=ref<InstanceType<typeof TaskDetail>>();
 function planLearning(task:CampusTask){taskDetailRef.value?.edit(task)}
 function editDailyTask(task?:CampusTask,day?:string){taskDetailRef.value?.edit(task,day)}
 const globalCollectionRef=ref<InstanceType<typeof GlobalCollection>>();
+async function openCollection(code?:string){
+  if(modal.value)close();
+  if(page.value!=='profile'||section.value!=='honors')move('profile','honors');
+  await nextTick();
+  if(code)globalCollectionRef.value?.openMedal(code);
+}
 setBeforeBack(()=>globalCollectionRef.value?.closeDetail()||(!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false));
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
@@ -651,7 +657,7 @@ onUnmounted(() => {
 </script>
 <template>
   <AppUpdateDialog/>
-  <DiscoveryMoment/><AchievementNotice v-if="page!=='community'" :codes="localQueue" v-bind="feedback" @seen="dismiss"/>
+  <DiscoveryMoment/><AchievementNotice v-if="page!=='community'" :codes="localQueue" v-bind="feedback" :can-open="!updatesOpen&&!agendaView.editor&&(!modal||['about','changelog','campus-map'].includes(modal))" @open="openCollection" @seen="dismiss" />
   <TaskDetail ref="taskDetailRef" @saved="notify"/>
   <div
     class="app-shell"
@@ -745,7 +751,7 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
-            <button class="learning-page-link collection-entry" @click="move('profile','honors')"><Trophy :size="21"/><strong>荣誉殿堂</strong><span v-if="privatePins.length" class="private-shelf"><component v-for="c in privatePins" :key="c" :is="byCode.get(c)?.icon" :aria-label="byCode.get(c)?.name" :size="17" :style="{color:byCode.get(c)?.color}"/></span><span v-else>我的校园收藏</span><ChevronRight :size="16"/></button>
+            <PersonalShowcase @hall="openCollection()" @medal="openCollection"/>
             <SectionHeader title="账号与连接"/>
             <section class="profile-accounts"><SchoolConnection collapsible />
              <button class="learning-page-link" @click="communityAccountEntry=true;nav('community')"><MessageSquare :size="20"/><strong>邯院通社区账号</strong><span>主页、消息与账号设置</span><ChevronRight :size="16"/></button>
@@ -1110,4 +1116,4 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped>.about-version{font:inherit;font-size:14px;color:var(--color-muted);background:transparent;border:0;padding:6px;touch-action:manipulation}.private-shelf{display:flex;align-items:center;gap:7px}.fish-signature{position:relative;display:inline-flex;align-items:center}.fish-signature svg{color:#ba8050;margin-left:5px}.collection-entry>svg:first-child{color:#a7824a}</style>
+<style scoped>.about-version{font:inherit;font-size:14px;color:var(--color-muted);background:transparent;border:0;padding:6px;touch-action:manipulation}.fish-signature{position:relative;display:inline-flex;align-items:center}.fish-signature svg{color:#ba8050;margin-left:5px}</style>

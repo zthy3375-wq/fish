@@ -23,19 +23,26 @@ export async function checkHonors({client,db,api,baseline,output}){
     }
     await call('posts.create',{requestId:randomUUID(),body:'分享一张邯院的秋天',anonymous:false});
     if(!ownerExists)await call('honors.change',{operation:'grant',memberId:member.id,kind:'seed',reason:'参与社区内测',requestId:randomUUID()});
+    if(!ownerExists)await call('honors.wear',{honor:'seed',showcase:[]});
     await page.reload();await page.locator('.th-nav .th-self:not([disabled])').waitFor();
     await page.locator('.unlock-toast').first().waitFor();
     await page.waitForTimeout(450);await page.screenshot({path:path.join(output,'notice-'+width+'.png')});
     await page.waitForFunction(()=>!document.querySelector('.unlock-toast'),undefined,{timeout:12000});
     await page.getByRole('button',{name:/查看 .*的主页/}).first().click();
-    const publicButton=page.locator('button.hon-hall-link');await publicButton.waitFor();
+    const publicButton=page.locator('.public-case .case-all');await publicButton.waitFor();
+    if(!ownerExists){
+     await page.locator('.public-case .case-honor').click();
+     await page.getByRole('dialog',{name:'种子用户'}).getByText(/获得日期/).waitFor();
+     await page.getByRole('button',{name:'完成',exact:true}).click();
+     await page.locator('.public-case').screenshot({path:path.join(output,'public-exhibit-'+width+'.png')});
+    }
     await page.getByRole('button',{name:'返回社区',exact:true}).click();
    }
    await page.locator('.th-nav .th-self:not([disabled])').click();
    await page.locator('.th-profile').waitFor();await page.waitForTimeout(350);
    await page.screenshot({animations:'disabled',path:path.join(output,(baseline?'before-profile-':'after-profile-')+width+'.png')});
    if(baseline)continue;
-   await page.locator('.th-profile-shortcuts button').filter({hasText:'荣誉殿堂'}).click();
+   await page.locator('.self-case .case-all').click();
    await page.locator('.hon-grid').waitFor();await page.getByRole('button',{name:'第一声',exact:true}).click();
    await page.getByRole('button',{name:/展示到主页/}).click();await page.getByRole('button',{name:/从主页取下/}).waitFor();
    await page.locator('.hon-page').screenshot({animations:'disabled',path:path.join(output,'hall-'+width+'.png')});

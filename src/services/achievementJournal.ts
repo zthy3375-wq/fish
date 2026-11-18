@@ -3,9 +3,10 @@ import { computed, ref, shallowReactive, watch } from 'vue';
 import { byCode, lifeCodes, type Source } from '../domain/globalAchievements';
 import type { HonorHall } from '../domain/communityHonors';
 
+import type {ShowcaseOwner} from '../domain/honorShowcase';
 export interface Stamp {at:string; historical:boolean}
-interface Journal { stamps:Record<string,Stamp>; pins:string[] }
-interface CacheReply {signedIn:boolean; hall?:HonorHall; cachedAt?:number; dirty?:boolean}
+interface Journal { stamps:Record<string,Stamp>; pins:string[]; seenHidden?:string }
+interface CacheReply {signedIn:boolean; owner?:ShowcaseOwner; hall?:HonorHall; cachedAt?:number; dirty?:boolean}
 interface Bridge {
   journalRead(input:{scope:string}):Promise<{value?:string}>;
   journalWrite(input:{scope:string;value:string}):Promise<void>;
@@ -41,6 +42,7 @@ export async function book(scope:string){
         valid.stamps[code]={at:stamp.at,historical:stamp.historical===true};
     }
     valid.pins=[...new Set(parsed.pins.filter(code=>valid.stamps[code]))].slice(0,3);
+    if(scope==='device'&&parsed.seenHidden&&valid.stamps[parsed.seenHidden]&&byCode.get(parsed.seenHidden)?.hidden)valid.seenHidden=parsed.seenHidden;
     books.set(scope,valid);return valid;
   })().finally(()=>inflight.delete(scope));
   inflight.set(scope,read);return read;
@@ -95,4 +97,10 @@ export async function togglePrivate(code:string){
 export async function cachedHall():Promise<CacheReply>{
   if(android())return bridge.cachedHall();
   return {signedIn:Capacitor.isPluginAvailable('Treehole')};
+}
+
+export const seenHidden=computed(()=>books.get('device')?.seenHidden);
+export function viewHidden(code:string){
+  if(!byCode.get(code)?.hidden)return;
+  void change('device',book=>book.stamps[code]&&book.seenHidden!==code&&(!book.seenHidden||book.stamps[book.seenHidden].at<=book.stamps[code].at)?{...book,seenHidden:code}:null);
 }

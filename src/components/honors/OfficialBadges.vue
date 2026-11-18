@@ -1,23 +1,17 @@
 <script setup lang="ts">
-import {computed,nextTick,ref} from 'vue';
-import {badges,honorDate,visibleBadges,type Badge} from '../../domain/communityHonors';
+import BadgeDetail from './BadgeDetail.vue';
+import {computed,ref} from 'vue';
+import {badges,visibleBadges,type Badge} from '../../domain/communityHonors';
 const props=defineProps<{items:(Badge|null|undefined)[]; full?:boolean; passive?:boolean}>();
 const marks=computed(()=>visibleBadges(props.items,props.full));
-const detail=ref<Badge|null>(null), dialog=ref<HTMLDialogElement>();
-async function show(badge:Badge){
-  detail.value=badge;
-  await nextTick();
-  if(dialog.value&&!dialog.value.open)dialog.value.showModal();
-}
+const detail=ref<InstanceType<typeof BadgeDetail>>();
 </script>
 <template>
  <span v-if="marks.length" class="hyt-badges">
-  <component v-for="b in marks" :key="b.code" :is="passive?'span':'button'" :type="passive?undefined:'button'" class="hyt-badge" :aria-label="badges[b.code].name" :title="badges[b.code].name" :style="{'--ink':badges[b.code].color,'--night':badges[b.code].dark}" @click="!passive&&($event.stopPropagation(),show(b))">
+  <component v-for="b in marks" :key="b.code" :is="passive?'span':'button'" :type="passive?undefined:'button'" class="hyt-badge" :aria-label="badges[b.code].name" :title="badges[b.code].name" :style="{'--ink':badges[b.code].color,'--night':badges[b.code].dark}" @click="!passive&&($event.stopPropagation(),detail?.show(b))">
    <component :is="badges[b.code].icon" :size="13" :stroke-width="1.8" aria-hidden="true"/>{{badges[b.code].short}}
   </component>
-  <Teleport to="body"><dialog v-if="detail" ref="dialog" class="hyt-badge-detail" :aria-label="badges[detail.code].name" @click.self="dialog?.close()" @close="!dialog?.open&&(detail=null)">
-    <component :is="badges[detail.code].icon" :size="32" aria-hidden="true"/><h3>{{badges[detail.code].name}}</h3><p>{{badges[detail.code].description}}</p><p>{{badges[detail.code].method}}</p><small>获得日期 · {{honorDate(detail.at)}}</small><form method="dialog"><button>完成</button></form>
-  </dialog></Teleport>
+  <BadgeDetail v-if="!passive" ref="detail"/>
  </span>
 </template>
 <style>

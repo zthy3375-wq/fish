@@ -3,6 +3,7 @@ import {onMounted,onUnmounted,ref} from 'vue';
 import {discover} from '../services/hiddenDiscovery';
 defineEmits<{back:[]}>();
 const entries=[
+ ['1.3.0-test.30','在「我的」和社区主页翻看荣誉展柜，点开徽章可以看看它的来历。'],
  ['1.3.0-test.29','昵称旁的身份标识变小了。校园各处多了几段可以收入收藏馆的小插曲。'],
  ['1.3.0-test.28','在「我的」进入荣誉殿堂，可以分类翻看全局成就，也可以挑出喜欢的收藏。'],
  ['1.3.0-test.26','社区加入官方身份、荣誉称号和成就展示。'],
