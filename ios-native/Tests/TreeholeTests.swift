@@ -166,6 +166,8 @@ final class TreeholeTests: XCTestCase {
         let draft = try JSONDecoder().decode(TreeholeDraft.self, from: old)
         XCTAssertEqual(draft.category, "study"); XCTAssertTrue(draft.anonymous); XCTAssertNil(draft.interest)
         XCTAssertEqual(TreeholeCategories.filters("study", interest: "games", enabled: true), ["section": "daily", "category": "study", "interest": ""])
+        XCTAssertEqual(TreeholeCategories.filters("study", interest: "graduate", enabled: true)["interest"], "graduate")
+        XCTAssertEqual(TreeholeCategories.filters("daily", interest: "games", enabled: true), ["section": "daily", "category": "daily", "interest": ""])
         XCTAssertEqual(TreeholeCategories.filters("daily", interest: "", enabled: false), ["category": "daily"])
         XCTAssertEqual(TreeholeCategories.filters("entertainment", interest: "music", enabled: true)["interest"], "music")
     }
@@ -191,8 +193,10 @@ final class TreeholeTests: XCTestCase {
         TreeholeTestProtocol.handler = { request in
             var bytes = request.httpBody ?? Data()
             if let stream = request.httpBodyStream { stream.open(); defer { stream.close() }; var chunk = [UInt8](repeating: 0, count: 1024); while stream.hasBytesAvailable { let n = stream.read(&chunk, maxLength: chunk.count); if n <= 0 { break }; bytes.append(contentsOf: chunk.prefix(n)) } }
-            let body = try! JSONSerialization.jsonObject(with: bytes) as! [String: String]
-            XCTAssertEqual(body["section"], "entertainment"); XCTAssertEqual(body["interest"], "music")
+            let body = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any]
+            XCTAssertEqual(body?["section"] as? String, "entertainment")
+            XCTAssertEqual(body?["interest"] as? String, "music")
+            XCTAssertEqual(body?["boardTopics"] as? Bool, true)
             return (200, self.page([self.samplePost("music")]))
         }
         try await store.selectDiscovery("entertainment", interest: "music")

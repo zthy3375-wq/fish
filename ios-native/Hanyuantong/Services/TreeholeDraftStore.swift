@@ -74,7 +74,11 @@ enum TreeholeCategories {
     }
     static func interestName(_ id: String?) -> String { (topics("study",boards:true) + topics("entertainment",boards:true)).first { $0.0 == id }?.1 ?? "" }
     static func filters(_ category: String, interest: String, enabled: Bool) -> [String: String] {
-        enabled ? ["section": section(category), "category": ["help", "study"].contains(category) ? category : "all", "interest": ["entertainment","study"].contains(category) ? interest : ""] : ["category": category]
+        guard enabled else { return ["category": category] }
+        let allowedTopic = topics(category, boards: true).contains { $0.0 == interest }
+        return ["section": section(category),
+                "category": ["daily", "help", "study"].contains(category) ? category : "all",
+                "interest": allowedTopic ? interest : ""]
     }
     static func description(_ id: String) -> String? {
         ["daily": "校园瞬间、日常分享，也可以在这里问个问题", "entertainment": "聊聊最近喜欢的游戏、作品和爱好", "buddies": "一起吃饭、运动、开黑，从一条帖子开始", "treehole": "把想说的话放在这里，本区统一匿名"][section(id)]

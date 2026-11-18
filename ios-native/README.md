@@ -50,6 +50,6 @@ xcodebuild -project Hanyuantong.xcodeproj -scheme Hanyuantong -destination 'plat
 
 ## Xcode 16.4 模拟器兼容
 
-Apple 已确认 iOS18.4/18.5 模拟器调用部分 WebKit Swift API 时，较低部署目标可能找不到 libswiftWebKit.dylib（[WebKit 293831](https://bugs.webkit.org/show_bug.cgi?id=293831)）。CI 优先选择最新可用运行时；若落在这两个版本，仅该模拟测试构建按官方方案覆盖部署目标为18.4。工程及独立 unsigned iPhone Release 构建仍为 iOS16。此处理不等于验证真实 iOS16设备；本地同版本模拟器可使用该测试覆盖或 Apple 文档中的运行时库路径方案。
+Apple 已确认 iOS18.4/18.5 模拟器调用部分 WebKit Swift API 时，较低部署目标可能找不到 libswiftWebKit.dylib（[WebKit 293831](https://bugs.webkit.org/show_bug.cgi?id=293831)）。CI 优先选择最新可用运行时；若落在这两个版本，仅该模拟测试构建按官方方案覆盖部署目标为18.4。工程及独立 unsigned iPhone Release 构建的最低版本均为 iOS 15.4。实体 iOS 15.4 设备仍需验证；本地同版本模拟器可使用该测试覆盖或 Apple 文档中的运行时库路径方案。
 
 双端对照、设计基线、验证与后续同步步骤见 [双端功能验收表](PARITY.md)。
