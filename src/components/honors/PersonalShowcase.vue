@@ -20,4 +20,4 @@ const newDiscovery=computed(()=>{
   if(stamp&&!stamp.historical&&(!seen||Date.parse(seen.at)<Date.parse(stamp.at)))return a;
 });
 </script>
-<template><HonorShowcase personal class="collection-entry" :medals="display.medals" :pinned="display.pinned" :first="display.first" :honor="featuredHonor(owner?.badges)??hall?.honors?.[0]" :latest="newDiscovery??display.latest" :fresh="!!newDiscovery" @hall="$emit('hall')" @medal="$emit('medal',$event)"/></template>
+<template><HonorShowcase compact personal class="collection-entry" :medals="display.medals" :pinned="display.pinned" :first="display.first" :honor="featuredHonor(owner?.badges)??hall?.honors?.[0]" :latest="newDiscovery??display.latest" :fresh="!!newDiscovery" @hall="$emit('hall')" @medal="$emit('medal',$event)"/></template>

@@ -31,6 +31,7 @@ try{
   await p.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
   const shelf=p.locator('.collection-entry');await shelf.locator('.case-medal').first().waitFor();
   assert.equal(await shelf.locator('.case-rail button').count(),3);
+  assert.equal(await shelf.locator('.case-latest').count(),0,'the latest exhibited medal has a single entry');
   await shelf.screenshot({path:output+'/shelf-'+width+'.png'});
   await shelf.locator('.case-rail button').first().click();
   await p.getByRole('dialog').waitFor();await p.keyboard.press('Escape');

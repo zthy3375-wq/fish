@@ -19,6 +19,11 @@ describe('导航返回路径',()=>{
  it('点击一级 Tab 丢弃上个二级页返回路径',()=>{
   const n=new NavigationStack(parseRoute('#/home'));n.move('academic','grades');n.move('profile');n.back();expect(n.route.page).toBe('home');
  });
+ it('个人设置深链接和弹窗逐级返回个人总览',()=>{
+  const n=new NavigationStack(parseRoute('#/profile/settings'));
+  expect(n.route.section).toBe('settings');n.overlay='about';
+  n.back();expect(n.route.section).toBe('settings');n.back();expect(n.route).toEqual(parseRoute('#/profile'));
+ });
  it('深链接返回教务根页，旧课表地址归一到课表 Tab',()=>{
   const n=new NavigationStack(parseRoute('#/academic/exams'));n.back();expect(n.route).toEqual({page:'academic',section:'overview'});expect(parseRoute('#/academic/schedule')).toEqual({page:'schedule',section:'schedule'});
  });

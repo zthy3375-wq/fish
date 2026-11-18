@@ -4,25 +4,29 @@ import {ChevronRight,BookOpen} from 'lucide-vue-next';
 import {badges,type Badge} from '../../domain/communityHonors';
 import type {Collectible} from '../../domain/globalAchievements';
 import BadgeDetail from './BadgeDetail.vue';
-const props=defineProps<{medals:Collectible[]; honor?:Badge; latest?:Collectible; fresh?:boolean; personal?:boolean; first?:boolean; pinned?:boolean}>();
+const props=defineProps<{medals:Collectible[]; honor?:Badge; latest?:Collectible; fresh?:boolean; personal?:boolean; compact?:boolean; first?:boolean; pinned?:boolean}>();
 const emit=defineEmits<{hall:[];medal:[code:string]}>();
 const detail=ref<InstanceType<typeof BadgeDetail>>();
+const latestOnShelf=computed(()=>props.medals.some(a=>a.code===props.latest?.code));
 const firstPage=computed(()=>props.first&&!props.honor);
 </script>
 <template>
- <section class="honor-case" :class="{'case-first':firstPage}" aria-label="荣誉展柜">
-  <header><h2>荣誉殿堂</h2><button type="button" class="case-all" aria-label="查看全部荣誉殿堂藏品" @click="emit('hall')">查看全部<ChevronRight :size="14" aria-hidden="true"/></button></header>
-  <button v-if="honor" class="case-honor" @click="detail?.show(honor)" :style="{'--ink':badges[honor.code].color,'--night':badges[honor.code].dark}">
+ <section class="honor-case" :class="{'case-first':firstPage,'case-compact':compact}" aria-label="荣誉展柜">
+  <header><div class="case-heading"><h2>荣誉殿堂</h2>
+   <button v-if="compact&&honor" class="case-signature" :style="{'--ink':badges[honor.code].color,'--night':badges[honor.code].dark}" @click="detail?.show(honor)">
+    <component :is="badges[honor.code].icon" :size="14"/>{{badges[honor.code].name}}
+   </button></div><button type="button" class="case-all" aria-label="查看全部荣誉殿堂藏品" @click="emit('hall')">查看全部<ChevronRight :size="14" aria-hidden="true"/></button></header>
+  <button v-if="honor&&!compact" class="case-honor" @click="detail?.show(honor)" :style="{'--ink':badges[honor.code].color,'--night':badges[honor.code].dark}">
    <span class="case-seal"><component :is="badges[honor.code].icon" :size="23" :stroke-width="1.65"/></span>
    <span><strong>{{badges[honor.code].name}}</strong><small>{{badges[honor.code].description}}</small></span>
   </button>
   <div v-if="medals.length" class="case-rail" :class="{'private-shelf':personal&&pinned}">
    <button v-for="a in medals" :key="a.code" type="button" :aria-label="'查看成就「'+a.name+'」'" @click="emit('medal',a.code)" :style="{'--enamel':a.color}">
-    <span class="case-medal"><component :is="a.icon" :size="21" :stroke-width="1.65" aria-hidden="true"/></span>
+    <span class="case-medal"><i v-if="compact&&fresh&&a.code===latest?.code" class="fresh-dot" aria-label="新收藏"/><component :is="a.icon" :size="21" :stroke-width="1.65" aria-hidden="true"/></span>
     <span class="case-label">{{a.name}}<small v-if="firstPage">你的邯院收藏，从这里开始</small></span>
    </button>
   </div>
-  <button v-if="personal&&latest&&!firstPage" class="case-latest" @click="emit('medal',latest.code)"><span v-if="fresh" class="fresh-dot"/>{{fresh?'新收藏':'最近获得'}} · {{latest.name}}<ChevronRight :size="12"/></button>
+  <button v-if="personal&&latest&&!firstPage&&(!compact||!latestOnShelf)" class="case-latest" @click="emit('medal',latest.code)"><span v-if="fresh" class="fresh-dot"/>{{fresh?'新收藏':'最近获得'}} · {{latest.name}}<ChevronRight :size="12"/></button>
   <p v-else-if="!medals.length&&!honor" class="case-empty"><BookOpen :size="18"/>{{personal?'校园纪念章会陈列在这里':'这位同学还没有展示藏品'}}</p>
   <BadgeDetail ref="detail"/>
  </section>
@@ -45,4 +49,15 @@ const firstPage=computed(()=>props.first&&!props.honor);
 .case-medal,.case-seal{position:relative;isolation:isolate}.case-rail button{padding-bottom:5px;gap:8px}
 .case-medal::after,.case-seal::after{content:"";position:absolute;z-index:-1;bottom:-5px;left:calc(50% - 10px);width:20px;height:7px;background:color-mix(in srgb,var(--enamel,var(--ink)) 55%,var(--case-paper));clip-path:polygon(16% 0,46% 0,43% 100%,23% 70%,0 84%,9% 0,91% 0,100% 84%,77% 70%,57% 100%,54% 0)}
 .case-seal{box-shadow:inset 0 0 0 2px var(--case-paper),inset 0 0 0 3px color-mix(in srgb,var(--ink) 20%,var(--case-paper));margin-bottom:3px}
+.case-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.case-compact{padding:5px 13px 9px}
+.case-compact header{min-height:40px}
+.case-compact header h2{font-size:16px}
+.case-compact .case-all{min-height:44px;flex-shrink:0;font-size:12px}
+.case-compact .case-signature{position:relative;z-index:1;display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0 3px;font-size:12px;color:var(--ink)}
+:global([data-theme=dark] .case-compact) .case-signature{color:var(--night)}
+.case-compact .case-rail{margin:0;padding:2px 0;border:0;box-shadow:none}
+.case-compact .case-rail button{min-height:48px}
+.case-compact .case-latest{min-height:44px;border-top:1px solid var(--case-edge);width:100%;margin-top:4px}
+.case-compact .case-medal .fresh-dot{position:absolute;right:0;top:0;width:7px;height:7px;box-shadow:0 0 0 2px var(--case-paper)}
 </style>
