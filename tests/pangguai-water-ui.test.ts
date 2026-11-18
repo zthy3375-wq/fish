@@ -31,53 +31,39 @@ it('recovered replaced record no longer blocks selecting and preparing next wate
  await settle();expect(button('接水').disabled).toBe(false);expect(root.querySelector('.water-progress')).toBeNull();await preview();expect(prepareWater).toHaveBeenCalledExactlyOnceWith('outlet-test');expect(startWater).not.toHaveBeenCalled();
 });
 
-it('ownership error pauses automatic queries and recovery needs explicit physical confirmation',async()=>{
- pangguai.value.water={id:'old',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'using',orderNo:'old-order',remoteEnd:true,updatedAt:Date.now(),error:'WATER_OWNERSHIP'};
- await settle();await vi.advanceTimersByTimeAsync(30_000);expect(pollWater).not.toHaveBeenCalled();
- button('已在机身结算，恢复扫码').click();await settle();expect(confirmPhysicalWaterEnd).not.toHaveBeenCalled();expect(root.textContent).toContain('确认本次接水已经停止');
- button('取消').click();await settle();expect(confirmPhysicalWaterEnd).not.toHaveBeenCalled();
- button('查询状态').click();await settle();expect(pollWater).toHaveBeenCalledTimes(1);
- button('已在机身结算，恢复扫码').click();await settle();button('确认已停止，核对设备').click();await settle();
- expect(confirmPhysicalWaterEnd).toHaveBeenCalledExactlyOnceWith('old');expect(endWater).not.toHaveBeenCalled();expect(startWater).not.toHaveBeenCalled();
-});
-it('startup with returned order but no timer offers physical recovery',async()=>{
- pangguai.value.water={id:'pending',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'starting',orderNo:'old-order',remoteEnd:false,updatedAt:Date.now(),error:'WATER_WAIT'};
- await settle();expect(button('已在机身结算，恢复扫码')).toBeDefined();expect(button('接水')).toBeUndefined();
- button('已在机身结算，恢复扫码').click();await settle();await vi.advanceTimersByTimeAsync(5000);expect(pollWater).not.toHaveBeenCalled();
-});
 it('physical confirmation with absent device session does not claim device idle or paid',async()=>{
  pangguai.value.water={id:'old',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'closed_unknown',orderNo:'old-order',remoteEnd:false,updatedAt:Date.now(),endBasis:'physical_confirmed',error:'WATER_BILL_UNKNOWN'};
  await settle();expect(button('接水').disabled).toBe(false);expect(root.textContent).toContain('平台未返回设备会话');expect(root.textContent).not.toContain('设备已空闲');expect(root.textContent).not.toContain('本次实付');
 });
 
-it('failed manual recovery keeps recovery controls and pauses timer queries until successful explicit check',async()=>{
- pangguai.value.water={id:'old',deviceId:device.id,deviceName:device.name,outlet:'常温水',feature:'',paymentName:'支付宝免密',phase:'using',orderNo:'old-order',startedAt:Date.now()-21_000_000,remoteEnd:true,updatedAt:Date.now(),error:'WATER_OWNERSHIP'};
- vi.mocked(confirmPhysicalWaterEnd).mockImplementationOnce(async()=>{pangguai.value.water!.error='NETWORK';return undefined});
- await settle();button('已在机身结算，恢复扫码').click();await settle();button('确认已停止，核对设备').click();await settle();
- expect(button('已在机身结算，恢复扫码')).toBeDefined();expect(root.textContent).toContain('接水状态待核对');expect(root.querySelector('.elapsed')).toBeNull();
- await vi.advanceTimersByTimeAsync(30_000);expect(pollWater).not.toHaveBeenCalled();
- vi.mocked(pollWater).mockImplementationOnce(async()=>{pangguai.value.water!.error=undefined;return {...pangguai.value}});
- button('查询状态').click();await settle();expect(button('结束接水并结算')).toBeDefined();expect(root.querySelector('.elapsed')).not.toBeNull();
+const oldWater = {id:'stuck',deviceId:'old-hot',deviceName:'旧饮水机',outlet:'热水',feature:'',paymentName:'支付宝免密',phase:'using',orderNo:'old-order',remoteEnd:true,updatedAt:1};
+it.each(['WATER_OWNERSHIP','WATER_WAIT','NETWORK','WATER_STILL_ACTIVE'])('releases a stopped session with %s without another device lookup',async error=>{
+ pangguai.value.water={...oldWater,error};await settle();
+ button('已在机身结算，恢复扫码').click();await settle();
+ expect(archiveUnverifiedWater).not.toHaveBeenCalled();
+ button('取消').click();await settle();
+ expect(archiveUnverifiedWater).not.toHaveBeenCalled();
+ button('已在机身结算，恢复扫码').click();await settle();
+ await vi.advanceTimersByTimeAsync(5000);
+ vi.mocked(archiveUnverifiedWater).mockImplementationOnce(async()=>{pangguai.value.water={...oldWater,phase:'archived_unverified'};return pangguai.value});
+ const confirm=button('机身已停止，恢复扫码');confirm.click();confirm.click();await settle();
+ expect(archiveUnverifiedWater).toHaveBeenCalledExactlyOnceWith('stuck');
+ expect(confirmPhysicalWaterEnd).not.toHaveBeenCalled();expect(pollWater).not.toHaveBeenCalled();expect(endWater).not.toHaveBeenCalled();expect(startWater).not.toHaveBeenCalled();
+ expect(root.querySelector('.water-progress')).toBeNull();expect(button('接水').disabled).toBe(false);expect(root.textContent).not.toContain('待核实');
 });
-
-it('uncertain response exposes recovery and local archive needs separate explicit confirmation',async()=>{
- pangguai.value.water={id:'stuck',deviceId:'old-hot',deviceName:'测试热水',outlet:'热水',feature:'',paymentName:'支付宝免密',phase:'using',orderNo:'test-old',remoteEnd:false,updatedAt:Date.now(),error:'WATER_WAIT'};
- vi.mocked(confirmPhysicalWaterEnd).mockResolvedValue(undefined);
- await settle();expect(button('请先处理当前接水记录').disabled).toBe(true);
- expect(button('仍无法核对？仅移出本机记录')).toBeUndefined();
- button('已在机身结算，恢复扫码').click();await settle();button('确认已停止，核对设备').click();await settle();
- expect(archiveUnverifiedWater).not.toHaveBeenCalled();button('仍无法核对？仅移出本机记录').click();await settle();
- expect(root.textContent).toContain('不会停止设备、不会结算或退款');
- button('暂不移出').click();await settle();expect(archiveUnverifiedWater).not.toHaveBeenCalled();
- button('仍无法核对？仅移出本机记录').click();await settle();
- vi.mocked(archiveUnverifiedWater).mockImplementationOnce(async()=>{const record={...pangguai.value.water!,phase:'archived_unverified',archivedAt:Date.now()};pangguai.value={...pangguai.value,water:record,waterHistory:[record]};return pangguai.value});
- button('机身已停止，仅移出记录').click();await settle();
- expect(archiveUnverifiedWater).toHaveBeenCalledExactlyOnceWith('stuck');expect(button('接水').disabled).toBe(false);
- expect(root.textContent).toContain('test-old');expect(root.textContent).toContain('应用未核实设备结束和费用');
- expect(startWater).not.toHaveBeenCalled();expect(endWater).not.toHaveBeenCalled();
+it('keeps the confirmation available when the local save fails',async()=>{
+ pangguai.value.water={...oldWater,error:'WATER_WAIT'};await settle();
+ button('已在机身结算，恢复扫码').click();await settle();
+ vi.mocked(archiveUnverifiedWater).mockResolvedValueOnce(undefined);
+ button('机身已停止，恢复扫码').click();await settle();
+ expect(root.querySelector('.water-progress')).not.toBeNull();expect(button('机身已停止，恢复扫码').disabled).toBe(false);
+ expect(root.textContent).toContain('未能保存');
 });
-it('archived unresolved order remains visible after a different current session appears',async()=>{
- const old={id:'old',deviceId:'hot',deviceName:'测试热水',outlet:'热水',feature:'',paymentName:'支付宝免密',phase:'archived_unverified',orderNo:'old-order',remoteEnd:false,updatedAt:Date.now()};
- pangguai.value.waterHistory=[old];pangguai.value.water={...old,id:'new',phase:'using',orderNo:'new-order'};await settle();
- expect(root.textContent).toContain('old-order');expect(root.querySelectorAll('[aria-label="待核实接水记录"]').length).toBe(1);
+it('can release a local record with an expired login, while starting remains disabled',async()=>{
+ pangguai.value.expired=true;pangguai.value.water={...oldWater,error:'WATER_OWNERSHIP'};await settle();
+ expect(button('查询状态').disabled).toBe(true);button('已在机身结算，恢复扫码').click();await settle();
+ expect(button('机身已停止，恢复扫码').disabled).toBe(false);
+});
+it('keeps a settling transaction out of local recovery',async()=>{
+ pangguai.value.water={...oldWater,phase:'settling',error:'NETWORK'};await settle();expect(button('已在机身结算，恢复扫码')).toBeUndefined();
 });

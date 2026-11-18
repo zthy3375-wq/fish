@@ -164,18 +164,7 @@ class PangguaiPlugin : Plugin() {
         val token=state.optString("token")
         if(token.isBlank()||state.optBoolean("expired"))throw PangguaiFailure("AUTH")
         return PangguaiWater(request={p,f->api.request(p,f,token)},persist={s->
-            val next=JSONObject(state.toString()).put("water",s)
-            if(s.optString("phase")=="archived_unverified"){
-                val rows=next.optJSONArray("waterHistory") ?: JSONArray()
-                val existing=(0 until rows.length()).firstOrNull{rows.optJSONObject(it)?.optString("id")==s.optString("id")}
-                if(existing!=null)rows.put(existing,s) else {
-                    // Never silently discard unresolved records to make room.
-                    if(rows.length()>=100)throw PangguaiFailure("WATER_HISTORY_FULL")
-                    rows.put(s)
-                }
-                next.put("waterHistory",rows)
-            }
-            save(next)
+            save(JSONObject(state.toString()).put("water",s))
         },alive={owned{Unit}})
     }
     @PluginMethod fun prepareWater(call:PluginCall)=work(call){
@@ -203,9 +192,10 @@ class PangguaiPlugin : Plugin() {
         water().confirmPhysicalEnd(s);snapshot()
     }
     @PluginMethod fun archiveUnverifiedWater(call:PluginCall)=work(call){
-        val s=state.optJSONObject("water") ?: throw PangguaiFailure("FORMAT")
-        if(call.getString("sessionId")!=s.optString("id"))throw PangguaiFailure("ORDER_MISMATCH")
-        water().archiveUnverified(s,call.getBoolean("confirmedStopped",false)==true);waterQuote=null;snapshot()
+        val next=PangguaiWater.dismissAfterStop(state,call.getString("sessionId"),call.getBoolean("confirmedStopped",false)==true,System.currentTimeMillis())
+        if(next!==state)save(next)
+        waterQuote=null
+        snapshot()
     }
     @PluginMethod fun openWaterPaymentSetup(call:PluginCall)=work(call){
         water() // require current authenticated account; setup itself remains in official Alipay UI
