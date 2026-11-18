@@ -39,9 +39,9 @@ export async function checkHonors({client,db,api,baseline,output}){
    await page.locator('.hon-grid').waitFor();await page.getByRole('button',{name:'第一声',exact:true}).click();
    await page.getByRole('button',{name:/展示到主页/}).click();await page.getByRole('button',{name:/从主页取下/}).waitFor();
    await page.locator('.hon-page').screenshot({animations:'disabled',path:path.join(output,'hall-'+width+'.png')});
-   assert.equal(await page.locator('.hon-grid button').count(),8);
+   assert.equal(await page.locator('.hon-grid button').count(),10);
    assert.equal(await page.locator('.hon-page').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);
-   await page.getByRole('button',{name:'稀有',exact:true}).click();assert.equal(await page.locator('.hon-grid button').count(),3);
+   await page.getByRole('button',{name:'稀有',exact:true}).click();assert.equal(await page.locator('.hon-grid button').count(),4);
    await page.getByRole('button',{name:'已解锁',exact:true}).click();assert.equal(await page.locator('.hon-grid button').count(),2);
    await page.getByText('特别收藏 · 待开放',{exact:true}).click();await page.getByText('邯院传说',{exact:true}).waitFor();
    if(width===360){

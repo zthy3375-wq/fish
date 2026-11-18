@@ -92,3 +92,21 @@ test('one database round-trip per hall, feed, post, comment, like and save; no t
  await one(()=>hall(u));await one(()=>call(u,'me',{entry:true}));
  const p=(await one(()=>post(u,'成本核对'))).post.id;await one(()=>comment(bob,p,'参与讨论'));await one(()=>flag(bob,p,'like'));await one(()=>flag(bob,p,'save'));
 });
+
+test('server clock and registration date govern month/year, scoped to the authenticated account',async()=>{
+ const member=await reg('时光测试甲'),visitor=await reg('时光测试乙');
+ await db.query("UPDATE hyt_members SET created_at=now()-interval '719 hours' WHERE id=$1",[member.user.id]);
+ assert.equal((await hall(member)).awards.month,undefined);
+ await assert.rejects(call(member,'honors.wear',{honor:null,showcase:['month']}),{code:'invalid_showcase'});
+ let old=await db.query("UPDATE hyt_members SET created_at=now()-interval '8759 hours' WHERE id=$1 RETURNING created_at+interval '720 hours' AS earned",[member.user.id]);
+ const first=await hall(member);assert.equal(Date.parse(first.awards.month),+old.rows[0].earned);assert.equal(first.awards.year,undefined);assert.equal(first.progress.days,364);
+ assert.equal((await hall(visitor,member)).awards.month,undefined);
+ await call(member,'honors.wear',{honor:null,showcase:['month']});
+ assert.equal((await hall(visitor,member)).awards.month,first.awards.month);
+ assert.equal((await hall(visitor)).awards.month,undefined);
+ await db.query("UPDATE hyt_members SET created_at=now()-interval '8760 hours' WHERE id=$1",[member.user.id]);
+ await Promise.all([hall(member),call(member,'me',{entry:true}),hall(member)]);
+ const later=await hall(member);assert.equal(later.awards.month,first.awards.month);assert(later.awards.year);assert.equal(later.progress.days,365);
+ await call(member,'honors.ack',{codes:['year','month']});
+ assert.deepEqual((await db.query("SELECT code,seen FROM hyt_awards WHERE member_id=$1 AND code IN ('month','year') ORDER BY code",[member.user.id])).rows,[{code:'month',seen:true},{code:'year',seen:true}]);
+});

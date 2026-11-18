@@ -1,3 +1,4 @@
+import {observeTasks} from '../services/achievementEvidence';
 import { reactive, ref, toRaw, watch, computed } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
@@ -49,6 +50,7 @@ export function initTasks() { if (tasksReady.value)
     return Promise.resolve(); if (initJob)
     return initJob; initJob = (async () => { try {
     taskSnapshot.value = await taskStore.load();
+    observeTasks(taskSnapshot.value,true);
     await loadView();
     tasksReady.value = true;
     taskError.value = '';
@@ -66,6 +68,7 @@ export async function changeTasks(action: () => Promise<TaskSnapshot>) { if (!ta
     throw Error('待办尚未读取，请先重试'); tasksBusy.value = ++writes > 0; try {
     const next = await action();
     taskSnapshot.value = next;
+    observeTasks(next,false);
     taskError.value = '';
     await reconcileTaskReminders();
     return next;

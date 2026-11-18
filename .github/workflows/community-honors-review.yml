@@ -35,6 +35,7 @@ jobs:
           HYT_UI_DIST="$RUNNER_TEMP/hyt-before/dist" HYT_HONORS_ONLY=before node scripts/treehole-browser-check.mjs
       - name: Collect revised profile, badge, cabinet and notification
         run: npm run build && HYT_HONORS_ONLY=after node scripts/treehole-browser-check.mjs
+      - run: node scripts/global-collection-ui.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

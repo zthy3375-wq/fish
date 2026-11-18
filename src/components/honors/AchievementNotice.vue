@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import {computed,onUnmounted,ref,watch} from 'vue';
-import {awards} from '../../domain/communityHonors';
+import {byCode} from '../../domain/globalAchievements';
 const props=defineProps<{codes:string[];sound:boolean;motion:boolean;haptics:boolean}>();
 const emit=defineEmits<{seen:[string]}>();
-const first=computed(()=>awards.find(a=>a.code===props.codes[0])),timer=ref<number>();
+const first=computed(()=>byCode.get(props.codes[0])),timer=ref<number>();
 function feedback(){if(props.haptics)try{navigator.vibrate?.(16);}catch{}if(!props.sound)return;
  try{const ctx=new AudioContext();const oscillator=ctx.createOscillator(),gain=ctx.createGain();oscillator.type='sine';oscillator.frequency.setValueAtTime(740,ctx.currentTime);oscillator.frequency.setValueAtTime(990,ctx.currentTime+.09);gain.gain.setValueAtTime(.035,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.24);oscillator.connect(gain);gain.connect(ctx.destination);oscillator.start();oscillator.stop(ctx.currentTime+.25);oscillator.onended=()=>{void ctx.close();};}catch{}}
 watch(()=>props.codes[0],code=>{clearTimeout(timer.value);if(!code)return;feedback();timer.value=window.setTimeout(()=>emit('seen',code),3400);},{immediate:true});

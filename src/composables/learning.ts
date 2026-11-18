@@ -1,3 +1,4 @@
+import {observeLearning} from '../services/achievementEvidence';
 import { computed, ref } from 'vue';
 import { chaoxingClient, chaoxingSupported } from '../services/chaoxing-client';
 import { LearningSyncEngine } from '../services/learning-sync-engine';
@@ -8,12 +9,12 @@ export const learningCache = ref(emptyLearning()), learningReady = ref(false), l
 export const learningOpening=ref(false);
 export const learningTasks = computed(() => projectLearning(learningCache.value));
 let initJob: Promise<void> | null = null, operations = 0;
-const publish = (cache: LearningCache) => { learningCache.value = cache; };
+const publish = (cache: LearningCache, historical=false) => { learningCache.value = cache; observeLearning(cache,historical); };
 const engine = new LearningSyncEngine(chaoxingClient, learningStore, publish);
 export function initLearning() { if (learningReady.value)
     return Promise.resolve(); if (initJob)
     return initJob; initJob = (async () => { try {
-    publish(await learningStore.load());
+    publish(await learningStore.load(),true);
     learningReady.value = true;
     learningError.value = '';
 }

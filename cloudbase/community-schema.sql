@@ -338,7 +338,7 @@ CREATE OR REPLACE FUNCTION public.hyt_hall(u public.hyt_members,viewer uuid) RET
  'total',(SELECT count(*) FROM public.hyt_awards WHERE member_id=u.id),
  'backfilled',ARRAY(SELECT code FROM public.hyt_awards WHERE member_id=u.id AND backfilled AND (viewer=u.id OR code=ANY(u.showcase))),
  'awards',coalesce((SELECT jsonb_object_agg(code,earned_at) FROM public.hyt_awards WHERE member_id=u.id AND (viewer=u.id OR code=ANY(u.showcase))),'{}'))
- || CASE WHEN viewer=u.id THEN jsonb_build_object('progress',jsonb_build_object('posts',public.hyt_progress(u.id,'posts'),'threads',public.hyt_progress(u.id,'threads'),'likes',public.hyt_progress(u.id,'likes'),'saves',public.hyt_progress(u.id,'saves'),'registered',1)) ELSE '{}' END;
+ || CASE WHEN viewer=u.id THEN jsonb_build_object('progress',jsonb_build_object('posts',public.hyt_progress(u.id,'posts'),'threads',public.hyt_progress(u.id,'threads'),'likes',public.hyt_progress(u.id,'likes'),'saves',public.hyt_progress(u.id,'saves'),'registered',1,'days',greatest(0,floor(extract(epoch FROM (now()-u.created_at))/86400)::int))) ELSE '{}' END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.hyt_member_json(m public.hyt_members) RETURNS jsonb
@@ -522,13 +522,20 @@ BEGIN
   FOREACH metric IN ARRAY ARRAY['registered','posts','threads','likes','saves'] LOOP PERFORM public.hyt_award_check(m.id,metric,true); END LOOP;
   UPDATE public.hyt_members SET awards_initialized=true WHERE id=m.id;
  END IF;
+ -- Time awards are derived only from the authenticated member's original registration.
+ IF a IN ('me','honors.hall') OR (a='posts.list' AND b->>'entry'='true') THEN
+  INSERT INTO public.hyt_awards(member_id,code,earned_at)
+   SELECT m.id,v.code,m.created_at+v.age FROM (VALUES ('month',interval '720 hours'),('year',interval '8760 hours')) v(code,age)
+   WHERE m.created_at+v.age<=now() AND NOT EXISTS(SELECT 1 FROM public.hyt_awards x WHERE x.member_id=m.id AND x.code=v.code)
+   ON CONFLICT DO NOTHING;
+ END IF;
  IF a LIKE 'honors.%' THEN
   IF a='honors.hall' THEN
    target=coalesce((b->>'memberId')::uuid,m.id);
    IF EXISTS(SELECT 1 FROM public.hyt_blocks WHERE (member_id,blocked_id) IN ((target,m.id),(m.id,target))) THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
    SELECT public.hyt_hall(u,m.id) INTO result FROM public.hyt_members u WHERE id=target AND deleted_at IS NULL;
    IF result IS NULL THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
-   RETURN jsonb_build_object('status',200,'hall',result);
+   RETURN jsonb_build_object('status',200,'hall',result) || CASE WHEN target=m.id THEN public.hyt_award_pending(m.id) ELSE '{}'::jsonb END;
   END IF;
   IF a='honors.ack' THEN
    UPDATE public.hyt_awards SET seen=true WHERE member_id=m.id AND NOT seen AND code IN (SELECT jsonb_array_elements_text(b->'codes'));
