@@ -11,8 +11,8 @@ struct TreeholeDiscoveryBar: View {
             if tree.discoveryEnabled, selected == "daily" {
                 chips([("daily", "全部日常"), ("help", "提问求助"), ("study", "学习交流")], selected: tree.category) { select($0, "") }
             }
-            if tree.discoveryEnabled, selected == "entertainment" {
-                chips([("", "全部兴趣")] + TreeholeCategories.interests, selected: tree.interest) { select("entertainment", $0) }
+            if tree.discoveryEnabled, selected == "entertainment" || (tree.category == "study" && tree.boardsEnabled) {
+                chips([("", "全部兴趣")] + TreeholeCategories.topics(tree.category,boards:tree.boardsEnabled), selected: tree.interest) { select(tree.category, $0) }
             }
             if tree.discoveryEnabled, let text = TreeholeCategories.description(tree.category) {
                 Text(text).font(.caption).foregroundStyle(TreeholeTheme.muted).fixedSize(horizontal: false, vertical: true)
@@ -44,21 +44,22 @@ struct TreeholeDiscoveryBar: View {
 struct TreeholeDiscoveryComposer: View {
     @Binding var draft: TreeholeDraft
     let enabled: Bool
+    var boards=false
     private var categories: [(String, String)] { enabled ? TreeholeCategories.sections + TreeholeCategories.all.filter { ["help", "study"].contains($0.0) } : TreeholeCategories.all + (TreeholeCategories.all.contains { $0.0 == draft.category } ? [] : [(draft.category, TreeholeCategories.name(draft.category) + "（暂不可用）")]) }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("选择分区", selection: $draft.category) { ForEach(categories, id: \.0) { id, label in Text(label).tag(id) } }
-            if enabled, draft.category == "entertainment" {
+            if enabled, !TreeholeCategories.topics(draft.category,boards:boards).isEmpty {
                 Picker("选择兴趣标签", selection: Binding(get: { draft.interest ?? "" }, set: { draft.interest = $0 })) {
                     Text("综合 · 不选标签").tag("")
-                    ForEach(TreeholeCategories.interests, id: \.0) { id, label in Text(label).tag(id) }
+                    ForEach(TreeholeCategories.topics(draft.category,boards:boards), id: \.0) { id, label in Text(label).tag(id) }
                 }
             }
             if draft.category == "treehole" { Text("匿名树洞统一匿名，发布后不会显示你的昵称和头像。").font(.caption).foregroundStyle(.secondary) }
         }.font(.subheadline)
             .onChange(of: draft.category) { category in
                 if category == "treehole" { draft.anonymous = true }
-                if category != "entertainment" { draft.interest = nil }
+                if !TreeholeCategories.topics(category,boards:boards).contains(where:{$0.0 == draft.interest}) { draft.interest=nil }
             }
             .onAppear { if draft.category == "treehole" { draft.anonymous = true } }
     }

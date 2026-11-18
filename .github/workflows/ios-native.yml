@@ -164,3 +164,44 @@ jobs:
             ${{ runner.temp }}/screenshots
             ${{ runner.temp }}/Hanyuantong-iOS-Simulator.zip
           retention-days: 14
+  android-reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 49dd6a6aeebc53ab37d9eb0bf52fde1a94142f73
+          path: android-product
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: npm ci && node ios-native/Scripts/sync_medals.mjs --check
+      - run: npm ci && npm run build && npx cap sync android
+        working-directory: android-product
+      - run: cd android-product/android && bash gradlew assembleDebug
+      - name: Enable KVM for the reference emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          script: |
+            adb install android-product/android/app/build/outputs/apk/debug/app-debug.apk
+            python3 ios-native/Scripts/android_reference.py "$RUNNER_TEMP/android-reference"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-reference-screenshots
+          path: ${{ runner.temp }}/android-reference
+          retention-days: 14

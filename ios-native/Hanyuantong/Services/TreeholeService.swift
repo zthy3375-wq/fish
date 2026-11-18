@@ -1,5 +1,8 @@
 import Foundation
 import Security
+import CryptoKit
+
+private struct NativeMemberSnapshot: Codable { let tokenFingerprint:String; let user:TreeholeMember }
 
 struct TreeholeMember: Codable, Equatable {
     let id: String, username: String, nickname: String, role: String
@@ -62,10 +65,10 @@ struct TreeholeEnvelope: Decodable {
     var updatedIdentity:IdentityUpdate?
     var members:[HonorMember]?; var audit:[HonorAudit]?
     var conversations:[NativeConversation]?; var conversation:NativeConversation?; var messages:[NativeMessage]?; var message:NativeMessage?
-    var followers:[TreeholeFollow]?; var messageUnreadCount:Int?
+    var social:NativeSocialCounts?; var followers:[TreeholeFollow]?; var messageUnreadCount:Int?
 
     var honorsEnabled: Bool?; var hall: NativeHonorHall?; var awardOwner: String?; var unlocks: [String]?
-    var messagesEnabled: Bool?; var moderationEnabled: Bool?
+    var boardsEnabled:Bool?; var responseKinds:[String]?; var messagesEnabled: Bool?; var moderationEnabled: Bool?
     var buddiesEnabled: Bool?; var participants: [TreeholeBuddyMember]?
     var pollsEnabled: Bool?; var commentImagesEnabled: Bool?
     var followingEnabled: Bool?; var following: [TreeholeFollow]?
@@ -119,7 +122,7 @@ private final class TreeholeRedirectGuard: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
 actor TreeholeService {
-    static let actions: Set<String> = ["honors.hall","honors.wear","honors.change","honors.manage","honors.ack","messages.inbox","messages.open","messages.list","messages.read","messages.send","followers.list","follows.stats","members.block","admin.history","admin.context","admin.content","admin.action","config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like", "comments.context", "threads.watch", "notifications.list", "notifications.unread", "notifications.read", "profile.get", "avatar.set", "responses.set", "follows.set", "follows.list", "polls.vote", "buddies.join", "buddies.close", "buddies.members"]
+    static let actions: Set<String> = ["honors.hall","honors.wear","honors.change","honors.manage","honors.ack","messages.unread","messages.inbox","messages.open","messages.list","messages.read","messages.send","followers.list","follows.stats","members.block","admin.history","admin.context","admin.content","admin.action","config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like", "comments.context", "threads.watch", "notifications.list", "notifications.unread", "notifications.read", "profile.get", "avatar.set", "responses.set", "follows.set", "follows.list", "polls.vote", "buddies.join", "buddies.close", "buddies.members"]
     private let vault: TreeholeTokenVault
     private let session: URLSession
     private var signedInID: String?
@@ -130,6 +133,19 @@ actor TreeholeService {
         config.httpCookieStorage = nil; config.httpShouldSetCookies = false; config.urlCache = nil
         config.timeoutIntervalForRequest = 25; config.timeoutIntervalForResource = 30
         self.session = session ?? URLSession(configuration: config, delegate: TreeholeRedirectGuard(), delegateQueue: nil)
+    }
+    private func fingerprint(_ token:String)->String { SHA256.hash(data:Data(token.utf8)).map{String(format:"%02x",$0)}.joined() }
+    func cachedIdentity() -> TreeholeMember? {
+        guard let token=try? vault.read(), Self.validToken(token), let db=try? ProtectedStorage(),
+              let row=try? db.read("community-identity",as:NativeMemberSnapshot.self),
+              row.tokenFingerprint == fingerprint(token) else { return nil }
+        return row.user
+    }
+    private func remember(_ member:TreeholeMember) {
+        guard let token=try? vault.read(), Self.validToken(token), let db=try? ProtectedStorage() else { return }
+        let stamp=fingerprint(token)
+        if let row=try? db.read("community-identity",as:NativeMemberSnapshot.self),row.user == member,row.tokenFingerprint == stamp {return}
+        try? db.write(NativeMemberSnapshot(tokenFingerprint:stamp,user:member),name:"community-identity")
     }
     static func validToken(_ value: String) -> Bool { value.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil }
     func request(_ action: String, _ body: [String: Any] = [:]) async throws -> TreeholeEnvelope {
@@ -147,7 +163,7 @@ actor TreeholeService {
         if let token, !authenticating { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if action != "config" {
             var fields = body
-            fields["timeAwards"] = true
+            fields["timeAwards"] = true; fields["boardTopics"] = true
             let data = try JSONSerialization.data(withJSONObject: fields)
             guard data.count <= (action == "media.upload" ? 1_650_000 : 20000) else { throw TreeholeError(code: "invalid_request") }
             request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.httpBody = data
@@ -166,7 +182,7 @@ actor TreeholeService {
                 try vault.save(next)
             }
             if action == "account.delete" { generation += 1; try vault.clear() }
-            if ["register","login","recover","me"].contains(action) { signedInID = result.user?.id }
+            if ["register","login","recover","me"].contains(action) { signedInID = result.user?.id; if let member=result.user { remember(member) } }
             if ["logout","account.delete"].contains(action) { signedInID = nil }
             if let owner=result.awardOwner, owner == signedInID, let codes=result.unlocks, !codes.isEmpty {
                 await MedalJournal.shared.delivered(codes, owner:owner)

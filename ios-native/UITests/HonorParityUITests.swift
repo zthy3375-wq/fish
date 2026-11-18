@@ -22,6 +22,7 @@ final class HonorParityUITests:XCTestCase {
         let hidden=app.buttons["隐藏"]
         XCTAssertTrue(hidden.waitForExistence(timeout:6) || app.scrollViews.buttons["隐藏"].exists)
         capture("gallery",app)
+        if !hidden.isHittable { app.scrollViews["medal-groups"].swipeLeft() }
         hidden.tap()
         XCTAssertTrue(app.buttons.containing(NSPredicate(format:"label CONTAINS %@", "???")).firstMatch.exists)
         app.terminate(); app.launch(); app.tabBars.buttons["我的"].tap(); app.buttons["open-honor-shelf"].tap()

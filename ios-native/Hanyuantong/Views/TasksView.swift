@@ -22,6 +22,7 @@ struct TasksView: View {
     var body: some View {
         List {
             Section {
+                NavigationLink { CampusAgendaView() } label: { Label("统一日程",systemImage:"calendar") }
                 NavigationLink { LearningCenterView(store: learning) } label: { Label("学习通作业、考试与通知", systemImage: "books.vertical") }
             }
             Section {

@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 
 struct RootView: View {
+    @EnvironmentObject var tree:TreeholeStore
     @EnvironmentObject var store: CampusStore
     var body: some View {
         TabView(selection: $store.selectedTab) {
@@ -13,6 +14,7 @@ struct RootView: View {
         }
 
         .overlay(alignment:.top) { MedalOverlay() }
+        .task { await tree.restoreCachedIdentity() }
         .onAppear { MedalJournal.shared.unlock("welcome") }
         .tint(CampusTheme.primary)
         .foregroundStyle(CampusTheme.text)
@@ -31,6 +33,7 @@ struct HomeView: View {
     @EnvironmentObject var pangguai: PangguaiStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var now = Date()
+    @State private var timelineOpen=false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -38,19 +41,20 @@ struct HomeView: View {
                 if let focus = HomeCourseFocus.select(courses: store.courses, personalStart: store.semesterStart, schoolStart: store.schoolSemesterStart, now: now) {
                     NavigationLink { CourseDetailView(course: focus.course, occurrenceDate: focus.start) } label: { focusCard(focus) }.buttonStyle(.plain)
                 }
-                HStack {
-                    Text("今日课程").font(.headline)
-                    Spacer()
-                    Button("查看课表 ›") { store.selectedTab = .schedule }.font(.subheadline)
-                }
-                let courses = store.courses(on: now)
-                if courses.isEmpty {
-                    CampusEmpty(title: "今天暂无课程", detail: store.isConnected ? "享受自己的校园时光" : "连接教务系统，或在课表中添加个人课程", symbol: "sun.max")
+                let today = store.courses(on:now)
+                if today.isEmpty {
+                    CampusEmpty(title:"今天暂无课程",detail:store.isConnected ? "享受自己的校园时光" : "连接教务系统，或在课表中添加个人课程",symbol:"sun.max")
                 } else {
-                    VStack(spacing: 10) { ForEach(courses) { course in NavigationLink { CourseDetailView(course: course) } label: { CourseRow(course: course) }.buttonStyle(.plain) } }
+                    DisclosureGroup(isExpanded:$timelineOpen) {
+                        ForEach(today) { course in NavigationLink { CourseDetailView(course:course) } label: { CourseRow(course:course) } }
+                    } label: { HStack { Text("今日课程").font(.headline); Spacer(); Text("\(today.count) 节").font(.caption).foregroundStyle(.secondary) } }.campusCard()
                 }
-                todayTasks
-                upcomingExams
+                Text("学习与教务").font(.headline)
+                VStack(spacing: 0) {
+                    NavigationLink { AcademicRecordsView() } label: { Label("成绩与考试", systemImage: "graduationcap").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12) }
+                    Divider()
+                    NavigationLink { LearningCenterView(store: learning) } label: { HStack { Label("学习通", systemImage: "books.vertical"); Spacer(); Text("作业 · 考试").font(.caption).foregroundStyle(CampusTheme.muted) }.padding(.vertical, 12) }
+                }.campusCard()
                 Text("校园生活").font(.headline)
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
@@ -62,19 +66,15 @@ struct HomeView: View {
                         NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
                     }
                 }.buttonStyle(.plain)
-                Text("学习与教务").font(.headline)
-                VStack(spacing: 0) {
-                    NavigationLink { AcademicRecordsView() } label: { Label("成绩与考试", systemImage: "graduationcap").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12) }
-                    Divider()
-                    NavigationLink { LearningCenterView(store: learning) } label: { HStack { Label("学习通", systemImage: "books.vertical"); Spacer(); Text("作业 · 考试").font(.caption).foregroundStyle(CampusTheme.muted) }.padding(.vertical, 12) }
-                }.campusCard()
+                todayTasks
+                upcomingExams
             }.padding(20).frame(maxWidth: 680)
         }.background(CampusTheme.background).campusNavigationBarHidden()
-            .task(id: scenePhase) {
-                guard scenePhase == .active else { return }
+            .task(id: scenePhase == .active && store.selectedTab == .home) {
+                guard scenePhase == .active, store.selectedTab == .home else { return }
                 while !Task.isCancelled {
                     now = Date()
-                    do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { break }
+                    do { try await Task.sleep(nanoseconds: 15_000_000_000) } catch { break }
                 }
             }
             .onAppear { now = Date() }
@@ -86,8 +86,12 @@ struct HomeView: View {
                 Spacer()
                 Text(focus.isCurrent(at: now) ? "进行中" : CampusTheme.date(focus.start, format: "M月d日 HH:mm")).font(.caption)
             }.foregroundStyle(CampusTheme.primary)
-            Text(focus.course.name).font(.title3.weight(.semibold))
-            Text([focus.course.room.isEmpty ? "教室待定" : focus.course.room, focus.course.teacher, focus.course.start + "–" + focus.course.end].filter { !$0.isEmpty }.joined(separator: " · "))
+            HStack(alignment:.firstTextBaseline,spacing:12) {
+                VStack(alignment:.leading) { Text(focus.course.start).font(.title2.monospacedDigit().weight(.semibold)); Text("至 " + focus.course.end).font(.caption).foregroundStyle(.secondary) }
+                Text(focus.course.name).font(.title3.weight(.semibold)).frame(maxWidth:.infinity,alignment:.leading)
+                Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
+            }
+            Text([focus.course.room.isEmpty ? "教室待定" : focus.course.room, focus.course.teacher].filter { !$0.isEmpty }.joined(separator: " · "))
                 .font(.caption).foregroundStyle(CampusTheme.muted)
             if focus.isCurrent(at: now) {
                 ProgressView(value: focus.progress(at: now)).tint(CampusTheme.primary)

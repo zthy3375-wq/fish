@@ -61,10 +61,12 @@ enum MedalDates {
     static let shared = MedalJournal()
     private let defaults: UserDefaults
     @Published private(set) var records: [String:[String:Date]]
+    @Published private(set) var pins:[String:[String]]
     @Published var notice: CampusMedal?
     private var queue: [CampusMedal] = []
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        pins=defaults.dictionary(forKey:"campus.medal-pins.v1") as? [String:[String]] ?? [:]
         records = (defaults.dictionary(forKey:"campus.medals.v1") as? [String:[String:Date]]) ?? [:]
     }
     func bucket(source: String, scope: String?) -> String? {
@@ -74,6 +76,19 @@ enum MedalDates {
     }
     func stamp(_ medal: CampusMedal, scope: String?) -> Date? {
         bucket(source:medal.source,scope:scope).flatMap { records[$0]?[medal.code] }
+    }
+    func pinned(school:String?,learning:String?) -> [String] {
+        let keys=[bucket(source:"device",scope:nil),bucket(source:"school",scope:school),bucket(source:"learning",scope:learning)].compactMap{$0}
+        return Array(keys.flatMap { key in (pins[key] ?? []).filter { records[key]?[$0] != nil } }.prefix(3))
+    }
+    func togglePin(_ medal:CampusMedal,school:String?,learning:String?) {
+        let scope = medal.source == "school" ? school : learning
+        guard medal.source != "community", let key=bucket(source:medal.source,scope:scope),
+              stamp(medal,scope:scope) != nil else {return}
+        var selected=pins[key] ?? []
+        if selected.contains(medal.code) { selected.removeAll{$0 == medal.code} }
+        else { guard pinned(school:school,learning:learning).count<3 else{return}; selected.append(medal.code) }
+        pins[key]=selected; defaults.set(pins,forKey:"campus.medal-pins.v1")
     }
     func unlock(_ code: String, scope: String? = nil) {
         guard let medal = CampusMedal.byCode[code], medal.source != "community",
@@ -93,7 +108,10 @@ enum MedalDates {
         }
         defaults.set(Array(seen),forKey:storageKey)
     }
-    func clearNotices() { queue.removeAll(); notice = nil }
+    func clearCommunityNotices() {
+        queue.removeAll { $0.source == "community" }
+        if let m=notice, m.source == "community" { advance(m.code) }
+    }
     private func enqueue(_ medal: CampusMedal) {
         if notice == nil { notice = medal } else { queue.append(medal) }
     }

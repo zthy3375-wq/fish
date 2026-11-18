@@ -16,7 +16,7 @@ struct ProfileView: View {
                 LocalProfileSummaryView(store: displayPreferences, academicName: store.academicProfile?.name,
                                         academicMajor: store.academicProfile?.major, academicClass: store.academicProfile?.className)
                     .padding(.vertical, 12)
-                HonorShelfLink(badges:tree.user?.badges,pins:tree.user?.showcase ?? [])
+                HonorShelfLink(badges:tree.user?.badges,pins:tree.user?.showcase ?? [],personal:true)
             }
             Section("邯院通账号") {
                 Button { store.selectedTab = .community } label: { Label("账号与树洞 · 昵称与匿名交流", systemImage: "bubble.left.and.bubble.right") }
@@ -40,6 +40,7 @@ struct ProfileView: View {
                 }
                 NavigationLink { AcademicRecordsView() } label: { Label("成绩与考试", systemImage: "graduationcap") }
             }
+            Section("学校服务") { Link("邯郸学院官网",destination:URL(string:"https://www.hdc.edu.cn/")!); NavigationLink("统一日程") { CampusAgendaView() } }
             Section("学校课表设置") {
                 DatePicker("学校第一周周一", selection: Binding(get: { store.schoolSemesterStart }, set: { store.calibrateSchoolStart($0) }), displayedComponents: .date)
                     .environment(\.timeZone, ScheduleMath.calendar.timeZone)

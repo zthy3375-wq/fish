@@ -41,6 +41,7 @@ struct TreeholeView: View {
     @State private var reportReason = ""
     @State private var commentRequest = UUID().uuidString
     @State private var replyTo: TreeholeComment?
+    @State private var moderateTarget:TreeholeTarget?
     @State private var reportTarget: TreeholeTarget?
     @State private var confirmation: TreeholeConfirmation?
     @State private var discard = false
@@ -199,6 +200,13 @@ struct TreeholeView: View {
             if let post = tree.current { ScrollView { replyEditor(post) }.campusReplySheet().interactiveDismissDisabled(tree.busy) }
         }
         .sheet(item: $buddyRosterPost) { post in TreeholeBuddyRoster(post: post).environmentObject(tree) }
+        .sheet(item:$moderateTarget) { t in
+            if let me=tree.user {
+                ContentModeration(postID:t.postId,commentID:t.commentId,locked:(tree.current ?? tree.posts.first{$0.id == t.postId})?.locked ?? false,viewer:me.id) {
+                    routes=[]; tree.leaveDetail(); screen="feed"; tree.perform { try await tree.feed() }
+                }
+            }
+        }
         .sheet(item: $reportTarget) { target in reportSheet(target) }
         .confirmationDialog(confirmation?.title ?? "确认操作", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), titleVisibility: .visible) {
             Button("确认", role: .destructive) { if let action = confirmation?.action { tree.perform(action) }; confirmation = nil }
@@ -317,7 +325,7 @@ struct TreeholeView: View {
                 Toggle("匿名发布", isOn: $draft.value.anonymous).disabled(draft.value.category == "treehole").font(.caption).fixedSize().tint(TreeholeTheme.primary)
             }
             Divider()
-            TreeholeDiscoveryComposer(draft: $draft.value, enabled: tree.discoveryEnabled).disabled(draft.value.buddy != nil)
+            TreeholeDiscoveryComposer(draft: $draft.value, enabled: tree.discoveryEnabled, boards:tree.boardsEnabled).disabled(draft.value.buddy != nil)
             TextField("添加标题（选填）", text: $draft.value.title).font(.system(size: 21, weight: .bold)).onChange(of: draft.value.title) { draft.value.title = String($0.prefix(40)) }
             Divider()
             ZStack(alignment: .topLeading) {
@@ -385,7 +393,7 @@ struct TreeholeView: View {
                 guard tree.user?.id == member, let index = draft.value.photos.firstIndex(where: { $0.id == photo.id }) else { throw CancellationError() }
                 draft.value.photos[index].remote = remote; draft.flush()
             }
-            let r = try await tree.api.request("posts.create", ["body": bodyText, "title": draft.value.title, "category": draft.value.category, "interest": draft.value.category == "entertainment" ? draft.value.interest ?? "" : "", "anonymous": draft.value.category == "treehole" || anonymous, "requestId": draft.value.requestId, "images": draft.value.photos.compactMap { $0.remote?.id }, "buddy": draft.value.buddy?.payload as Any? ?? NSNull(), "poll": draft.value.poll?.payload as Any? ?? NSNull()])
+            let r = try await tree.api.request("posts.create", ["body": bodyText, "title": draft.value.title, "category": draft.value.category, "interest": ["entertainment","study"].contains(draft.value.category) ? draft.value.interest ?? "" : "", "anonymous": draft.value.category == "treehole" || anonymous, "requestId": draft.value.requestId, "images": draft.value.photos.compactMap { $0.remote?.id }, "buddy": draft.value.buddy?.payload as Any? ?? NSNull(), "poll": draft.value.poll?.payload as Any? ?? NSNull()])
             guard tree.user?.id == member else { throw CancellationError() }
             draft.clear()
             if let post = r.post { tree.feedNeedsRefresh = true; initialDetailTarget = "post"; tree.current = post; tree.comments = []; detailTab = "body"; replyExpanded = false; screen = "detail"; try await tree.detail(post) }
@@ -546,8 +554,8 @@ struct TreeholeView: View {
     private func replyBar(_ post: TreeholePost, showComments: @escaping () -> Void) -> some View {
         HStack(spacing: 16) {
             Button { replyExpanded = true } label: { HStack(spacing: 7) { Image(systemName: "square.and.pencil"); Text(post.locked ? "讨论已暂停" : !hasReply ? "说点什么吧…" : "继续编辑回复…").lineLimit(1); Spacer(minLength: 0) }.font(.system(size: 13)).padding(11).foregroundStyle(.secondary).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 7)) }.disabled(post.locked).accessibilityLabel("写回复")
-            Button { tree.react(post, kind: "like") } label: { barAction(post.likeCount > 0 ? "\(post.likeCount)" : "点赞", icon: post.liked ? "hand.thumbsup.fill" : "hand.thumbsup") }.foregroundStyle(post.liked ? TreeholeTheme.primary : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":like")).accessibilityLabel(post.liked ? "取消点赞" : "点赞")
-            Button { tree.react(post, kind: "save") } label: { barAction(post.saved ? "已收藏" : "收藏", icon: post.saved ? "bookmark.fill" : "bookmark") }.foregroundStyle(post.saved ? TreeholeTheme.primary : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":save")).accessibilityLabel(post.saved ? "取消收藏" : "收藏")
+            Button { tree.react(post, kind: "like") } label: { barAction(post.likeCount > 0 ? "\(post.likeCount)" : "点赞", icon: post.liked ? "heart.fill" : "heart") }.modifier(ReactionFeedback(active:post.liked)).foregroundStyle(post.liked ? Color(hex:0xc45c74) : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":like")).accessibilityLabel(post.liked ? "取消点赞" : "点赞")
+            Button { tree.react(post, kind: "save") } label: { barAction(post.saved ? "已收藏" : "收藏", icon: post.saved ? "bookmark.fill" : "bookmark") }.modifier(ReactionFeedback(active:post.saved)).foregroundStyle(post.saved ? TreeholeTheme.primary : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":save")).accessibilityLabel(post.saved ? "取消收藏" : "收藏")
             Button(action: showComments) { barAction(post.commentCount > 0 ? "\(post.commentCount)" : "评论", icon: "bubble.right") }.foregroundStyle(TreeholeTheme.muted).accessibilityLabel("查看评论")
         }.buttonStyle(.plain).padding(.horizontal, 16).padding(.vertical, 8).frame(maxWidth: 680).frame(maxWidth: .infinity).background(TreeholeTheme.surface).overlay(alignment: .top) { Divider() }
     }
@@ -589,14 +597,14 @@ struct TreeholeView: View {
             if let poll = post.poll { TreeholePollCard(poll: poll, enabled: tree.pollsEnabled && !post.locked, pending: tree.pendingVotes.contains(post.id)) { option in Task { await tree.vote(post, optionId: option) } } }
             if let images = post.images, !images.isEmpty { TreeholeImageGrid(postId: post.id, images: images, full: full, api: tree.api) { index in gallery = TreeholeGallerySelection(postId: post.id, images: images, index: index) } }
             if !full, let count = post.newReplyCount, count > 0 { Button("\(count) 条新回复 · 接着聊") { open(post, comments: true) }.font(.caption).frame(minHeight: 40) }
-            if tree.responsesEnabled { TreeholeResponses(post: post, disabled: tree.pendingResponses.contains(post.id)) { tree.respond(post, kind: $0) } }
+            if tree.responsesEnabled { TreeholeResponses(post: post, disabled: tree.pendingResponses.contains(post.id), choose:{ tree.respond(post, kind:$0) }, kinds:tree.responseKinds) }
             if post.locked { Label("已暂停回复", systemImage: "lock").font(.caption2).foregroundStyle(.secondary) }
             HStack {
                 Button { if hasReply { tree.message = "请先发布回复，或返回时选择放弃"; return }; selectDiscovery(post.category ?? "daily", interest: post.interest ?? "") } label: { Text("# " + (TreeholeCategories.interestName(post.interest).isEmpty ? TreeholeCategories.name(post.category) : "兴趣 · " + TreeholeCategories.interestName(post.interest))).font(.caption).foregroundStyle(TreeholeTheme.muted).padding(.horizontal, 8).padding(.vertical, 5).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 6)).frame(minHeight: 44) }
                 Spacer()
                 if !full {
                     Button { open(post, comments: true) } label: { Label("\(post.commentCount)", systemImage: "bubble.right").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("查看评论，共 \(post.commentCount) 条")
-                    Button { tree.react(post, kind: "like") } label: { Label("\(post.likeCount)", systemImage: post.liked ? "hand.thumbsup.fill" : "hand.thumbsup").frame(minWidth: 44, minHeight: 44) }.foregroundStyle(post.liked ? TreeholeTheme.primary : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":like"))
+                    Button { tree.react(post, kind: "like") } label: { Label("\(post.likeCount)", systemImage: post.liked ? "heart.fill" : "heart").frame(minWidth: 44, minHeight: 44) }.modifier(ReactionFeedback(active:post.liked)).foregroundStyle(post.liked ? Color(hex:0xc45c74) : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":like"))
                 }
             }.font(.caption).foregroundStyle(TreeholeTheme.muted).buttonStyle(TreeholePressStyle())
         }.padding(.vertical, 18)
@@ -625,6 +633,7 @@ struct TreeholeView: View {
         let anon = comment?.author.anonymous ?? post.anonymous
         let target = TreeholeTarget(postId: post.id, commentId: comment?.id)
         return Menu {
+            if tree.moderationEnabled, tree.user?.permits("content") == true { Button("管理这条内容") { moderateTarget=target } }
             if mine {
                 Button("删除", role: .destructive) { confirmation = TreeholeConfirmation(title: "删除这条内容？") {
                     _ = try await tree.api.request(comment == nil ? "posts.delete" : "comments.delete", target.payload)
@@ -640,18 +649,20 @@ struct TreeholeView: View {
     }
     @ViewBuilder private func account(_ user: TreeholeMember) -> some View {
         if accountPage == "overview" {
-            VStack(spacing: 12) {
-                TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 66)
-                HonorByline(name:user.nickname,badges:user.badges).font(.title2.bold())
-                Text("@" + user.username).font(.caption).foregroundStyle(.secondary)
-                Text("用自己的昵称，留下校园里的回声。").font(.caption).foregroundStyle(.secondary)
-            }.frame(maxWidth: .infinity).padding(.vertical, 18)
+            HStack(alignment:.center,spacing:14) {
+                TreeholeAvatar(name:user.nickname,avatar:user.avatar,size:56)
+                VStack(alignment:.leading,spacing:4) {
+                    HonorByline(name:user.nickname,badges:user.badges).font(.title3.weight(.semibold))
+                    Text("@" + user.username).font(.caption).foregroundStyle(.secondary)
+                    if let bio=user.bio, !bio.isEmpty { Text(bio).font(.subheadline).lineLimit(3) }
+                }
+                Spacer()
+            }.padding(.vertical,12)
+            ProfileSocialBar(member:user,following:showFollowing,open:showProfile)
             HonorShelfLink(badges:user.badges,pins:user.showcase ?? [])
-            if tree.messagesEnabled { NavigationLink { NativeMessages(viewer:user.id) } label: { Label("私信",systemImage:"envelope").frame(minHeight:44) } }
             if tree.honorsEnabled && (user.permits("users") || user.permits("recommend")) {
                 NavigationLink { HonorManagement() } label: { Label("身份与荣誉管理",systemImage:"shield") }
             }
-            if tree.avatarsEnabled { TreeholeAvatarEditor(tree: tree) }
             HStack(spacing: 0) {
                 Button { accountFeed("mine") } label: { VStack(spacing: 10) { Image(systemName: "bubble.left").font(.title3); Text("我的帖子").font(.subheadline) }.frame(maxWidth: .infinity).padding(.vertical, 8) }
                 Divider()
@@ -662,8 +673,7 @@ struct TreeholeView: View {
             }
             VStack(spacing: 0) {
                 if tree.buddiesEnabled { settingsRow("我报名的", symbol: "person.2") { accountFeed("joined") } }
-                if tree.followingEnabled { settingsRow("我关注的人", symbol: "person.2", action: showFollowing) }
-                settingsRow("修改昵称", symbol: "person.crop.circle") { accountPage = "profile" }
+                settingsRow("编辑资料", symbol: "person.crop.circle") { accountPage = "profile" }
                 Divider()
                 settingsRow("账号安全", symbol: "lock.shield") { password = ""; newPassword = ""; accountPage = "password" }
                 Divider()
@@ -676,6 +686,7 @@ struct TreeholeView: View {
             VStack(alignment: .leading, spacing: 18) {
                 if accountPage == "profile" {
                     Text("其他同学会看到这个昵称。").font(.subheadline).foregroundStyle(.secondary)
+                    if tree.avatarsEnabled { TreeholeAvatarEditor(tree:tree) }
                     TextField("公开昵称", text: $nickname).textContentType(.nickname)
                     if tree.engagementEnabled { CampusMultilineField("个人简介（选填）", text: $bio, minimum: 2, maximum: 4).onChange(of: bio) { bio = String($0.prefix(120)) } }
                     Button("保存资料") { tree.perform { var body = ["nickname": nickname]; if tree.engagementEnabled { body["bio"] = bio }; tree.user = try await tree.api.request("profile.update", body).user; tree.feedNeedsRefresh = true; accountPage = "overview" } }.buttonStyle(.borderedProminent).disabled(nickname.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)

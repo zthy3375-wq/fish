@@ -3,7 +3,10 @@ import Combine
 
 @MainActor final class TreeholeStore: ObservableObject {
     @Published var honorsEnabled=false
+    @Published var messageUnread:Int?
     @Published var messagesEnabled=false
+    @Published var boardsEnabled=false
+    @Published var responseKinds=["same","hug","useful"]
     @Published var moderationEnabled=false
     @Published var user: TreeholeMember?
     @Published var posts: [TreeholePost] = []
@@ -96,10 +99,16 @@ import Combine
         if current != nil { update(&current!.author) }; for i in comments.indices { update(&comments[i].author) }
         feedNeedsRefresh=true
     }
-    func clear() { MedalJournal.shared.clearNotices(); pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { messageUnread=nil; MedalJournal.shared.clearCommunityNotices(); pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func restoreCachedIdentity() async {
+        guard !ready, !busy, user == nil else { return }
+        let old=epoch
+        if let cached=await api.cachedIdentity(), old == epoch, !ready, !busy, user == nil { user=cached }
+    }
     func enter() {
         perform {
             let config = try await self.api.request("config")
+            self.boardsEnabled=config.boardsEnabled == true; self.responseKinds=config.responseKinds ?? ["same","hug","useful"]
             self.honorsEnabled = config.honorsEnabled == true; self.messagesEnabled = config.messagesEnabled == true; self.moderationEnabled = config.moderationEnabled == true
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
             self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.buddiesEnabled = config.buddiesEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
@@ -221,7 +230,7 @@ import Combine
     func refreshUnread() async {
         guard engagementEnabled, user != nil, !unreadBusy else { return }
         let generation = epoch; unreadBusy = true; defer { unreadBusy = false }
-        do { let r = try await api.request("notifications.unread"); guard generation == epoch else { return }; unreadCount = r.unreadCount ?? 0 }
+        do { let r = try await api.request("notifications.unread"); guard generation == epoch else { return }; unreadCount = r.unreadCount ?? 0; messageUnread=r.messageUnreadCount }
         catch { if generation == epoch, let e = error as? TreeholeError, e.code == "session_expired" { clear() } }
     }
     func loadInbox(more: Bool = false) async {
@@ -447,7 +456,7 @@ import Combine
         if current?.id == id { current?.myResponse = kind; current?.responseCounts = counts }
     }
     func respond(_ post: TreeholePost, kind: String) {
-        guard responsesEnabled, !busy, ["same", "hug", "useful"].contains(kind), !pendingResponses.contains(post.id) else { return }
+        guard responsesEnabled, !busy, responseKinds.contains(kind), !pendingResponses.contains(post.id) else { return }
         let generation = epoch, next: String? = post.myResponse == kind ? nil : kind
         var counts = post.responseCounts ?? [:]
         if let old = post.myResponse { counts[old] = max(0, (counts[old] ?? 0) - 1) }; if let next { counts[next, default: 0] += 1 }

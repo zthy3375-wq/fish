@@ -92,7 +92,7 @@ private struct NativeConversationView: View {
         }.padding(10).background(.regularMaterial) }
         .toolbar { Button { confirmBlock=true } label: { Image(systemName:"hand.raised") }.accessibilityLabel("屏蔽此人").disabled(busy || blocked) }
         .confirmationDialog("屏蔽此人并停止私信？",isPresented:$confirmBlock) {
-            Button("屏蔽",role:.destructive) { Task { do { _=try await tree.api.request("members.block",["memberId":thread.member.id]); blocked=true } catch { self.error=error.localizedDescription } } }
+            Button("屏蔽",role:.destructive) { Task { do { _=try await tree.api.request("members.block",["memberId":thread.member.id]); blocked=true; messages=[]; draft=""; tree.didBlockPublicAuthor(thread.member.id) } catch { self.error=error.localizedDescription } } }
         }.task(id:thread.id) { await load() }
     }
     @MainActor private func load(more:Bool=false) async {

@@ -45,6 +45,14 @@ struct HonorShelfLink: View {
     let badges: MemberBadges?
     let pins: [String]
     var memberID: String? = nil
+    var personal=false
+    @EnvironmentObject private var campus:CampusStore
+    @EnvironmentObject private var learning:LearningStore
+    @ObservedObject private var journal=MedalJournal.shared
+    private var displayPins:[String] { personal ? Array((journal.pinned(school:campus.schoolMedalScope,learning:learning.cache.account) + pins).prefix(3)) : pins }
+    init(badges:MemberBadges?,pins:[String],memberID:String?=nil,personal:Bool=false) {
+        self.badges=badges; self.pins=pins; self.memberID=memberID; self.personal=personal
+    }
     var body: some View {
         NavigationLink { MedalCollection(memberID:memberID) } label: {
             HStack(spacing:14) {
@@ -57,7 +65,7 @@ struct HonorShelfLink: View {
                     } else { Text("身份与成就收藏").font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer(minLength:0)
-                ForEach(Array(pins.compactMap { CampusMedal.byCode[$0] }.prefix(3))) { m in
+                ForEach(Array(displayPins.compactMap { CampusMedal.byCode[$0] }.prefix(3))) { m in
                     Image(systemName:m.symbol).foregroundStyle(Color(hex:0x9a7749)).accessibilityLabel(m.name)
                 }
             }.padding(.vertical,8)
@@ -76,6 +84,7 @@ struct MedalCollection: View {
     @State private var error: String?
     @State private var loading = false
     @State private var editing = false
+    @State private var cacheNote: String?
     @State private var chosen: CampusMedal?
     @State private var showSettings = false
     private var viewer: String? { tree.user?.id }
@@ -103,8 +112,9 @@ struct MedalCollection: View {
                         }
                     }
                 }
+                if let cacheNote { Text(cacheNote).font(.footnote).foregroundStyle(.secondary) }
                 if loading { ProgressView("读取社区荣誉") }
-                if let error { Text(error).font(.footnote).foregroundStyle(.secondary); Button("重新读取") { Task { await refresh() } } }
+                if let error { Text(error).font(.footnote).foregroundStyle(.secondary); Button("重新读取") { Task { await refresh(force:true) } } }
                 if own {
                     let count = medals.filter { date($0) != nil }.count
                     HStack { Text("成就收藏馆").font(.title2.bold()); Spacer(); Text("\(count) / \(medals.count)").monospacedDigit() }
@@ -115,7 +125,7 @@ struct MedalCollection: View {
                                 .background(group == key ? Color.primary.opacity(0.10) : .clear,in:Capsule())
                                 .accessibilityAddTraits(group == key ? .isSelected : [])
                         } }
-                    }
+                    }.accessibilityIdentifier("medal-groups")
                 } else { Text("展示成就").font(.headline) }
                 if medals.isEmpty && !loading { Text(own ? "收藏目录读取失败" : "还没有展示成就").foregroundStyle(.secondary) }
                 LazyVGrid(columns:[GridItem(.adaptive(minimum:88),spacing:8)],spacing:10) {
@@ -147,6 +157,12 @@ struct MedalCollection: View {
                         if let stamp { Text("获得于 " + CampusTheme.date(stamp, format:"yyyy年M月d日")) }
                         else { Label("未解锁",systemImage:"lock") }
                     }
+                    if own, m.source != "community", stamp != nil {
+                        let pins=journal.pinned(school:campus.schoolMedalScope,learning:learning.cache.account)
+                        Button(pins.contains(m.code) ? "从本机展柜取下" : "展示在本机展柜") {
+                            journal.togglePin(m,school:campus.schoolMedalScope,learning:learning.cache.account)
+                        }.disabled(!pins.contains(m.code) && pins.count>=3)
+                    }
                     if own, m.source == "community", stamp != nil, let h = current {
                         let pinned = h.showcase.contains(m.code)
                         Button(pinned ? "从主页取下" : "展示在社区主页") {
@@ -157,19 +173,24 @@ struct MedalCollection: View {
                 }.navigationTitle("成就详情").toolbar { Button("完成") { chosen = nil } }
             }
         }
+        .refreshable { await refresh(force:true) }
         .task(id:target) { await refresh() }
     }
-    @MainActor private func refresh() async {
+    @MainActor private func refresh(force:Bool=false) async {
         let owner = viewer
-        guard let id = target, owner != nil else { hall=nil; error=nil; return }
-        loading=true; error=nil
-        if own, let storage = try? ProtectedStorage() { hall = try? storage.read("honors-" + id, as:NativeHonorHall.self) }
+        guard let id = target, UUID(uuidString:id) != nil, owner != nil else { hall=nil; error=nil; loading=false; cacheNote=nil; return }
+        loading=true; error=nil; cacheNote=nil
+        if own, let storage = try? ProtectedStorage(), let cache = try? storage.read("honors-" + id, as:NativeHonorHall.self), cache.id == id {
+            hall=cache
+            if !force, let last=UserDefaults.standard.object(forKey:"hall.updated." + id) as? Date, (0..<45).contains(Date().timeIntervalSince(last)) {loading=false;return}
+            cacheNote="已显示上次保存的社区荣誉"
+        }
         do {
             let response = try await tree.api.request("honors.hall",["memberId":id])
             guard !Task.isCancelled, tree.user?.id == owner, target == id else { return }
             guard let h=response.hall,h.id == id else { throw TreeholeError(code:"invalid_response") }
-            hall=h
-            if own, let storage = try? ProtectedStorage() { try? storage.write(h,name:"honors-" + id) }
+            hall=h; cacheNote=nil
+            if own, let storage = try? ProtectedStorage() { do { try storage.write(h,name:"honors-" + id); UserDefaults.standard.set(Date(),forKey:"hall.updated." + id) } catch { cacheNote="本次社区荣誉未保存到设备" } }
         } catch { if !Task.isCancelled && tree.user?.id == owner { self.error = "社区荣誉暂时无法更新。" } }
         if tree.user?.id == owner { loading=false }
     }
