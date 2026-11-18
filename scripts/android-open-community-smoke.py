@@ -17,7 +17,7 @@ def nodes():
     data = adb("exec-out","cat","/data/local/tmp/campus-qa.xml")
     return list(ET.fromstring(data).iter("node"))
 def label(node):
-    return " ".join(node.get(k,"") for k in ("text","content-desc")).strip()
+    return " ".join(dict.fromkeys(node.get(k,"").strip() for k in ("text","content-desc") if node.get(k,"").strip()))
 def bounds(node):
     return [int(i) for i in re.findall(r"\d+",node.get("bounds",""))]
 def wait_for(fn, name, timeout=40):
@@ -34,11 +34,19 @@ def wait_for(fn, name, timeout=40):
                 if value:return value
         except (ET.ParseError,subprocess.SubprocessError):pass
         time.sleep(0.25)
+    known = ("登录邯院通","登录树洞","说说校园里的那些事","创建账号","社区规则","注册账号","搜索帖子","忘记密码","暂未开放","正在连接","连接失败","刷新树洞","请登录","连接账户","无网络","重试","请先登录","社区服务","注册","等待")
+    print("Known UI markers:", [word for word in known if any(word in label(n) for n in items)],flush=True)
     raise RuntimeError("Timed out waiting for "+name)
-def target(name, exact=True):
+def target(name, exact=True, scroll=False):
+    attempts=0
     def find(items):
-        hits=[n for n in items if (label(n)==name if exact else name in label(n)) and len(bounds(n))==4]
-        return sorted(hits,key=lambda n:bounds(n)[1],reverse=True)[0:1] or None
+        nonlocal attempts
+        hits=[n for n in items if any(value==name if exact else name in value for value in (n.get("text",""),n.get("content-desc",""))) and len(bounds(n))==4 and bounds(n)[2]>bounds(n)[0] and bounds(n)[3]>bounds(n)[1]]
+        if hits: return [max(hits,key=lambda n:(n.get("clickable")=="true",bounds(n)[1]))]
+        attempts+=1
+        if scroll and attempts in (2,4,8):
+            adb("shell","input","swipe","520","1750","520","780","400")
+        return None
     return wait_for(find,name)[0]
 def tap(node):
     x,y,r,b=bounds(node)
@@ -63,14 +71,14 @@ try:
     assert left[0]<right[0] and abs(left[1]-right[1])<75, "Wallet cards not side by side"
     print("Android home: two side-by-side wallet entries",flush=True)
     tap(target("社区"))
-    tap(target("注册账号"))
+    tap(target("注册账号",scroll=True))
     fields=wait_for(lambda items:[n for n in items if n.get("class")=="android.widget.EditText"],"signup fields")
     assert len(fields)==2, "Expected exactly two signup fields"
     tap(fields[0]);adb("shell","input","text",username)
     password_field=wait_for(lambda items:next(([n] for n in items if n.get("class")=="android.widget.EditText" and n.get("password")=="true"),None),"password field")[0]
     tap(password_field);adb("shell","input","text",password)
     adb("shell","input","keyevent","KEYCODE_BACK")
-    tap(target("创建账号"));submitted=True
+    tap(target("创建账号",scroll=True));submitted=True
     wait_for(feed_visible,"community feed after signup")
     adb("shell","am","force-stop",PACKAGE);launch()
     tab=target("社区")
