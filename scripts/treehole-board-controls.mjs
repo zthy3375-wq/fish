@@ -21,6 +21,7 @@ export async function browseBoard(page,selection,input='click'){
    await button(page.getByRole('dialog',{name:'更多兴趣'}),topicNames[topic])[input]();
   }
  }
+ await nav.locator('button:not(:disabled)').first().waitFor();
 }
 
 export async function choosePostBoard(page,selection,input='click'){
