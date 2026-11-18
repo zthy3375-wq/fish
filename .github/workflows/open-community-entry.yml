@@ -1,0 +1,30 @@
+name: Activate open signup and faster community entry
+on:
+  push:
+    branches: [ops/community-open-entry-20261118]
+    paths: ['.github/workflows/open-community-entry.yml', 'scripts/cloudbase/enable-open-entry.mjs', 'scripts/cloudbase/update-community-code.py', 'scripts/cloudbase/entry-query-upgrade.mjs']
+permissions:
+  contents: read
+concurrency:
+  group: community-open-entry
+  cancel-in-progress: false
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix cloudbase/functions/community --omit=dev --ignore-scripts --no-audit --no-fund
+      - run: node --test --test-concurrency=2 cloudbase/tests/community*.mjs
+      - run: python3 -m pip install --disable-pip-version-check tencentcloud-sdk-python-scf
+      - name: Activate and check through the public community routes
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          CLOUDBASE_ENV_ID: hanyuantong-d8gjzt1jh12370215
+        run: node scripts/cloudbase/enable-open-entry.mjs

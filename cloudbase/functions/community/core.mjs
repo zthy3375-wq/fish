@@ -17,7 +17,14 @@ function text(value,min,max){if(typeof value!=='string')fail();const clean=value
 function password(value){if(typeof value!=='string'||value.length<10||value.length>128)fail('password_length');return value;}
 function id(value,optional=false){if(optional&&(value===null||value===undefined))return null;if(typeof value!=='string'||!uuid.test(value))fail();return value;}
 function boolean(value){if(typeof value!=='boolean')fail();return value;}
-function username(value){const v=text(value,4,24).toLowerCase();if(!/^[a-z][a-z0-9_]{3,23}$/.test(v))fail('invalid_username');return v;}
+function username(value){
+ if(typeof value!=='string')fail('invalid_username');
+ const name=value.trim().normalize('NFC').toLowerCase().normalize('NFC');
+ // Joined emoji are visible identifiers; reject standalone formatting and control characters.
+ const visible=name.replace(/[\u200c\u200d]/gu,'');
+ if(!/[\p{L}\p{N}\p{P}\p{S}]/u.test(visible)||[...name].length>32||/[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u.test(visible))fail('invalid_username');
+ return name;
+}
 function time(value){if(typeof value!=='string'||value.length>40||!Number.isFinite(Date.parse(value)))fail();return value;}
 export async function hashPassword(value){const salt=randomBytes(16).toString('hex');const key=await deriveBounded(value,salt);return `scrypt-v1$${salt}$${Buffer.from(key).toString('hex')}`;}
 export async function verifyPassword(value,stored){
@@ -108,7 +115,7 @@ function sanitize(action,b){
  return out;
 }
 /** db is a server-only RPC adapter; client-controlled proof, ids and roles are discarded. */
-export function createCommunity({db,storage=null,registrationEnabled=false,inviteHash='',rateSalt=randomBytes(32).toString('hex')}){
+export function createCommunity({db,storage=null,registrationEnabled=false,rateSalt=randomBytes(32).toString('hex')}){
  async function call(action,payload={},token=''){const r=await db(action,payload,token);if(!r||!Number.isInteger(r.status))throw Error('database_response');if(r.status>=400)fail(r.error||'temporarily_unavailable',r.status);return r;}
  const rate=(key,limit,seconds)=>call('rate',{key:createHmac('sha256',rateSalt).update(new Date().toISOString().slice(0,10)+':'+key).digest('hex'),limit,seconds});
  async function execute(action,input={},bearer='',peer='unknown'){
@@ -119,8 +126,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
    if(action==='register'){
     if(!registrationEnabled)fail('registration_closed',403);
     if(input.agreed!==true)fail('agreement_required');
-    if(inviteHash&&digest(String(input.invite||''))!==inviteHash)fail('invite_invalid',403);
-    b.nickname=text(input.nickname,2,20);b.passwordHash=await hashPassword(password(input.password));
+    b.nickname=input.nickname==null?'同学'+randomBytes(3).toString('hex'):text(input.nickname,2,20);b.passwordHash=await hashPassword(password(input.password));
     recoveryCode=secret();b.recoveryHash=digest(recoveryCode);
    }else{
     // Uniform responses and the same password KDF for unknown/incorrect usernames.
@@ -157,7 +163,14 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
     await storage.put(reserved.image.key,encoded.bytes);
     r=await call('media.commit',{imageId:reserved.image.id,width:encoded.width,height:encoded.height,bytes:encoded.bytes.length},tokenHash);
    }
-  }else r=await call(action,b,tokenHash);
+  }else if(action==='me'&&input.entry===true){
+   r=await call('posts.list',{...sanitize('posts.list',{}),entry:true},tokenHash);
+   if(!r.user)r=await call('me',{},tokenHash);
+   else r.config=config();
+  }else{
+   if((action==='notifications.unread'||action==='notifications.list')&&input.withMessages===true)b.withMessages=true;
+   r=await call(action,b,tokenHash);
+  }
   // Cursor pages never include excess records or private credential fields.
   delete r.passwordHash;delete r.recoveryHash;
   if(r.posts){const rows=r.posts;r.posts=rows.slice(0,20);r.next=rows.length>20?{beforeTime:r.posts.at(-1).createdAt,beforeId:r.posts.at(-1).id,beforeRank:r.posts.at(-1).rank,snapshotTime:r.snapshotTime}:null;}
@@ -172,7 +185,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   function collect(value){if(!value||typeof value!=='object')return;if(typeof value.key==='string'&&typeof value.id==='string'&&typeof value.width==='number')images.push(value);for(const child of Object.values(value))collect(child);}
   collect(r);
   const keys=[...new Set(images.map(i=>i.key))];let urls=new Map();
-  if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
+  if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys,{fresh:action==='media.url'}):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
   for(const image of images){image.url=urls.get(image.key)||null;delete image.key;}
   if(storage&&['posts.delete','comments.delete','account.delete','admin.resolve','media.discard','media.upload','avatar.set'].includes(action)){
    try {const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}}catch{console.warn('Community image cleanup will retry');}
@@ -181,5 +194,6 @@ export function createCommunity({db,storage=null,registrationEnabled=false,invit
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- return {execute,config:()=>({registrationEnabled,requiresInvite:!!inviteHash,imagesEnabled:!!storage,categories,sections,interests,schema:10,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true})};
+ function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:10,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ return {execute,config};
 }

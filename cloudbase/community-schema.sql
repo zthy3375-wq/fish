@@ -527,13 +527,16 @@ BEGIN
  END IF;
  IF a IN ('notifications.list','notifications.unread') THEN
   SELECT count(*) INTO n FROM public.hyt_visible_notifications(m.id) WHERE read_at IS NULL;
-  IF a='notifications.unread' THEN RETURN jsonb_build_object('status',200,'unreadCount',n); END IF;
+  IF b->>'withMessages'='true' THEN
+   k=public.hyt_community('messages.unread','{}'::jsonb,th)->>'messageUnreadCount';
+  END IF;
+  IF a='notifications.unread' THEN RETURN jsonb_strip_nulls(jsonb_build_object('status',200,'unreadCount',n,'messageUnreadCount',k::int)); END IF;
   SELECT coalesce(jsonb_agg(public.hyt_notification_json(q,m.id) ORDER BY q.created_at DESC,q.id DESC),'[]'::jsonb) INTO result
   FROM (SELECT * FROM public.hyt_visible_notifications(m.id) WHERE
    (coalesce(b->>'filter','all')='all' OR (b->>'filter'='likes' AND kind IN ('post_like','comment_like','post_response')) OR (b->>'filter'='replies' AND kind IN ('reply','post_reply','thread_reply','buddy')))
    AND (b->>'beforeTime' IS NULL OR (created_at,id)<((b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid))
    ORDER BY created_at DESC,id DESC LIMIT 31) q;
-  RETURN jsonb_build_object('status',200,'notifications',result,'unreadCount',n);
+  RETURN jsonb_build_object('status',200,'notifications',result,'unreadCount',n) || CASE WHEN k IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('messageUnreadCount',k::int) END;
  END IF;
  IF a IN ('password.change','account.delete') THEN
   IF m.password_hash<>b->>'proof' THEN RETURN '{"status":401,"error":"invalid_credentials"}'::jsonb; END IF;
@@ -587,7 +590,7 @@ BEGIN
     AND (coalesce(b->>'query','')='' OR strpos(lower(p.title||' '||p.body||' '||coalesce((SELECT definition->>'question' FROM public.hyt_polls WHERE post_id=p.id),'')||' '||coalesce((SELECT definition->>'location' FROM public.hyt_buddies WHERE post_id=p.id),'')),lower(b->>'query'))>0)) ranked
     WHERE b->>'beforeTime' IS NULL OR (ranked.rank,ranked.created_at,ranked.id)<(coalesce((b->>'beforeRank')::numeric,0),(b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid)
     ORDER BY ranked.rank DESC,ranked.created_at DESC,ranked.id DESC LIMIT 21) q;
-  RETURN jsonb_build_object('status',200,'posts',result,'snapshotTime',snapshot);
+  RETURN jsonb_build_object('status',200,'posts',result,'snapshotTime',snapshot) || CASE WHEN b->>'entry'='true' THEN jsonb_build_object('user',public.hyt_member_json(m)) ELSE '{}'::jsonb END;
  END IF;
  IF a='admin.reports' THEN
   IF m.role<>'moderator' THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;

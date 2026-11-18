@@ -139,3 +139,39 @@ test('well-formed but invalid tokens do not allocate persistent rate records',as
  await assert.rejects(api.execute('posts.list',{},'z'.repeat(43),'invalid-token-test'),{code:'session_expired'});
  assert.equal((await pg.query('SELECT count(*)::int AS n FROM public.hyt_community_rate')).rows[0].n,before);
 });
+
+test('two-field signup from the consent button and canonical login names',async()=>{
+ for(const name of ['123','42@学校.edu','爱读书','🎮','-开头','研 友']){
+  const u=await execute('register',{username:name,password:pass,agreed:true});
+  assert.match(u.user.nickname,/^同学[0-9a-f]{6}$/);assert.notEqual(u.user.nickname,name);
+  assert.equal((await execute('login',{username:name.toUpperCase(),password:pass})).user.id,u.user.id);
+ }
+ const u=await execute('register',{username:'É📚',password:pass,agreed:true});
+ assert.equal((await execute('login',{username:'e\u0301📚',password:pass})).user.id,u.user.id);
+ await assert.rejects(execute('register',{username:'e\u0301📚',password:pass,agreed:true}),{code:'username_unavailable'});
+ for(const username of ['  ','x\u0000y','x\u202ey','\u200d','x'.repeat(33)])await assert.rejects(execute('register',{username,password:pass,agreed:true}),{code:'invalid_username'});
+ assert.equal(api.config().requiresInvite,false);
+});
+test('cold entry and unread each use one database round trip, with legacy projections intact',async()=>{
+ const calls=[],service=createCommunity({db:(a,b,t)=>{calls.push(a);return rpc(a,b,t)}});
+ const entry=await service.execute('me',{entry:true,boardTopics:true},bob.sessionToken);
+ assert.deepEqual(calls,['posts.list']);assert.equal(entry.user.id,bob.user.id);assert.equal(entry.config.combinedUnread,true);
+ assert.deepEqual(entry.posts,(await execute('posts.list',{boardTopics:true},bob)).posts);
+ calls.length=0;const both=await service.execute('notifications.unread',{withMessages:true},bob.sessionToken);
+ assert.deepEqual(calls,['notifications.unread']);assert.equal(both.unreadCount,(await execute('notifications.unread',{},bob)).unreadCount);
+ assert.equal(both.messageUnreadCount,(await execute('messages.unread',{},bob)).messageUnreadCount);
+ assert.equal((await execute('posts.list',{entry:true},bob)).user,undefined);
+ await assert.rejects(service.execute('me',{entry:true},''),{code:'session_expired'});
+});
+
+import {cloudMedia} from '../functions/community/media.mjs';
+test('signs only authorized input keys, batches misses, refreshes expired and explicitly refreshed URLs',async()=>{
+ let now=0;const batches=[];
+ const storage=cloudMedia({env:'test',key:'fixture',now:()=>now,fetcher:async(_,args)=>{
+  const {paths}=JSON.parse(args.body);batches.push(paths);return new Response(JSON.stringify(paths.map(path=>({path,signedURL:'/signed/'+path+'?v='+batches.length}))));
+ }});
+ const first=await storage.urls(['a','b']);assert.equal(first.size,2);await storage.urls(['a']);
+ const subset=await storage.urls(['b','c']);assert.equal(subset.has('a'),false);assert.deepEqual(batches,[['a','b'],['c']]);
+ const fresh=await storage.urls(['a'],{fresh:true});assert.notEqual(fresh.get('a'),first.get('a'));
+ now=240001;await storage.urls(['a']);assert.deepEqual(batches.slice(-2),[['a'],['a']]);
+});
