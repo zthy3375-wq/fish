@@ -22,3 +22,13 @@ jobs:
               with urllib.request.urlopen(base + path, timeout=20) as response:
                   data = json.load(response)
                   print('LIVE', path, response.status, json.dumps({key: data.get(key) for key in keys}))
+          import hashlib
+          old = 'https://hanyuantong-updates.dewydahlia.chatgpt.site'
+          for action in ('enroll','record'):
+              request=urllib.request.Request(old+'/api/metrics/'+action, data=b'{}',headers={'Content-Type':'application/json'})
+              with urllib.request.urlopen(request,timeout=25) as reply:
+                  assert reply.status==200 and json.load(reply)=={'ok':True,'collection':False}
+              print('Legacy',action,'acknowledged without collection')
+          with urllib.request.urlopen(old+'/android/stable.json',timeout=25) as reply:
+              assert hashlib.sha256(reply.read()).hexdigest()=='09f4b42c319833ee87bf275e83ed027bfc06cf14c3a44cf5942312b7a7c6e3de'
+              print('Legacy Android update manifest byte-identical')
