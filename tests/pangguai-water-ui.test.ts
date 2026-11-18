@@ -67,3 +67,11 @@ it('can release a local record with an expired login, while starting remains dis
 it('keeps a settling transaction out of local recovery',async()=>{
  pangguai.value.water={...oldWater,phase:'settling',error:'NETWORK'};await settle();expect(button('已在机身结算，恢复扫码')).toBeUndefined();
 });
+it('releases the confirmation when the same order moves to billing in a refreshed snapshot',async()=>{
+ pangguai.value.water={...oldWater,phase:'using'};await settle();
+ button('已在机身结算，恢复扫码').click();await settle();
+ expect(button('结束接水并结算')?.disabled??true).toBe(true);
+ pangguai.value.water={...oldWater,phase:'settling'};await settle();
+ expect(button('机身已停止，恢复扫码')).toBeUndefined();expect(button('查询状态').disabled).toBe(false);
+ await vi.advanceTimersByTimeAsync(4000);expect(pollWater).toHaveBeenCalled();expect(archiveUnverifiedWater).not.toHaveBeenCalled();
+});

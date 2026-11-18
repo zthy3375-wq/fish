@@ -14,13 +14,14 @@ const needsRecovery=computed(()=>canRecover.value&&(!session.value?.orderNo||!!s
 const recoveryBusy=computed(()=>localBusy.value||pgBusy.value);
 let disposed=false,active=true,awaitingSetup=false,setupAway=false,lastPoll=0,failures=0,timer:ReturnType<typeof setInterval>|undefined,listener:PluginListenerHandle|undefined;
 watch(()=>session.value?.id,()=>{failures=0;lastPoll=0;recoveryId.value='';recoveryError.value=''});
+watch(canRecover,allowed=>{if(!allowed){recoveryId.value='';recoveryError.value=''}});
 watch(()=>props.device,async d=>{selection.value=d?.skus.length===1&&d.skus[0]?.available?d.skus[0].id:'';quote.value=undefined;actionError.value='';if(d){await nextTick();devicePanel.value?.scrollIntoView?.({block:'nearest'})}},{immediate:true});
 function updated(value:number){return new Date(value).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Shanghai'})}
 const elapsed=computed(()=>{if(!session.value?.startedAt)return '';const sec=Math.max(0,Math.floor(((session.value.endedAt??clock.value)-session.value.startedAt)/1000));return `${Math.floor(sec/60)}分${String(sec%60).padStart(2,'0')}秒`});
 async function preview(){if(blocked.value||activeSession.value||!selection.value)return;localBusy.value=true;quote.value=undefined;actionError.value='';try{const result=await prepareWater(selection.value);if(!disposed){if(result)quote.value=result;else actionError.value=pgError.value||'接水信息未取得，请稍后重新查询。';await nextTick();(result?confirmPanel.value:feedbackPanel.value)?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false}}
 async function begin(){const q=quote.value;if(!q||blocked.value||activeSession.value||expired.value||!q.canStart)return;localBusy.value=true;starting.value=true;quote.value=undefined;actionError.value='';try{const result=await startWater(q.id);if(!disposed){if(!result)actionError.value=pgError.value||'启动结果尚未确认，请查看机身及当前接水记录，不要重复开水。';await nextTick();(feedbackPanel.value??panel.value??devicePanel.value)?.scrollIntoView?.({block:'nearest',behavior:'smooth'})}}finally{localBusy.value=false;starting.value=false;lastPoll=Date.now()}}
 async function refresh(){if(blocked.value)return;lastPoll=Date.now();const result=await pollWater();failures=result?0:failures+1}
-async function finish(){const s=session.value;if(!s||blocked.value)return;localBusy.value=true;try{await endWater(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
+async function finish(){const s=session.value;if(!s||blocked.value||recoveryId.value)return;localBusy.value=true;try{await endWater(s.id)}finally{localBusy.value=false;lastPoll=Date.now()}}
 async function recover(){
  const id=recoveryId.value;
  if(!id||session.value?.id!==id||!canRecover.value||recoveryBusy.value)return;
@@ -49,7 +50,7 @@ onUnmounted(()=>{disposed=true;clearInterval(timer);void listener?.remove()});
   <p v-if="session.phase==='starting'">正在核对本次用水，请查看机身提示。尚未确认启动时不要重复扫码开水。</p>
   <template v-if="['using','ending'].includes(session.phase)&&!needsRecovery">
    <p>先将杯子放好。未出水时请看机身提示；暂停请按机身「暂停」。</p>
-   <button v-if="session.remoteEnd&&!session.endSent&&session.error!=='WATER_OWNERSHIP'" class="primary full" :disabled="blocked" @click="finish">结束接水并结算</button>
+   <button v-if="session.remoteEnd&&!session.endSent&&session.error!=='WATER_OWNERSHIP'" class="primary full" :disabled="blocked||!!recoveryId" @click="finish">结束接水并结算</button>
    <p v-else class="instruction">{{session.endSent?'已请求结束，尚待设备确认；仍在出水请按机身「结算」。':'接完后请按机身「结算」，这里会继续核对结束和账单。'}}</p>
   </template>
   <p v-if="session.phase==='settling'||session.phase==='ended'">本次用水会话已结束，正在处理后付账单。不会再次开水或重复发送扣费请求。</p>
