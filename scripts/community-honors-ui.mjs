@@ -26,17 +26,19 @@ export async function checkHonors({client,db,api,baseline,output}){
     await page.reload();await page.locator('.th-nav .th-self:not([disabled])').waitFor();
     await page.locator('.unlock-toast').first().waitFor();
     await page.screenshot({path:path.join(output,'notice-'+width+'.png')});
+    await page.waitForFunction(()=>!document.querySelector('.unlock-toast'),undefined,{timeout:12000});
     await page.getByRole('button',{name:/查看 .*的主页/}).first().click();
     const publicButton=page.locator('button.hon-hall-link');await publicButton.waitFor();
     await page.getByRole('button',{name:'返回社区',exact:true}).click();
    }
    await page.locator('.th-nav .th-self:not([disabled])').click();
-   await page.screenshot({path:path.join(output,(baseline?'before-profile-':'after-profile-')+width+'.png')});
+   await page.locator('.th-profile').waitFor();await page.waitForTimeout(350);
+   await page.screenshot({animations:'disabled',path:path.join(output,(baseline?'before-profile-':'after-profile-')+width+'.png')});
    if(baseline)continue;
-   await page.getByRole('button',{name:/荣誉殿堂 身份/}).click();
+   await page.locator('.th-profile-shortcuts button').filter({hasText:'荣誉殿堂'}).click();
    await page.locator('.hon-grid').waitFor();await page.getByRole('button',{name:'第一声',exact:true}).click();
    await page.getByRole('button',{name:/展示到主页/}).click();await page.getByRole('button',{name:/从主页取下/}).waitFor();
-   await page.screenshot({path:path.join(output,'hall-'+width+'.png')});
+   await page.screenshot({animations:'disabled',path:path.join(output,'hall-'+width+'.png')});
    assert.equal(await page.locator('.hon-grid button').count(),8);
    assert.equal(await page.locator('.hon-page').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);
    await page.getByRole('button',{name:'稀有',exact:true}).click();assert.equal(await page.locator('.hon-grid button').count(),3);
