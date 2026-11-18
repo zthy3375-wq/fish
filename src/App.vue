@@ -777,6 +777,7 @@ onUnmounted(() => {
                 <button class="learning-page-link" @click="communityAccountEntry=true;nav('community')"><MessageSquare :size="20"/><strong>邯院通社区账号</strong><ChevronRight :size="16"/></button>
                 <button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><ChevronRight :size="16"/></button>
               </section>
+              <CommunityGroup/>
             </template>
             <template v-else>
             <SectionHeader title="偏好与数据" />
@@ -812,7 +813,7 @@ onUnmounted(() => {
             />
             <TaskSettings/>
             </section>
-            <SectionHeader title="帮助与交流"/><section class="profile-support"><CommunityGroup/><details class="profile-feedback"><summary><span><MessageSquare :size="19"/>问题反馈</span><ChevronRight :size="16"/></summary><FailureFeedback/><ServiceGroup :items="about.filter(e=>e.id==='feedback').map(e=>({...e,title:'反馈说明'}))" @select="open"/></details></section>
+            <SectionHeader title="帮助"/><section class="profile-support"><details class="profile-feedback"><summary><span><MessageSquare :size="19"/>问题反馈</span><ChevronRight :size="16"/></summary><FailureFeedback/><ServiceGroup :items="about.filter(e=>e.id==='feedback').map(e=>({...e,title:'反馈说明'}))" @select="open"/></details></section>
             <SectionHeader title="关于与隐私" /><ServiceGroup
               :items="about.filter(e=>e.id!=='feedback').map(e=>e.id==='about'?{...e,title:'关于邯院通',subtitle:undefined}:e)"
               @select="(id) => (id === 'app-update' ? checkUpdates(true) : open(id))"
