@@ -1,0 +1,65 @@
+name: Honor exhibit upgrade from 179 to 180, offline
+on:
+  push:
+    branches: [ops/private-showcase-upgrade-30]
+    paths: ['.github/workflows/android-global-upgrade.yml','scripts/qa-android/**']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in {1..50}; do
+            if gh api repos/zthy3375-wq/fish/actions/runs/44332040163/artifacts --jq '.artifacts[].name' | grep -q '^hanyuantong-unsigned-release-'; then exit 0; fi
+            sleep 12
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hanyuantong-unsigned-release-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-input
+          run-id: 44332040163
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hanyuantong-unsigned-release-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/previous-input
+          run-id: 44322384788
+          github-token: ${{ github.token }}
+      - name: Sign the same release build for the disposable emulator
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/emulator.jks" -storepass emulatoronly -keypass emulatoronly -alias android -keyalg RSA -validity 2 -dname 'CN=Disposable Android QA'
+          java -jar "$RUNNER_TEMP/release-input/apksigner.jar" sign --ks "$RUNNER_TEMP/emulator.jks" --ks-pass pass:emulatoronly --out "$RUNNER_TEMP/emulator-app.apk" "$RUNNER_TEMP/release-input/app-release-unsigned.apk"
+          java -jar "$RUNNER_TEMP/release-input/apksigner.jar" sign --ks "$RUNNER_TEMP/emulator.jks" --ks-pass pass:emulatoronly --out "$RUNNER_TEMP/previous-app.apk" "$RUNNER_TEMP/previous-input/app-release-unsigned.apk"
+          java -jar "$RUNNER_TEMP/release-input/apksigner.jar" verify "$RUNNER_TEMP/emulator-app.apk"
+      - name: Compile the Android instrumentation driver
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          bash scripts/qa-android/build.sh
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb shell wm size 1080x2400
+            adb shell wm density 420
+            adb install "$RUNNER_TEMP/previous-app.apk"
+            adb install "$RUNNER_TEMP/qa.apk"
+            python3 scripts/qa-android/run.py
