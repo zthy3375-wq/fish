@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OfficialBadges from "./OfficialBadges.vue";
 import {computed,onMounted,ref,watch} from 'vue';
 import {badges,capNames,honorDate,operations,type BadgeCode,type AdminMember,type HonorLog} from '../../domain/communityHonors';
 import {treeholeError,type TreeholeResult,type TreeholeUser} from '../../services/treehole';
@@ -27,7 +28,7 @@ onMounted(search);
 </script>
 <template><section class="hon-admin"><h2>身份与荣誉管理</h2><form @submit.prevent="search"><label>查找社区成员<input v-model="query" placeholder="完整昵称或社区成员 ID" maxlength="64"/></label><button :disabled="busy">查找</button></form>
  <p v-if="error" role="alert">{{error}}</p><p v-if="notice" role="status">{{notice}}</p><p v-if="busy" role="status">正在处理…</p>
- <p v-if="!busy&&!members.length">没有匹配成员或待审核推荐。</p><button v-for="m in members" :key="m.id" class="hon-person" :disabled="busy" @click="choose(m)"><strong>{{m.nickname}}</strong><small>{{m.recommendation?'待审核推荐':m.official?badges[m.official.code].name:'社区成员'}}</small></button>
+ <p v-if="!busy&&!members.length">没有匹配成员或待审核推荐。</p><button v-for="m in members" :key="m.id" class="hon-person" :disabled="busy" @click="choose(m)"><span class="honor-byline"><strong class="honor-name" :title="m.nickname">{{m.nickname}}</strong><OfficialBadges passive :items="[m.official,...m.honors.map(code=>({code,at:null}))]"/></span><small v-if="m.recommendation">待审核推荐</small></button>
  <form v-if="subject" @submit.prevent="submit"><h3>{{subject.nickname}}</h3><small class="hon-id">{{subject.id}}</small><p v-if="subject.recommendation">推荐理由 · {{subject.recommendation}}</p><label>操作<select v-model="op"><option v-for="o in options" :key="o" :value="o">{{operations[o]}}</option></select></label>
  <label v-if="op==='grant'||op==='revoke'">荣誉<select v-model="kind"><option v-for="k in kinds" :key="k" :value="k">{{badges[k].name}}</option></select></label>
  <fieldset v-if="op==='appoint'"><legend>管理权限</legend><label v-for="(label,k) in capNames" :key="k"><input type="checkbox" v-model="caps" :value="k"/>{{label}}</label></fieldset>

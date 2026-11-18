@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {discover} from '../services/hiddenDiscovery';
+import {weekJourney} from '../domain/discoveryGestures';
 import WeekCalibration from "./WeekCalibration.vue";
 import { computed, ref, watch } from "vue";
 import { ChevronLeft, ChevronRight, Info } from 'lucide-vue-next';
@@ -23,6 +25,7 @@ import CourseCard from "./CourseCard.vue";
 import EmptyState from "./EmptyState.vue";
 const comfortable=ref(false);
 const props = defineProps<{
+  reliable?:boolean;
   practice?: {name:string;teacher:string;weeks:string}[];
   table: TimeTable;
   semester: Semester;
@@ -54,6 +57,17 @@ function termChange(event:Event) {
 }
 watch(()=>props.semester.weekStartDate,()=>{week.value=Math.max(1,Math.min(props.semester.weekCount,currentWeek(props.now,props.semester)));day.value=dayNumber(props.now)});
 const actualWeek = computed(() => currentWeek(props.now, props.semester));
+const journey=weekJourney();
+watch(()=>[props.semester.id,props.semester.weekStartDate,props.section,props.reliable,academicCache.value.localScope,actualWeek.value],()=>journey.reset(),{flush:'sync'});
+function manualWeek(next:number){
+  const previous=week.value;
+  week.value=Math.max(1,Math.min(props.semester.weekCount,next));
+  if(props.reliable&&props.data.courses.length&&actualWeek.value<=props.semester.weekCount&&journey.move(previous,week.value,actualWeek.value))void discover('timewalk');
+}
+function openDay(n:number){
+  view.value='day';day.value=n;
+  if(props.reliable&&!academicBusy.value&&props.data.courses.length&&!props.practice?.length&&!coursesForDay(props.data.courses,n,week.value).length)void discover('freeday');
+}
 const selectedCourses = computed(() =>
   coursesForDay(props.data.courses, day.value, week.value),
 );
@@ -87,10 +101,7 @@ function touchEnd(e: TouchEvent) {
     dy = e.changedTouches[0].clientY - touchY;
   if (touchX < 24 || touchX > window.innerWidth - 24) return;
   if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2)
-    week.value = Math.max(
-      1,
-      Math.min(props.semester.weekCount, week.value + (dx < 0 ? 1 : -1)),
-    );
+    manualWeek(week.value+(dx<0?1:-1));
 }
 </script>
 <template>
@@ -109,7 +120,7 @@ function touchEnd(e: TouchEvent) {
         <button
           :class="{ selected: view === 'day' }"
           :aria-pressed="view === 'day'"
-          @click="view = 'day'"
+          @click="openDay(day)"
         >
           日视图</button
         ><button
@@ -123,7 +134,7 @@ function touchEnd(e: TouchEvent) {
       <button
         class="text-button"
         @click="
-          week = Math.max(1, Math.min(semester.weekCount, actualWeek));
+          manualWeek(actualWeek);
           day = dayNumber(now);
         "
       >
@@ -136,11 +147,11 @@ function touchEnd(e: TouchEvent) {
         class="icon-button"
         aria-label="上一周"
         :disabled="week === 1"
-        @click="week--"
+        @click="manualWeek(week-1)"
       >
         <ChevronLeft :size="20" /></button
       ><label
-        ><select v-model.number="week" aria-label="跳转教学周">
+        ><select  :value="week" @change="manualWeek(Number(($event.target as HTMLSelectElement).value))" aria-label="跳转教学周">
           <option v-for="w in semester.weekCount" :key="w" :value="w">
             第 {{ w }} 周
           </option></select
@@ -152,7 +163,7 @@ function touchEnd(e: TouchEvent) {
         class="icon-button"
         aria-label="下一周"
         :disabled="week === semester.weekCount"
-        @click="week++"
+        @click="manualWeek(week+1)"
       >
         <ChevronRight :size="20" />
       </button>
@@ -166,7 +177,7 @@ function touchEnd(e: TouchEvent) {
           today: week === actualWeek && i + 1 === dayNumber(now),
         }"
         :aria-pressed="day === i + 1"
-        @click="day = i + 1"
+        @click="openDay(i+1)"
       >
         <small>周{{ d }}</small
         ><strong>{{ weekDate(week, i + 1).split("/")[1] }}</strong

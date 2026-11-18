@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { BookOpen, CalendarCheck, CalendarDays, ClipboardCheck, Droplets, Egg, ContactRound, Fish, Flower2, GraduationCap, KeyRound, Map as MapIcon, NotebookPen, RadioTower, Shell, ShowerHead, Sunrise, WashingMachine, Waves, WifiOff } from 'lucide-vue-next';
+import { Angry, BedDouble, History, Coffee, Compass, Inbox, ScrollText, BookOpen, CalendarCheck, CalendarDays, ClipboardCheck, Droplets, Egg, ContactRound, Fish, Flower2, GraduationCap, KeyRound, Map as MapIcon, NotebookPen, RadioTower, Shell, ShowerHead, Sunrise, WashingMachine, Waves, WifiOff } from 'lucide-vue-next';
 import { awards } from './communityHonors';
 
 export type Source = 'device' | 'school' | 'learning' | 'community';
@@ -32,7 +32,14 @@ export const catalog:Collectible[] = [
   ...awards.filter(a=>a.code!=='arrival').map(community),
   {...local('month','时光初见','时光','稀有','community',Shell,'#ab8070','邯院通社区账号注册满 30 天','从初见，到熟悉的日常。',30),metric:'days'},
   {...local('year','四季流转','时光','史诗','community',Waves,'#8b70ab','邯院通社区账号注册满 365 天','你与邯院，已经走过春夏秋冬。',365),metric:'days'},
-  local('goldfish','你发现我了','隐藏','稀有','device',Fish,'#cc8054','在关于页唤醒小金鱼','它悄悄在纪念册里吐了一个泡泡。'),
+  local('goldfish','你发现我了！','隐藏','稀有','device',Fish,'#a06d4a','在关于页连续轻点版本号七次','好奇心是个好东西。'),
+  local('puff','别戳啦！','隐藏','稀有','device',Angry,'#a06d4a','连续轻点首页小金鱼五次','鱼也是有脾气的！'),
+  local('dream','鱼也会做梦吗？','隐藏','稀有','device',BedDouble,'#a06d4a','长按首页小金鱼三秒','嘘，它梦见了一片没有尽头的海。'),
+  local('timewalk','时间旅行者','隐藏','稀有','device',History,'#a06d4a','在本学期课表切到第一周，再回到本周','时间可以倒流，作业不行。'),
+  local('freeday','今天没有课！','隐藏','稀有','device',Coffee,'#a06d4a','打开课表里一个没有课程的日期','今天属于你自己。'),
+  local('mapfish','原来你在这里','隐藏','稀有','device',Compass,'#a06d4a','找到校园平面图里的小金鱼','没想到吧，我藏在这里。'),
+  local('emptyfish','空空如也','隐藏','稀有','device',Inbox,'#a06d4a','在真正清空的待办清单里找到小鱼','什么都没有，也挺好。'),
+  local('lastline','我全都看完了','隐藏','稀有','device',ScrollText,'#a06d4a','翻到更新日志最后，轻点页尾的落款','谢谢你认真读到这里。'),
 ];
 function community(a:typeof awards[number]):Collectible {
   const names:Record<string,string>={arrival:'破壳而出',hello:'搭个话吧',neighbor:'温暖的回应'};

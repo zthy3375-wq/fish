@@ -89,13 +89,13 @@ onUnmounted(()=>{active=false;window.removeEventListener('online',networkChanged
   <div class="cabinet-grid">
    <button v-for="a in cards" :key="a.code" :data-code="a.code" :class="{unlocked:earned[a.code]}" :style="{'--medal':a.color}" @click="show(a)">
     <span class="medallion"><component :is="concealed(a)?HelpCircle:earned[a.code]?a.icon:LockKeyhole" :size="25" :stroke-width="1.8"/></span>
-    <strong>{{concealed(a)?'未知奇遇':a.name}}</strong><small>{{stateLabel(a)}}</small><Bookmark v-if="pinned(a)" class="pin" :size="11" aria-label="展示中"/>
+    <strong>{{concealed(a)?'隐藏成就':a.name}}</strong><small>{{stateLabel(a)}}</small><Bookmark v-if="pinned(a)" class="pin" :size="11" aria-label="展示中"/>
    </button>
   </div>
  </section>
  <p v-if="storageIssue" class="collection-status" role="alert">{{storageIssue}}</p>
  <section class="collection-account"><header><div><h3>{{hall?.nickname||'社区身份与荣誉'}}</h3><p>{{hall?(fromCache?'上次同步的账号收藏':'已同步邯院通账号'):loading?'正在读取社区收藏…':signedIn?'社区收藏暂未同步':'登录社区后可同步身份与社区成就'}}</p></div><button v-if="signedIn" class="refresh" aria-label="刷新社区收藏" :disabled="loading" @click="load(true)"><RefreshCw :size="17"/></button></header>
- <OfficialBadges v-if="hall" :items="[hall.badges.official,...hall.honors]"/>
+ <OfficialBadges full v-if="hall" :items="[hall.badges.official,...hall.honors]"/>
  <p v-if="failure" role="alert">{{failure}}</p>
  <button class="account-more" @click="emit('account')">{{signedIn?'社区主页与荣誉管理':'前往社区账号'}}<ChevronRight :size="16"/></button>
  </section>
@@ -105,7 +105,7 @@ onUnmounted(()=>{active=false;window.removeEventListener('online',networkChanged
  <dialog ref="detail" class="collect-detail" :class="{quiet:!feedback.motion}" aria-labelledby="medal-title" @click.self="detail?.close()">
   <template v-if="selected"><button class="detail-close" aria-label="关闭成就详情" autofocus @click="detail?.close()"><X :size="20"/></button>
   <div class="hero-medal" :class="{locked:!earned[selected.code]}" :style="{'--medal':selected.color}"><component :is="concealed(selected)?HelpCircle:selected.icon" :size="39" :stroke-width="1.65"/></div>
-  <small class="eyebrow">{{selected.group}} · {{selected.tier}}</small><h2 id="medal-title">{{concealed(selected)?'未知奇遇':selected.name}}</h2>
+  <small class="eyebrow">{{selected.group}} · {{selected.tier}}</small><h2 id="medal-title">{{concealed(selected)?'隐藏成就':selected.name}}</h2>
   <p>{{concealed(selected)?'有些校园回忆，会在意想不到的时候出现。':selected.description}}</p>
   <div class="details-meta"><template v-if="!concealed(selected)"><span>获取条件</span><strong>{{selected.condition}}</strong></template>
   <span>收藏归属</span><strong>{{sourceNames[selected.source]}}</strong>

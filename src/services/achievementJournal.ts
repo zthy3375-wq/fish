@@ -64,7 +64,7 @@ function change(scope:string,update:(current:Journal)=>Journal|null,after?:()=>v
 const queue=ref<{scope:string;code:string}[]>([]);
 export const localQueue=computed(()=>queue.value.filter(x=>Object.values(scopes.value).includes(x.scope)).map(x=>x.code));
 export function dismiss(code:string){queue.value=queue.value.filter(x=>x.code!==code||!Object.values(scopes.value).includes(x.scope));}
-export function record(code:string,scope='device',at=new Date().toISOString(),historical=false){
+export function record(code:string,scope='device',at=new Date().toISOString(),historical=false,afterCue?:Promise<void>){
   const a=byCode.get(code);
   if(!a||a.source==='community'||!scope||scope!==scopes.value[a.source]||!Number.isFinite(Date.parse(at)))return Promise.resolve();
   if(books.get(scope)?.stamps[code])return Promise.resolve();
@@ -73,7 +73,10 @@ export function record(code:string,scope='device',at=new Date().toISOString(),hi
     if(code==='life'&&!lifeCodes.every(k=>current.stamps[k]))return null;
     return {...current,stamps:{...current.stamps,[code]:{at,historical}}};
   },()=>{
-    if(!historical&&Object.values(scopes.value).includes(scope))queue.value.push({code,scope});
+    if(!historical){
+      const enqueue=()=>{if(Object.values(scopes.value).includes(scope))queue.value.push({code,scope});};
+      if(afterCue)void afterCue.then(enqueue);else enqueue();
+    }
     if(lifeCodes.includes(code)&&lifeCodes.every(k=>books.get(scope)?.stamps[k]))void record('life',scope,at);
   });
 }
