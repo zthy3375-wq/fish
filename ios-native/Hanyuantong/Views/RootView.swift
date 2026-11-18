@@ -3,18 +3,15 @@ import Combine
 
 struct RootView: View {
     @EnvironmentObject var store: CampusStore
-    @EnvironmentObject var analytics: AnonymousAnalyticsStore
     var body: some View {
         TabView(selection: $store.selectedTab) {
             NavigationStack { HomeView() }.tabItem { Label("首页", systemImage: "house") }.tag(AppTab.home)
             NavigationStack { ScheduleView() }.tabItem { Label("课表", systemImage: "calendar") }.tag(AppTab.schedule)
+            NavigationStack { TreeholeView() }.tabItem { Label("社区", systemImage: "bubble.left.and.bubble.right") }.tag(AppTab.community)
             NavigationStack { TasksView() }.tabItem { Label("待办", systemImage: "checklist") }.tag(AppTab.tasks)
             NavigationStack { ProfileView() }.tabItem { Label("我的", systemImage: "person") }.tag(AppTab.profile)
         }
-        .onChange(of: store.selectedTab) { tab in
-            if tab == .schedule { analytics.recordFeature(.schedule) }
-            if tab == .tasks { analytics.recordFeature(.tasks) }
-        }
+
         .tint(CampusTheme.primary)
         .foregroundStyle(CampusTheme.text)
         .environment(\.calendar, CampusTheme.calendar)

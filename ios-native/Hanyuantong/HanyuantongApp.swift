@@ -4,6 +4,7 @@ import UIKit
 @main
 struct HanyuantongApp: App {
     @StateObject private var store = CampusStore()
+    @StateObject private var treehole = TreeholeStore()
     @StateObject private var learning = LearningStore()
     @StateObject private var quzhi = QuzhiStore()
     @StateObject private var pangguai = PangguaiStore()
@@ -14,6 +15,7 @@ struct HanyuantongApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
+                .environmentObject(treehole)
                 .environmentObject(learning)
                 .environmentObject(quzhi)
                 .environmentObject(pangguai)
@@ -24,7 +26,7 @@ struct HanyuantongApp: App {
                 .onOpenURL { url in
                     if url.scheme == "hanyuantong", url.host == "schedule", url.user == nil, url.password == nil { store.selectedTab = .schedule }
                 }
-                .onChange(of: scenePhase) { if $0 == .active { store.refreshReminders(); analytics.flush() } }
+                .onChange(of: scenePhase) { if $0 == .active { store.refreshReminders(); if analytics.state.deletePending { analytics.flush() } } }
                 .environment(\.locale, Locale(identifier: "zh_CN"))
                 .environment(\.calendar, ScheduleMath.calendar)
                 .environment(\.timeZone, TimeZone(identifier: "Asia/Shanghai")!)

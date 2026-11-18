@@ -1,0 +1,21 @@
+{
+  "package": "org.handancampus.app",
+  "versionCode": 169,
+  "version": "1.3.0-test.19",
+  "debuggable": false,
+  "bytes": 12496078,
+  "sha256": "1862d08010b6c7e69132fbca6f5b91b531f98d45e4c0b12c933e6872cc88e495",
+  "webFiles": 30,
+  "allEmbeddedAssetsMatchLocalBuild": true,
+  "alignment": true,
+  "originalCertificate": "4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9",
+  "signatureSchemes": [
+    "v1",
+    "v2",
+    "v3"
+  ],
+  "source": "4096dc5dcc8d399973bde94d2bd18ca4e936384e",
+  "mergeCommit": "767d07d11ee6754edea8bcf978328498cebdb649",
+  "artifact": 14312813155,
+  "workflowRun": 44048952560
+}

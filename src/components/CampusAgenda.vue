@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import {discover} from '../services/hiddenDiscovery';
+import {Fish} from 'lucide-vue-next';
 import DailyTaskRow from './DailyTaskRow.vue';
-import {learningCache,initLearning,syncLearning,saveLearningPlan} from '../composables/learning';
+import {learningReady,learningBusy,learningError,learningCache,initLearning,syncLearning,saveLearningPlan} from '../composables/learning';
 import {computed,onMounted,onUnmounted,ref} from 'vue';
 import {Plus,ChevronLeft,ChevronRight,Check,Search,ArrowUp} from 'lucide-vue-next';
 import {academicCache,schoolTerm,schoolCourses} from '../composables/handan-academic';
@@ -13,13 +15,16 @@ import {taskStore} from '../services/task-store';
 import type {Course} from '../domain/academic';
 const emit=defineEmits<{course:[course:Course];navigate:[section:string];edit:[task?:CampusTask,day?:string]}>();
 const now=ref(new Date()),message=ref(''),error=ref(''),filters=ref(false);
-const smartLists:[SmartList,string][]=[['today','今天'],['planned','接下来'],['inbox','未安排']];
+const smartLists:[SmartList,string][]=[['today','今天'],['due','即将截止'],['planned','接下来'],['inbox','未安排']];
 const priorities=['无优先级','低优先级','中优先级','高优先级'];
 const selectedDay=computed(()=>validDay(agendaView.date)?agendaView.date:beijingDay(now.value));
 const series=computed<CourseSeries[]>(()=>{const all:CourseSeries[]=[];const school=schoolTerm.value?.data;if(school)all.push({semester:school.semester,courses:schoolCourses.value,source:'school'});for(const semester of schedule.value.semesters){if(semester.id.startsWith('school-page-'))continue;const table=schedule.value.timeTables.find(t=>t.id===semester.timeTableId);all.push({semester,courses:flatten(schedule.value.courses,semester.id,table),source:'personal'})}return all});
 const courses=computed(()=>[...new Set([...series.value.flatMap(s=>s.courses.map(c=>c.name)),...learningCache.value.courses.map(c=>c.name)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN')));
 const courseOptions=computed(()=>[...new Set([...courses.value,...allTasks.value.map(t=>t.course).filter(Boolean)])]);
 const tasks=computed(()=>selectTasks(allTasks.value,taskView,now.value));
+const emptyPond=computed(()=>tasksReady.value&&learningReady.value&&!tasksBusy.value&&!learningBusy.value&&!taskError.value&&!learningError.value&&!error.value&&
+  (!learningCache.value.connected||(learningCache.value.session==='valid'&&!Object.keys(learningCache.value.issues).length))&&
+  !taskView.search&&!taskView.course&&taskView.priority===-1&&taskView.source==='all'&&taskView.view!=='completed'&&!allTasks.value.some(t=>!t.completed));
 const summary=computed(()=>taskSummary(allTasks.value,now.value));
 const groups=computed(()=>{
  const result=new Map<string,{key:string;name:string;tasks:CampusTask[]}>();
@@ -68,7 +73,7 @@ onMounted(()=>{void initTasks().catch(()=>{});void initLearning().then(()=>syncL
   <section v-for="group in groups" :key="group.key" class="task-group"><h4 v-if="group.name">{{group.name}} <small>{{group.tasks.length}} 项</small></h4>
    <DailyTaskRow v-for="task in group.tasks" :key="task.id" :task="task" :now="now" :busy="tasksBusy" @open="edit" @complete="toggleTask" @replan="replan" @cancel-plan="cancelPlan"/>
   </section>
-  <div v-if="!tasks.length" class="task-empty"><Check :size="26"/><strong>{{taskView.search||taskView.course?'没有匹配任务':taskView.view==='inbox'?'先记下来，再安排':'这里暂时没有任务'}}</strong><p>在下方输入标题即可添加。学习通作业可在「学习」中安排到今天。</p></div>
+  <div v-if="!tasks.length" class="task-empty"><button v-if="emptyPond" class="empty-fish" aria-label="清单里的小鱼" @click="discover('emptyfish')"><Fish :size="22"/></button><Check v-else :size="26"/><strong>{{taskView.search||taskView.course?'没有匹配任务':taskView.view==='inbox'?'先记下来，再安排':'这里暂时没有任务'}}</strong><p>在下方输入标题即可添加。学习通作业可在「学习」中安排到今天。</p></div>
  </template>
  <template v-else>
   <div class="timeline-controls"><button class="icon-button" aria-label="前一天日程" @click="moveDay(-1)"><ChevronLeft :size="18"/></button><input v-model="agendaView.date" type="date" aria-label="日程日期"/><button class="icon-button" aria-label="后一天日程" @click="moveDay(1)"><ChevronRight :size="18"/></button><button class="text-button" @click="today">今天</button></div>
@@ -87,3 +92,5 @@ onMounted(()=>{void initTasks().catch(()=>{});void initLearning().then(()=>syncL
  <form v-if="taskView.mode==='list'" class="task-quick" aria-label="快速添加任务" @submit.prevent="quickAdd"><Plus :size="18"/><input v-model="taskView.quick" aria-label="快速任务标题" maxlength="100" placeholder="添加任务，回车保存" :disabled="!tasksReady"/><button class="primary" aria-label="快速保存任务" :disabled="!tasksReady||tasksBusy||!taskView.quick.trim()"><ArrowUp :size="18"/></button></form>
 </section>
 </template>
+
+<style scoped>.empty-fish{width:44px;height:44px;display:inline-grid;place-items:center;background:none;border:0;color:var(--color-muted)}</style>

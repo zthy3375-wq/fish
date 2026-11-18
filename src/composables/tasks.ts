@@ -1,3 +1,4 @@
+import {observeTasks} from '../services/achievementEvidence';
 import { reactive, ref, toRaw, watch, computed } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
@@ -62,10 +63,12 @@ catch {
 finally {
     initJob = null;
 } })(); return initJob; }
-export async function changeTasks(action: () => Promise<TaskSnapshot>) { if (!tasksReady.value)
+export async function changeTasks(action: () => Promise<TaskSnapshot>,isUserEdit=true) { if (!tasksReady.value)
     throw Error('待办尚未读取，请先重试'); tasksBusy.value = ++writes > 0; try {
     const next = await action();
+    const before=taskSnapshot.value;
     taskSnapshot.value = next;
+    if(isUserEdit)observeTasks(next,before);
     taskError.value = '';
     await reconcileTaskReminders();
     return next;

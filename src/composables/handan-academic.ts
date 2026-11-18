@@ -1,3 +1,4 @@
+import { observeSchool } from '../services/achievementEvidence';
 import {flatten} from '../domain/schedule';
 import {applySchoolAdjustments,schoolCourseKey,updateSchoolAdjustments,adjustmentConflicts,inactiveAdjustmentCount,type CourseTimeChange} from '../domain/school-course-adjustments';
 import {isSchoolPageSemester} from '../services/legacy-school-semester';
@@ -27,10 +28,10 @@ export function saveSchoolCourseAdjustment(scope:string,term:string,key:string,w
  });
 }
 export function restoreSchoolCourseAdjustment(scope:string,term:string,key:string){return engine.updateCourseAdjustments(scope,term,cache=>{cache.courseAdjustments=(cache.courseAdjustments??[]).filter(a=>a.term!==term||a.sourceKey!==key)})}
-async function commit(c:AcademicCache){await Preferences.set({key:KEY,value:JSON.stringify(c)});academicCache.value=c}
+async function commit(c:AcademicCache){await Preferences.set({key:KEY,value:JSON.stringify(c)});academicCache.value=c;observeSchool(c,false)}
 const engine=new AcademicSyncEngine(handanAcademicClient,()=>structuredClone(toRaw(academicCache.value)),commit,()=>schedule.value.semesters);
 let initialized=false,lastAuto=0;
-export async function initAcademic(){if(initialized)return;try{const {value}=await Preferences.get({key:KEY});if(value)academicCache.value=validateAcademicCache(JSON.parse(value));initialized=true}catch{academicError.value='无法读取学校缓存，个人课表仍可使用'}}
+export async function initAcademic(){if(initialized)return;try{const {value}=await Preferences.get({key:KEY});if(value)academicCache.value=validateAcademicCache(JSON.parse(value));observeSchool(academicCache.value,true);initialized=true}catch{academicError.value='无法读取学校缓存，个人课表仍可使用'}}
 export async function syncAcademic(login=false,term?:SchoolTerm){
  if(!schoolConnectionSupported()){academicError.value='学校连接仅支持 Android 客户端';return}
  if(academicBusy.value)return;

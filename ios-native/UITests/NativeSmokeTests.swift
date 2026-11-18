@@ -6,6 +6,7 @@ final class NativeSmokeTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["首页"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.tabBars.buttons.allElementsBoundByIndex.map(\.label), ["首页", "课表", "社区", "待办", "我的"])
         XCTAssertFalse(app.alerts["提示"].exists, "Fresh launch must not report a storage failure")
         screenshot("01-home", app)
         app.tabBars.buttons["课表"].tap()

@@ -22,9 +22,14 @@ try{
   await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','openCourse','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   const methods={CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','archiveUnverifiedWater','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','openCourse','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
    window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
+   methods.CommunityGroup=['open','copy'];window.__qqGroupCalls=[];
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
+    if(plugin==='CommunityGroup'){
+     window.__qqGroupCalls.push(method);
+     return method==='open'?{opened:true}:{};
+    }
     if(plugin==='CourseWidget'){if(method==='publish'){(window.__widgetSnapshots??=[]).push(JSON.parse(args.snapshot));return {}}if(method==='target'){const date=window.__widgetTarget||'';window.__widgetTarget='';return {date}}if(method==='status')return {supported:true,ids:window.__widgetIds||[]};if(method==='openHome'){window.__widgetHomeCalls=(window.__widgetHomeCalls||0)+1;return {}}if(method==='pin'){window.__widgetPinCalls=(window.__widgetPinCalls||0)+1;return {requested:true,baselineIds:[...(window.__widgetIds||[])]}}}
     if(plugin==='AppUpdate'){
      window.__updateState??={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:false,mandatory:false,checkedAt:Date.now()};
@@ -46,6 +51,7 @@ try{
      if(method==='prepareWater')return {id:'water-quote',expiresAt:Date.now()+60000,deviceId:'synthetic-water',deviceName:'人工测试饮水机',outlet:'常温水',feature:'按实际用量计费',price:'1',remoteEnd:true,paymentName:'支付宝免密',canStart:true,reason:''};
      if(method==='startWater')window.__pgState.water={id:'water-session',deviceId:'synthetic-water',deviceName:'人工测试饮水机',outlet:'常温水',feature:'按实际用量计费',paymentName:'支付宝免密',phase:'using',orderNo:'synthetic-water-order',remoteEnd:true,updatedAt:Date.now(),startedAt:Date.now()};
      if(method==='endWater')Object.assign(window.__pgState.water,{phase:'ending',endSent:true});
+     if(method==='archiveUnverifiedWater'&&args.confirmedStopped&&args.sessionId===window.__pgState.water?.id){window.__pgOwnershipLost=false;Object.assign(window.__pgState.water,{phase:'archived_unverified',remoteEnd:false,archivedAt:Date.now()})}
      if((method==='pollWater'||method==='confirmPhysicalWaterEnd')&&window.__pgOwnershipLost){window.__pgOwnershipLost=false;Object.assign(window.__pgState.water,{phase:'closed_unknown',endBasis:'order_replaced',remoteEnd:false,endedAt:Date.now(),updatedAt:Date.now(),error:'WATER_BILL_UNKNOWN'})}
      if(method==='pollWater'&&window.__pgWaterEnded)Object.assign(window.__pgState.water,{phase:'settled',amount:'0.13',endedAt:Date.now()});
      return JSON.parse(JSON.stringify(window.__pgState));
@@ -100,7 +106,7 @@ try{
   await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
   await page.goto('http://127.0.0.1:4175');
   await page.getByRole('heading',{name:'邯院通',exact:true}).waitFor();
-  assert(await page.locator('.floating-nav button').count()===4,`${width}: home has four navigation tabs`);
+  assert(await page.locator('.floating-nav button').count()===5,`${width}: home has five navigation tabs`);
   assert(await page.locator('.home-body .school-connection').count()===0,`${width}: disconnected home keeps school account in profile`);
   await page.getByRole('button',{name:'暂停小鱼动画',exact:true}).click();
   assert(await page.getByRole('button',{name:'播放小鱼动画',exact:true}).getAttribute('aria-pressed')==='true',`${width}: fish can be paused`);
@@ -111,6 +117,10 @@ try{
   await page.getByRole('button',{name:'暂停小鱼动画',exact:true}).waitFor({state:'hidden'});
   assert(await page.locator('.fish-swim').evaluate(el=>getComputedStyle(el).animationName)==='none',`${width}: reduced motion disables mascot animation`);
   await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.getByRole('button',{name:'连接学校',exact:true}).click();
+  await page.getByRole('heading',{name:'我的',exact:true}).waitFor();
+  assert(await page.locator('.profile-accounts').getByRole('button',{name:'连接',exact:true}).isVisible(),`${width}: empty home leads to the existing school connection`);
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
   await checkParcelShortcuts(page,assert,{width,output});
   await checkNativeLife(page,assert,{width,output});
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
@@ -124,6 +134,9 @@ try{
   await page.locator('.home-next-meta time').waitFor();
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   await page.screenshot({path:path.join(output,`campus-home-connected-${width}.png`),animations:'disabled'});
+  assert(await page.locator('.home-timeline-toggle').getAttribute('aria-expanded')==='false',`${width}: home timeline starts collapsed so services stay close`);
+  await page.locator('.home-timeline-toggle').focus();await page.keyboard.press('Enter');
+  assert(await page.locator('.home-timeline-toggle').getAttribute('aria-expanded')==='true',`${width}: keyboard opens today course timeline`);
   const range=await page.locator('.course-time-caption time').allTextContents();
   const toMinutes=t=>{const [h,m]=t.split(':').map(Number);return h*60+m};
   const [startMinute,endMinute]=range.slice(0,2).map(toMinutes);
@@ -146,6 +159,8 @@ try{
   await page.clock.setFixedTime(new Date('2026-11-06T04:00:00Z'));
   await page.waitForFunction(()=>!!document.querySelector('.home-timeline .is-current'));
 
+  await page.locator('.home-timeline-toggle').click();
+  assert(await page.locator('.home-timeline-toggle').getAttribute('aria-expanded')==='false',`${width}: course timeline collapses without losing course state`);
   assert(await page.locator('.home-course-panel .home-study-links').count()===1,`${width}: study actions share course card`);
   assert(await page.locator('.home-body>.school-connection').count()===0,`${width}: connected home hides redundant account card`);
   assert(await page.locator('.home-course-panel').evaluate(el=>{const life=document.querySelector('#home-life-title').closest('section'),tasks=document.querySelector('.today-tasks');return !!(el.compareDocumentPosition(life)&Node.DOCUMENT_POSITION_FOLLOWING)&&!!(life.compareDocumentPosition(tasks)&Node.DOCUMENT_POSITION_FOLLOWING)}),`${width}: home orders courses, services, then plans`);
@@ -153,13 +168,31 @@ try{
   await page.locator('main').evaluate(el=>el.scrollTop=0);
   const homeLayout=await page.evaluate(()=>{
    const box=s=>document.querySelector(s).getBoundingClientRect();
-   return {hero:box('.campus-hero').height,walletBottom:box('.life-wallets').bottom,mainBottom:box('main').bottom,timelineBottom:box('.home-timeline').bottom,studyTop:box('.home-study-links').top,overflow:document.documentElement.scrollWidth>innerWidth};
+   return {hero:box('.campus-hero').height,walletBottom:box('.life-wallets').bottom,servicesBottom:box('.life-utilities').bottom,mainBottom:box('main').bottom,timelineBottom:box('.home-timeline').bottom,studyTop:box('.home-study-links').top,overflow:document.documentElement.scrollWidth>innerWidth};
   });
+  console.log('Home viewport evidence',width,JSON.stringify(homeLayout));
   assert(homeLayout.hero>=264,`${width}: campus illustration retains a generous height with status inset`);
+  assert(homeLayout.servicesBottom<=homeLayout.mainBottom,`${width}: all four life service actions fit above navigation with status inset`);
   assert(homeLayout.walletBottom<=homeLayout.mainBottom,`${width}: both life wallets fit above navigation with status inset`);
   assert(homeLayout.timelineBottom<=homeLayout.studyTop&&!homeLayout.overflow,`${width}: today's timeline stays clear of shortcuts without page overflow`);
   assert(await page.locator('.home-timeline button').count()===1&&JSON.stringify(await page.locator('.home-timeline .course-time-caption time').allTextContents())===JSON.stringify(['11:15','15:10']),`${width}: today's course name and start remain on the timeline`);
+  await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur()});
   await page.screenshot({path:path.join(output,`campus-home-refined-${width}.png`),animations:'disabled'});
+  const [shower,water]=await page.locator('.life-wallets .life-card').evaluateAll(cards=>cards.map(card=>{const {x,y,width,height}=card.getBoundingClientRect();return {x,y,width,height}}));
+  assert(Math.abs(shower.y-water.y)<2&&water.x>=shower.x+shower.width&&shower.height>=110,`${width}: both wallet tiles share a row and are directly tappable`);
+  await page.locator('.life-services').screenshot({path:path.join(output,`wallet-tiles-${width}.png`),animations:'disabled'});
+  const homeTargets=await page.locator('.home-timeline-head button,.home-study-links button,.life-card,.life-utilities button').evaluateAll(els=>els.every(el=>{const r=el.getBoundingClientRect();return r.height>=44&&r.width>=44}));
+  assert(homeTargets,`${width}: home course and service actions have 44px touch targets`);
+  const oldTheme=await page.locator('html').getAttribute('data-theme');
+  await page.locator('html').evaluate(el=>el.dataset.theme='dark');
+  await page.screenshot({path:path.join(output,`campus-home-dark-${width}.png`),animations:'disabled'});
+  await page.locator('html').evaluate((el,theme)=>{if(theme)el.setAttribute('data-theme',theme);else el.removeAttribute('data-theme')},oldTheme);
+  await page.locator('.life-utilities').scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(output,`campus-home-services-${width}.png`),animations:'disabled'});
+  await page.locator('main').evaluate(el=>el.scrollTop=0);
+  await page.locator('.home-timeline-toggle').click();
+  const timelineClear=await page.locator('.home-timeline').evaluate(el=>el.getBoundingClientRect().bottom<=document.querySelector('.home-study-links').getBoundingClientRect().top);
+  assert(timelineClear,`${width}: expanded timeline stays above study actions`);
   await page.locator('.home-timeline button').click();
   assert(await page.getByRole('dialog').getByRole('heading',{name:'大学物理',exact:true}).isVisible(),`${width}: retained home timeline opens course details`);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
@@ -185,7 +218,7 @@ try{
 
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'课表',exact:true}).click();
   await page.getByText('人工 UI 链路课程',{exact:true}).first().waitFor();
-  assert(await page.locator('.floating-nav button').count()===4,`${width}: four navigation tabs`);
+  assert(await page.locator('.floating-nav button').count()===5,`${width}: five navigation tabs`);
   assert(await page.getByRole('button',{name:'打开侧边栏',exact:true}).count()===0,`${width}: no duplicate hamburger navigation`);
   assert(await page.getByRole('button',{name:'添加个人事项',exact:true}).count()===1,`${width}: compact timetable header add action`);
   const historyLength=await page.evaluate(()=>history.length);
@@ -445,12 +478,14 @@ try{
   await page.getByRole('button',{name:'重新连接学习通',exact:true}).waitFor();
   assert(await page.locator('.learning-work').count()===1,`${width}: expired session retains cached homework`);
   await nav('我的').click();
+  await page.getByRole('button',{name:'设置与帮助',exact:true}).click();
   assert(await page.locator('.task-settings').count()===1,`${width}: reminders and backup moved to profile`);
-  await page.locator('.school-account-details>summary').click();
+  await page.getByRole('button',{name:'返回上一页',exact:true}).click();
+  await page.locator('.school-summary').click();
   await page.getByRole('button',{name:'退出学校账号',exact:true}).click();
   await page.getByRole('button',{name:'连接',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: school logout preserves personal tasks`);
-  await page.getByRole('button',{name:/^学习通 作业、课程与账号管理/}).click();
+  await page.locator('.profile-accounts').getByRole('button',{name:'学习通',exact:true}).click();
   await page.getByRole('button',{name:'同步管理',exact:true}).click();
   await page.locator('.learning-manage-details>summary').click();
   await page.getByRole('button',{name:'退出学习通连接',exact:true}).click();
@@ -512,6 +547,7 @@ try{
   await walletDialog.getByRole('button',{name:'关闭',exact:true}).click();
   await nav('我的').click();
   await page.evaluate(()=>{window.__updateState={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:true,mandatory:false,checkedAt:Date.now(),release:{versionCode:102,versionName:'1.0.2',sizeBytes:12000000,notes:['人工更新测试：修复日程显示','人工更新测试：完善下载流程']}}});
+  await page.getByRole('button',{name:'设置与帮助',exact:true}).click();
   await page.getByRole('button',{name:/检查更新 当前版本/}).click();
   const updateDialog=page.getByRole('dialog',{name:'发现新版本',exact:true});await updateDialog.waitFor();
   assert(await page.locator('.app-shell').evaluate(el=>el.inert),`${width}: update dialog makes underlying app inert`);
@@ -534,6 +570,7 @@ try{
    window.__updateState={currentVersion:'1.2',currentCode:133,stage:'idle',progress:0,error:'',available:true,mandatory:false,checkedAt:Date.now(),release:{versionCode:145,versionName:'1.2.1',sizeBytes:12426271,notes:['人工测试：手动检查应有反馈']}};
   });
   await page.reload();await nav('我的').click();
+  await page.getByRole('button',{name:'设置与帮助',exact:true}).click();
   await page.getByRole('button',{name:/检查更新 当前版本/}).click();
   const waterUpdate=page.locator('.update-dialog');await waterUpdate.waitFor();
   assert(await waterUpdate.getByText(/检测到未结束的接水记录/).isVisible(),`${width}: stale water record explains manual update deferral`);

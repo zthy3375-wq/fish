@@ -1,19 +1,31 @@
 # 邯院通 · Hanyuantong
 
-面向邯郸学院学生的独立校园应用。当前维护 Android 和原生 iPhone 两端。
+面向邯郸学院学生的独立校园应用。当前优先开发 Android；保留原生 iPhone 成果，待安卓体验稳定后再移植新增改动。
 
 ## 当前开发基线
+
+苹果端最低支持 **iOS 16.0**。所有者于2026-11-17取消iOS15.4兼容；对应兼容分支及未签名测试IPA停止使用，后续开发以本基线为准。
 
 | 项目 | 状态 |
 | --- | --- |
 | Android 线上版本 | 1.2.4 / 150，已发布强制更新；最低支持版本 150 |
-| 本分支 Android | 1.2.4 / 150，包含按周调课、接水与同步修复，原签名覆盖安装 |
+| Android 正式版源码 | 1.3.0 / 184。包含校园社区、荣誉与成就、新版个人页和 QQ 交流群入口 |
 | iPhone | `ios-native/` 原生 Swift/SwiftUI，最低 iOS 16；模拟器与未签名构建验证，不等于真机可安装 |
-| 开发分支 | main 集成当前发布版本；后续开发使用独立分支 |
+| 集成分支 | `main`。版本合并与面向用户的更新推送独立进行 |
 
-[1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
+[身份荣誉与成就](docs/community-honors/README.md) · [schema 10 后台启用](docs/COMMUNITY-ACTIVATION-20261116.md) · [阅读与发帖设计](docs/COMMUNITY-READING-DESIGN.md) · [关注、粉丝与私信](docs/COMMUNITY-MESSAGES.md) · [安卓社区页面优化](docs/COMMUNITY-ANDROID-POLISH.md) · [搭子招募](docs/COMMUNITY-BUDDIES.md) · [投票与评论配图](docs/COMMUNITY-POLLS-COMMENTS.md) · [关注用户与动态](docs/COMMUNITY-FOLLOWING.md) · [兴趣分区与首页整理](docs/COMMUNITY-DISCOVERY.md) · [头像与轻量回应](docs/COMMUNITY-PARTICIPATION.md) · [社区回访功能与验证](docs/COMMUNITY-RETURN.md) · [树洞开发与验证](docs/TREEHOLE.md) · [1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
+
+[产品优化交付与截图](docs/product-quality/RESULTS.md) · [设计规范](DESIGN.md) · [验证记录](docs/product-quality/VALIDATION.md)
+
+[本轮管理中心范围](docs/admin-center/BRIEF.md) · [验证与上线边界](docs/admin-center/VALIDATION.md) · [管理中心复核](docs/admin-center/FINISH-REVIEW.md)
+
+[上一轮社区设计与范围](docs/community-redesign/BRIEF.md) · [社区验证与APK证据](docs/community-redesign/VALIDATION.md) · [社区独立复核](docs/community-redesign/FINISH-REVIEW.md)
+
+[上一轮首页设计与范围](docs/home-redesign/BRIEF.md) · [验证记录](docs/home-redesign/VALIDATION.md)
 
 ## 功能与架构
+
+最新 [test.18 社区与触控验收](docs/community-redesign/VALIDATION.md)：社区215、私信/粉丝27、触控72项通过；本轮改动与设备待验范围见记录。历史[test.15复核](docs/COMMUNITY-TEST15-REVIEW.md)保留供追溯。
 
 | 模块 | Android | iPhone |
 | --- | --- | --- |
@@ -21,12 +33,13 @@
 | 教务 | 官方登录、课表、成绩、考试、离线缓存 | 对应原生实现；真实账号与设备待验收 |
 | 学习通 | 官方登录、按课程读取、验证码恢复 | 原生读取与本机计划；真实完整性待验收 |
 | 校园生活 | 趣智、胖乖、扫码与订单状态 | 原生钱包与扫码；支付 SDK、签约和蓝牙走官方入口 |
+| 社区内测 | 独立账号、四主分区与兴趣标签、图文、昵称/匿名、楼中楼、头像上传、轻量回应、互动消息、参与/关注讨论、公开主页、举报屏蔽 | 原生对应实现；完整 CI 和真机验收状态见验证记录 |
 | 个人安排 | 多学期课表、待办、备份、提醒、小组件 | 课表、待办、兼容备份、通知与 WidgetKit；真机能力配置待验收 |
 | 快递与地图 | 官方 App 出库入口、离线校园平面图 | 官方页面与原生取件展示试验、校园平面图；真实取件待验收 |
 
 学校缓存和个人数据独立。登录密码在官方页面输入，原生会话不暴露给界面。读取失败保留同账号、同学期的成功记录。考试按学期隔离，成绩历史独立于课表学期。不会通过查询状态自动创建新订单或重复启动设备。
 
-当前 Android 架构继续维护，iPhone 使用 Swift，Flutter 验证分支停止开发。社区功能尚未实现。正式 Android 包名 `org.handancampus.app`，覆盖升级必须使用原签名。
+当前 Android 架构继续维护，iPhone 使用 Swift，Flutter 验证分支停止开发。本分支已实现独立邯院通账号与分区图文树洞，支持昵称或匿名、评论、举报及后台管理；使用本版可用账号和密码直接注册。正式 Android 包名 `org.handancampus.app`，覆盖升级必须使用原签名。
 
 ## 开发与验证
 

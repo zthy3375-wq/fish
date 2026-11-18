@@ -1,0 +1,14 @@
+{
+  "version": "1.3.0-test.16",
+  "versionCode": 166,
+  "package": "org.handancampus.app",
+  "bytes": 12491982,
+  "sha256": "df606edd471e324af3766a5c556419ec697eb085987301008158c166e87162e3",
+  "originalCertificate": true,
+  "signatures": "v1/v2/v3 verified",
+  "debuggable": false,
+  "embeddedFilesVerified": 30,
+  "releaseTests": 193,
+  "deviceInstallVerified": false,
+  "published": false
+}

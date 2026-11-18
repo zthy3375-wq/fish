@@ -18,7 +18,7 @@ class PangguaiWaterTest {
     }
     @Test fun nonWorkingPreflightAfterArchiveStillRequiresFreshAvailabilityAndNeverReplaysOldOrder(){
         val h=Harness();val old=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
-        val archived=h.engine.archiveUnverified(old,true);h.readingPhase="idle"
+        val archived=h.dismiss(old,true);h.readingPhase="idle"
         h.handler={p,_->if(p=="goods/water/sync"&&h.readingPhase=="idle")JSONObject("{workStatus:1}")else h.response(p)}
         val result=h.engine.start(device,h.engine.prepare(device,"outlet-test"),archived)
         assertEquals("using",result.getString("phase"));assertEquals(2,h.count("goods/water/unlock"))
@@ -26,16 +26,16 @@ class PangguaiWaterTest {
     }
     @Test fun localArchiveRequiresExplicitObservationAndNeverSendsCommands(){
         val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
-        h.calls.clear();fails("WATER_CONFIRM_REQUIRED"){h.engine.archiveUnverified(s,false)}
+        h.calls.clear();fails("WATER_CONFIRM_REQUIRED"){h.dismiss(s,false)}
         assertEquals("using",h.saved!!.getString("phase"))
-        val result=h.engine.archiveUnverified(s,true)
+        val result=h.dismiss(s,true)
         assertEquals("archived_unverified",result.getString("phase"));assertEquals("water-order",result.getString("orderNo"))
         assertFalse(result.optBoolean("deviceEnded"));assertFalse(result.optBoolean("billConfirmed"));assertFalse(result.has("endedAt"))
         assertTrue(h.calls.isEmpty());h.engine.poll(result);h.engine.end(result);assertTrue(h.calls.isEmpty())
     }
     @Test fun localArchiveDoesNotBypassFreshDeviceBusyCheck(){
         val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
-        val archived=h.engine.archiveUnverified(s,true);val quote=h.engine.prepare(device,"outlet-test")
+        val archived=h.dismiss(s,true);val quote=h.engine.prepare(device,"outlet-test")
         fails("DEVICE_BUSY"){h.engine.start(device,quote,archived)}
         assertEquals(1,h.count("goods/water/unlock"))
         h.readingPhase="idle";h.engine.start(device,h.engine.prepare(device,"outlet-test"),archived)
@@ -43,13 +43,39 @@ class PangguaiWaterTest {
     }
     @Test fun incompleteDeviceResponseCannotUnlockAfterLocalArchive(){
         val h=Harness();val s=h.engine.start(device,h.engine.prepare(device,"outlet-test"),null)
-        val archived=h.engine.archiveUnverified(s,true);val quote=h.engine.prepare(device,"outlet-test")
+        val archived=h.dismiss(s,true);val quote=h.engine.prepare(device,"outlet-test")
         h.handler={p,_->if(p=="goods/water/sync")JSONObject() else h.response(p)}
         fails("WATER_WAIT"){h.engine.start(device,quote,archived)}
         assertEquals(1,h.count("goods/water/unlock"));assertEquals(1,h.count("payChannelRoute/addUserAfterPayChannel"))
     }
+    @Test fun recoverFromFullLegacyArchiveOfflineAndReopenWithoutGrowingHistory(){
+        val rows=JSONArray()
+        repeat(100){rows.put(JSONObject().put("id","legacy-$it").put("orderNo","order-$it"))}
+        val state=JSONObject().put("expired",true).put("waterHistory",rows)
+            .put("water",JSONObject("{id:'stuck',skuId:'test',phase:'using',orderNo:'old',error:'WATER_OWNERSHIP'}"))
+        val restored=JSONObject(PangguaiWater.dismissAfterStop(state,"stuck",true,2000).toString())
+        val record=restored.getJSONObject("water")
+        assertEquals("archived_unverified",record.getString("phase"));assertEquals("old",record.getString("orderNo"))
+        assertEquals(rows.toString(),restored.getJSONArray("waterHistory").toString())
+        assertEquals("using",state.getJSONObject("water").getString("phase"))
+        assertFalse(record.has("endedAt"));assertFalse(record.has("amount"));assertFalse(record.has("billConfirmed"))
+        assertSame(restored,PangguaiWater.dismissAfterStop(restored,"stuck",true,3000))
+    }
+    @Test fun staleConfirmationCannotDismissAnotherSessionOrInterruptBilling(){
+        val state=JSONObject().put("water",JSONObject("{id:'new',phase:'using'}"))
+        fails("ORDER_MISMATCH"){PangguaiWater.dismissAfterStop(state,"old",true,1)}
+        for(phase in listOf("ended","settling","settled","ended_zero","closed_unknown")){
+            state.getJSONObject("water").put("phase",phase)
+            fails("WATER_STATE_CHANGED"){PangguaiWater.dismissAfterStop(state,"new",true,1)}
+            assertEquals(phase,state.getJSONObject("water").getString("phase"))
+        }
+    }
     private val device=JSONObject("{id:'water-device',category:'04',routeShopId:'42'}")
     private class Harness {
+        fun dismiss(s:JSONObject,confirmed:Boolean):JSONObject {
+            val next=PangguaiWater.dismissAfterStop(JSONObject().put("water",s),s.getString("id"),confirmed,1000)
+            return next.getJSONObject("water").also{saved=it}
+        }
         var saved:JSONObject?=null;var readingPhase="idle";var finish=true;var channel=true;var amount:Any=1
         var paid=false;var orderExists=false;var identity="water-order";var billSku="outlet-test"
         val calls=mutableListOf<Pair<String,Map<String,String>>>()

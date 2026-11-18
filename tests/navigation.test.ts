@@ -7,7 +7,7 @@ import {useNavigation} from '../src/composables/navigation';
 describe('导航返回路径',()=>{
  it('五个 Tab 连续切换不会留下返回堆栈',()=>{
   const n=new NavigationStack(parseRoute('#/home'));
-  for(let i=0;i<20;i++){n.move('schedule');n.move('tasks');n.move('profile');n.move('academic');n.move('home')}
+  for(let i=0;i<20;i++){n.move('schedule');n.move('community');expect(n.parents).toEqual([]);n.move('tasks');n.move('profile');n.move('academic');n.move('home')}
   expect(n.parents).toEqual([]);expect(n.canBack()).toBe(false);
  });
  it.each(['home','academic','profile'] as const)('二级页返回原入口 %s',page=>{
@@ -18,6 +18,11 @@ describe('导航返回路径',()=>{
  });
  it('点击一级 Tab 丢弃上个二级页返回路径',()=>{
   const n=new NavigationStack(parseRoute('#/home'));n.move('academic','grades');n.move('profile');n.back();expect(n.route.page).toBe('home');
+ });
+ it('个人设置深链接和弹窗逐级返回个人总览',()=>{
+  const n=new NavigationStack(parseRoute('#/profile/settings'));
+  expect(n.route.section).toBe('settings');n.overlay='about';
+  n.back();expect(n.route.section).toBe('settings');n.back();expect(n.route).toEqual(parseRoute('#/profile'));
  });
  it('深链接返回教务根页，旧课表地址归一到课表 Tab',()=>{
   const n=new NavigationStack(parseRoute('#/academic/exams'));n.back();expect(n.route).toEqual({page:'academic',section:'overview'});expect(parseRoute('#/academic/schedule')).toEqual({page:'schedule',section:'schedule'});
@@ -33,8 +38,8 @@ describe('浏览器与 Android 共用导航适配',()=>{
  function navigateMany(){nav.move('profile');nav.move('academic');nav.move('schedule')}
  it('浏览器返回连续处理弹窗和原入口，边界标记始终保留',async()=>{
   nav.move('academic','grades');nav.open('notifications');
-  history.back();await new Promise(r=>setTimeout(r,25));await nextTick();expect(nav.overlay.value).toBe('');expect(nav.section.value).toBe('grades');
-  history.back();await new Promise(r=>setTimeout(r,25));expect(nav.page.value).toBe('home');
+  history.back();await vi.waitFor(()=>expect(nav.overlay.value).toBe(''));await nextTick();expect(nav.section.value).toBe('grades');
+  history.back();await vi.waitFor(()=>expect(nav.page.value).toBe('home'));
  });
  it('任务详情和放弃确认优先消费返回，不影响课程弹窗守卫',()=>{nav.move('academic','agenda');const guard=vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(true).mockReturnValue(false);nav.setBeforeBack(guard);nav.back();nav.back();expect(nav.section.value).toBe('agenda');nav.back();expect(nav.section.value).toBe('overview')});
  it('未保存编辑阻止系统返回，确认取消后正常关闭',()=>{

@@ -1,0 +1,20 @@
+<script setup lang="ts">
+import {computed,onUnmounted,ref,watch} from 'vue';
+import {byCode} from '../../domain/globalAchievements';
+const props=defineProps<{canOpen?:boolean;codes:string[];sound:boolean;motion:boolean;haptics:boolean}>();
+const emit=defineEmits<{open:[string];seen:[string];shown:[string]}>();
+const first=computed(()=>byCode.get(props.codes[0])),timer=ref<number>();
+function feedback(){if(props.haptics)try{navigator.vibrate?.(16);}catch{}if(!props.sound)return;
+ try{const ctx=new AudioContext();const oscillator=ctx.createOscillator(),gain=ctx.createGain();oscillator.type='sine';oscillator.frequency.setValueAtTime(740,ctx.currentTime);oscillator.frequency.setValueAtTime(990,ctx.currentTime+.09);gain.gain.setValueAtTime(.035,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.24);oscillator.connect(gain);gain.connect(ctx.destination);oscillator.start();oscillator.stop(ctx.currentTime+.25);oscillator.onended=()=>{void ctx.close();};}catch{}}
+watch(()=>props.codes[0],code=>{clearTimeout(timer.value);if(!code)return;emit('shown',code);feedback();timer.value=window.setTimeout(()=>emit('seen',code),3400);},{immediate:true});
+function open(){
+ const code=first.value?.code;if(!code||!props.canOpen)return;
+ clearTimeout(timer.value);emit('seen',code);emit('open',code);
+}
+onUnmounted(()=>clearTimeout(timer.value));
+</script>
+<template><Teleport to="body"><aside v-if="first" :key="first.code" class="unlock-toast" :class="{quiet:!motion}" role="status" aria-live="polite"><div class="medal"><component :is="first.icon" :size="28"/></div><div><small>成就已解锁 ✧</small><strong>{{first.name}}</strong><span>{{first.description}}</span></div><button v-if="canOpen" type="button" class="notice-open" @click="open">去收藏馆</button><i aria-hidden="true"/><b aria-hidden="true">✧</b></aside></Teleport></template>
+<style scoped>
+.unlock-toast{pointer-events:none;position:fixed;z-index:10000;top:calc(env(safe-area-inset-top) + 12px);left:50%;transform:translateX(-50%);width:min(90vw,370px);box-sizing:border-box;display:flex;align-items:center;gap:13px;background:#fffaf1;color:#3d3122;border:1px solid #e5d6b7;border-radius:18px;padding:14px 18px 17px;box-shadow:0 6px 26px #73592121;overflow:hidden;animation:unlock-in .38s cubic-bezier(.2,.8,.2,1)}.medal{display:grid;place-items:center;min-width:48px;min-height:48px;border-radius:14px;background:#fff0c6;color:#99631e;animation:glow .85s ease-out}.unlock-toast strong,.unlock-toast span,.unlock-toast small{display:block}.unlock-toast strong{font-size:18px}.unlock-toast small,.unlock-toast span{font-size:12px}.unlock-toast i{position:absolute;inset:auto 12px 5px;height:3px;border-radius:8px;background:#d9a23d;transform-origin:left;animation:unlock-time 3.4s linear forwards}.unlock-toast b{position:absolute;left:55px;top:8px;color:#d49a32;opacity:0;text-shadow:13px 6px #d6ab55,-23px 8px #d6ab55;animation:sparks .75s ease-out}.unlock-toast.quiet,.quiet *{animation:none!important}@keyframes unlock-in{from{opacity:0;transform:translate(-50%,-10px) scale(.96)}}@keyframes unlock-time{to{transform:scaleX(0)}}@keyframes glow{50%{box-shadow:0 0 18px #f3c76788;transform:scale(1.09)}}@keyframes sparks{35%{opacity:1}to{transform:translateY(-7px) scale(1.22);opacity:0}}@media(prefers-reduced-motion:reduce){.unlock-toast,.unlock-toast *{animation:none!important}}
+.notice-open{pointer-events:auto;flex:none;align-self:center;margin-left:auto;min-height:42px;border:0;border-radius:9px;padding:0 5px;background:transparent;color:#775326;font-size:12px;font-weight:600}.notice-open:focus-visible{outline:2px solid currentColor}
+</style>

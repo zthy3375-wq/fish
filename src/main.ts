@@ -21,3 +21,7 @@ import './interface.css';
 import './campus-home.css';
 
 import './profile.css';
+
+// Shared product primitives load after legacy page layouts.
+import './product.css';
+import './home-dashboard.css';

@@ -27,6 +27,20 @@ internal class PangguaiWater(
                 .put("orgId","0").put("promotionId","0").put("promotionType",type))
             return rows.toString()
         }
+        /** Drop the local scan lock atomically; preserve the original order and all older history. */
+        fun dismissAfterStop(state:JSONObject,sessionId:String?,confirmedStopped:Boolean,timestamp:Long):JSONObject {
+            if(!confirmedStopped)throw PangguaiFailure("WATER_CONFIRM_REQUIRED")
+            val current=state.optJSONObject("water")
+            if(sessionId.isNullOrBlank()||current==null||text(current,"id")!=sessionId)throw PangguaiFailure("ORDER_MISMATCH")
+            val phase=text(current,"phase")
+            if(phase=="archived_unverified")return state
+            if(phase !in setOf("starting","using","ending"))throw PangguaiFailure("WATER_STATE_CHANGED")
+            val record=JSONObject(current.toString()).put("phase","archived_unverified")
+                .put("archivedAt",timestamp).put("updatedAt",timestamp).put("remoteEnd",false)
+                .put("endBasis","user_reported_stop").put("error","WATER_UNVERIFIED")
+            // Retain the last session in its original slot. New dismissals don't grow the legacy archive.
+            return JSONObject(state.toString()).put("water",record)
+        }
         fun view(s:JSONObject?):JSONObject? {
             if(s==null)return null
             val out=JSONObject()
@@ -197,16 +211,6 @@ internal class PangguaiWater(
             if(post("goods/endWater",mapOf("goodsId" to req(s,"deviceId")))!=true)throw PangguaiFailure("WATER_PHYSICAL_END")
         }catch(e:Exception){s.put("error",(e as? PangguaiFailure)?.kind ?: "NETWORK");save(s);throw e}
         return poll(s)
-    }
-    /** Local-only escape hatch. User observation is NOT device-end or payment evidence. */
-    fun archiveUnverified(source:JSONObject,confirmedStopped:Boolean):JSONObject {
-        if(!confirmedStopped)throw PangguaiFailure("WATER_CONFIRM_REQUIRED")
-        val s=JSONObject(source.toString())
-        if(text(s,"phase") in terminal)return s
-        s.put("phase","archived_unverified").put("archivedAt",now()).put("updatedAt",now())
-            .put("remoteEnd",false).put("endBasis","user_reported_stop").put("error","WATER_UNVERIFIED")
-        // Keep identifiers/command-intents for audit; do not invent endedAt/deviceEnded/billConfirmed.
-        save(s);return s
     }
     /** Explicit recovery only after user reports using the physical settlement button. Never sends commands. */
     fun confirmPhysicalEnd(source:JSONObject):JSONObject {

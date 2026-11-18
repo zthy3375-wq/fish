@@ -7,7 +7,6 @@ import {pangguaiNative,type PangguaiSnapshot} from '../src/services/pangguai-cli
 
 // Exercise the real composable and its native rejection/snapshot path, not a stubbed startWater.
 vi.mock('@capacitor/app',()=>({App:{addListener:vi.fn(async()=>({remove:vi.fn()}))}}));
-vi.mock('../src/composables/analytics',()=>({recordFeature:vi.fn(async()=>{})}));
 vi.mock('../src/services/pangguai-client',async importOriginal=>({
  ...(await importOriginal<typeof import('../src/services/pangguai-client')>()),
  pangguaiSupported:()=>true,

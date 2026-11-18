@@ -25,3 +25,16 @@ it('clears account display after logout',async()=>{vi.mocked(disconnectPangguai)
 it('shows unknown amounts as unknown rather than zero',async()=>{pangguai.value.tickets![0]!.balance=null;await nextTick();expect(root.querySelector('.pg-balance')!.textContent).toContain('暂未获取')});
 it('does not perform scan automatically',()=>{expect(scanPangguai).not.toHaveBeenCalled()});
 it('waits for pending bridge work before refreshing a recharge return',async()=>{let finish!:(v:{opened:boolean})=>void;vi.mocked(rechargePangguai).mockImplementation(()=>{pgBusy.value=true;return new Promise(resolve=>{finish=resolve})});button('充值').click();await nextTick();button('前往付款').click();await settle();lifecycle.callback!({isActive:true});expect(refreshPangguai).not.toHaveBeenCalled();pgBusy.value=false;finish({opened:true});await settle();await vi.advanceTimersByTimeAsync(250);expect(refreshPangguai).toHaveBeenCalledTimes(1)});
+
+it('moves the three legacy archived rows off the scan screen across reopen, with original order numbers in recent activity',async()=>{
+ const old={id:'old',deviceId:'water',deviceName:'旧饮水机',outlet:'饮水',feature:'',paymentName:'',phase:'archived_unverified',remoteEnd:false,updatedAt:1};
+ pangguai.value.waterHistory=[1,2,3].map(i=>({...old,id:String(i),orderNo:'legacy-order-'+i}));pangguai.value.water=pangguai.value.waterHistory[2];await settle();
+ for(let i=0;i<2;i++){
+   expect(root.textContent).not.toContain('待核实');expect(root.textContent).not.toContain('legacy-order-');expect(button('扫码识别设备').disabled).toBe(false);
+   button('最近消费').click();await settle();
+   const details=root.querySelector<HTMLDetailsElement>('details.pg-archived-water');
+   expect(details).not.toBeNull();expect(details!.open).toBe(false);details!.querySelector('summary')!.click();await settle();
+   expect(details!.querySelectorAll('li')).toHaveLength(3);expect(details!.textContent).toContain('legacy-order-3');
+   app.unmount();app=createApp({render:()=>h(PangguaiWallet)});app.mount(root);await settle();
+ }
+});

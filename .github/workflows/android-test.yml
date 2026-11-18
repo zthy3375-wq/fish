@@ -134,10 +134,25 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium
+      - run: bash scripts/install-ui-fonts.sh
       - run: node scripts/academic-browser-check.mjs
+      - run: npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund
+      - run: node scripts/admin-browser-check.mjs
+      - run: node scripts/treehole-browser-check.mjs
+      - run: node scripts/community-messages-browser-check.mjs
+      - name: Community preview and touch regression
+        run: |
+          node scripts/treehole-preview.mjs /tmp/community-review-preview.html
+          node scripts/treehole-preview-check.mjs /tmp/community-review-preview.html
+          node scripts/treehole-touch-check.mjs /tmp/community-review-preview.html
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: handan-campus-browser-checks-${{ github.sha }}
-          path: /tmp/handan-v050-qa
+          path: |
+            /tmp/handan-admin-center-qa
+            /tmp/handan-v050-qa
+            /tmp/handan-treehole-*-qa
+            /tmp/handan-community-*-qa
+            /tmp/handan-community-*-preview
           if-no-files-found: warn

@@ -4,6 +4,20 @@
 
 ## 当前维护入口
 
+- [所有者账号首次管理员绑定](COMMUNITY-MODERATOR-BINDING.md)
+- [Android test.15 浏览器与触控复核](COMMUNITY-TEST15-REVIEW.md)
+- [schema 10 内测后台启用](COMMUNITY-ACTIVATION-20261116.md)
+- [社区阅读与发帖设计（test.15）](COMMUNITY-READING-DESIGN.md)
+- [关注、粉丝与文字私信（test.14）](COMMUNITY-MESSAGES.md)
+- [关注用户与关注动态（test.10）](COMMUNITY-FOLLOWING.md)
+- [兴趣分区与社区首页（test.9）](COMMUNITY-DISCOVERY.md)
+- [头像上传与轻量回应（test.8）](COMMUNITY-PARTICIPATION.md)
+- [互动消息与讨论回访（test.7）](COMMUNITY-RETURN.md)
+- [搭子招募（test.12）](COMMUNITY-BUDDIES.md)
+- [投票帖与评论配图（test.11）](COMMUNITY-POLLS-COMMENTS.md)
+- [校园泛娱乐社区方向与后续范围](COMMUNITY-DIRECTION.md)
+- [树洞账号、匿名规则与内测验证](TREEHOLE.md)
+
 - [两端整理与验收清单](ANDROID-IOS-REVIEW-20261114.md)
 - [苹果工程与构建](../ios-native/README.md)
 

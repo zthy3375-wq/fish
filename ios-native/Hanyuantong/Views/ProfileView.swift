@@ -16,6 +16,9 @@ struct ProfileView: View {
                                         academicMajor: store.academicProfile?.major, academicClass: store.academicProfile?.className)
                     .padding(.vertical, 12)
             }
+            Section("邯院通账号") {
+                Button { store.selectedTab = .community } label: { Label("账号与树洞 · 昵称与匿名交流", systemImage: "bubble.left.and.bubble.right") }
+            }
             Section("教务系统") {
                 if store.isBusy { Button("取消本次查询", role: .cancel) { store.cancelSchool() } }
                 if !store.semesters.isEmpty {
@@ -71,7 +74,7 @@ struct ProfileView: View {
                 Text("学习 · 生活 · 校园")
                 Text("iPhone 原生开发版。教务数据以学校官方系统为准；各服务需独立登录，真实账号和设备联调尚待完成。").font(.caption).foregroundStyle(CampusTheme.muted)
                 NavigationLink("隐私与本机数据") { PrivacyView() }
-                NavigationLink("匿名使用统计") { AnonymousAnalyticsSettingsView(store: analytics) }
+                if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
                 NavigationLink("帮助与反馈") { NativeHelpView() }
             }
         }.scrollContentBackground(.hidden).background(CampusTheme.background).navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
@@ -130,7 +133,8 @@ private struct LegacyPersonalCalendarView: View {
 struct PrivacyView: View {
     var body: some View {
         List {
-            Section("学校账号") { Text("请只在学校官方登录页面输入账号和密码。邯院通不会提供自制密码输入框。") }
+            Section("学校账号") { Text("请只在学校官方登录页面输入账号和密码。学校登录不会使用自制密码输入框。") }
+            Section("树洞与邯院通账号") { Text(TreeholeView.rules) }
             Section("本机数据") { Text("个人课程与待办保存在本机。断开教务连接会清除教务会话与教务缓存，保留个人记录。") }
             Section("服务状态") { Text("当前为 iPhone 原生开发版，尚未完成全部 Android 功能迁移。第三方服务需由用户主动连接；付款和设备操作须核对确认，以平台实际状态为准。") }
         }.navigationTitle("隐私与本机数据").navigationBarTitleDisplayMode(.inline)

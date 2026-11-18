@@ -15,6 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci
       - name: Test analytics contracts
         run: node --test cloudbase/tests/*.verify.mjs
       - name: Install official CLI
