@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {record} from "../services/achievementJournal";
 import {computed,onMounted,onUnmounted,ref} from 'vue';
 import {App} from '@capacitor/app';
 import type {PluginListenerHandle} from '@capacitor/core';
@@ -22,11 +23,11 @@ const archivedWater=computed(()=>{
 let listener:PluginListenerHandle|undefined,disposed=false,awaitingReturn=false,active=true;
 let retry:ReturnType<typeof setTimeout>|undefined;
 function updated(value?:number){return value?new Date(value).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Shanghai'}):'尚未更新'}
-async function scan(){const result=await scanPangguai();if(!disposed&&result)device.value=result}
+async function scan(){const result=await scanPangguai();if(!disposed&&result){device.value=result;if(result.category==="04"&&result.id&&!result.issue)void record("water")}}
 async function recharge(){const target=confirm.value;if(!target)return;confirm.value=undefined;awaitingReturn=true;const result=await rechargePangguai(target.id);if(!result?.opened)awaitingReturn=false}
 async function resume(){clearTimeout(retry);if(disposed||!active)return;if(awaitingReturn&&pgBusy.value){retry=setTimeout(()=>void resume(),250);return}if(awaitingReturn){awaitingReturn=false;notice.value='已返回，请核对商户余额与支付订单';await refreshPangguai()}else await refreshPangguai(true)}
 async function signOut(){logout.value=false;await disconnectPangguai();if(!pangguai.value.connected){device.value=undefined;notice.value='';awaitingReturn=false}}
-onMounted(async()=>{await initPangguai();if(disposed)return;await refreshPangguai(true);if(disposed)return;try{const handle=await App.addListener('appStateChange',({isActive})=>{active=isActive;if(isActive)void resume();else clearTimeout(retry)});if(disposed)void handle.remove();else listener=handle}catch{}});
+onMounted(async()=>{void record("laundry");await initPangguai();if(disposed)return;await refreshPangguai(true);if(disposed)return;try{const handle=await App.addListener('appStateChange',({isActive})=>{active=isActive;if(isActive)void resume();else clearTimeout(retry)});if(disposed)void handle.remove();else listener=handle}catch{}});
 onUnmounted(()=>{disposed=true;clearTimeout(retry);void listener?.remove()});
 </script>
 <template>

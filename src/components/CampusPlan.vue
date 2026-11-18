@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import {record} from '../services/achievementJournal';
 import {onMounted,onUnmounted,ref,watch} from 'vue';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 const campus=ref<'east'|'west'>('west'),element=ref<HTMLElement>(),imageFailed=ref(false);
 let map:L.Map|undefined,overlay:L.ImageOverlay|undefined,resize:ResizeObserver|undefined;
 function fullView(){if(!map)return;const h=campus.value==='west'?1222:1536,w=campus.value==='west'?864:709;map.fitBounds([[0,0],[h,w]],{animate:false,padding:[8,8]})}
-function load(){if(!map)return;overlay?.remove();imageFailed.value=false;const west=campus.value==='west',width=west?864:709,height=west?1222:1536;overlay=L.imageOverlay(`/campus/${campus.value}-plan.jpg`,[[0,0],[height,width]]).on('error',()=>{imageFailed.value=true}).addTo(map);fullView()}
+function load(){if(!map)return;overlay?.remove();imageFailed.value=false;const west=campus.value==='west',width=west?864:709,height=west?1222:1536;overlay=L.imageOverlay(`/campus/${campus.value}-plan.jpg`,[[0,0],[height,width]]).on('load',()=>{if(map&&element.value?.isConnected)void record('map')}).on('error',()=>{imageFailed.value=true}).addTo(map);fullView()}
 watch(campus,load);
 onMounted(()=>{if(!element.value)return;map=L.map(element.value,{crs:L.CRS.Simple,zoomAnimation:false,fadeAnimation:false,zoomSnap:.1,minZoom:-3,maxZoom:3,attributionControl:false});load();resize=new ResizeObserver(()=>map?.invalidateSize({pan:false}));resize.observe(element.value)});
 onUnmounted(()=>{resize?.disconnect();map?.remove()});

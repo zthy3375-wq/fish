@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {record,feedback,privatePins,localQueue,dismiss} from './services/achievementJournal';
+import {schoolView} from './services/achievementEvidence';
+import {byCode} from './domain/globalAchievements';
+import AchievementNotice from './components/honors/AchievementNotice.vue';
 import {foregroundRefresh} from './services/foreground-refresh';
 import {keyboardViewport} from './services/keyboard-viewport';
 import {widgetSupported,widgetSnapshot,publishWidget,widgetTarget} from './services/course-widget';
@@ -20,6 +24,7 @@ const Treehole=defineAsyncComponent(()=>import('./components/Treehole.vue'));
 const communityAccountEntry=ref(false);
 const treeholeRef=ref<{requestBack:()=>boolean;refresh:()=>void}>();
 const treeholeTabNavigation=ref(true);
+const GlobalCollection=defineAsyncComponent(()=>import('./components/honors/GlobalCollection.vue'));
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
 const PangguaiWallet=defineAsyncComponent(()=>import('./components/PangguaiWallet.vue'));
 const CampusMap=defineAsyncComponent(()=>import('./components/CampusMap.vue'));
@@ -45,7 +50,7 @@ import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { App as NativeApp } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
-  GraduationCap,
+  Trophy, Fish, GraduationCap,
   BookOpen,
   CalendarDays,
   ChartNoAxesColumnIncreasing,
@@ -262,7 +267,8 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
 const taskDetailRef=ref<InstanceType<typeof TaskDetail>>();
 function planLearning(task:CampusTask){taskDetailRef.value?.edit(task)}
 function editDailyTask(task?:CampusTask,day?:string){taskDetailRef.value?.edit(task,day)}
-setBeforeBack(()=>!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false);
+const globalCollectionRef=ref<InstanceType<typeof GlobalCollection>>();
+setBeforeBack(()=>globalCollectionRef.value?.closeDetail()||(!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false));
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
   if (modal.value==='school-course-adjustment') {if(editorBusy.value)return false;if(adjustmentRef.value?.hasChanges()){adjustmentRef.value.requestCancel();return false;}}
@@ -389,14 +395,14 @@ const title = computed(() =>
     ? "今天"
     : page.value === "community" ? "树洞" : page.value === "life" ? "校园生活" : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
       ? sectionNames[section.value]
-      : "我的",
+      : section.value==="honors"?"荣誉殿堂":"我的",
 );
 const subtitle = computed(() =>
   page.value === "home"
     ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
     : page.value === "community" ? "邯院通账号 · 昵称或匿名发言" : page.value === "life" ? "接水、洗衣与校园服务" : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
       ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
-      : "学校账号 · 本机设置",
+      : section.value==="honors"?"身份、荣誉与校园收藏":"学校账号 · 本机设置",
 );
 const greeting = computed(() =>
   now.value.getHours() < 12
@@ -420,6 +426,13 @@ function go(id: string) {
 }
 function nav(p: Page) { move(p, p === "schedule" ? "schedule" : "overview"); }
 const content=ref<HTMLElement>();
+function checkSchoolView(){
+ if(!loading.value&&!error.value)schoolView(academicCache.value,page.value==='schedule'?'schedule':page.value==='academic'?section.value:'',!navigator.onLine);
+}
+watch([page,section,loading,academicCache],checkSchoolView,{flush:'post'});
+let fishTouches=0;
+watch(modal,()=>{fishTouches=0});
+function wakeFish(){if(++fishTouches===3)void record('goldfish');}
 const scrollPositions=new Map<string,{main:number;window:number}>();
 watch(()=>`${page.value}/${section.value}`,async(key,oldKey)=>{
  if(page.value!=='community')communityAccountEntry.value=false;
@@ -464,6 +477,7 @@ async function load() {
 function saveProfile() {
   prefs.value.name = draft.value.name.trim() || "同学";
   prefs.value.major = draft.value.major.trim();
+  if(draft.value.name.trim()&&draft.value.major.trim()&&savePreferences(prefs.value))void record("profile");
   close();
   notify("个人资料已保存在本机");
 }
@@ -579,6 +593,8 @@ watch(()=>[modal.value,agendaView.editor,pgBusy.value,pangguai.value.water?.phas
   updateDeferredReason.value=pgBusy.value?'正在处理接水或支付，请等待操作结束后再下载和安装。':phase&&!['settled','ended_zero','closed_unknown','archived_unverified'].includes(phase)?'检测到未结束的接水记录。请先在接水页面核对状态；若已在机身结算，可使用“已在机身结算，恢复扫码”。':updateDeferred.value?'请先完成当前操作或保存编辑，再下载和安装更新。':'';
 },{immediate:true});
 onMounted(async () => {
+  void record("welcome");
+  window.addEventListener("offline",checkSchoolView);
   void retryLegacyDeletion();
   void initPangguai().then(()=>initializeUpdates());
   load();
@@ -613,6 +629,7 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   disposed = true;
+  window.removeEventListener("offline",checkSchoolView);
   clearTimeout(toastTimer);
   clearInterval(clockTimer);
   nativeBack?.remove();
@@ -630,6 +647,7 @@ onUnmounted(() => {
 </script>
 <template>
   <AppUpdateDialog/>
+  <AchievementNotice v-if="page!=='community'" :codes="localQueue" v-bind="feedback" @seen="dismiss"/>
   <TaskDetail ref="taskDetailRef" @saved="notify"/>
   <div
     class="app-shell"
@@ -640,7 +658,7 @@ onUnmounted(() => {
       :inert="!!modal || agendaView.editor"
       :title="title"
       :subtitle="subtitle"
-      :back="page === 'academic' && section !== 'overview'"
+      :back="(page === 'academic'||page==='profile') && section !== 'overview'"
       :add="page==='schedule'"
       :unread="!read && prefs.notifications"
       @back="back"
@@ -711,6 +729,7 @@ onUnmounted(() => {
                 @conflict="showConflicts" @manage="manage()"
             />
           </template>
+          <GlobalCollection ref="globalCollectionRef" v-else-if="page==='profile'&&section==='honors'" @account="communityAccountEntry=true;nav('community')"/>
           <template v-else-if="page === 'profile'">
             <div class="profile-page">
             <button class="profile-strip" @click="open('edit')">
@@ -721,6 +740,7 @@ onUnmounted(() => {
                 ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
               ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
             </button>
+            <button class="learning-page-link collection-entry" @click="move('profile','honors')"><Trophy :size="21"/><strong>荣誉殿堂</strong><span v-if="privatePins.length" class="private-shelf"><component v-for="c in privatePins" :key="c" :is="byCode.get(c)?.icon" :aria-label="byCode.get(c)?.name" :size="17" :style="{color:byCode.get(c)?.color}"/></span><span v-else>我的校园收藏</span><ChevronRight :size="16"/></button>
             <SectionHeader title="账号与连接"/>
             <section class="profile-accounts"><SchoolConnection collapsible />
              <button class="learning-page-link" @click="communityAccountEntry=true;nav('community')"><MessageSquare :size="20"/><strong>邯院通社区账号</strong><span>主页、消息与账号设置</span><ChevronRight :size="16"/></button>
@@ -1049,7 +1069,7 @@ onUnmounted(() => {
             <p>邯院通是免费的独立学生项目，提供课表、待办和校园生活服务。学校与生活服务数据以对应平台为准；付款前请核对设备、账户与金额。请勿分享账号密码、验证码或登录凭证。</p>
             <p>树洞使用独立邯院通账号。服务端保存登录账号、公开昵称、密码加密摘要、帖子、评论、互动及举报记录；教务账号和课表不传给社区。匿名发言向其他用户隐藏账号与昵称，后台保留关联用于处理举报。同一帖子内的匿名代号一致，不同帖子使用不同代号。可在树洞账号设置修改昵称、退出或注销。注销会删除作者内容、移除登录状态，并保留必要的去身份举报处理记录。</p>
             <AnalyticsSettings/>
-            <p>本版本已停止收集应用活跃情况和功能使用次数。</p>
+            <p>本版本已停止收集应用活跃情况和功能使用次数。本机收藏仅保存成就编号与日期。教务和学习通收藏按当前连接隔离，成绩、考试内容和扫码记录均不会发送至社区。</p>
             <p>
               学校密码只在官方页面输入。Android 原生模块使用系统密钥库加密保存学校会话，供本人数据查询复用。退出学校账号后清除会话与学校缓存。
             </p>
@@ -1067,7 +1087,7 @@ onUnmounted(() => {
           >
           <template v-else-if="modal==='feedback'"><h2>问题反馈</h2><p>请将问题截图、发生步骤、手机型号和版本号发送给邀请你参加内测的开发者。不要发送密码或验证码。</p><p>邯院通 {{appVersion}}</p><button class="primary full" @click="close">我知道了</button></template>
           <template v-else
-            ><img class="brand-mark" src="/icon.svg" alt="邯院通图标"/>
+            ><button class="fish-signature" aria-label="小金鱼" @click="wakeFish"><img class="brand-mark" src="/icon.svg" alt=""/><Fish :size="15" aria-hidden="true"/></button>
             <h2>邯院通 <small>v{{appVersion}}</small></h2>
             <p>
               为同学，由同学。独立开发的学生校园助手，未获邯郸学院官方认证或合作授权。
@@ -1083,3 +1103,5 @@ onUnmounted(() => {
     >
   </div>
 </template>
+
+<style scoped>.private-shelf{display:flex;align-items:center;gap:7px}.fish-signature{position:relative;display:inline-flex;align-items:center}.fish-signature svg{color:#ba8050;margin-left:5px}.collection-entry>svg:first-child{color:#a7824a}</style>

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import {computed,onUnmounted,ref,watch} from 'vue';
-import {awards} from '../../domain/communityHonors';
+import {byCode} from '../../domain/globalAchievements';
 const props=defineProps<{codes:string[];sound:boolean;motion:boolean;haptics:boolean}>();
-const emit=defineEmits<{seen:[string]}>();
-const first=computed(()=>awards.find(a=>a.code===props.codes[0])),timer=ref<number>();
+const emit=defineEmits<{seen:[string];shown:[string]}>();
+const first=computed(()=>byCode.get(props.codes[0])),timer=ref<number>();
 function feedback(){if(props.haptics)try{navigator.vibrate?.(16);}catch{}if(!props.sound)return;
  try{const ctx=new AudioContext();const oscillator=ctx.createOscillator(),gain=ctx.createGain();oscillator.type='sine';oscillator.frequency.setValueAtTime(740,ctx.currentTime);oscillator.frequency.setValueAtTime(990,ctx.currentTime+.09);gain.gain.setValueAtTime(.035,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.24);oscillator.connect(gain);gain.connect(ctx.destination);oscillator.start();oscillator.stop(ctx.currentTime+.25);oscillator.onended=()=>{void ctx.close();};}catch{}}
-watch(()=>props.codes[0],code=>{clearTimeout(timer.value);if(!code)return;feedback();timer.value=window.setTimeout(()=>emit('seen',code),3400);},{immediate:true});
+watch(()=>props.codes[0],code=>{clearTimeout(timer.value);if(!code)return;emit('shown',code);feedback();timer.value=window.setTimeout(()=>emit('seen',code),3400);},{immediate:true});
 onUnmounted(()=>clearTimeout(timer.value));
 </script>
 <template><Teleport to="body"><aside v-if="first" :key="first.code" class="unlock-toast" :class="{quiet:!motion}" role="status" aria-live="polite"><div class="medal"><component :is="first.icon" :size="28"/></div><div><small>成就已解锁 ✧</small><strong>{{first.name}}</strong><span>{{first.description}}</span></div><i aria-hidden="true"/><b aria-hidden="true">✧</b></aside></Teleport></template>

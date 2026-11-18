@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {record} from "../services/achievementJournal";
 import {computed,onMounted,onUnmounted,ref} from 'vue';
 import {App} from '@capacitor/app';
 import type {PluginListenerHandle} from '@capacitor/core';
@@ -48,7 +49,7 @@ async function resume(){
 }
 function visibilityChanged(){if(document.visibilityState==='visible')void resume();else clearResumeTimer()}
 async function logout(){bathCode.value?.conceal();confirmation.value='';returned.value=false;cancelReturn();await disconnectQuzhi()}
-onMounted(async()=>{
+onMounted(async()=>{void record("bath");
   await initQuzhi();
   if(disposed)return;
   if(supported){
