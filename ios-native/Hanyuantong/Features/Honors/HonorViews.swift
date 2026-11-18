@@ -209,7 +209,7 @@ struct MedalCollection: View {
     @MainActor private func refresh(force:Bool=false) async {
         if viewer == nil && memberID == nil {
             do { try await tree.restoreGalleryIdentity() }
-            catch { error="社区账号暂时无法读取，仍可查看本机收藏。"; loading=false; return }
+            catch { self.error="社区账号暂时无法读取，仍可查看本机收藏。"; loading=false; return }
             if tree.user != nil { return } // The account change starts the scoped task.
         }
         let owner = viewer
