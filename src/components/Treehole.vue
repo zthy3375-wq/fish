@@ -31,7 +31,7 @@ import AchievementNotice from './honors/AchievementNotice.vue';
 
 
 import TreeholePostCard from './TreeholePostCard.vue';
-import {treeholeTimestamp} from '../domain/treeholePresentation';
+import {threadHasVisibleContent,treeholeTimestamp} from '../domain/treeholePresentation';
 import {treeholeRequest as request,treeholeError,treeholeErrorCode,type TreeholeResult,type TreeholeResponseKind,type TreeholeUser,type TreeholePost,type TreeholeComment,type TreeholeReport,type TreeholeNotification,type TreeholeProfile,type TreeholeFollow,type TreeholeSocial,type TreeholeMessageDraft,type TreeholePoll,type TreeholePollDraft,type TreeholeBuddy,type TreeholeBuddyDraft,type TreeholeBuddyMember} from '../services/treehole';
 
 const props=withDefaults(defineProps<{tabRoot?:boolean}>(),{tabRoot:false});
@@ -139,6 +139,7 @@ const dialogOpen=computed(()=>!!(boardPicker.value||buddyRoster.value||menu.valu
 function publishTabNavigation(){emit('tabNavigation',screen.value==='feed'&&!recovery.value&&!dialogOpen.value);}
 watch([screen,recovery,dialogOpen],publishTabNavigation,{immediate:true});
 const actionPost=computed(()=>[detail.value,...posts.value,...profilePosts.value].find(p=>p?.id===menu.value)||(screen.value==='detail'?detail.value:undefined));
+const visibleThreads=computed(()=>comments.value.filter(threadHasVisibleContent));
 const allComments=computed(()=>[...comments.value,...(focusedThread.value?[focusedThread.value]:[])].flatMap(c=>[c,...c.replies||[]]));
 const actionComment=computed(()=>allComments.value.find(c=>c.id===menu.value));
 function navigationBack(){if(!requestBack())emit('exit');}
@@ -207,7 +208,7 @@ async function expandThread(c:TreeholeComment){
  const more=!!expandedReplies.value[c.id];if(more&&!replyPages.value[c.id])return;
  loadingThreads.value[c.id]=true;error.value='';
  try{const r=await api('comments.replies',{postId,rootId:c.id,...(more?replyPages.value[c.id]:{})});if(!alive||epoch!==accountEpoch||discussion!==detailEpoch||detail.value?.id!==postId)return;
- c.replies=Array.from(new Map([...(more?c.replies||[]:[]),...r.comments||[]].map(x=>[x.id,x])).values());expandedReplies.value[c.id]=true;loadedThreads.add(c.id);replyPages.value[c.id]=r.next||null;
+ c.replies=Array.from(new Map([...(more?c.replies||[]:[]),...r.comments||[]].map(x=>[x.id,x])).values()).filter(child=>!child.deleted);if(!r.next)c.replyCount=c.replies.length;expandedReplies.value[c.id]=true;loadedThreads.add(c.id);replyPages.value[c.id]=r.next||null;
  }catch(e){actionError(e,epoch);}finally{if(epoch===accountEpoch)delete loadingThreads.value[c.id];}
 }
 let feedAnchor:{id:string;offset:number}|null=null;
@@ -324,7 +325,7 @@ function openNotification(item:TreeholeNotification){void run(async()=>{
  let context:TreeholeComment|null=null;
  if(item.commentId){try{context=(await api('comments.context',{postId:item.postId,commentId:item.commentId})).context||null;}catch(e){if(treeholeErrorCode(e)!=='not_found')throw e;notice.value='这条回复已不可用，可以继续查看讨论';}}
  if(!alive||epoch!==accountEpoch)return;
- rememberRoute();detailEpoch++;detail.value=r.post;syncFeedPost(r.post);comments.value=r.comments||[];commentNext.value=r.next||null;expandedReplies.value={};replyPages.value={};loadedThreads.clear();focusedThread.value=context;focusedCommentId.value=item.commentId||'';
+ rememberRoute();detailEpoch++;detail.value=r.post;syncFeedPost(r.post);comments.value=r.comments||[];commentNext.value=r.post.commentCount===0?null:r.next||null;expandedReplies.value={};replyPages.value={};loadedThreads.clear();focusedThread.value=context&&threadHasVisibleContent(context)?context:null;focusedCommentId.value=item.commentId||'';
  commentBody.value='';commentImages.value=[];reply.value=null;commentAnon.value=false;commentKey.value=crypto.randomUUID();screen.value='detail';detailTab.value=item.commentId?'comments':'body';
  try{await markNotifications([item.id]);}catch(e){actionError(e,epoch);}
 });}
@@ -406,7 +407,7 @@ async function loadDetail(post:TreeholePost,more=false){
   const fresh={...r.post,...(pendingReactions.value[post.id+':like']?{liked:detail.value.liked,likeCount:detail.value.likeCount}:{}),...(pendingReactions.value[post.id+':save']?{saved:detail.value.saved}:{}),...(pendingResponses.value[post.id]?{myResponse:detail.value.myResponse,responseCounts:detail.value.responseCounts}:{})};
   detail.value=fresh;syncFeedPost(fresh);
   if(!more){detailEpoch++;expandedReplies.value={};replyPages.value={};loadedThreads.clear();}
-  comments.value=more?appendUnique(comments.value,r.comments||[]):r.comments||[];commentNext.value=r.next||null;
+  comments.value=more?appendUnique(comments.value,r.comments||[]):r.comments||[];commentNext.value=r.post.commentCount===0?null:r.next||null;
  }catch(e){
   if(alive&&epoch===accountEpoch&&request===detailRequest&&screen.value==='detail'&&detail.value?.id===post.id){
    if(treeholeErrorCode(e)==='session_expired')actionError(e,epoch);else detailError.value=treeholeError(e);
@@ -519,7 +520,20 @@ function cancelAvatar(){const old=avatarCandidate.value;avatarCandidate.value=nu
 function removeAvatar(){confirmAction.value={title:'恢复默认头像？',run:async()=>{const epoch=accountEpoch,r=await api('avatar.set',{imageId:null});if(!alive||epoch!==accountEpoch)return;if(r.user)applyAvatar(r.user);cancelAvatar();confirmAction.value=null;notice.value='已恢复默认头像';}};}
 function askDelete(post:TreeholePost,comment?:TreeholeComment){menu.value=null;confirmAction.value={title:comment?'删除这条评论？':'删除这条帖子和它的讨论？',run:async()=>{
  await api(comment?'comments.delete':'posts.delete',{postId:post.id,commentId:comment?.id});confirmAction.value=null;
- if(comment)await loadDetail(post);else{posts.value=posts.value.filter(p=>p.id!==post.id);screen.value='feed';detail.value=null;}
+ if(comment){
+  focusedThread.value=null;
+  if(reply.value?.id===comment.id)reply.value=null;
+  // Apply the confirmed delete even if refreshing the discussion fails offline.
+  for(const root of comments.value){
+   if(root.id===comment.id)root.deleted=true;
+   if(root.id===comment.rootId||root.replies?.some(child=>child.id===comment.id)){
+    root.replies=root.replies?.filter(child=>child.id!==comment.id);
+    root.replyCount=Math.max(0,(root.replyCount??0)-1);
+   }
+  }
+  if(detail.value?.id===post.id){detail.value.commentCount=Math.max(0,detail.value.commentCount-1);syncFeedPost(detail.value);}
+  await loadDetail(post);
+ }else{posts.value=posts.value.filter(p=>p.id!==post.id);screen.value='feed';detail.value=null;}
 }};}
 function report(post:TreeholePost,comment?:TreeholeComment){menu.value=null;reportTarget.value={postId:post.id,...(comment?{commentId:comment.id}:{})};reason.value='';}
 function submitReport(){if(!reportTarget.value)return;void run(async()=>{await api('reports.create',{...reportTarget.value,reason:reason.value});reportTarget.value=null;notice.value='举报已提交，管理员会查看处理';});}
@@ -679,11 +693,11 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
        <TreeholePostCard :post="detail" :buddies-enabled="buddiesEnabled" :buddy-pending="pendingBuddies[detail.id]" @buddy-join="buddyAction(detail,'join',$event)" @buddy-close="buddyAction(detail,'close',$event)" @buddy-members="showBuddyMembers(detail)" :polls-enabled="pollsEnabled" :voting="pendingVotes[detail.id]" @vote="vote(detail,$event)" :responses-enabled="responsesEnabled" :joy-enabled="joyEnabled" :responding="pendingResponses[detail.id]" @response="respond(detail,$event)" full :busy="busy" @open="focusReply()" @react="react(detail,$event)" @menu="menu=detail.id" @image="imageView(detail,$event)" @author="openProfile" @category="selectCategory" @interest="selectInterest"/>
        <div class="th-discussion-title"><div><h2>评论 <span aria-hidden="true">{{detail.commentCount}}</span></h2><small>按时间排序</small></div><button v-if="engagementEnabled" class="th-watch-toggle" :aria-label="detail.watching?'取消关注':'关注讨论'" :aria-pressed="!!detail.watching" :title="detail.watching?'已关注，新回复会出现在互动消息':'关注后，新回复会出现在互动消息'" :disabled="busy||watchPending" @click="toggleWatch(detail)"><Check v-if="detail.watching" :size="15"/><Bell v-else :size="15"/>{{detail.watching?'已关注讨论':'关注讨论'}}</button></div>
        <div v-if="detailError" class="th-detail-error" role="alert"><AlertCircle :size="18"/><div><strong>暂时没有加载完整</strong><p>{{detailError}}，当前正文已保留。</p></div><button :disabled="detailLoading" @click="loadDetail(detail!)">重试</button></div>
-       <section v-if="focusedThread" class="th-focus-context" aria-label="消息对应的回复"><div class="th-context-heading"><span>消息对应的回复</span><button @click="focusedThread=null;scrollDiscussion()">查看全部讨论</button></div><TreeholeCommentThread :comment="focusedThread" :busy="busy" :locked="detail.locked" :expanded="true" :loading="loadingThreads[focusedThread.id]" :pending-likes="pendingLikes" :more="(focusedThread.replyCount||0)>(focusedThread.replies?.length||0)" @image="commentImageView" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(focusedThread)"/></section>
+       <section v-if="focusedThread&&threadHasVisibleContent(focusedThread)" class="th-focus-context" aria-label="消息对应的回复"><div class="th-context-heading"><span>消息对应的回复</span><button @click="focusedThread=null;scrollDiscussion()">查看全部讨论</button></div><TreeholeCommentThread :comment="focusedThread" :busy="busy" :locked="detail.locked" :expanded="true" :loading="loadingThreads[focusedThread.id]" :pending-likes="pendingLikes" :more="(focusedThread.replyCount||0)>(focusedThread.replies?.length||0)" @image="commentImageView" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(focusedThread)"/></section>
        <div class="th-comments">
-        <div v-if="detailLoading&&!comments.length" class="th-comment-loading" role="status"><span/><span/><span/><p>正在加载评论…</p></div>
-        <div v-else-if="!comments.length&&!detailError" class="th-no-comments"><MessageCircle :size="25"/><strong>第一声回应，就从你开始</strong><p>一句关心、一个想法，都很好。</p></div>
-        <TreeholeCommentThread v-for="comment in comments" :key="comment.id" :comment="comment" :busy="busy" :locked="detail.locked" :expanded="expandedReplies[comment.id]" :loading="loadingThreads[comment.id]" :pending-likes="pendingLikes" :more="!!replyPages[comment.id]" @image="commentImageView" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(comment)" @collapse="expandedReplies[comment.id]=false"/>
+        <div v-if="detailLoading&&!visibleThreads.length" class="th-comment-loading" role="status"><span/><span/><span/><p>正在加载评论…</p></div>
+        <div v-else-if="!visibleThreads.length&&!commentNext&&!detailError" class="th-no-comments"><MessageCircle :size="25"/><strong>第一声回应，就从你开始</strong><p>一句关心、一个想法，都很好。</p></div>
+        <TreeholeCommentThread v-for="comment in visibleThreads" :key="comment.id" :comment="comment" :busy="busy" :locked="detail.locked" :expanded="expandedReplies[comment.id]" :loading="loadingThreads[comment.id]" :pending-likes="pendingLikes" :more="!!replyPages[comment.id]" @image="commentImageView" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(comment)" @collapse="expandedReplies[comment.id]=false"/>
        </div>
        <button v-if="commentNext" class="th-more" :disabled="busy||detailLoading" @click="loadDetail(detail!,true)">{{detailLoading?'正在加载…':'加载更多评论'}}</button>
        <p v-if="detail.locked" class="th-locked"><LockKeyhole :size="16"/>这条讨论已暂停回复。</p>

@@ -67,3 +67,43 @@ it('fetches fresh unread counts on explicit refresh and throttles passive visibi
   expect(reads).toBe(2);
  }finally{visibility.mockRestore();}
 });
+
+it('shows the empty discussion for legacy pages containing only deleted root comments',async()=>{
+ const post=(await call(a,'posts.create',{body:'空讨论',anonymous:false,requestId:crypto.randomUUID()})).post;
+ const previous=bridge.execute.getMockImplementation()!;
+ bridge.execute.mockImplementation(async(action,body)=>{
+  const result=await previous(action,body);
+  if(action!=='posts.get')return result;
+  const tombstone={postId:post.id,deleted:true,body:'这条评论已删除',author:{name:'已删除'},replyCount:0,replies:[]};
+  return {...result,comments:[{...tombstone,id:'one'},{...tombstone,id:'two'}],next:{afterId:'two'}};
+ });
+ await mount();
+ button('查看评论，共 0 条').click();
+ await wait(()=>!!root.querySelector('.th-no-comments'));
+ expect(root.querySelector('.th-discussion-title h2')?.textContent).toContain('0');
+ expect(root.querySelectorAll('.th-comment')).toHaveLength(0);
+ expect(root.textContent).not.toContain('这条评论已删除');
+ expect(button('加载更多评论')).toBeUndefined();
+});
+
+it('keeps live replies to a deleted root readable through preview and legacy reply pagination',async()=>{
+ const post=(await call(a,'posts.create',{body:'保留讨论',anonymous:false,requestId:crypto.randomUUID()})).post;
+ const comment=async(body:string,replyTo?:string)=>(await call(b,'comments.create',{postId:post.id,body,anonymous:false,replyTo,requestId:crypto.randomUUID()})).comment;
+ const parent=await comment('原评论');
+ await comment('仍可阅读的回复',parent.id);
+ await call(b,'comments.delete',{postId:post.id,commentId:parent.id});
+ const previous=bridge.execute.getMockImplementation()!;
+ bridge.execute.mockImplementation(async(action,body)=>{
+  const result=await previous(action,body);
+  if(action!=='comments.replies')return result;
+  return {...result,comments:[{...parent,id:'old',deleted:true,body:'这条评论已删除'},...result.comments]};
+ });
+ await mount();
+ button('查看评论，共 1 条').click();
+ await wait(()=>root.querySelector('.th-nested-body')?.textContent==='仍可阅读的回复');
+ expect(root.querySelector('.th-comment header')).toBeNull();
+ button('全部 1 条回复').click();
+ await wait(()=>!!button('收起回复'));
+ expect(root.querySelectorAll('.th-nested-reply')).toHaveLength(1);
+ expect(root.querySelector('.th-comments')?.textContent).not.toContain('已删除');
+});

@@ -50,6 +50,12 @@ test('threaded replies group grandchildren under their root; likes and deletion 
  await exec('comments.delete',{postId:post.id,commentId:root.id},b);
  const deleted=await exec('posts.get',{postId:post.id,threaded:true});assert(deleted.comments[0].deleted);assert.equal(deleted.comments[0].replies.length,2);
  assert.equal((await exec('comments.replies',{postId:post.id,rootId:root.id})).comments.length,2);
+ await exec('comments.delete',{postId:post.id,commentId:child.id},a);
+ const remaining=await exec('comments.replies',{postId:post.id,rootId:root.id});
+ assert.deepEqual(remaining.comments.map(c=>c.id),[grandchild.id]);
+ await exec('comments.delete',{postId:post.id,commentId:grandchild.id},b);
+ const empty=await exec('posts.get',{postId:post.id,threaded:true});
+ assert.equal(empty.post.commentCount,0);assert.deepEqual(empty.comments,[]);
  const other=(await make({},b)).post;await assert.rejects(exec('comments.like',{postId:other.id,commentId:grandchild.id,enabled:true}),{code:'not_found'});
 });
 test('hot ranking uses recent engagement and freezes additions behind its snapshot',async()=>{

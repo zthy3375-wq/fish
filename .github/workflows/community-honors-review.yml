@@ -29,6 +29,11 @@ jobs:
         env:
           BASELINE: ${{ github.event.pull_request.base.sha || '919e02ce276c60b67528e9c90c795fc64e58ff55' }}
         run: |
+          # main at 1.2.4 predates the community profile. Use the previous Android
+          # build for the before image when the PR base has no profile to capture.
+          if ! git cat-file -e "$BASELINE:src/components/Treehole.vue"; then
+            BASELINE=6c167f8391f882bf3a1add43433aa16f369ac9f8
+          fi
           git worktree add --detach "$RUNNER_TEMP/hyt-before" "$BASELINE"
           ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/hyt-before/node_modules"
           npm --prefix "$RUNNER_TEMP/hyt-before" run build

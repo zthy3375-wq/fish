@@ -3,6 +3,7 @@ import {onMounted,onUnmounted,ref} from 'vue';
 import {discover} from '../services/hiddenDiscovery';
 defineEmits<{back:[]}>();
 const entries=[
+ ['1.3.0','校园社区上线，支持发帖、评论和私信。在「我的」可以查看荣誉收藏，也可以直接加入 QQ 交流群。'],
  ['1.3.0-test.30','在「我的」和社区主页翻看荣誉展柜，点开徽章可以看看它的来历。'],
  ['1.3.0-test.29','昵称旁的身份标识变小了。校园各处多了几段可以收入收藏馆的小插曲。'],
  ['1.3.0-test.28','在「我的」进入荣誉殿堂，可以分类翻看全局成就，也可以挑出喜欢的收藏。'],

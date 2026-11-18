@@ -1007,6 +1007,9 @@ BEGIN
    (SELECT coalesce(jsonb_agg(public.hyt_comment_json(rc,m.id) ORDER BY rc.created_at,rc.id),'[]'::jsonb) FROM
     (SELECT * FROM public.hyt_comments rc WHERE rc.root_id=q.id AND rc.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=rc.author_id AND NOT rc.anonymous) ORDER BY rc.created_at,rc.id LIMIT 2) rc)) ORDER BY q.created_at,q.id),'[]'::jsonb) INTO result FROM
    (SELECT c.* FROM public.hyt_comments c WHERE c.post_id=p.id AND c.reply_to IS NULL
+    AND (c.deleted_at IS NULL OR EXISTS(
+      SELECT 1 FROM public.hyt_comments child WHERE child.root_id=c.id AND child.deleted_at IS NULL
+       AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=child.author_id AND NOT child.anonymous)))
     AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=c.author_id AND NOT c.anonymous)
     AND (b->>'afterTime' IS NULL OR (c.created_at,c.id)>((b->>'afterTime')::timestamptz,(b->>'afterId')::uuid)) ORDER BY c.created_at,c.id LIMIT 21) q;
   RETURN jsonb_build_object('status',200,'post',public.hyt_post_json(p,m.id),'comments',result);
@@ -1015,7 +1018,7 @@ BEGIN
   IF a='comments.replies' AND NOT EXISTS(SELECT 1 FROM public.hyt_comments rc WHERE rc.id=(b->>'rootId')::uuid AND rc.post_id=p.id AND rc.reply_to IS NULL AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=rc.author_id AND NOT rc.anonymous)) THEN RETURN '{"status":404,"error":"not_found"}'::jsonb; END IF;
   SELECT coalesce(jsonb_agg(public.hyt_comment_json(q,m.id) ORDER BY q.created_at,q.id),'[]'::jsonb) INTO result FROM
    (SELECT c.* FROM public.hyt_comments c WHERE c.post_id=p.id
-    AND (a='posts.get' OR c.root_id=(b->>'rootId')::uuid)
+    AND (a='posts.get' OR (c.root_id=(b->>'rootId')::uuid AND c.deleted_at IS NULL))
     AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=c.author_id AND NOT c.anonymous)
     AND (b->>'afterTime' IS NULL OR (c.created_at,c.id)>((b->>'afterTime')::timestamptz,(b->>'afterId')::uuid)) ORDER BY c.created_at,c.id LIMIT 51) q;
   RETURN jsonb_build_object('status',200,'post',public.hyt_post_json(p,m.id),'comments',result);

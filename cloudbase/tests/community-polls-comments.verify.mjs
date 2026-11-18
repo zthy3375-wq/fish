@@ -66,7 +66,7 @@ test('comment retry is idempotent, validates unchanged attachments and never att
  await assert.rejects(post(b,{body:'图片',poll:null,images:[img.id]}),{code:'image_unavailable'});assert.equal((await call(a,'posts.get',{postId:p.id})).post.commentCount,1);
 });
 test('comment and post deletion hide images and revoke renewed image access',async()=>{
- const p=await post(),img=await upload(b),root=await comment(b,p,{images:[img.id]});await call(b,'comments.delete',{postId:p.id,commentId:root.id});const r=await call(a,'posts.get',{postId:p.id,threaded:true});assert.deepEqual(r.comments[0].images,[]);await assert.rejects(call(a,'media.url',{postId:p.id,imageId:img.id}),{code:'not_found'});assert.equal(objects.size,0);
+ const p=await post(),img=await upload(b),root=await comment(b,p,{images:[img.id]});await call(b,'comments.delete',{postId:p.id,commentId:root.id});const r=await call(a,'posts.get',{postId:p.id,threaded:true});assert.deepEqual(r.comments,[]);await assert.rejects(call(a,'media.url',{postId:p.id,imageId:img.id}),{code:'not_found'});assert.equal(objects.size,0);
  const next=await upload(b);await comment(b,p,{images:[next.id]});await call(a,'posts.delete',{postId:p.id});await assert.rejects(call(b,'media.url',{postId:p.id,imageId:next.id}),{code:'not_found'});assert.equal(objects.size,0);
 });
 test('blocking a root author denies nested media probing while anonymous hiding stays thread-scoped',async()=>{
