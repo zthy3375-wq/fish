@@ -176,6 +176,7 @@ final class PangguaiStore: ObservableObject {
             let details = try await self.post("goods/normal/details", ["goodsId":id], epoch: epoch)
             let skus = try await self.post("goods/normal/skus", ["goodsId":id], epoch: epoch)
             self.device = try PGDevice.parse(scan: scan, details: details, skus: skus)
+            if self.device?.category == "04" { MedalJournal.shared.unlock("water") }
         }
     }
     /// Polling is deliberately read-only. It must never create, pay, end or start a device.

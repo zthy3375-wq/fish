@@ -28,6 +28,8 @@ final class CampusStore: ObservableObject {
     @Published var selectedTerm: AcademicTerm?
     private var storage: ProtectedStorage?
     private var session: AcademicSession?
+    var schoolMedalScope: String? { isConnected ? snapshot?.scope : nil }
+    var personalDataAvailable: Bool { loadedPersonal }
     private var snapshot: AcademicSnapshot?
     private var personalCourses: [Course] = []
     private var requestGeneration = 0
@@ -123,6 +125,9 @@ final class CampusStore: ObservableObject {
                 do {
                     guard let storage = self.storage else { throw ProtectedStorage.Failure.unavailable }
                     try storage.write(merged, name: "academic")
+                    MedalJournal.shared.unlock("identity",scope:new.scope)
+                    if !(new.courses ?? []).isEmpty { MedalJournal.shared.unlock("schedule",scope:new.scope) }
+                    if !(new.grades ?? []).isEmpty { MedalJournal.shared.unlock("grade",scope:new.scope) }
                     if self.message == nil { self.message = new.moduleErrors.isEmpty ? "学校数据已更新。" : "部分模块读取未完成，已保留同账号上次成功记录。" }
                 } catch { self.message = "数据已读取，但离线保存失败。请勿将本次结果视为已保存。" }
             case .failure(let error):
@@ -239,6 +244,7 @@ final class CampusStore: ObservableObject {
         do {
             let next = try TaskRules.settingCompleted(tasks, id: id, completed: !current.completed)
             try commitPersonal(courses: personalCourses, tasks: next, semesterStart: semesterStart, schedule: personalSchedule)
+            if let done=next.first(where:{$0.id == id}), done.completed, done.originalID == nil, done.steps.count >= 2, done.steps.allSatisfy({$0.completed}) { MedalJournal.shared.unlock("tasks") }
         } catch { message = error.localizedDescription }
     }
     func addTask(title: String, date: Date) {

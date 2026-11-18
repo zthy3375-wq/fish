@@ -57,6 +57,9 @@ struct TasksView: View {
                     Toggle("按课程分组", isOn: $filter.groupByCourse)
                 }
             }
+            if store.personalDataAvailable && store.tasks.isEmpty {
+                DiscoverySurface("emptyfish",label:"清单里的小金鱼") { Image(systemName:"bubble.left").foregroundStyle(CampusTheme.primary) }.frame(maxWidth:.infinity)
+            }
             if groups.isEmpty {
                 CampusEmpty(title: completionFilter == 1 ? "还没有已完成的待办" : "暂无待办", detail: "把要做的事记下来，一件一件完成。也可以调整筛选。", symbol: "checklist")
                     .listRowBackground(Color.clear).listRowInsets(EdgeInsets())

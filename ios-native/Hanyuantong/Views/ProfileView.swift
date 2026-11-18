@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ProfileView: View {
+    @EnvironmentObject var tree: TreeholeStore
     @EnvironmentObject var store: CampusStore
     @EnvironmentObject var learning: LearningStore
     @EnvironmentObject var quzhi: QuzhiStore
@@ -15,6 +16,7 @@ struct ProfileView: View {
                 LocalProfileSummaryView(store: displayPreferences, academicName: store.academicProfile?.name,
                                         academicMajor: store.academicProfile?.major, academicClass: store.academicProfile?.className)
                     .padding(.vertical, 12)
+                HonorShelfLink(badges:tree.user?.badges,pins:tree.user?.showcase ?? [])
             }
             Section("邯院通账号") {
                 Button { store.selectedTab = .community } label: { Label("账号与树洞 · 昵称与匿名交流", systemImage: "bubble.left.and.bubble.right") }
@@ -73,6 +75,7 @@ struct ProfileView: View {
             Section("关于邯院通") {
                 Text("学习 · 生活 · 校园")
                 Text("iPhone 原生开发版。教务数据以学校官方系统为准；各服务需独立登录，真实账号和设备联调尚待完成。").font(.caption).foregroundStyle(CampusTheme.muted)
+                NavigationLink("版本与更新日志") { CampusVersionPage() }
                 NavigationLink("隐私与本机数据") { PrivacyView() }
                 if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
                 NavigationLink("帮助与反馈") { NativeHelpView() }
@@ -148,7 +151,7 @@ struct AcademicRecordsView: View {
         List {
             Section { Picker("教务记录", selection: $selection) { Text("成绩").tag(0); Text("考试").tag(1) }.pickerStyle(.segmented) }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())
             if selection == 0 { NativeGradeAnalysisView(grades: store.grades, profile: store.academicProfile) }
-            else { NativeExamRecordsView(exams: store.exams) }
+            else { NativeExamRecordsView(exams: store.exams).onAppear { if !store.exams.isEmpty { MedalJournal.shared.unlock("exam",scope:store.schoolMedalScope) } } }
             if !store.isConnected { Button("连接教务系统") { store.connectSchool() }.disabled(store.isBusy) }
         }.campusScrollBackground().background(CampusTheme.background).navigationTitle("成绩与考试").navigationBarTitleDisplayMode(.inline)
             .toolbar { if store.isConnected { Button { store.refreshSchool() } label: { if store.isBusy { ProgressView() } else { Image(systemName: "arrow.clockwise") } }.disabled(store.isBusy).accessibilityLabel("更新教务数据") } }

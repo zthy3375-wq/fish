@@ -42,6 +42,7 @@ import Combine
 
     func updateProfile(name: String, major: String) throws {
         try commit(preferences.editingProfile(name: name, major: major))
+        if !name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty && !preferences.major.isEmpty { MedalJournal.shared.unlock("profile") }
     }
 
     /// Writes a complete default record atomically, instead of deleting an unreadable or partially replaced file.

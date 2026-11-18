@@ -27,7 +27,7 @@ struct QuzhiWalletView: View {
             }.padding(20)
         }
         .background(CampusTheme.background)
-        .navigationTitle("趣智校园").navigationBarTitleDisplayMode(.inline)
+        .onAppear { MedalJournal.shared.unlock("bath") }.navigationTitle("趣智校园").navigationBarTitleDisplayMode(.inline)
         .tint(CampusTheme.primary)
         .refreshable { if store.valid { _ = await store.refresh(month: month) } }
         .task {

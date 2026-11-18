@@ -501,7 +501,7 @@ struct TreeholeView: View {
                 HStack(alignment: .top, spacing: 4) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 5) {
-                            Text(comment.author.name).font(.system(size: 14, weight: .semibold))
+                            HonorByline(name:comment.author.name,badges:comment.author.anonymous ? nil : comment.author.badges).font(.system(size: 14, weight: .semibold))
                             if comment.isOriginalPoster { Text("楼主").font(.system(size: 10)).foregroundStyle(TreeholeTheme.primary).padding(.horizontal, 4).padding(.vertical, 2).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 4)) }
                         }
                         Text(TreeholePresentation.date(comment.createdAt) + (floor > 0 ? " · \(floor) 楼" : "")).font(.caption2).foregroundStyle(.secondary)
@@ -608,8 +608,8 @@ struct TreeholeView: View {
         HStack(spacing: 10) {
             TreeholeAvatar(name: author.name, anonymous: author.anonymous, avatar: author.avatar, size: full ? 42 : 36)
             VStack(alignment: .leading, spacing: 5) {
-                Text(author.name).font(full ? .body.weight(.semibold) : .subheadline.weight(.semibold))
-                HStack(spacing: 5) { Text(TreeholePresentation.date(date)); if author.mine { Text("我").foregroundStyle(TreeholeTheme.primary).padding(.horizontal, 4).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 3)) } }.font(.caption).foregroundStyle(.secondary)
+                HonorByline(name:author.name,badges:author.anonymous ? nil : author.badges).font(full ? .body.weight(.semibold) : .subheadline.weight(.semibold))
+                Text(TreeholePresentation.date(date)).font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -642,10 +642,15 @@ struct TreeholeView: View {
         if accountPage == "overview" {
             VStack(spacing: 12) {
                 TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 66)
-                Text(user.nickname).font(.title2.bold())
+                HonorByline(name:user.nickname,badges:user.badges).font(.title2.bold())
                 Text("@" + user.username).font(.caption).foregroundStyle(.secondary)
                 Text("用自己的昵称，留下校园里的回声。").font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity).padding(.vertical, 18)
+            HonorShelfLink(badges:user.badges,pins:user.showcase ?? [])
+            if tree.messagesEnabled { NavigationLink { NativeMessages(viewer:user.id) } label: { Label("私信",systemImage:"envelope").frame(minHeight:44) } }
+            if tree.honorsEnabled && (user.permits("users") || user.permits("recommend")) {
+                NavigationLink { HonorManagement() } label: { Label("身份与荣誉管理",systemImage:"shield") }
+            }
             if tree.avatarsEnabled { TreeholeAvatarEditor(tree: tree) }
             HStack(spacing: 0) {
                 Button { accountFeed("mine") } label: { VStack(spacing: 10) { Image(systemName: "bubble.left").font(.title3); Text("我的帖子").font(.subheadline) }.frame(maxWidth: .infinity).padding(.vertical, 8) }
@@ -751,7 +756,9 @@ struct TreeholeView: View {
         if let profile = tree.publicProfile {
             VStack(spacing: 12) {
                 TreeholeAvatar(name: profile.nickname, avatar: profile.avatar, size: 64)
-                Text(profile.nickname).font(.title2.bold())
+                HonorByline(name:profile.nickname,badges:profile.badges).font(.title2.bold())
+                HonorShelfLink(badges:profile.badges,pins:profile.showcase ?? [],memberID:profile.id)
+                if tree.messagesEnabled, let me=tree.user, me.id != profile.id { NavigationLink { NativeMessages(viewer:me.id,member:profile.id) } label: { Label("发私信",systemImage:"envelope") } }
                 Text(profile.bio.isEmpty ? "还没有填写简介" : profile.bio).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Text("\(profile.postCount) 条公开帖子").font(.caption).foregroundStyle(.secondary)
                 if tree.followingEnabled, profile.id != tree.user?.id {

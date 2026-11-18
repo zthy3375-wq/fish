@@ -2,6 +2,9 @@ import Foundation
 import Combine
 
 @MainActor final class TreeholeStore: ObservableObject {
+    @Published var honorsEnabled=false
+    @Published var messagesEnabled=false
+    @Published var moderationEnabled=false
     @Published var user: TreeholeMember?
     @Published var posts: [TreeholePost] = []
     @Published var current: TreeholePost?
@@ -82,10 +85,22 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func applyIdentity(_ h: NativeHonorHall) {
+        applyBadges(h.id,h.badges,h.showcase)
+    }
+    func applyBadges(_ id:String,_ badges:MemberBadges,_ pins:[String]) {
+        if user?.id == id { user?.badges=badges; user?.showcase=pins }
+        if publicProfile?.id == id { publicProfile?.badges=badges; publicProfile?.showcase=pins }
+        func update(_ a: inout TreeholeAuthor) { if !a.anonymous && a.id == id { a.badges=badges } }
+        for i in posts.indices { update(&posts[i].author) }; for i in profilePosts.indices { update(&profilePosts[i].author) }
+        if current != nil { update(&current!.author) }; for i in comments.indices { update(&comments[i].author) }
+        feedNeedsRefresh=true
+    }
+    func clear() { MedalJournal.shared.clearNotices(); pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
+            self.honorsEnabled = config.honorsEnabled == true; self.messagesEnabled = config.messagesEnabled == true; self.moderationEnabled = config.moderationEnabled == true
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
             self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.buddiesEnabled = config.buddiesEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
             self.followingEnabled = config.followingEnabled == true; self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true

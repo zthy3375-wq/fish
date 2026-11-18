@@ -12,6 +12,8 @@ struct RootView: View {
             CampusNavigation { ProfileView() }.tabItem { Label("我的", systemImage: "person") }.tag(AppTab.profile)
         }
 
+        .overlay(alignment:.top) { MedalOverlay() }
+        .onAppear { MedalJournal.shared.unlock("welcome") }
         .tint(CampusTheme.primary)
         .foregroundStyle(CampusTheme.text)
         .environment(\.calendar, CampusTheme.calendar)
@@ -146,8 +148,8 @@ struct HomeView: View {
                 Spacer()
                 HStack { Text(CampusTheme.date(now)); Spacer(); Text("第\(store.week(for: now))周") }.font(.caption).foregroundStyle(.white)
             }.padding(22)
-            VStack { Spacer(); HStack { Spacer(); CampusHeroFish().frame(width: 108, height: 68) } }
-                .padding(.trailing, 14).padding(.bottom, 48).allowsHitTesting(false).accessibilityHidden(true)
+            VStack { Spacer(); HStack { Spacer(); DiscoverySurface("puff",label:"首页小金鱼",taps:5,canDream:true) { CampusHeroFish().frame(width:108,height:68) } } }
+                .padding(.trailing, 14).padding(.bottom, 48)
         }.frame(height: 275).clipShape(RoundedRectangle(cornerRadius: 22))
     }
     private func wallet(_ name: String, _ label: String, _ detail: String, _ icon: String, _ color: Color) -> some View {

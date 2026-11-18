@@ -55,15 +55,21 @@ jobs:
                   continue
               for device in rows:
                   if device.get('isAvailable') and 'iPhone' in device['name']:
-                      candidates.append((version, device['udid']))
+                      candidates.append((version, device['name'], device['udid']))
           if not candidates:
               raise SystemExit(f'No available iPhone runtime at or below selected SDK {sdk}')
-          version, device = max(candidates)
+          version = max(c[0] for c in candidates)
+          models = [c for c in candidates if c[0] == version]
+          _, name, device = max(models, key=lambda c: ("Pro Max" in c[1], c[1]))
+          others = [c for c in models if c[1] != name and "Max" not in c[1] and "Plus" not in c[1]]
+          if not others: raise SystemExit("Second iPhone size unavailable")
+          _, second_name, second = max(others,key=lambda c: ("SE" in c[1], c[1]))
+          print(name, second_name)
           # WebKit bug 293831 affects <=18.3 deployment targets on 18.4/18.5 simulators.
           # Official workaround applies to this simulator test build only; device build remains iOS15.4.
           deployment = '18.4' if (18, 4) <= version < (18, 6) else '15.4'
           with open(os.environ['GITHUB_ENV'], 'a') as env:
-              env.write(f'DEVICE={device}\nTEST_DEPLOYMENT={deployment}\n')
+              env.write(f'DEVICE={device}\nSECOND_DEVICE={second}\nTEST_DEPLOYMENT={deployment}\n')
           print(f'Selected SDK {sdk}; test runtime iOS {version}; simulator-only deployment target {deployment}')
           PYTHON
       - name: Compile simulator app and tests before boot
@@ -95,6 +101,25 @@ jobs:
           # The two task flows already passed above against these exact build products.
           # Unit tests ran in their own invocation; exercise every other UI flow once.
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/xcodebuild.log"
+      - name: Check collection on a second iPhone size
+        run: |
+          set -o pipefail
+          xcrun simctl shutdown "$DEVICE"
+          xcrun simctl boot "$SECOND_DEVICE" || true
+          xcrun simctl bootstatus "$SECOND_DEVICE" -b
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$SECOND_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/Second.xcresult" IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/HonorParityUITests test-without-building
+      - name: Package unsigned device app
+        if: success()
+        run: |
+          mkdir -p "$RUNNER_TEMP/package/Payload"
+          ditto "$RUNNER_TEMP/ios-compat-device/Build/Products/Release-iphoneos/Hanyuantong.app" "$RUNNER_TEMP/package/Payload/Hanyuantong.app"
+          cd "$RUNNER_TEMP/package"
+          ditto -c -k --keepParent Payload "$RUNNER_TEMP/Hanyuantong-iOS-unsigned.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-device-app
+          path: ${{ runner.temp }}/Hanyuantong-iOS-unsigned.ipa
+          retention-days: 14
       - name: Package simulator app
         if: success()
         run: ditto -c -k --keepParent "$RUNNER_TEMP/ios-build/Build/Products/Debug-iphonesimulator/Hanyuantong.app" "$RUNNER_TEMP/Hanyuantong-iOS-Simulator.zip"
@@ -110,6 +135,17 @@ jobs:
           if [ -d "$RUNNER_TEMP/NativeIOS.xcresult" ]; then
             xcrun xcresulttool export attachments --path "$RUNNER_TEMP/NativeIOS.xcresult" --output-path "$RUNNER_TEMP/screenshots"
           fi
+          if [ -d "$RUNNER_TEMP/Second.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Second.xcresult" --output-path "$RUNNER_TEMP/second-size"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iphone-screenshots
+          path: |
+            ${{ runner.temp }}/screenshots
+            ${{ runner.temp }}/second-size
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: always()
         with:

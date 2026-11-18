@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ScheduleView: View {
     @EnvironmentObject var store: CampusStore
+    @StateObject private var offline = OfflineScheduleCheck()
+    @State private var firstWeekContext: Date?
+    @State private var surprise: String?
     @State private var mode = 0
     @State private var adding = false
     @State private var managingPersonalSchedule = false
@@ -31,7 +34,7 @@ struct ScheduleView: View {
                 }
                 HStack(spacing: 4) {
                     ForEach(days, id: \.self) { date in
-                        Button { store.selectedDate = date } label: {
+                        Button { select(date,checkDay:true) } label: {
                             VStack(spacing: 9) { Text(CampusTheme.date(date, format: "EE")).font(.caption2); Text(CampusTheme.date(date, format: "d")).font(.subheadline.weight(.semibold)); Circle().fill(CampusTheme.calendar.isDate(date, inSameDayAs: Date()) ? CampusTheme.primary : .clear).frame(width: 4, height: 4) }.frame(maxWidth: .infinity).padding(.vertical, 10).background(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? CampusTheme.tint : .clear, in: RoundedRectangle(cornerRadius: 12))
                         }.accessibilityLabel(CampusTheme.date(date)).accessibilityAddTraits(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? .isSelected : [])
                     }
@@ -53,8 +56,12 @@ struct ScheduleView: View {
                 }
             }.padding(20).frame(maxWidth: 680)
         }.background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
+            .overlay(alignment:.top) { if let surprise { Text(surprise == "freeday" ? "今天属于你自己。" : "回到本周了。").padding(10).background(.thinMaterial,in:Capsule()).allowsHitTesting(false) } }
+            .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; MedalJournal.shared.unlock(code); surprise=nil }
+            .onAppear { if store.lastSynced != nil && store.courses.contains(where:{$0.source != "personal"}) { offline.start(scope:store.schoolMedalScope) } }
+            .onDisappear { offline.stop(); firstWeekContext=nil }
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) { Button("今天") { store.selectedDate = Date() } }
+                ToolbarItem(placement: .navigationBarLeading) { Button("今天") { select(Date(),checkDay:false) } }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     Button { managingPersonalSchedule = true } label: { Image(systemName: "slider.horizontal.3") }
                         .accessibilityLabel("管理个人课表").accessibilityIdentifier("manage-personal-schedule")
@@ -73,7 +80,17 @@ struct ScheduleView: View {
     private var weekList: some View {
         TimetableGrid(days: days, courses: days.map { store.courses(on: $0) })
     }
-    private func shift(_ amount: Int) { if let date = CampusTheme.calendar.date(byAdding: .day, value: amount, to: store.selectedDate) { store.selectedDate = date } }
+    private func shift(_ amount: Int) { if let date = CampusTheme.calendar.date(byAdding: .day, value: amount, to: store.selectedDate) { select(date,checkDay:false) } }
+    private func select(_ date: Date, checkDay: Bool) {
+        let start = store.isConnected ? store.schoolSemesterStart : store.semesterStart
+        let week=store.week(for:date), today=store.week(for:Date())
+        let previous=store.week(for:store.selectedDate)
+        store.selectedDate=date
+        guard today > 0 && today <= (store.isConnected ? 30 : store.personalWeekCount), !store.courses.isEmpty else { return }
+        if week == 1 && today > 1 && previous != 1 { firstWeekContext=start }
+        if week == today && previous != today && firstWeekContext == start { surprise="timewalk"; firstWeekContext=nil }
+        else if checkDay && week > 0 && week <= (store.isConnected ? 30 : store.personalWeekCount) && store.courses(on:date).isEmpty { mode=1; surprise="freeday" }
+    }
 }
 
 /// A shared minute axis keeps free periods and simultaneous classes visible.
