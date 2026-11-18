@@ -267,7 +267,8 @@ async function saveCourse(course: ManagedCourse, allow: boolean) {
 const taskDetailRef=ref<InstanceType<typeof TaskDetail>>();
 function planLearning(task:CampusTask){taskDetailRef.value?.edit(task)}
 function editDailyTask(task?:CampusTask,day?:string){taskDetailRef.value?.edit(task,day)}
-setBeforeBack(()=>!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false);
+const globalCollectionRef=ref<InstanceType<typeof GlobalCollection>>();
+setBeforeBack(()=>globalCollectionRef.value?.closeDetail()||(!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false));
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
   if (modal.value==='school-course-adjustment') {if(editorBusy.value)return false;if(adjustmentRef.value?.hasChanges()){adjustmentRef.value.requestCancel();return false;}}
@@ -728,7 +729,7 @@ onUnmounted(() => {
                 @conflict="showConflicts" @manage="manage()"
             />
           </template>
-          <GlobalCollection v-else-if="page==='profile'&&section==='honors'" @account="communityAccountEntry=true;nav('community')"/>
+          <GlobalCollection ref="globalCollectionRef" v-else-if="page==='profile'&&section==='honors'" @account="communityAccountEntry=true;nav('community')"/>
           <template v-else-if="page === 'profile'">
             <div class="profile-page">
             <button class="profile-strip" @click="open('edit')">

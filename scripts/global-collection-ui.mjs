@@ -24,6 +24,17 @@ try{
   await p.locator('[data-code=life].unlocked').waitFor();
   await p.waitForFunction(()=>!document.querySelector('.unlock-toast'),undefined,{timeout:30000});
   await p.screenshot({path:output+'/global-'+width+'.png'});
+  // Android queues the old dialog's close event until the next frame.
+  // Reopen immediately and deliver that stale event while the second medal is on screen.
+  await p.locator('[data-code=welcome]').click();
+  await p.evaluate(()=>{
+   document.querySelector('.detail-close').click();
+   document.querySelector('[data-code=bath]').click();
+  });
+  await p.getByRole('dialog').getByRole('heading',{name:'洗去疲惫'}).waitFor();
+  await p.locator('dialog.collect-detail').dispatchEvent('close');
+  await p.getByRole('dialog').getByRole('button',{name:/展示到我的页面/}).waitFor();
+  await p.keyboard.press('Escape');
   await p.getByRole('button',{name:'隐藏',exact:true}).click();
   await p.getByRole('button',{name:/未知奇遇/}).click();
   assert.equal(await p.getByRole('dialog').getByText('获取条件').count(),0);

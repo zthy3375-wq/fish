@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,nextTick,onMounted,onUnmounted,ref} from 'vue';
+import {computed,nextTick,onMounted,onUnmounted,ref,shallowRef} from 'vue';
 import {Bookmark,Check,ChevronRight,HelpCircle,LockKeyhole,RefreshCw,Trophy,X} from 'lucide-vue-next';
 import {catalog,groups,lifeCodes,sourceNames,type Collectible,type Group} from '../../domain/globalAchievements';
 import {cachedHall,feedback,localQueue,localStamps,privatePins,scopes,storageIssue,togglePrivate} from '../../services/achievementJournal';
@@ -10,7 +10,7 @@ import AchievementNotice from './AchievementNotice.vue';
 import OfficialBadges from './OfficialBadges.vue';
 
 const emit=defineEmits<{account:[]}>();
-const category=ref<Group>('全部'),selected=ref<Collectible>(),detail=ref<HTMLDialogElement>();
+const category=ref<Group>('全部'),selected=shallowRef<Collectible>(),detail=ref<HTMLDialogElement>();
 const hall=ref<HonorHall>(),loading=ref(false),failure=ref(''),fromCache=ref(false),signedIn=ref(false);
 const pending=ref<string[]>([]);
 let active=true;
@@ -42,7 +42,8 @@ async function load(force=false){
  try{
   const cache=await cachedHall();if(!active)return;
   signedIn.value=cache.signedIn;hall.value=cache.signedIn?cache.hall:undefined;fromCache.value=!!hall.value;
-  if(!cache.signedIn||(!navigator.onLine&&hall.value))return;
+  if(!cache.signedIn)return;
+  if(!online.value){if(!hall.value)failure.value='离线中，本机还没有这个社区账号的收藏缓存。';return;}
   if(!force&&!cache.dirty&&cache.hall&&Date.now()-(cache.cachedAt||0)>=0&&Date.now()-(cache.cachedAt||0)<300000)return;
   const result=await treeholeRequest('honors.hall');if(!active)return;
   if(!result.hall?.progress)throw Error('invalid_response');
@@ -54,7 +55,15 @@ async function load(force=false){
  }catch(e){if(active){if(['session_expired','forbidden','not_found'].includes(treeholeErrorCode(e))){hall.value=undefined;signedIn.value=false;fromCache.value=false;}else failure.value=treeholeError(e);}}
  finally{if(active)loading.value=false;}
 }
-async function show(a:Collectible){selected.value=a;await nextTick();detail.value?.showModal();}
+async function show(a:Collectible){
+ selected.value=a;
+ await nextTick();
+ if(active&&detail.value&&!detail.value.open)detail.value.showModal();
+}
+function closeDetail(){if(!detail.value?.open)return false;detail.value.close();return true;}
+defineExpose({closeDetail});
+const online=ref(navigator.onLine);
+function networkChanged(){online.value=navigator.onLine;}
 async function pin(a:Collectible){
  if(loading.value||!earned.value[a.code])return;
  if(a.source!=='community'){await togglePrivate(a.code);return;}
@@ -66,8 +75,8 @@ async function pin(a:Collectible){
  catch(e){if(active){failure.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'){hall.value=undefined;signedIn.value=false;}}}
  finally{if(active)loading.value=false;}
 }
-onMounted(()=>void load());
-onUnmounted(()=>{active=false;});
+onMounted(()=>{window.addEventListener('online',networkChanged);window.addEventListener('offline',networkChanged);void load();});
+onUnmounted(()=>{active=false;window.removeEventListener('online',networkChanged);window.removeEventListener('offline',networkChanged);});
 </script>
 <template>
 <div class="collection">
@@ -93,7 +102,7 @@ onUnmounted(()=>{active=false;});
  <details class="collection-account"><summary>收藏与解锁提醒</summary><p>本机、教务与学习通收藏仅自己可见。社区收藏随邯院通账号同步，可选三枚展示给其他同学。</p>
  <label><input type="checkbox" v-model="feedback.haptics"/>轻微震动</label><label><input type="checkbox" v-model="feedback.sound"/>解锁提示音</label><label><input type="checkbox" :checked="!feedback.motion" @change="feedback.motion=!($event.target as HTMLInputElement).checked"/>减少动态效果</label>
  </details>
- <dialog ref="detail" class="collect-detail" :class="{quiet:!feedback.motion}" aria-labelledby="medal-title" @click.self="detail?.close()" @close="selected=undefined">
+ <dialog ref="detail" class="collect-detail" :class="{quiet:!feedback.motion}" aria-labelledby="medal-title" @click.self="detail?.close()">
   <template v-if="selected"><button class="detail-close" aria-label="关闭成就详情" autofocus @click="detail?.close()"><X :size="20"/></button>
   <div class="hero-medal" :class="{locked:!earned[selected.code]}" :style="{'--medal':selected.color}"><component :is="concealed(selected)?HelpCircle:selected.icon" :size="39" :stroke-width="1.65"/></div>
   <small class="eyebrow">{{selected.group}} · {{selected.tier}}</small><h2 id="medal-title">{{concealed(selected)?'未知奇遇':selected.name}}</h2>
@@ -102,7 +111,7 @@ onUnmounted(()=>{active=false;});
   <span>收藏归属</span><strong>{{sourceNames[selected.source]}}</strong>
   <template v-if="earned[selected.code]"><span>{{localStamps[selected.code]?.historical||hall?.backfilled?.includes(selected.code)?'历史记录核实':'解锁日期'}}</span><strong>{{honorDate(earned[selected.code])}}</strong></template>
   <template v-else-if="!concealed(selected)"><span>当前进度</span><strong>{{progress(selected)===null?'待账号同步':progress(selected)+' / '+selected.goal}}</strong></template></div>
-  <button v-if="earned[selected.code]" class="wear" :disabled="loading||(!pinned(selected)&&pins(selected).length>=3)" @click="pin(selected)"><component :is="pinned(selected)?Check:Bookmark" :size="16"/>{{pinned(selected)?'取下':selected.source==='community'?'展示到社区主页':'展示到我的页面'}} · {{pins(selected).length}}/3</button>
+  <button v-if="earned[selected.code]" class="wear" :disabled="loading||(selected.source==='community'&&!online)||(!pinned(selected)&&pins(selected).length>=3)" @click="pin(selected)"><component :is="pinned(selected)?Check:Bookmark" :size="16"/>{{selected.source==='community'&&!online?(pinned(selected)?'已展示 · 离线':'离线，稍后展示'):pinned(selected)?'取下':selected.source==='community'?'展示到社区主页':'展示到我的页面'}} · {{pins(selected).length}}/3</button>
   <p v-if="failure&&selected.source==='community'" role="alert">{{failure}}</p>
   </template>
  </dialog>
