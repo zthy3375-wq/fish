@@ -19,6 +19,19 @@ final class MedalParityTests:XCTestCase {
         let reopened=MedalJournal(defaults:defaults)
         XCTAssertNotNil(reopened.stamp(try XCTUnwrap(CampusMedal.byCode["life"]),scope:nil))
     }
+    @MainActor func testPinSetIsScopedAndRejectsLockedOrPublicMedals() throws {
+        let key=UUID().uuidString
+        let defaults=try XCTUnwrap(UserDefaults(suiteName:key))
+        defer { defaults.removePersistentDomain(forName:key) }
+        let j=MedalJournal(defaults:defaults)
+        for code in ["schedule","firstpost","grade"] {
+            let m=try XCTUnwrap(CampusMedal.byCode[code])
+            if code != "grade" { j.unlock(code,scope:"alpha") }
+            j.togglePin(m,school:"alpha",learning:nil)
+        }
+        XCTAssertEqual(j.pinned(school:"alpha",learning:nil),["schedule"])
+        XCTAssertTrue(j.pinned(school:"beta",learning:nil).isEmpty)
+    }
     func testTapSequenceRequiresConsecutiveGestures() {
         var counter=TapSequence(); let start=Date()
         for i in 0..<4 { XCTAssertFalse(counter.tap(target:5,at:start.addingTimeInterval(Double(i)/10))) }

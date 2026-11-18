@@ -107,17 +107,29 @@ import Combine
     }
     func enter() {
         perform {
-            let config = try await self.api.request("config")
-            self.boardsEnabled=config.boardsEnabled == true; self.responseKinds=config.responseKinds ?? ["same","hug","useful"]
-            self.honorsEnabled = config.honorsEnabled == true; self.messagesEnabled = config.messagesEnabled == true; self.moderationEnabled = config.moderationEnabled == true
-            self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
-            self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.buddiesEnabled = config.buddiesEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
-            self.followingEnabled = config.followingEnabled == true; self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
-            do { self.user = try await self.api.request("me").user; try await self.feed() }
-            catch let error as TreeholeError where error.code == "session_expired" { self.clear() }
+            do {
+                let entry=try await self.api.request("me",["entry":true])
+                if let config=entry.config?.value { self.applyConfiguration(config) }
+                else { self.applyConfiguration(try await self.api.request("config")) }
+                self.user=entry.user
+                if let firstPage=entry.posts {
+                    self.rememberResponses(firstPage); self.posts=firstPage.map(self.restorePoll)
+                    self.feedNext=entry.next; self.loadedFeedIdentity=self.feedIdentity; self.feedNeedsRefresh=false
+                } else { try await self.feed() }
+            } catch let failure as TreeholeError where failure.code == "session_expired" {
+                self.clear()
+                self.applyConfiguration(try await self.api.request("config"))
+            }
             self.ready = true
             await self.refreshUnread()
         }
+    }
+    private func applyConfiguration(_ config:TreeholeEnvelope) {
+        self.boardsEnabled=config.boardsEnabled == true; self.responseKinds=config.responseKinds ?? ["same","hug","useful"]
+        self.honorsEnabled = config.honorsEnabled == true; self.messagesEnabled = config.messagesEnabled == true; self.moderationEnabled = config.moderationEnabled == true
+        self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
+        self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.buddiesEnabled = config.buddiesEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
+        self.followingEnabled = config.followingEnabled == true; self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
     }
     private var feedIdentity: [String: String] { ["scope": scope, "query": query, "sort": sort].merging(TreeholeCategories.filters(category, interest: interest, enabled: discoveryEnabled)) { _, new in new } }
     func selectDiscovery(_ selected: String, interest selectedInterest: String = "") async throws {

@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   native-ios:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -165,6 +165,9 @@ jobs:
             ${{ runner.temp }}/Hanyuantong-iOS-Simulator.zip
           retention-days: 14
   android-reference:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -182,10 +185,25 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - run: npm ci && node ios-native/Scripts/sync_medals.mjs --check
-      - run: npm ci && npm run build && npx cap sync android
-        working-directory: android-product
-      - run: cd android-product/android && bash gradlew assembleDebug
+      - name: Download verified test.31 APK or rebuild from the pinned source
+        id: reference
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44340412151
+          name: handan-campus-regular-debug-2d901787c53f9a1c8496d504632a3c1c0b4cab6e
+          path: reference-apk
+      - if: steps.reference.outcome != 'success'
+        run: |
+          cd android-product
+          npm ci && npm run build && npx cap sync android
+          cd android && bash gradlew assembleDebug
+          mkdir -p ../../reference-apk && cp app/build/outputs/apk/debug/app-debug.apk ../../reference-apk/reference.apk
       - name: Enable KVM for the reference emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -197,7 +215,7 @@ jobs:
           arch: x86_64
           profile: pixel_5
           script: |
-            adb install android-product/android/app/build/outputs/apk/debug/app-debug.apk
+            adb install "$(find reference-apk -name '*.apk' -print -quit)"
             python3 ios-native/Scripts/android_reference.py "$RUNNER_TEMP/android-reference"
       - uses: actions/upload-artifact@v4
         if: always()

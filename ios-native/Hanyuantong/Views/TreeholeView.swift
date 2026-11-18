@@ -55,7 +55,7 @@ struct TreeholeView: View {
         case "inbox": return "互动消息"
         case "profile": return "同学主页"
         case "following": return "我关注的人"
-        case "account": return accountPage == "overview" ? "我的树洞" : accountPage == "profile" ? "修改昵称" : accountPage == "password" ? "账号安全" : "注销账号"
+        case "account": return accountPage == "overview" ? "我的社区" : accountPage == "profile" ? "编辑资料" : accountPage == "password" ? "账号安全" : "注销账号"
         case "moderate": return "举报处理"
         default: return "邯院社区"
         }
@@ -166,7 +166,7 @@ struct TreeholeView: View {
                 else if screen == "feed", let user = tree.user {
                     Button { withAnimation { searchOpen.toggle() } } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索帖子")
                     if tree.engagementEnabled { Button(action: showInbox) { Image(systemName: "bell").overlay(alignment: .topTrailing) { if tree.unreadCount > 0 { Text(tree.unreadCount > 99 ? "99+" : "\(tree.unreadCount)").font(.system(size: 9, weight: .bold)).padding(3).background(TreeholeTheme.primary, in: Capsule()).foregroundStyle(.white).offset(x: 9, y: -9) } } }.accessibilityLabel("互动消息") }
-                    Button { nickname = user.nickname; bio = user.bio ?? ""; password = ""; newPassword = ""; accountPage = "overview"; screen = "account" } label: { TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 32) }.accessibilityLabel("我的树洞")
+                    Button { nickname = user.nickname; bio = user.bio ?? ""; password = ""; newPassword = ""; accountPage = "overview"; screen = "account" } label: { TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 32) }.accessibilityLabel("我的社区")
                 }
             }
         }
@@ -678,7 +678,8 @@ struct TreeholeView: View {
                 settingsRow("账号安全", symbol: "lock.shield") { password = ""; newPassword = ""; accountPage = "password" }
                 Divider()
                 settingsRow("恢复已屏蔽的内容", symbol: "eye.slash") { confirmation = TreeholeConfirmation(title: "恢复所有已屏蔽的内容？") { _ = try await tree.api.request("blocks.clear"); tree.feedNeedsRefresh = true; tree.message = "已恢复屏蔽的内容" } }
-                if user.role == "moderator" { Divider(); settingsRow("处理举报", symbol: "flag") { tree.perform { tree.reports = try await tree.api.request("admin.reports").reports ?? []; screen = "moderate" } } }
+                if tree.moderationEnabled && user.permits("content") { NavigationLink("内容与审计") { ModerationBrowser(viewer:user.id) } }
+                if user.permits("reports") || (user.role == "moderator" && !tree.moderationEnabled) { Divider(); settingsRow("处理举报", symbol: "flag") { tree.perform { tree.reports = try await tree.api.request("admin.reports").reports ?? []; screen = "moderate" } } }
             }.campusCard()
             Button { confirmation = TreeholeConfirmation(title: "退出邯院通账号？") { _ = try await tree.api.request("logout"); draft.clear(); tree.clear(); screen = "feed" } } label: { Label("退出邯院通账号", systemImage: "rectangle.portrait.and.arrow.right").font(.subheadline).frame(maxWidth: .infinity).padding(.vertical, 6) }.campusCard()
             Button("注销邯院通账号") { password = ""; accountPage = "delete" }.font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 8)
