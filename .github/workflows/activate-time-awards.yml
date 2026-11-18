@@ -1,0 +1,33 @@
+name: Authorized registration-date achievement migration
+on:
+  push:
+    branches: [ops/activate-time-awards-20261118]
+    paths: ['.github/workflows/activate-time-awards.yml','scripts/cloudbase/rehearse-time-awards.mjs']
+permissions:
+  contents: read
+concurrency:
+  group: authorized-community-honor-migration
+  cancel-in-progress: false
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts --no-audit --no-fund && npm ci --prefix cloudbase/functions/community --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Rehearse migration from the exact live query and verify community contracts
+        run: |
+          git show e0546541ff8bf2e675c0a011d3cc3844164c7ed0:cloudbase/community-schema.sql > "$RUNNER_TEMP/live-base.sql"
+          node scripts/cloudbase/rehearse-time-awards.mjs "$RUNNER_TEMP/live-base.sql"
+          node --test --test-concurrency=2 cloudbase/tests/community*.mjs
+      - run: python3 -m pip install --disable-pip-version-check tencentcloud-sdk-python-scf
+      - name: Preserve data, update existing service and verify its public routes
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          CLOUDBASE_ENV_ID: hanyuantong-d8gjzt1jh12370215
+        run: node scripts/cloudbase/activate-time-awards.mjs "$RUNNER_TEMP/live-base.sql"
