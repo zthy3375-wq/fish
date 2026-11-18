@@ -2,7 +2,7 @@ name: Campus and community regression on the test.29 build
 on:
   push:
     branches: [ops/campus-eggs-upgrade-test29]
-    paths: ['.github/workflows/campus29-regressions.yml']
+    paths: ['.github/workflows/campus29-regressions.yml','scripts/treehole-browser-check.mjs']
 permissions:
   contents: read
 jobs:
