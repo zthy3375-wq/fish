@@ -7,6 +7,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {chromium} from 'playwright';
 import {createCommunity} from '../cloudbase/functions/community/core.mjs';
 import {createServer} from '../cloudbase/functions/community/server.mjs';
+import {browseBoard,choosePostBoard,composeDestination,feedNavigation} from './treehole-board-controls.mjs';
 
 const root=path.resolve('dist'),output='/tmp/handan-community-v15-qa';await mkdir(output,{recursive:true});
 const db=new PGlite();await db.exec(await readFile('cloudbase/community-schema.sql','utf8'));
@@ -33,7 +34,7 @@ async function client(width){
   const {action,body}=options;if(action==='buddies.join'&&state.failBuddy){state.failBuddy=false;return {error:'network_unavailable'};}if(action==='polls.vote'&&state.failVote){state.failVote=false;return {error:'network_unavailable'};}if(action==='media.upload'&&body?.purpose==='comment'&&state.failCommentUpload){state.failCommentUpload=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.failFollow){state.failFollow=false;return {error:'network_unavailable'};}if(action==='follows.list'&&state.failFollowList){state.failFollowList=false;return {error:'network_unavailable'};}if(action==='posts.list'&&!body?.beforeId&&state.failNextFeed){state.failNextFeed=false;return {error:'network_unavailable'};}if(action==='notifications.unread'&&state.expireUnread){state.expireUnread=false;return {error:'session_expired'};}if(action==='media.upload'&&state.failAvatarUpload){state.failAvatarUpload=false;return {error:'network_unavailable'};}if(action==='responses.set'&&state.failResponse){state.failResponse=false;return {error:'network_unavailable'};}state.actions.push(action);state.requests.push({action,body});if(action==='posts.get'&&state.failNextDetail){state.failNextDetail=false;return {error:'network_unavailable'};}if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
   const result=await fetch(endpoint+'/v1/'+action,{method:action==='config'?'GET':'POST',headers,...(action==='config'?{}:{body:JSON.stringify(body)})});
-  const json=await result.json();if(action==='buddies.join'&&state.holdBuddy){state.holdBuddy=false;await new Promise(resolve=>state.releaseBuddy=resolve);}if(action==='buddies.join'&&state.dropBuddy){state.dropBuddy=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.holdFollow){state.holdFollow=false;await new Promise(resolve=>state.releaseFollow=resolve);}if(action==='avatar.set'&&state.holdAvatarSet){state.holdAvatarSet=false;await new Promise(resolve=>state.releaseAvatarSet=resolve);}if(action==='config'&&state.legacyConfig){delete json.moderationEnabled;delete json.responseKinds;delete json.messagesEnabled;delete json.socialEnabled;delete json.avatarsEnabled;delete json.responsesEnabled;delete json.discoveryEnabled;delete json.followingEnabled;delete json.buddiesEnabled;delete json.pollsEnabled;delete json.commentImagesEnabled;}if(action==='posts.get'&&state.holdNextDetail){state.holdNextDetail=false;await new Promise(resolve=>state.releaseDetail=resolve);}if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
+  const json=await result.json();if(action==='buddies.join'&&state.holdBuddy){state.holdBuddy=false;await new Promise(resolve=>state.releaseBuddy=resolve);}if(action==='buddies.join'&&state.dropBuddy){state.dropBuddy=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.holdFollow){state.holdFollow=false;await new Promise(resolve=>state.releaseFollow=resolve);}if(action==='avatar.set'&&state.holdAvatarSet){state.holdAvatarSet=false;await new Promise(resolve=>state.releaseAvatarSet=resolve);}if(action==='config'&&(state.legacyConfig||state.preBoardsConfig))delete json.boardsEnabled;if(action==='config'&&state.legacyConfig){delete json.moderationEnabled;delete json.responseKinds;delete json.messagesEnabled;delete json.socialEnabled;delete json.avatarsEnabled;delete json.responsesEnabled;delete json.discoveryEnabled;delete json.followingEnabled;delete json.buddiesEnabled;delete json.pollsEnabled;delete json.commentImagesEnabled;}if(action==='posts.get'&&state.holdNextDetail){state.holdNextDetail=false;await new Promise(resolve=>state.releaseDetail=resolve);}if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
   if(json.sessionToken){state.token=json.sessionToken;delete json.sessionToken;}
   if(action==='logout'||action==='account.delete')state.token=null;
   if(action.startsWith('posts.')||action.startsWith('comments.'))state.publicResponses.push(json);
@@ -80,7 +81,7 @@ try{
   checks.push(`${width}: treehole is the middle tab, all five targets fit and composer clears the dock`);
   await a.page.getByRole('button',{name:'发帖',exact:true}).click();await a.page.getByLabel('想说的话').fill('今天图书馆靠窗的位置很安静。下课后，给自己一点慢下来的时间。');
   assert.equal(await nav.count(),0);checks.push(`${width}: composing hides main navigation to protect the draft`);
-  await a.page.getByLabel('帖子标题').fill('图书馆的午后');await a.page.getByLabel('选择分区').selectOption('study');await a.page.getByLabel('添加图片').setInputFiles({name:'campus-fixture.webp',mimeType:'image/webp',buffer:fixture});await a.page.locator('.th-draft-images img').waitFor();
+  await a.page.getByLabel('帖子标题').fill('图书馆的午后');await choosePostBoard(a.page,'study');await a.page.getByLabel('添加图片').setInputFiles({name:'campus-fixture.webp',mimeType:'image/webp',buffer:fixture});await a.page.locator('.th-draft-images img').waitFor();
   await a.page.getByRole('checkbox',{name:'匿名发布',exact:true}).check();await a.page.waitForFunction(()=>document.querySelector('.th-compose-footnote .th-draft-status')?.textContent.includes('草稿已保存'));await a.page.screenshot({path:path.join(output,`treehole-compose-${width}.png`),animations:'disabled'});a.state.dropNextPost=true;
   await a.page.getByRole('button',{name:'匿名发布',exact:true}).click();await a.page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();
   assert.equal(await a.page.getByLabel('想说的话').inputValue(),'今天图书馆靠窗的位置很安静。下课后，给自己一点慢下来的时间。');
@@ -156,7 +157,7 @@ try{
   assert.equal(await b.page.locator('.th-post').count(),1);
   await b.page.getByRole('button',{name:'搜索帖子',exact:true}).click();await b.page.getByLabel('搜索树洞文字').fill('这个关键词没有帖子');await b.page.getByRole('button',{name:'搜索',exact:true}).click();await b.page.getByRole('heading',{name:'还没找到这段回声'}).waitFor();
   await b.page.getByRole('button',{name:'清除搜索',exact:true}).click();await b.page.locator('.th-post-body').first().waitFor();checks.push(`${width}: saved feed and search preserve scope`);
-  await b.page.locator('.th-return-links').getByRole('button',{name:'广场',exact:true}).click();await b.page.getByLabel('帖子分区').selectOption('daily');await b.page.getByLabel('帖子分区').selectOption('help');await b.page.getByRole('heading',{name:'这里，等你说第一句话'}).waitFor();await b.page.getByLabel('帖子分区').selectOption('study');await b.page.locator('.th-post-body').first().waitFor();checks.push(`${width}: section filtering excludes unrelated posts`);
+  await b.page.locator('.th-return-links').getByRole('button',{name:'广场',exact:true}).click();await browseBoard(b.page,'daily');await browseBoard(b.page,'help');await b.page.getByRole('heading',{name:'这里，等你说第一句话'}).waitFor();await browseBoard(b.page,'study');await b.page.locator('.th-post-body').first().waitFor();checks.push(`${width}: section filtering excludes unrelated posts`);
   const previousRefresh=b.state.actions.filter(x=>x==='posts.list').length;
   await b.page.evaluate(()=>{window.scrollTo(0,0);const target=document.querySelector('.th-feed-heading');for(const [type,y] of [['touchstart',120],['touchend',260]]){const event=new Event(type,{bubbles:true});Object.defineProperty(event,'changedTouches',{value:[{clientY:y}]});target.dispatchEvent(event);}});
   await b.page.getByText('帖子已刷新',{exact:true}).waitFor();assert.equal(b.state.actions.filter(x=>x==='posts.list').length,previousRefresh+1);checks.push(`${width}: pull gesture refreshes community posts`);
@@ -325,7 +326,7 @@ try{
   checks.push(`${width}: switching to timetable and back keeps filter, forty-five posts and exact reading position without refresh`);
   await page.locator(`.th-post[data-post-id="${id}"] .th-post-body`).click();await page.getByRole('heading',{name:'评论',exact:true}).waitFor();await page.waitForFunction(()=>window.scrollY===0);await page.getByRole('button',{name:'返回社区',exact:true}).click();await count(45);checks.push(`${width}: body opens at the top while comment icon opens discussion`);
   await page.getByRole('button',{name:'刷新树洞',exact:true}).click();await count(20);pager.state.holdNextPage=true;await page.locator('.th-page-end').scrollIntoViewIfNeeded();await page.getByText('正在加载更多帖子…',{exact:true}).waitFor();while(!pager.state.releasePage)await new Promise(r=>setTimeout(r,10));
-  await page.getByLabel('帖子分区',{exact:true}).selectOption('daily');await page.getByLabel('帖子分区').selectOption('help');await count(0);pager.state.releasePage();pager.state.releasePage=null;await page.waitForTimeout(120);assert.equal(await card().count(),0);checks.push(`${width}: stale page response cannot append after category changes`);
+  await browseBoard(page,'daily');await browseBoard(page,'help');await count(0);pager.state.releasePage();pager.state.releasePage=null;await page.waitForTimeout(120);assert.equal(await card().count(),0);checks.push(`${width}: stale page response cannot append after category changes`);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(pager.errors,[]);await pager.context.close();
  }
  for(const width of [360,390,430]){
@@ -361,25 +362,72 @@ try{
  }
  for(const width of [360,390,430]){
   const a=await client(width),page=a.page;active=page;await register(page,`discovery_${width}`,'兴趣同学');
-  const nav=page.getByLabel('帖子分区',{exact:true});
-  assert.deepEqual(await nav.locator('optgroup').evaluateAll(nodes=>nodes.map(n=>n.label)),['校园','兴趣','找搭子','树洞']);
-  const bounds=await nav.boundingBox();assert(bounds.height>=44&&bounds.x>=0&&bounds.x+bounds.width<=width);
+  const nav=feedNavigation(page);
+  assert.deepEqual(await nav.getByRole('button').allTextContents(),['全部','校园','学习','兴趣','搭子','树洞']);
+  const targets=await nav.getByRole('button').evaluateAll(buttons=>buttons.map(el=>[el.offsetWidth,el.offsetHeight]));
+  assert(targets.every(([width,height])=>width>=44&&height>=44));
+  assert.equal(await nav.evaluate(el=>el.scrollWidth>el.clientWidth),false);
   const create=(category,extra={})=>api.execute('posts.create',{category,body:'发现合成内容 '+category,anonymous:false,requestId:crypto.randomUUID(),...extra},a.state.token,`discovery-${width}`);
-  await create('help');await create('study',{anonymous:true});await create('entertainment',{interest:'music',body:'音乐合成内容'});
-  await nav.selectOption('daily');await page.getByLabel('帖子分区').selectOption('study');await page.locator('.th-post').first().waitFor();assert((await page.locator('.th-post').allTextContents()).every(t=>t.includes('学习交流')));checks.push(`${width}: compact four-section navigation preserves legacy study and anonymous identity`);
-  await nav.selectOption('entertainment');await nav.selectOption('interest/games');await page.waitForFunction(()=>!document.querySelector('.th-progress'));if(width===360)await page.getByRole('heading',{name:'这里，等你说第一句话'}).waitFor();
-  await page.getByRole('button',{name:'发帖',exact:true}).click();assert.equal(await page.getByLabel('选择分区').inputValue(),'interest/games');
+  await create('help');
+  const legacyStudy=(await create('study',{anonymous:true})).post;
+  await create('entertainment',{interest:'music',body:'音乐合成内容'});
+  await browseBoard(page,'daily');await browseBoard(page,'study');
+  await page.locator(`[data-post-id="${legacyStudy.id}"] .th-category-tag`).filter({hasText:'学习交流'}).waitFor();
+  const studyTags=await page.locator('.th-post .th-category-tag').allTextContents();
+  assert(studyTags.every(tag=>['#学习交流','#考研'].includes(tag.trim())));
+  if(width!==360)assert(studyTags.includes('#考研'));
+  checks.push(`${width}: all-study groups graduate posts with existing study posts and preserves legacy labels`);
+  await browseBoard(page,'entertainment');await browseBoard(page,'entertainment/games');await page.waitForFunction(()=>!document.querySelector('.th-progress'));if(width===360)await page.getByRole('heading',{name:'这里，等你说第一句话'}).waitFor();
+  await page.getByRole('button',{name:'发帖',exact:true}).click();assert.equal(await composeDestination(page).textContent(),'游戏');
   await page.getByLabel('帖子标题').fill(`周末${width}游戏讨论`);await page.getByLabel('想说的话').fill('这周找到一款喜欢的游戏，想聊聊体验。');await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();await page.reload();await page.locator('.th-draft-resume').click();
-  assert.equal(await page.getByLabel('选择分区').inputValue(),'interest/games');assert.equal(await page.getByLabel('帖子标题').inputValue(),`周末${width}游戏讨论`);await page.screenshot({path:path.join(output,`discovery-compose-${width}.png`)});checks.push(`${width}: selected interest is inherited and retained in the persisted draft`);
+  assert.equal(await composeDestination(page).textContent(),'游戏');assert.equal(await page.getByLabel('帖子标题').inputValue(),`周末${width}游戏讨论`);await page.screenshot({path:path.join(output,`discovery-compose-${width}.png`)});checks.push(`${width}: selected interest is inherited and retained in the persisted draft`);
   await page.getByRole('button',{name:'以昵称发布',exact:true}).click();await page.locator('.th-detail').waitFor();const created=a.state.publicResponses.filter(r=>r.post?.title===`周末${width}游戏讨论`).at(-1).post;assert.equal(created.interest,'games');assert.equal(created.anonymous,false);
-  await page.locator('.th-detail .th-category-tag').click();await nav.waitFor();await page.waitForFunction(()=>!document.querySelector('.th-progress'));assert.equal(await nav.inputValue(),'interest/games');const shownIds=await page.locator('.th-post').evaluateAll(nodes=>nodes.map(n=>n.dataset.postId));assert(shownIds.includes(created.id));
-  a.state.failNextFeed=true;await nav.selectOption('interest/music');await page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();assert.equal(await nav.inputValue(),'interest/games');assert.deepEqual(await page.locator('.th-post').evaluateAll(nodes=>nodes.map(n=>n.dataset.postId)),shownIds);checks.push(`${width}: post interest opens the matching feed; failed switching restores selection and prior content`);
-  await nav.selectOption('interest/games');await page.getByRole('button',{name:'搜索帖子',exact:true}).click();await page.getByLabel('搜索树洞文字').fill(`周末${width}`);await page.locator('.th-search').getByRole('button',{name:'搜索',exact:true}).click();await page.locator('.th-post').first().waitFor();await page.getByLabel('帖子排序',{exact:true}).selectOption('hot');await page.waitForFunction(()=>!document.querySelector('.th-progress'));
+  await page.locator('.th-detail .th-category-tag').click();await nav.waitFor();await page.waitForFunction(()=>!document.querySelector('.th-progress'));assert.equal(await page.getByRole('button',{name:'更多兴趣，当前 游戏',exact:true}).count(),1);const shownIds=await page.locator('.th-post').evaluateAll(nodes=>nodes.map(n=>n.dataset.postId));assert(shownIds.includes(created.id));
+  a.state.failNextFeed=true;await browseBoard(page,'entertainment/music');await page.getByRole('alert').filter({hasText:'连接失败'}).last().waitFor();assert.equal(await page.getByRole('button',{name:'更多兴趣，当前 游戏',exact:true}).count(),1);assert.deepEqual(await page.locator('.th-post').evaluateAll(nodes=>nodes.map(n=>n.dataset.postId)),shownIds);checks.push(`${width}: post interest opens the matching feed; failed switching restores selection and prior content`);
+  await browseBoard(page,'entertainment/games');await page.getByRole('button',{name:'搜索帖子',exact:true}).click();await page.getByLabel('搜索树洞文字').fill(`周末${width}`);await page.locator('.th-search').getByRole('button',{name:'搜索',exact:true}).click();await page.locator('.th-post').first().waitFor();await page.getByLabel('帖子排序',{exact:true}).selectOption('hot');await page.waitForFunction(()=>!document.querySelector('.th-progress'));
   const criteria=a.state.requests.filter(r=>r.action==='posts.list').at(-1).body;assert.equal(criteria.section,'entertainment');assert.equal(criteria.interest,'games');assert.equal(criteria.query,`周末${width}`);assert.equal(criteria.sort,'hot');
-  await page.locator('.th-post-body').click();await page.locator('.th-detail').waitFor();await page.getByRole('button',{name:'返回社区',exact:true}).click();assert.equal(await nav.inputValue(),'interest/games');checks.push(`${width}: interest, search, hot sort and detail return use the same feed criteria`);
+  await page.locator('.th-post-body').click();await page.locator('.th-detail').waitFor();await page.getByRole('button',{name:'返回社区',exact:true}).click();assert.equal(await page.getByRole('button',{name:'更多兴趣，当前 游戏',exact:true}).count(),1);checks.push(`${width}: interest, search, hot sort and detail return use the same feed criteria`);
   await page.getByRole('button',{name:'清除搜索',exact:true}).click();await page.getByRole('button',{name:'搜索帖子',exact:true}).click();await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(output,`discovery-feed-${width}.png`)});
-  await nav.selectOption('treehole');await page.getByRole('button',{name:'发帖',exact:true}).click();const anon=page.getByRole('checkbox',{name:'匿名发布',exact:true});assert(await anon.isChecked());assert(await anon.isDisabled());await page.getByLabel('想说的话').fill('匿名树洞里的合成文字');await page.getByRole('button',{name:'匿名发布',exact:true}).click();await page.locator('.th-detail').waitFor();const hidden=a.state.publicResponses.filter(r=>r.post?.category==='treehole').at(-1).post;assert(hidden.anonymous);assert(!hidden.author.id);assert(!hidden.author.avatar);checks.push(`${width}: anonymous section enforces identity separation through publishing`);
-  await page.getByRole('button',{name:'返回社区',exact:true}).click();await nav.selectOption('buddies');await page.getByRole('button',{name:'发帖',exact:true}).click();assert.equal(await page.getByLabel('选择分区').inputValue(),'buddies');assert.equal(await anon.isDisabled(),false);checks.push(`${width}: buddies remain ordinary posts and other sections keep optional anonymity`);
+  const [boardKey,boardName]=width===360?['study/graduate','考研']:width===390?['entertainment/reading','读书']:['entertainment/fitness','健身'];
+  await browseBoard(page,boardKey);
+  await page.getByRole('heading',{name:'还没有'+boardName+'帖',exact:true}).waitFor();
+  await page.getByRole('button',{name:'发帖',exact:true}).click();
+  assert.equal(await composeDestination(page).textContent(),boardName);
+  await page.getByLabel('帖子标题').fill(boardName+' · 合成分区验收');
+  await page.getByLabel('想说的话').fill('这条测试帖用于核对分区草稿和发布筛选。');
+  await page.getByLabel('选择分区',{exact:true}).click();
+  const picker=page.getByRole('dialog',{name:'选择分区',exact:true});
+  await picker.getByRole('button',{name:boardName,exact:true}).waitFor();
+  await page.screenshot({path:path.join(output,`boards-compose-${width}.png`),animations:'disabled'});
+  await page.keyboard.press('Escape');await picker.waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();
+  await page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();
+
+  if(width===360){
+   a.state.preBoardsConfig=true;await page.reload();await page.locator('.th-draft-resume').click();
+   await page.getByRole('button',{name:'以昵称发布',exact:true}).click();
+   await page.getByRole('alert').filter({hasText:'这个分区暂不可用，草稿已保留'}).waitFor();
+   assert.equal(await composeDestination(page).textContent(),boardName);
+   await page.getByRole('button',{name:'返回社区',exact:true}).click();
+   await page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();
+   a.state.preBoardsConfig=false;
+  }
+
+  await page.reload();await page.locator('.th-draft-resume').click();
+  assert.equal(await composeDestination(page).textContent(),boardName);
+  assert.equal(await page.getByLabel('帖子标题').inputValue(),boardName+' · 合成分区验收');
+  await page.getByRole('button',{name:'以昵称发布',exact:true}).click();
+  await page.locator('.th-detail .th-category-tag').filter({hasText:boardName}).click();
+  await page.locator('.th-post').filter({hasText:boardName+' · 合成分区验收'}).waitFor();
+  const newPost=a.state.publicResponses.filter(r=>r.post?.title===boardName+' · 合成分区验收').at(-1).post;
+  const [postCategory,interest]=boardKey.split('/');
+  assert.equal(newPost.category,postCategory);assert.equal(newPost.interest,interest);
+  assert((await page.locator('.th-post .th-category-tag').allTextContents()).every(tag=>tag.includes(boardName)));
+  await page.screenshot({path:path.join(output,`boards-feed-${width}.png`),animations:'disabled'});
+  checks.push(`${width}: ${boardName} board inherits compose, survives reload, publishes and opens from the post badge`);
+
+  await browseBoard(page,'treehole');await page.getByRole('button',{name:'发帖',exact:true}).click();const anon=page.getByRole('checkbox',{name:'匿名发布',exact:true});assert(await anon.isChecked());assert(await anon.isDisabled());await page.getByLabel('想说的话').fill('匿名树洞里的合成文字');await page.getByRole('button',{name:'匿名发布',exact:true}).click();await page.locator('.th-detail').waitFor();const hidden=a.state.publicResponses.filter(r=>r.post?.category==='treehole').at(-1).post;assert(hidden.anonymous);assert(!hidden.author.id);assert(!hidden.author.avatar);checks.push(`${width}: anonymous section enforces identity separation through publishing`);
+  await page.getByRole('button',{name:'返回社区',exact:true}).click();await browseBoard(page,'buddies');await page.getByRole('button',{name:'发帖',exact:true}).click();assert.equal(await composeDestination(page).textContent(),'找搭子');assert.equal(await anon.isDisabled(),false);checks.push(`${width}: buddies remain ordinary posts and other sections keep optional anonymity`);
   await page.getByRole('button',{name:'返回社区',exact:true}).click();a.state.legacyConfig=true;await page.reload();await page.locator('.th-post').first().waitFor();assert.equal(await page.getByLabel('帖子分区',{exact:true}).locator('option[value="entertainment"]').count(),0);checks.push(`${width}: old backend keeps the original category navigation`);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(a.errors,[]);await a.context.close();
  }
@@ -396,7 +444,7 @@ try{
   b.state.failFollow=true;await page.getByRole('button',{name:'关注 TA',exact:true}).click();await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('button',{name:'关注 TA',exact:true}).getAttribute('aria-pressed'),'false');
   await page.getByRole('button',{name:'关注 TA',exact:true}).click();await page.getByRole('button',{name:'已关注 · 取消关注',exact:true}).waitFor();await page.screenshot({path:path.join(output,`following-profile-${width}.png`)});checks.push(`${width}: profile follow failure keeps state and explicit retry confirms the server relation`);
   await page.getByRole('button',{name:'返回社区',exact:true}).click();await followTab.click();await page.getByRole('heading',{name:title,exact:true}).waitFor();assert.equal(await page.locator('.th-post').count(),1);assert.equal(await page.getByText('关注匿名秘密'+width,{exact:true}).count(),0);
-  await page.getByLabel('帖子分区',{exact:true}).selectOption('entertainment');await page.getByLabel('帖子分区').selectOption('interest/games');await page.getByLabel('帖子排序',{exact:true}).selectOption('hot');assert.equal(await followTab.getAttribute('aria-pressed'),'true');
+  await browseBoard(page,'entertainment');await browseBoard(page,'entertainment/games');await page.getByLabel('帖子排序',{exact:true}).selectOption('hot');assert.equal(await followTab.getAttribute('aria-pressed'),'true');
   await page.getByRole('button',{name:'搜索帖子',exact:true}).click();await page.getByLabel('搜索树洞文字').fill('合成游戏');await page.locator('.th-search').getByRole('button',{name:'搜索',exact:true}).click();await named.locator('.th-post-body').click();await page.locator('.th-detail').waitFor();await page.getByRole('button',{name:'返回社区',exact:true}).click();await named.waitFor();assert.equal(await followTab.getAttribute('aria-pressed'),'true');assert.equal(await page.getByLabel('搜索树洞文字').inputValue(),'合成游戏');
   await page.screenshot({path:path.join(output,`following-feed-${width}.png`)});checks.push(`${width}: following excludes anonymous posts and persists through interest/search/hot/detail return`);
   b.state.failNextFeed=true;await scopes.getByRole('button',{name:'广场',exact:true}).click();await page.getByRole('alert').waitFor();assert.equal(await followTab.getAttribute('aria-pressed'),'true');assert.equal(await page.getByLabel('搜索树洞文字').inputValue(),'合成游戏');assert.equal(await page.locator('.th-post').count(),1);checks.push(`${width}: failed feed-scope switch restores criteria and previous visible posts`);
@@ -465,7 +513,7 @@ try{
  // Buddy registration uses the real SQL transaction, not preview fixture behavior.
  for(const width of [360,390,430]){
   const a=await client(width),b=await client(width),page=a.page;await register(page,'buddy_author_'+width,'搭子发起人'+width);await register(b.page,'buddy_reader_'+width,'报名同学'+width);
-  await page.getByRole('button',{name:'发帖',exact:true}).click();await page.getByLabel('选择分区').selectOption('buddies');await page.getByRole('button',{name:'设置时间、地点和报名',exact:true}).click();
+  await page.getByRole('button',{name:'发帖',exact:true}).click();await choosePostBoard(page,'buddies');await page.getByRole('button',{name:'设置时间、地点和报名',exact:true}).click();
   assert(await page.getByRole('button',{name:'以昵称发布',exact:true}).isDisabled());assert.equal(await page.getByRole('button',{name:'添加投票',exact:true}).count(),0);assert(await page.getByLabel('选择分区').isDisabled());
   await page.getByLabel('想说的话').fill('下课去操场慢跑，按自己的节奏就好。');await page.getByLabel('搭子集合地点').fill('东操场入口');await page.getByLabel('招募人数').selectOption('1');
   const date=new Date(Date.now()+24*3600000+8*3600000).toISOString().slice(0,16);await page.getByLabel('搭子活动时间').fill(date);
@@ -483,7 +531,7 @@ try{
   await page.getByRole('button',{name:'重新开放',exact:true}).click();await page.getByRole('button',{name:'结束招募',exact:true}).waitFor();await b.page.getByRole('button',{name:'刷新树洞',exact:true}).click();await b.page.waitForFunction(()=>document.querySelectorAll('.th-post').length===0);await b.page.getByRole('button',{name:'查看全部',exact:true}).click();await card.waitFor();await card.getByRole('button',{name:'一起去 · 报名',exact:true}).waitFor();
   b.state.holdBuddy=true;await card.getByRole('button',{name:'一起去 · 报名',exact:true}).click();while(!b.state.releaseBuddy)await b.page.waitForTimeout(10);b.state.expireUnread=true;await b.page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await b.page.getByRole('heading',{name:'说说校园里的那些事'}).waitFor();b.state.releaseBuddy();b.state.releaseBuddy=null;await b.page.waitForTimeout(100);assert.equal(await b.page.locator('.th-buddy').count(),0);checks.push(`${width}: late signup response cannot restore an expired account`);
   await page.screenshot({path:path.join(output,`buddy-detail-${width}.png`),animations:'disabled'});
-  a.state.legacyConfig=true;await page.reload();await page.locator('.th-self').click();assert.equal(await page.getByRole('button',{name:/^我报名的/}).count(),0);await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.getByRole('button',{name:'发帖',exact:true}).click();await page.getByLabel('选择分区').selectOption('buddies');assert.equal(await page.getByRole('button',{name:'设置时间、地点和报名',exact:true}).count(),0);checks.push(`${width}: older backend hides buddy editing and joined entry while legacy posts remain readable`);
+  a.state.legacyConfig=true;await page.reload();await page.locator('.th-self').click();assert.equal(await page.getByRole('button',{name:/^我报名的/}).count(),0);await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.getByRole('button',{name:'发帖',exact:true}).click();await choosePostBoard(page,'buddies');assert.equal(await page.getByRole('button',{name:'设置时间、地点和报名',exact:true}).count(),0);checks.push(`${width}: older backend hides buddy editing and joined entry while legacy posts remain readable`);
   assert.deepEqual(a.errors,[]);assert.deepEqual(b.errors,[]);await a.context.close();await b.context.close();
  }
  await writeFile(path.join(output,'checks.json'),JSON.stringify({backend:'actual PostgreSQL (PGlite), HTTP service',bridge:'test-only native adapter',checks},null,2));
