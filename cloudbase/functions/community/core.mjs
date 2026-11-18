@@ -222,10 +222,20 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
     if(boardTopics.has(post.interest))post.interest='';
    }
   }
+  // Older clients still render an eight-slot cabinet. New codes remain intact in storage.
+  if(input.timeAwards!==true){
+   const visible=code=>code!=='month'&&code!=='year';
+   for(const item of [r.hall,r.user,r.profile,r.updatedIdentity])if(item?.showcase)item.showcase=item.showcase.filter(visible);
+   if(r.unlocks)r.unlocks=r.unlocks.filter(visible);
+   if(r.hall){
+    delete r.hall.awards.month;delete r.hall.awards.year;
+    if(r.hall.progress){delete r.hall.progress.days;r.hall.total=Object.keys(r.hall.awards).length;}
+   }
+  }
   if(sessionToken)r.sessionToken=sessionToken;
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:12,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
  return {execute,config};
 }
