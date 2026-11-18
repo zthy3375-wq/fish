@@ -4,10 +4,10 @@ import {ChevronRight,BookOpen} from 'lucide-vue-next';
 import {badges,type Badge} from '../../domain/communityHonors';
 import type {Collectible} from '../../domain/globalAchievements';
 import BadgeDetail from './BadgeDetail.vue';
-const props=defineProps<{medals:Collectible[]; honor?:Badge; latest?:Collectible; fresh?:boolean; personal?:boolean; pinned?:boolean}>();
+const props=defineProps<{medals:Collectible[]; honor?:Badge; latest?:Collectible; fresh?:boolean; personal?:boolean; first?:boolean; pinned?:boolean}>();
 const emit=defineEmits<{hall:[];medal:[code:string]}>();
 const detail=ref<InstanceType<typeof BadgeDetail>>();
-const firstPage=computed(()=>props.personal&&!props.honor&&props.medals.length===1&&props.medals[0].code==='welcome');
+const firstPage=computed(()=>props.first&&!props.honor);
 </script>
 <template>
  <section class="honor-case" :class="{'case-first':firstPage}" aria-label="荣誉展柜">

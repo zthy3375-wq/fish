@@ -13,5 +13,11 @@ onMounted(async()=>{try{
 const display=computed(()=>personalDisplay({
   ...Object.fromEntries(Object.entries(localStamps.value).map(([k,v])=>[k,v.at])),...hall.value?.awards
 },privatePins.value,owner.value?.showcase??[]));
+const newDiscovery=computed(()=>{
+  const a=display.value.lastHidden;
+  if(!a)return;
+  const stamp=localStamps.value[a.code],seen=localStamps.value[seenHidden.value??''];
+  if(stamp&&!stamp.historical&&(!seen||Date.parse(seen.at)<Date.parse(stamp.at)))return a;
+});
 </script>
-<template><HonorShowcase personal class="collection-entry" :medals="display.medals" :pinned="display.pinned" :honor="featuredHonor(owner?.badges)??hall?.honors?.[0]" :latest="display.latest" :fresh="!!display.latest?.hidden&&display.latest.code!==seenHidden&&!localStamps[display.latest.code]?.historical" @hall="$emit('hall')" @medal="$emit('medal',$event)"/></template>
+<template><HonorShowcase personal class="collection-entry" :medals="display.medals" :pinned="display.pinned" :first="display.first" :honor="featuredHonor(owner?.badges)??hall?.honors?.[0]" :latest="newDiscovery??display.latest" :fresh="!!newDiscovery" @hall="$emit('hall')" @medal="$emit('medal',$event)"/></template>

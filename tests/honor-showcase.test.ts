@@ -5,7 +5,9 @@ it('keeps manually picked medals, and otherwise shows up to three actual dated r
  expect(personalDisplay(stamps,[],[]).medals.map(m=>m.code)).toEqual(['dream','profile','bath']);
  const pinned=personalDisplay(stamps,['welcome','not-earned'],[]);
  expect(pinned.medals.map(m=>m.code)).toEqual(['welcome']);expect(pinned.latest?.code).toBe('dream');
+ expect(pinned.first).toBe(false);expect(personalDisplay({welcome:stamps.welcome},[],[]).first).toBe(true);
  expect(personalDisplay({},[],[]).medals).toEqual([]);
+ const verified=personalDisplay({},[],['arrival','dream']);expect(verified.medals.map(m=>m.code)).toEqual(['arrival']);expect(verified.latest).toBeUndefined();
 });
 it('shows only explicitly public community medals, removes duplicates and caps the list',()=>{
  expect(publicMedals(['dream','profile','grade','arrival','firstpost','arrival','hello','liked']).map(a=>a.code)).toEqual(['arrival','firstpost','hello']);

@@ -13,7 +13,8 @@ export function featuredHonor(identity?:Identity):Badge|undefined{
 export function personalDisplay(stamps:Record<string,string>,pins:string[],accountPins:string[]){
   const sorted=Object.keys(stamps).filter(code=>byCode.has(code)&&Number.isFinite(Date.parse(stamps[code])))
     .sort((a,b)=>Date.parse(stamps[b])-Date.parse(stamps[a])||a.localeCompare(b));
-  const pinned=[...new Set([...pins,...accountPins])].filter(code=>sorted.includes(code)).slice(0,3);
+  const publicPins=publicMedals(accountPins).map(a=>a.code);
+  const pinned=[...new Set([...pins.filter(code=>sorted.includes(code)),...publicPins])].slice(0,3);
   const choices=pinned.length?pinned:sorted.slice(0,3);
-  return {medals:choices.map(code=>byCode.get(code)!),latest:byCode.get(sorted[0]),pinned:pinned.length>0};
+  return {medals:choices.map(code=>byCode.get(code)!),latest:byCode.get(sorted[0]),lastHidden:sorted.map(code=>byCode.get(code)!).find(a=>a.hidden),first:sorted.length===1&&sorted[0]==='welcome'&&!publicPins.length,pinned:pinned.length>0};
 }
