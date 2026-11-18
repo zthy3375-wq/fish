@@ -7,7 +7,7 @@ export function parseRoute(hash: string): Route {
   if (raw === 'tasks' || (raw === 'academic' && sub === 'agenda')) return {page:'tasks',section:'agenda'};
   if (raw === 'academic' && sub === 'official') return {page:'profile',section:'overview'};
   if (raw === 'schedule' || (raw === 'academic' && sub === 'schedule')) return {page:'schedule', section:'schedule'};
-  if(raw==='profile'&&sub==='honors')return {page:'profile',section:'honors'};
+  if(raw==='profile'&&['honors','settings'].includes(sub))return {page:'profile',section:sub};
   const page: Page = raw === 'academic' || raw === 'profile' || raw === 'life' || raw === 'community' ? raw : 'home';
   return {page, section:page === 'academic' && sections.includes(sub) ? sub : 'overview'};
 }
@@ -19,7 +19,7 @@ export class NavigationStack {
   overlay = '';
   constructor(initial: Route) {
     this.route = initial;
-    if(initial.page==='profile'&&initial.section==='honors')this.parents=[{page:'profile',section:'overview'}];
+    if(initial.page==='profile'&&initial.section!=='overview')this.parents=[{page:'profile',section:'overview'}];
     if (initial.page === 'academic' && initial.section !== 'overview') this.parents = [{page:'academic', section:'overview'}];
   }
   move(page: Page, section = 'overview') {

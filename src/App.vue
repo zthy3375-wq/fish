@@ -54,7 +54,7 @@ import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { App as NativeApp } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
-  Fish, GraduationCap,
+  Fish, GraduationCap, PanelsTopLeft,
   BookOpen,
   CalendarDays,
   ChartNoAxesColumnIncreasing,
@@ -393,6 +393,11 @@ const about = [
   },
   { id: "about", title: "版本信息", subtitle: `邯院通 · v${appVersion}`, icon: Info },
 ];
+const profileName=computed(()=>academicCache.value.profile.data?.name?.trim()||prefs.value.name.trim()||'同学');
+const profileAcademicLinks=computed(()=>[
+  ...academicServices.value.filter(item=>!['learning','agenda'].includes(item.id)),
+  {id:'widget',title:'桌面课表',icon:PanelsTopLeft},
+]);
 const sectionNames: Record<string, string> = {
   overview: "学习",
   agenda: "统一日程",
@@ -409,14 +414,14 @@ const title = computed(() =>
     ? "今天"
     : page.value === "community" ? "树洞" : page.value === "life" ? "校园生活" : page.value === "tasks" ? "待办" : page.value === "schedule" ? "课程表" : page.value === "academic"
       ? sectionNames[section.value]
-      : section.value==="honors"?"荣誉殿堂":"我的",
+      : section.value==="honors"?"荣誉殿堂":section.value==="settings"?"设置与帮助":"我的",
 );
 const subtitle = computed(() =>
   page.value === "home"
     ? `${dateLabel(now.value)} 周${weekdays[dayNumber(now.value) - 1]} · ${week.value >= 1 && week.value <= semester.value.weekCount ? "第 " + week.value + " 周" : "学期外"} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
     : page.value === "community" ? "邯院通账号 · 昵称或匿名发言" : page.value === "life" ? "接水、洗衣与校园服务" : page.value === "tasks" ? "今天、接下来，按自己的节奏" : page.value === 'academic' && section.value==='overview' ? '作业、课程与教务' : page.value === "academic" && section.value==='learning' ? "作业与课程" : page.value === "academic" || page.value === "schedule"
       ? `${semester.value.academicYear} ${semester.value.season} · ${officialActive.value ? "学校课表 · 已缓存" : isSchoolPageSemester(schedule.value.activeSemesterId) ? "已保存课表" : "个人课表"}`
-      : section.value==="honors"?"身份、荣誉与校园收藏":"学校账号 · 本机设置",
+      : section.value==="honors"?"身份、荣誉与校园收藏":"",
 );
 const greeting = computed(() =>
   now.value.getHours() < 12
@@ -678,7 +683,11 @@ onUnmounted(() => {
       @back="back"
       @notifications="open('notifications')"
       @add="createCourse()"
-    />
+    >
+      <button v-if="page==='profile'&&section==='overview'" class="profile-settings-entry" aria-label="设置与帮助" @click="move('profile','settings')">
+        <Settings2 :size="18" aria-hidden="true"/>设置
+      </button>
+    </AppHeader>
     <main ref="content" @touchstart.passive="pullStart" @touchend.passive="pullEnd" :inert="!!modal || agendaView.editor" tabindex="-1" aria-label="页面内容">
       <LoadingState v-if="loading" />
       <div v-else-if="error" class="error-state" role="alert">
@@ -746,24 +755,30 @@ onUnmounted(() => {
           </template>
           <GlobalCollection ref="globalCollectionRef" v-else-if="page==='profile'&&section==='honors'" @account="communityAccountEntry=true;nav('community')"/>
           <template v-else-if="page === 'profile'">
-            <div class="profile-page">
-            <button class="profile-strip" @click="open('edit')">
-              <span class="avatar">{{ prefs.name.slice(0, 1) || "同" }}</span
-              ><span class="profile-copy"
-                ><strong>{{ academicCache.profile.data?.name || prefs.name }}</strong
-                ><small>{{ academicCache.profile.data?.major || prefs.major }}</small
-                ><span>{{academicCache.profile.data?.className || "本地资料"}}</span></span
-              ><span class="edit-link">编辑 <ChevronRight :size="15" /></span>
-            </button>
-            <PersonalShowcase @hall="openCollection()" @medal="openCollection"/>
-            <SectionHeader title="账号与连接"/>
-            <section class="profile-accounts"><SchoolConnection collapsible />
-             <button class="learning-page-link" @click="communityAccountEntry=true;nav('community')"><MessageSquare :size="20"/><strong>邯院通社区账号</strong><span>主页、消息与账号设置</span><ChevronRight :size="16"/></button>
-             <button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><span>作业、课程与账号管理</span><ChevronRight :size="16"/></button>
-            </section>
-            <SectionHeader title="我的教务"/>
-            <div class="profile-academics"><ServiceGroup :items="academicServices.filter(e=>!['learning','agenda'].includes(e.id))" @select="go"/></div>
-            <button class="learning-page-link" @click="addCourseWidget"><CalendarDays :size="20"/><strong>桌面课表</strong><span>添加今天与明天的小组件</span><ChevronRight :size="16"/></button>
+            <div class="profile-page" :class="{'profile-overview':section==='overview'}">
+            <template v-if="section==='overview'">
+              <button class="profile-strip" aria-label="编辑个人资料" @click="open('edit')">
+                <span class="avatar" aria-hidden="true">{{Array.from(profileName)[0]}}</span>
+                <span class="profile-copy">
+                  <strong>{{profileName}}</strong>
+                  <small v-if="academicCache.profile.data?.major||prefs.major">{{academicCache.profile.data?.major||prefs.major}}</small>
+                  <span v-if="academicCache.profile.data?.className">{{academicCache.profile.data.className}}</span>
+                </span>
+                <span class="edit-link">编辑<ChevronRight :size="15"/></span>
+              </button>
+              <PersonalShowcase @hall="openCollection()" @medal="openCollection"/>
+              <SectionHeader title="常用教务"/>
+              <div class="profile-academics">
+                <ServiceGroup :items="profileAcademicLinks" @select="id=>id==='widget'?addCourseWidget():go(id)"/>
+              </div>
+              <SectionHeader title="账号与连接"/>
+              <section class="profile-accounts">
+                <SchoolConnection collapsible/>
+                <button class="learning-page-link" @click="communityAccountEntry=true;nav('community')"><MessageSquare :size="20"/><strong>邯院通社区账号</strong><ChevronRight :size="16"/></button>
+                <button class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通</strong><ChevronRight :size="16"/></button>
+              </section>
+            </template>
+            <template v-else>
             <SectionHeader title="偏好与数据" />
             <section class="profile-preferences">
             <section class="settings-group">
@@ -805,9 +820,10 @@ onUnmounted(() => {
             <p class="footnote source-footnote">
               <ShieldCheck :size="13" />不保存教务密码 · 无广告
             </p>
+            </template>
             </div>
           </template>
-          <footer>
+          <footer v-if="page!=='profile'||section==='settings'">
             邯院通 <span>·</span> 独立学生项目
             <span>·</span> 非学校官方应用
           </footer>
@@ -1030,7 +1046,7 @@ onUnmounted(() => {
           >
           <form v-else-if="modal === 'edit'" @submit.prevent="saveProfile">
             <h2>编辑个人资料</h2>
-            <p class="muted">无需填写真实学号和身份信息。</p>
+            <p class="muted">{{academicCache.profile.data?.name?'这里编辑本地资料。已连接教务时，主页优先显示学校返回的学籍资料。':'昵称和专业保存在本机。'}}</p>
             <label class="form-label"
               >昵称<input
                 v-model="draft.name"

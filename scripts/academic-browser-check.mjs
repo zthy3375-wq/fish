@@ -473,8 +473,10 @@ try{
   await page.getByRole('button',{name:'重新连接学习通',exact:true}).waitFor();
   assert(await page.locator('.learning-work').count()===1,`${width}: expired session retains cached homework`);
   await nav('我的').click();
+  await page.getByRole('button',{name:'设置与帮助',exact:true}).click();
   assert(await page.locator('.task-settings').count()===1,`${width}: reminders and backup moved to profile`);
-  await page.locator('.school-account-details>summary').click();
+  await page.getByRole('button',{name:'返回上一页',exact:true}).click();
+  await page.locator('.school-summary').click();
   await page.getByRole('button',{name:'退出学校账号',exact:true}).click();
   await page.getByRole('button',{name:'连接',exact:true}).waitFor();
   assert(await page.evaluate(()=>JSON.parse(localStorage.getItem('handan.personal.tasks.v2')).tasks.length)===1,`${width}: school logout preserves personal tasks`);
@@ -540,6 +542,7 @@ try{
   await walletDialog.getByRole('button',{name:'关闭',exact:true}).click();
   await nav('我的').click();
   await page.evaluate(()=>{window.__updateState={currentVersion:'1.0.1',currentCode:101,stage:'idle',progress:0,error:'',available:true,mandatory:false,checkedAt:Date.now(),release:{versionCode:102,versionName:'1.0.2',sizeBytes:12000000,notes:['人工更新测试：修复日程显示','人工更新测试：完善下载流程']}}});
+  await page.getByRole('button',{name:'设置与帮助',exact:true}).click();
   await page.getByRole('button',{name:/检查更新 当前版本/}).click();
   const updateDialog=page.getByRole('dialog',{name:'发现新版本',exact:true});await updateDialog.waitFor();
   assert(await page.locator('.app-shell').evaluate(el=>el.inert),`${width}: update dialog makes underlying app inert`);
@@ -562,6 +565,7 @@ try{
    window.__updateState={currentVersion:'1.2',currentCode:133,stage:'idle',progress:0,error:'',available:true,mandatory:false,checkedAt:Date.now(),release:{versionCode:145,versionName:'1.2.1',sizeBytes:12426271,notes:['人工测试：手动检查应有反馈']}};
   });
   await page.reload();await nav('我的').click();
+  await page.getByRole('button',{name:'设置与帮助',exact:true}).click();
   await page.getByRole('button',{name:/检查更新 当前版本/}).click();
   const waterUpdate=page.locator('.update-dialog');await waterUpdate.waitFor();
   assert(await waterUpdate.getByText(/检测到未结束的接水记录/).isVisible(),`${width}: stale water record explains manual update deferral`);
