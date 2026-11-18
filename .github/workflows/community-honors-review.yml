@@ -1,0 +1,43 @@
+name: Community honor gallery verification
+on:
+  pull_request:
+    paths:
+      - 'src/components/honors/**'
+      - 'src/domain/communityHonors.ts'
+      - 'cloudbase/tests/community-honors.verify.mjs'
+      - 'scripts/community-honors-ui.mjs'
+      - '.github/workflows/community-honors-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gallery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm ci --prefix cloudbase/functions/community --ignore-scripts
+      - run: sudo apt-get install -y fonts-noto-cjk fonts-noto-color-emoji
+      - run: npx playwright install chromium
+      - name: Build previous profile and capture the same three viewport widths
+        env:
+          BASELINE: ${{ github.event.pull_request.base.sha || '919e02ce276c60b67528e9c90c795fc64e58ff55' }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/hyt-before" "$BASELINE"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/hyt-before/node_modules"
+          npm --prefix "$RUNNER_TEMP/hyt-before" run build
+          HYT_UI_DIST="$RUNNER_TEMP/hyt-before/dist" HYT_HONORS_ONLY=before node scripts/treehole-browser-check.mjs
+      - name: Collect revised profile, badge, cabinet and notification
+        run: npm run build && HYT_HONORS_ONLY=after node scripts/treehole-browser-check.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: community-honors-mobile
+          path: /tmp/hyt-honors-ui/
+          if-no-files-found: warn
