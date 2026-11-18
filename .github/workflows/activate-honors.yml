@@ -1,0 +1,33 @@
+name: Authorized community honor migration
+on:
+  push:
+    branches: [ops/activate-community-honors-20261118]
+    paths: ['.github/workflows/activate-honors.yml','scripts/cloudbase/activate-honors.mjs','scripts/cloudbase/honor-migration.mjs']
+permissions:
+  contents: read
+concurrency:
+  group: authorized-community-honor-migration
+  cancel-in-progress: false
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts --no-audit --no-fund && npm ci --prefix cloudbase/functions/community --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Rehearse migration from the exact live query and verify community contracts
+        run: |
+          git show ac59b31c5003cbf787c7432505b8c0ecadbe59cf:cloudbase/community-schema.sql > "$RUNNER_TEMP/live-base.sql"
+          node scripts/cloudbase/verify-honor-migration.mjs "$RUNNER_TEMP/live-base.sql"
+          node --test --test-concurrency=2 cloudbase/tests/community*.mjs
+      - run: python3 -m pip install --disable-pip-version-check tencentcloud-sdk-python-scf
+      - name: Preserve data, update existing service and verify its public routes
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          CLOUDBASE_ENV_ID: hanyuantong-d8gjzt1jh12370215
+        run: node scripts/cloudbase/activate-honors.mjs "$RUNNER_TEMP/live-base.sql"
