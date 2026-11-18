@@ -1,0 +1,24 @@
+name: Read public campus service status
+on:
+  push:
+    branches: [ops/retire-analytics-20261118]
+    paths: ['.github/workflows/read-campus-service-status.yml']
+  workflow_dispatch:
+permissions: {}
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read community capabilities and analytics health
+        shell: python
+        run: |
+          import json, urllib.request
+          base = 'https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com'
+          for path, keys in [
+              ('/hyt-community/v1/config', ('schema','requiresInvite','registrationEnabled','simpleRegistration','combinedUnread')),
+              ('/hyt-analytics/health', ('ok','collection')),
+          ]:
+              with urllib.request.urlopen(base + path, timeout=20) as response:
+                  data = json.load(response)
+                  print('LIVE', path, response.status, json.dumps({key: data.get(key) for key in keys}))
