@@ -77,8 +77,9 @@ public final class ReleaseCheck extends Instrumentation {
         until("document.querySelector('.wear')?.textContent.includes('取下')===true","local shelf not persisted");
         click("document.querySelector('.detail-close')","detail close unavailable");
         click("document.querySelector('[data-code=arrival]')","account medal missing");
-        if("upgrade".equals(args.getString("mode")))click("document.querySelector('.collect-detail .wear')","server showcase action missing");
-        until("document.querySelector('.wear')?.textContent.includes('取下')===true","public showcase not persisted");
+        until("document.querySelector('dialog.collect-detail[open] h2')?.textContent==='破壳而出'","second medal detail lost");
+        if("upgrade".equals(args.getString("mode")))click("document.querySelector('dialog[open] .wear')","server showcase action missing");
+        until(offline?"document.querySelector('.wear')?.textContent.includes('已展示')===true && document.querySelector('.wear').disabled":"document.querySelector('.wear')?.textContent.includes('取下')===true","public showcase not persisted");
         click("document.querySelector('.detail-close')","account detail close unavailable");
         click(button("隐藏"),"hidden filter missing");
         until("document.querySelectorAll('.cabinet-grid button').length===1 && document.querySelector('.cabinet-grid')?.textContent.includes('未知奇遇')===true","hidden clue leaked");
@@ -88,6 +89,9 @@ public final class ReleaseCheck extends Instrumentation {
       result.putString("elapsed",Long.toString(SystemClock.elapsedRealtime()-since));
       finish(Activity.RESULT_OK,result);
     }catch(Throwable error){
+      try {
+        result.putString("detail", "open="+js("!!document.querySelector('dialog.collect-detail[open]')")+" arrival="+js("!!document.querySelector('[data-code=arrival].unlocked')")+" selectedArrival="+js("document.querySelector('.collect-detail h2')?.textContent==='破壳而出'")+" wear="+js("!!document.querySelector('.collect-detail .wear')")+" disabled="+js("document.querySelector('.collect-detail .wear')?.disabled===true")+" online="+js("navigator.onLine===true"));
+      } catch(Exception ignored){}
       result.putString("qa","FAIL "+error.getClass().getSimpleName()+" "+error.getMessage());
       finish(Activity.RESULT_CANCELED,result);
     }
