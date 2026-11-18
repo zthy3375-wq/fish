@@ -81,7 +81,7 @@ const screen=ref<Screen>('feed');
 const engagementEnabled=ref(false),unreadCount=ref(0),notifications=ref<TreeholeNotification[]>([]),inboxFilter=ref('all'),inboxLoading=ref(false),inboxError=ref(''),inboxNext=ref<Record<string,string>|null>(null);
 const profile=ref<TreeholeProfile|null>(null),profilePosts=ref<TreeholePost[]>([]),profileNext=ref<Record<string,string>|null>(null),bio=ref('');
 const focusedThread=ref<TreeholeComment|null>(null),focusedCommentId=ref(''),watchPending=ref(false);
-let lastUnreadAt=-Infinity,inboxRevision=0,unreadBusy=false,unreadTimer:ReturnType<typeof setInterval>|undefined;
+let lastUnreadAt=-Infinity,inboxRevision=0,pendingUnreadEpoch:number|null=null,unreadTimer:ReturnType<typeof setInterval>|undefined;
 const routeHistory:Array<{screen:Screen;scroll:number;detail:TreeholePost|null;comments:TreeholeComment[];commentNext:Record<string,string>|null;profile:TreeholeProfile|null;profilePosts:TreeholePost[];profileNext:Record<string,string>|null;context:TreeholeComment|null}>=[];
 const scopeLabels:Record<string,string>={joined:'我报名的',mine:'我的帖子',saved:'我的收藏',participated:'我参与的',watching:'关注的讨论',following:'关注动态'};
 const posts=ref<TreeholePost[]>([]),scope=ref('all'),query=ref(''),feedNext=ref<Record<string,string>|null>(null);
@@ -110,7 +110,7 @@ const actionPost=computed(()=>[detail.value,...posts.value,...profilePosts.value
 const allComments=computed(()=>[...comments.value,...(focusedThread.value?[focusedThread.value]:[])].flatMap(c=>[c,...c.replies||[]]));
 const actionComment=computed(()=>allComments.value.find(c=>c.id===menu.value));
 function navigationBack(){if(!requestBack())emit('exit');}
-function refresh(){if(busy.value||recovery.value||screen.value!=='feed')return;if(!user.value){void initialize();return;}void run(async()=>{await feed();void refreshUnread();notice.value='帖子已刷新';});}
+function refresh(){if(busy.value||recovery.value||screen.value!=='feed')return;if(!user.value){void initialize();return;}void run(async()=>{await feed();void refreshUnread(true);notice.value='帖子已刷新';});}
 function toggleSearch(){searchOpen.value=!searchOpen.value;if(searchOpen.value)void nextTick(()=>searchInput.value?.focus());}
 function clearSearch(){query.value='';void run(()=>feed());}
 function focusReply(comment?:TreeholeComment){if(busy.value||detail.value?.locked)return;if(comment)reply.value=comment;replyExpanded.value=true;}
@@ -264,12 +264,12 @@ function previousRoute(){
  if(previous.screen==='feed'&&feedNeedsRefresh)void run(()=>feed());
  if(previous.screen==='following')void loadFollowing();if(previous.screen==='account')void refreshSocial();
 }
-async function refreshUnread(){
- if(!engagementEnabled.value||!user.value||!active||document.hidden||unreadBusy||Date.now()-lastUnreadAt<180000)return;
- const epoch=accountEpoch;unreadBusy=true;lastUnreadAt=Date.now();
+async function refreshUnread(manual=false){
+ if(!engagementEnabled.value||!user.value||!active||document.hidden||pendingUnreadEpoch===accountEpoch||(!manual&&Date.now()-lastUnreadAt<180000))return;
+ const epoch=accountEpoch;pendingUnreadEpoch=epoch;lastUnreadAt=Date.now();
  try{const r=await api('notifications.unread',combinedUnread.value?{withMessages:true}:{});if(alive&&epoch===accountEpoch)unreadCount.value=r.unreadCount??0;if(alive&&epoch===accountEpoch&&typeof r.messageUnreadCount==='number')messageUnread.value=r.messageUnreadCount;else if(alive&&epoch===accountEpoch&&messagesEnabled.value){const dm=await api('messages.unread');if(alive&&epoch===accountEpoch)messageUnread.value=dm.messageUnreadCount||0;}}
  catch(e){if(treeholeErrorCode(e)==='session_expired')actionError(e,epoch);}
- finally{unreadBusy=false;}
+ finally{if(pendingUnreadEpoch===epoch)pendingUnreadEpoch=null;}
 }
 async function loadInbox(more=false){
  if(inboxLoading.value||!user.value)return;
