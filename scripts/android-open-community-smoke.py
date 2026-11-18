@@ -1,5 +1,6 @@
 """Exercise the release UI via Android accessibility, with a disposable account."""
 import json
+import uiautomator2 as u2
 import re
 import secrets
 import subprocess
@@ -35,6 +36,12 @@ def wait_for(fn, name, timeout=40):
         except (ET.ParseError,subprocess.SubprocessError):pass
         time.sleep(0.25)
     known = ("登录邯院通","登录树洞","说说校园里的那些事","创建账号","社区规则","注册账号","搜索帖子","忘记密码","暂未开放","正在连接","连接失败","刷新树洞","请登录","连接账户","无网络","重试","请先登录","社区服务","注册","等待")
+    if name in ("community feed after signup","signup fields","password field","confirmed credentials"):
+        adb("shell","input","swipe","500","800","500","1650","350")
+        items=nodes()
+        if any(n.get("class")=="android.widget.EditText" for n in items) and any("邯院通账号" in label(n) or "社区规则" in label(n) for n in items):
+            safe=[re.sub(r"[0-9a-f]{12,}", "[test value]", label(n))[:100] for n in items if n.get("class")!="android.widget.EditText" and label(n)]
+            print("Auth form status:", safe[:45],flush=True)
     print("Known UI markers:", [word for word in known if any(word in label(n) for n in items)],flush=True)
     raise RuntimeError("Timed out waiting for "+name)
 def target(name, exact=True, scroll=False):
@@ -74,11 +81,22 @@ try:
     tap(target("注册账号",scroll=True))
     fields=wait_for(lambda items:[n for n in items if n.get("class")=="android.widget.EditText"],"signup fields")
     assert len(fields)==2, "Expected exactly two signup fields"
-    tap(fields[0]);adb("shell","input","text",username)
-    password_field=wait_for(lambda items:next(([n] for n in items if n.get("class")=="android.widget.EditText" and n.get("password")=="true"),None),"password field")[0]
-    tap(password_field);adb("shell","input","text",password)
-    adb("shell","input","keyevent","KEYCODE_BACK")
-    tap(target("创建账号",scroll=True));submitted=True
+    device=u2.connect()
+    editable=device(className="android.widget.EditText")
+    editable[0].set_text(username)
+    editable[1].set_text(password)
+    if device(focused=True,className="android.widget.EditText").exists:
+        if b"mInputShown=true" in adb("shell","dumpsys","input_method"):
+            adb("shell","input","keyevent","KEYCODE_BACK")
+    tap(target("显示密码",False,scroll=True))
+    def credentials_match(items):
+        values={n.get("text","") for n in items if n.get("class")=="android.widget.EditText"}
+        return username in values and password in values
+    wait_for(credentials_match,"confirmed credentials",15)
+    print("Android form contains exact synthetic numeric username and password",flush=True)
+    submit=target("创建账号",True,True)
+    assert submit.get("enabled")=="true", "Signup disabled"
+    tap(submit);submitted=True
     wait_for(feed_visible,"community feed after signup")
     adb("shell","am","force-stop",PACKAGE);launch()
     tab=target("社区")

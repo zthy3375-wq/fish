@@ -33,6 +33,7 @@ jobs:
           keytool -genkeypair -keystore "$RUNNER_TEMP/emulator.jks" -storepass emulatoronly -keypass emulatoronly -alias android -keyalg RSA -validity 2 -dname 'CN=Disposable Android QA'
           java -jar "$RUNNER_TEMP/release-input/apksigner.jar" sign --ks "$RUNNER_TEMP/emulator.jks" --ks-pass pass:emulatoronly --out "$RUNNER_TEMP/emulator-app.apk" "$RUNNER_TEMP/release-input/app-release-unsigned.apk"
           java -jar "$RUNNER_TEMP/release-input/apksigner.jar" verify "$RUNNER_TEMP/emulator-app.apk"
+      - run: python3 -m pip install --disable-pip-version-check uiautomator2
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
