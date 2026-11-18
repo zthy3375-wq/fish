@@ -14,14 +14,14 @@ API = "https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudba
 def adb(*args):
     return subprocess.check_output(["adb", *args], stderr=subprocess.DEVNULL, timeout=25)
 def nodes():
-    adb("shell","uiautomator","dump","/data/local/tmp/campus-qa.xml")
-    data = adb("exec-out","cat","/data/local/tmp/campus-qa.xml")
+    data = device.dump_hierarchy(compressed=False)
     return list(ET.fromstring(data).iter("node"))
 def label(node):
     return " ".join(dict.fromkeys(node.get(k,"").strip() for k in ("text","content-desc") if node.get(k,"").strip()))
 def bounds(node):
     return [int(i) for i in re.findall(r"\d+",node.get("bounds",""))]
 def wait_for(fn, name, timeout=40):
+    items=[]
     until = time.monotonic()+timeout
     while time.monotonic()<until:
         try:
@@ -36,7 +36,7 @@ def wait_for(fn, name, timeout=40):
         except (ET.ParseError,subprocess.SubprocessError):pass
         time.sleep(0.25)
     known = ("登录邯院通","登录树洞","说说校园里的那些事","创建账号","社区规则","注册账号","搜索帖子","忘记密码","暂未开放","正在连接","连接失败","刷新树洞","请登录","连接账户","无网络","重试","请先登录","社区服务","注册","等待")
-    if name in ("community feed after signup","signup fields","password field","confirmed credentials"):
+    if name in ("community feed after signup","signup fields","password field","confirmed credentials","显示密码"):
         adb("shell","input","swipe","500","800","500","1650","350")
         items=nodes()
         if any(n.get("class")=="android.widget.EditText" for n in items) and any("邯院通账号" in label(n) or "社区规则" in label(n) for n in items):
@@ -71,6 +71,7 @@ username="8"+str(secrets.randbelow(10**16)).zfill(16)
 password=secrets.token_hex(16)
 submitted=False
 try:
+    device=u2.connect()
     launch()
     shower=target("趣智校园",False)
     water=target("胖乖生活",False)
@@ -81,7 +82,6 @@ try:
     tap(target("注册账号",scroll=True))
     fields=wait_for(lambda items:[n for n in items if n.get("class")=="android.widget.EditText"],"signup fields")
     assert len(fields)==2, "Expected exactly two signup fields"
-    device=u2.connect()
     editable=device(className="android.widget.EditText")
     editable[0].set_text(username)
     editable[1].set_text(password)
