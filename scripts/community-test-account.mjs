@@ -12,5 +12,5 @@ export async function registerTestAccount(page,username,nickname){
  await page.getByText('资料已更新',{exact:true}).waitFor();
  await page.getByRole('button',{name:'返回社区',exact:true}).click();
  await page.getByRole('button',{name:'返回社区',exact:true}).click();
- await page.getByRole('button',{name:nickname,exact:true}).waitFor();
+ await page.locator('.th-nav').getByRole('button',{name:nickname,exact:true}).waitFor();
 }
