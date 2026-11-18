@@ -368,8 +368,15 @@ try{
   assert(targets.every(([width,height])=>width>=44&&height>=44));
   assert.equal(await nav.evaluate(el=>el.scrollWidth>el.clientWidth),false);
   const create=(category,extra={})=>api.execute('posts.create',{category,body:'发现合成内容 '+category,anonymous:false,requestId:crypto.randomUUID(),...extra},a.state.token,`discovery-${width}`);
-  await create('help');await create('study',{anonymous:true});await create('entertainment',{interest:'music',body:'音乐合成内容'});
-  await browseBoard(page,'daily');await browseBoard(page,'study');await page.locator('.th-post').first().waitFor();assert((await page.locator('.th-post').allTextContents()).every(t=>t.includes('学习交流')));checks.push(`${width}: visible board navigation keeps legacy study posts and anonymous identity`);
+  await create('help');
+  const legacyStudy=(await create('study',{anonymous:true})).post;
+  await create('entertainment',{interest:'music',body:'音乐合成内容'});
+  await browseBoard(page,'daily');await browseBoard(page,'study');
+  await page.locator(`[data-post-id="${legacyStudy.id}"] .th-category-tag`).filter({hasText:'学习交流'}).waitFor();
+  const studyTags=await page.locator('.th-post .th-category-tag').allTextContents();
+  assert(studyTags.every(tag=>['#学习交流','#考研'].includes(tag.trim())));
+  if(width!==360)assert(studyTags.includes('#考研'));
+  checks.push(`${width}: all-study groups graduate posts with existing study posts and preserves legacy labels`);
   await browseBoard(page,'entertainment');await browseBoard(page,'entertainment/games');await page.waitForFunction(()=>!document.querySelector('.th-progress'));if(width===360)await page.getByRole('heading',{name:'这里，等你说第一句话'}).waitFor();
   await page.getByRole('button',{name:'发帖',exact:true}).click();assert.equal(await composeDestination(page).textContent(),'游戏');
   await page.getByLabel('帖子标题').fill(`周末${width}游戏讨论`);await page.getByLabel('想说的话').fill('这周找到一款喜欢的游戏，想聊聊体验。');await page.getByRole('button',{name:'返回社区',exact:true}).click();await page.getByRole('button',{name:'保存草稿并返回',exact:true}).click();await page.reload();await page.locator('.th-draft-resume').click();
