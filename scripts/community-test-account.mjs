@@ -6,7 +6,7 @@ export async function registerTestAccount(page,username,nickname){
  await page.getByLabel('密码',{exact:true}).fill('synthetic-long-password');
  await page.getByRole('button',{name:'创建账号',exact:true}).click();
  await page.locator('.th-self:not([disabled])').click();
- await page.getByRole('button',{name:'修改昵称',exact:true}).click();
+ await page.getByRole('button',{name:process.env.HYT_HONORS_ONLY==='before'?'修改昵称':'编辑资料',exact:true}).click();
  await page.getByLabel('公开昵称',{exact:true}).fill(nickname);
  await page.getByRole('button',{name:'保存',exact:true}).click();
  await page.getByText('资料已更新',{exact:true}).waitFor();

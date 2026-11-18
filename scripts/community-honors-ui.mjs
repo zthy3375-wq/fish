@@ -14,8 +14,10 @@ export async function checkHonors({client,db,api,baseline,output}){
    await registerTestAccount(page,'gallery'+width,name);
    const call=(a,b={})=>api.execute(a,b,state.token,'gallery');
    const member=(await call('me')).user;
+   let ownerHasTools=false;
    if(!baseline){
     const ownerExists=(await db.query("select id from hyt_members where developer_since is not null")).rows[0];
+    ownerHasTools=!ownerExists;
     if(!ownerExists){
      await db.query("update hyt_members set role='moderator' where id=$1",[member.id]);
      await db.query("insert into hyt_moderation(moderator_id,action,reason) values($1,'grant_moderator','Initial moderator binding explicitly authorized by repository owner, 2026-11-16')",[member.id]);
@@ -42,6 +44,23 @@ export async function checkHonors({client,db,api,baseline,output}){
    await page.locator('.th-profile').waitFor();await page.waitForTimeout(350);
    await page.screenshot({animations:'disabled',path:path.join(output,(baseline?'before-profile-':'after-profile-')+width+'.png')});
    if(baseline)continue;
+   assert.equal(await page.getByLabel('选择头像图片').count(),0);
+   assert.equal(await page.getByRole('button',{name:'注销账号',exact:true}).count(),0);
+   assert.equal(await page.getByRole('heading',{name:'管理工具'}).count(),ownerHasTools ? 1 : 0);
+   const identity=page.locator('.account-identity');
+   const activity=page.getByRole('button',{name:'我的收藏',exact:true});
+   assert(await identity.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+   assert(await activity.evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight));
+   await page.getByRole('button',{name:'社区设置'}).click();
+   const feedback=page.getByRole('checkbox',{name:'轻微震动'});
+   const initialFeedback=await feedback.isChecked();
+   await feedback.setChecked(!initialFeedback);
+   await page.getByRole('button',{name:'修改密码与恢复码'}).click();
+   await page.getByLabel('当前密码').waitFor();
+   await page.getByRole('button',{name:'返回社区'}).click();
+   assert.equal(await feedback.isChecked(),!initialFeedback);
+   await feedback.setChecked(initialFeedback);
+   await page.getByRole('button',{name:'返回社区'}).click();
    await page.locator('.self-case .case-all').click();
    await page.locator('.hon-grid').waitFor();await page.getByRole('button',{name:'第一声',exact:true}).click();
    await page.getByRole('button',{name:/展示到主页/}).click();await page.getByRole('button',{name:/从主页取下/}).waitFor();

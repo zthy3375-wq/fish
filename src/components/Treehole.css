@@ -17,7 +17,7 @@
 .th-card h2{font-size:22px;line-height:1.5}
 .th-card h3{font-size:17px}
 .th-card p{font-size:13px}
-.treehole label:not(.th-anon-pill):not(.th-check):not(.th-reply-input):not(.th-editor-label):not(.th-compose-tool):not(.th-zone-select):not(.destination):not(.th-comment-photo-picker){display:block;font-size:12px;font-weight:550;margin:20px 0 0;color:var(--color-text)}
+.treehole label:not(.th-anon-pill):not(.th-check):not(.th-reply-input):not(.th-editor-label):not(.th-compose-tool):not(.th-zone-select):not(.destination):not(.th-comment-photo-picker):not(.th-avatar-upload):not(.account-pref){display:block;font-size:12px;font-weight:550;margin:20px 0 0;color:var(--color-text)}
 .th-card input:not([type=checkbox]),.th-card textarea,.th-dialog textarea{width:100%;min-width:0;box-sizing:border-box;background:var(--color-bg);border:1px solid var(--color-border);border-radius:12px;padding:13px 14px;color:var(--color-text);font:inherit;font-size:15px;line-height:1.5;outline-offset:3px}
 .treehole label>input,.treehole label>textarea{margin-top:9px}
 .treehole textarea{resize:vertical}
