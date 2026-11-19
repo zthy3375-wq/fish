@@ -684,7 +684,7 @@ test('v2: concurrent revision edits reject stale data and withdrawal retries pre
 test('v2: pre-upgrade submission receipts remain retryable after adding optional version metadata',async()=>{
  const c=await event();const requestId=randomUUID();const e=await submit(users[0],c,{requestId});
  await pg.query("UPDATE hyt_contest_requests SET payload=payload-'expectedVersion' WHERE member_id=$1 AND request_id=$2",[users[0].user.id,requestId]);
- const retried=await submit(users[0],c,{requestId});assert.equal(retried.id,e.id);assert.equal(retried.version,1);
+ const retried=await submit(users[0],c,{requestId,expectedVersion:9});assert.equal(retried.id,e.id);assert.equal(retried.version,1);
 });
 test('v2: zero-hour eligibility explicitly allows accounts registered during voting',async()=>{
  const c=await event();const e=await submit(users[0],c);await voting(c);

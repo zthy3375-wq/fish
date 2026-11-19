@@ -128,7 +128,7 @@ try {
   });
   for (const width of [360, 390, 430]) {
     const context = await browser.newContext({
-      viewport: { width, height: 844 },
+      viewport: { width, height: Number(process.env.CONTEST_QA_HEIGHT)||844 },
       serviceWorkers: "block",
     });
     const actions = [];

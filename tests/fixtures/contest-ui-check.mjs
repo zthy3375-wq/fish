@@ -134,7 +134,7 @@ function input(label, value) {
   el.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
   return el;
 }
-const actions = [];
+const actions = [];let dropSubmission=true,dropVote=true;
 async function mount(who) {
   if (dom) {
     dom.window.app.unmount();
@@ -162,7 +162,10 @@ async function mount(who) {
     ],
     nativePromise: async (_, __, options) => {
       actions.push(options.action);
-      return call(who, options.action, options.body);
+      const result=await call(who,options.action,options.body);
+      if(options.action==='contests.submit'&&dropSubmission){dropSubmission=false;throw Error('network_unavailable');}
+      if(options.action==='contests.vote'&&dropVote){dropVote=false;throw Error('network_unavailable');}
+      return result;
     },
   };
   w.eval(bundle.outputFiles[0].text);
@@ -189,6 +192,9 @@ try {
     );
   await until(() => button("确认参赛"));
   button("确认参赛").click();
+  await until(()=>button('重试并确认投稿'));
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM hyt_contest_entries')).rows[0].n,1);
+  button('重试并确认投稿').click();
   await until(() => button("编辑作品"));
   assert(dom.window.document.body.textContent.includes("我们的早八"));
   button("编辑作品").click();
@@ -234,8 +240,10 @@ try {
   await until(() => button("投一票"));
   const before = actions.length;
   button("投一票").click();
+  await until(()=>!!dom.window.document.querySelector('.ct-error')&&button('投一票')&&!button('投一票').disabled);
+  button('投一票').click();
   await until(() => button("已投票 · 撤回"));
-  assert.deepEqual(actions.slice(before), ["contests.vote"]);
+  assert.deepEqual(actions.slice(before), ["contests.vote","contests.vote"]);
   assert(dom.window.document.body.textContent.includes("还可投 2 / 3 票"));
   assert.equal(
     (await db.query("SELECT count(*)::int AS n FROM hyt_contest_votes")).rows[0]
@@ -247,7 +255,7 @@ try {
   assert.equal(actions.length, count);
   assert(!dom.window.document.querySelector(".ct-final-votes"));
   console.log(
-    "Vue 2.0: current event → independent preview/submit → own-post edit → detail voting; committed response, no detail refresh or idle calls.",
+    "Vue 2.0: current event → independent preview/submit → own-post edit → detail voting; lost committed replies retried once without duplicate entry/vote, no detail refresh or idle calls.",
   );
 } finally {
   if (dom) {

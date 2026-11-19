@@ -1431,7 +1431,7 @@ BEGIN
  IF a='contests.submit' THEN
   SELECT entry_id,payload INTO target,result FROM public.hyt_contest_requests WHERE member_id=m.id AND request_id=(b->>'requestId')::uuid;
   IF FOUND THEN
-   IF (result||jsonb_build_object('expectedVersion',result->'expectedVersion'))<>(b||jsonb_build_object('expectedVersion',b->'expectedVersion')) THEN RETURN '{"status":409,"error":"request_conflict"}'; END IF;
+   IF (result-'expectedVersion')<>(b-'expectedVersion') OR (result ? 'expectedVersion' AND coalesce(result->>'expectedVersion','')<>coalesce(b->>'expectedVersion','')) THEN RETURN '{"status":409,"error":"request_conflict"}'; END IF;
    SELECT * INTO e FROM public.hyt_contest_entries WHERE id=target;
    RETURN jsonb_build_object('status',200,'entry',public.hyt_contest_entry_json(e,m.id));
   END IF;
