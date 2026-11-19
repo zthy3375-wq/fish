@@ -34,6 +34,9 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var now = Date()
     @State private var timelineOpen=false
+    @AppStorage("home.announcements.enabled") private var announcementsEnabled = true
+    @AppStorage("home.announcements.welcomeRead") private var welcomeRead = false
+    @ScaledMetric(relativeTo: .body) private var heroHeight: CGFloat = 194
     @State private var swimming=false
     @Environment(\.accessibilityReduceMotion) private var systemReduce
     @AppStorage("medal.reduce") private var reduceMotion=false
@@ -43,32 +46,12 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 hero
-                if let focus = HomeCourseFocus.select(courses: store.courses, personalStart: store.semesterStart, schoolStart: store.schoolSemesterStart, now: now) {
-                    NavigationLink { CourseDetailView(course: focus.course, occurrenceDate: focus.start) } label: { focusCard(focus) }.buttonStyle(.plain)
-                }
-                let today = store.courses(on:now)
-                if today.isEmpty {
-                    VStack(alignment:.leading,spacing:3) {
-                        Label("今天暂无课程",systemImage:"sun.max").font(.headline)
-                        Button(store.isConnected ? "查看课表" : "连接教务或添加课程") { store.selectedTab = .schedule }
-                            .font(.subheadline).frame(minHeight:44)
-                    }.frame(maxWidth:.infinity,alignment:.leading).campusCard()
-                } else {
-                    DisclosureGroup(isExpanded:$timelineOpen) {
-                        ForEach(today) { course in NavigationLink { CourseDetailView(course:course) } label: { CourseRow(course:course) } }
-                    } label: { HStack { Text("今日课程").font(.headline); Spacer(); Text("\(today.count) 节").font(.caption).foregroundStyle(.secondary) } }.campusCard()
-                }
-                HStack(spacing:12) {
-                    NavigationLink { LearningCenterView(store:learning) } label: { Label("学习通",systemImage:"books.vertical") }
-                    Spacer(); Divider().frame(height:20); Spacer()
-                    NavigationLink { AcademicRecordsView() } label: { Label("成绩与学业",systemImage:"graduationcap") }
-                }.font(.subheadline.weight(.medium)).frame(minHeight:44).padding(.horizontal,14)
-                    .background(CampusTheme.surface,in:RoundedRectangle(cornerRadius:16))
+                coursePanel
                 Text("校园生活").font(.headline)
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
-                        NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", "洗澡 · 余额与充值", "drop", CampusTheme.walletPurple) }
-                        NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", "饮水 · 洗衣 · 扫码", "washer", CampusTheme.walletGreen) }
+                        NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", showerBalance, showerDetail, "drop", CampusTheme.walletPurple) }
+                        NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen) }
                     }
                     HStack(spacing: 10) {
                         NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
@@ -95,6 +78,59 @@ struct HomeView: View {
         if !active { var transaction=Transaction(); transaction.disablesAnimations=true; withTransaction(transaction) {swimming=false} }
         else { withAnimation(.easeInOut(duration:2.0).repeatForever(autoreverses:true)) {swimming=true} }
     }
+    private var coursePanel: some View {
+        let today = store.courses(on: now)
+        return VStack(spacing: 0) {
+            if let focus = HomeCourseFocus.select(courses: store.courses, personalStart: store.semesterStart, schoolStart: store.schoolSemesterStart, now: now) {
+                NavigationLink { CourseDetailView(course: focus.course, occurrenceDate: focus.start) } label: {
+                    focusCard(focus)
+                }.buttonStyle(.plain)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("暂时没有后续课程").font(.headline)
+                    if !store.isConnected && store.courses.isEmpty {
+                        Text("连接学校后，可在这里查看课程安排。").font(.caption).foregroundStyle(CampusTheme.muted)
+                        Button("连接学校") { store.connectSchool() }
+                            .font(.subheadline).frame(minHeight: 44).disabled(store.isBusy)
+                    }
+                }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CampusTheme.tint)
+            }
+            HStack {
+                if today.isEmpty { Text("今天没有课程").foregroundStyle(CampusTheme.muted) }
+                else {
+                    Button {
+                        withAnimation(systemReduce || reduceMotion ? nil : .easeInOut(duration: 0.2)) { timelineOpen.toggle() }
+                    } label: {
+                        HStack { Text("今日课程 · \(today.count) 节"); Image(systemName: timelineOpen ? "chevron.up" : "chevron.down") }
+                    }.accessibilityValue(timelineOpen ? "已展开" : "已收起")
+                }
+                Spacer()
+                Button("查看课表") { store.selectedDate = now; store.selectedTab = .schedule }
+                    .accessibilityIdentifier("home-open-schedule")
+            }.font(.subheadline).frame(minHeight: 44).padding(.horizontal, 14)
+            if timelineOpen {
+                ForEach(today) { course in
+                    NavigationLink { CourseDetailView(course: course, occurrenceDate: now) } label: {
+                        CourseRow(course: course)
+                    }.buttonStyle(.plain)
+                }
+            }
+            Divider()
+            HStack(spacing: 0) {
+                NavigationLink { LearningCenterView(store: learning) } label: {
+                    Label("学习通", systemImage: "books.vertical").frame(maxWidth: .infinity, minHeight: 44)
+                }
+                Divider().frame(height: 20)
+                NavigationLink { AcademicRecordsView() } label: {
+                    Label("成绩与学业", systemImage: "graduationcap").frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }.font(.subheadline.weight(.medium))
+        }
+        .background(CampusTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(CampusTheme.border, lineWidth: 0.5).allowsHitTesting(false))
+    }
     private func focusCard(_ focus: HomeCourseFocus) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -115,7 +151,7 @@ struct HomeView: View {
                     .accessibilityValue("剩余 \(focus.remainingMinutes(at: now)) 分钟")
                 Text("剩余 \(focus.remainingMinutes(at: now)) 分钟").font(.caption).foregroundStyle(CampusTheme.muted)
             }
-        }.frame(maxWidth: .infinity, alignment: .leading).campusCard()
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(CampusTheme.tint)
     }
     @ViewBuilder private var todayTasks: some View {
         let pending = TaskRules.select(store.tasks, filter: TaskFilter(scope: .today), now: now)
@@ -157,32 +193,58 @@ struct HomeView: View {
         ZStack(alignment: .topLeading) {
             GeometryReader { proxy in
                 Image("campus-autumn").resizable().scaledToFill()
-                    .frame(width: proxy.size.width, height: 194).clipped()
+                    .frame(width: proxy.size.width, height: heroHeight).clipped()
             }.accessibilityHidden(true)
             LinearGradient(colors: [.white.opacity(0.5), .clear, .black.opacity(0.25)], startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 8) {
                 Text("邯院通").font(.system(size: 28, weight: .bold))
                 Text("学习 · 生活 · 校园").font(.caption)
                 Spacer()
-                Text("校园里的事，\n简单一点。").font(.system(size: 24, weight: .semibold)).lineSpacing(5)
+                Text("校园里的事，\n简单一点。").font(.system(.title3, design: .serif)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 HStack { Text(CampusTheme.date(now)); Spacer(); Text("第\(store.week(for: now))周") }.font(.caption).foregroundStyle(.white)
             }.padding(14)
+            HStack {
+                Spacer()
+                NavigationLink {
+                    HomeAnnouncementView(enabled: $announcementsEnabled, read: $welcomeRead)
+                } label: {
+                    Image(systemName: "bell").foregroundStyle(CampusTheme.text)
+                        .frame(width: 36, height: 36).background(CampusTheme.surface.opacity(0.92), in: Circle())
+                        .overlay(alignment: .topTrailing) {
+                            if announcementsEnabled && !welcomeRead {
+                                Circle().fill(.red).frame(width: 7, height: 7).padding(3)
+                            }
+                        }
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("通知设置")
+                .accessibilityValue(announcementsEnabled && !welcomeRead ? "有未读公告" : "")
+            }.padding(8)
             VStack { Spacer(); HStack { Spacer(); DiscoverySurface("puff",label:"首页小金鱼",taps:5,canDream:true) { CampusHeroFish().frame(width:84,height:52).rotationEffect(.degrees(swimming ? 2 : -1)).offset(y:swimming ? -3 : 0) } } }
                 .padding(.trailing, 14).padding(.bottom, 25)
-        }.frame(height: 194).clipShape(RoundedRectangle(cornerRadius: 22))
+        }.frame(height: heroHeight).clipShape(RoundedRectangle(cornerRadius: 22))
     }
-    private func wallet(_ name: String, _ label: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
+    private func wallet(_ name: String, _ label: String, _ balance: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(name, systemImage: icon).font(.subheadline.weight(.semibold))
             Text(label).font(.caption).foregroundStyle(CampusTheme.muted)
-            Text(walletBalance(name)).font(.title2.bold())
+            Text(balance).font(.title2.bold()).monospacedDigit().privacySensitive()
             Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(14).background(color, in: RoundedRectangle(cornerRadius: 20))
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(14).background(LinearGradient(colors: [color, CampusTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18))
     }
-    private func walletBalance(_ name: String) -> String {
-        if name == "趣智校园" { return quzhi.expired ? "登录已过期" : quzhi.connected ? quzhi.balanceText : "未连接" }
-        return pangguai.expired ? "登录已过期" : pangguai.connected ? (pangguai.snapshot.balance.map { "¥" + $0 } ?? "未读取") : "未连接"
+    private var showerBalance: String {
+        guard quzhi.connected else { return "连接账户" }
+        return quzhi.snapshot.wallet == nil ? "待查询" : "¥" + quzhi.balanceText
+    }
+    private var showerDetail: String {
+        if quzhi.expired { return "登录已失效 · 请重新连接" }
+        return quzhi.connected ? "上次查询 · 充值与记录" : "洗澡 · 余额与充值"
+    }
+    private var waterDetail: String {
+        if pangguai.expired { return "登录已失效 · 请重新连接" }
+        if pangguai.snapshot.water?.terminal == false { return "查看当前接水记录" }
+        return pangguai.connected ? "上次查询 · 饮水与洗衣" : "饮水 · 洗衣 · 扫码"
     }
     private func utility(_ title: String, _ detail: String, _ icon: String) -> some View {
         HStack { Image(systemName: icon).foregroundStyle(CampusTheme.primary); VStack(alignment: .leading, spacing: 4) { Text(title).font(.subheadline.weight(.semibold)); Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted) } }.frame(maxWidth: .infinity, alignment: .leading).padding(12).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -246,5 +308,39 @@ private struct CampusHeroFish: View {
             sparks.move(to: CGPoint(x: 45, y: 27)); sparks.addLine(to: CGPoint(x: 47, y: 15))
             context.stroke(sparks, with: .color(ink), style: StrokeStyle(lineWidth: 3, lineCap: .round))
         }
+    }
+}
+
+
+private struct HomeAnnouncementView: View {
+    @EnvironmentObject var store: CampusStore
+    @Binding var enabled: Bool
+    @Binding var read: Bool
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 0) {
+                    Button { enabled.toggle() } label: {
+                        Text("应用内提醒")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                    Toggle("应用内提醒", isOn: $enabled).labelsHidden()
+                }
+                .accessibilityRepresentation { Toggle("应用内提醒", isOn: $enabled) }
+                NavigationLink("设置课程提醒与系统权限") { NativeReminderSettingsView(reminders: store.reminders) }
+            }
+            if enabled {
+                Section("项目公告") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("欢迎使用邯院通").font(.headline)
+                        Text("连接学校后可以同步课表，离线时可查看上次保存的课程。学校公告请前往学校官网查看。")
+                        Text(read ? "已读" : "未读").font(.caption).foregroundStyle(CampusTheme.muted)
+                    }.padding(.vertical, 4)
+                    if !read { Button("全部标为已读") { read = true } }
+                }
+            }
+        }.navigationTitle("通知设置").navigationBarTitleDisplayMode(.inline)
     }
 }
