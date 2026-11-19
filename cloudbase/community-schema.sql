@@ -1291,6 +1291,10 @@ CREATE OR REPLACE FUNCTION public.hyt_contest_tick() RETURNS jsonb LANGUAGE plpg
 DECLARE c public.hyt_contests; n int:=0; y int; highest int;
 BEGIN
  FOR c IN SELECT * FROM public.hyt_contests WHERE published AND NOT cancelled AND NOT paused AND award_at<=now() AND announced_at IS NULL AND auto_publish ORDER BY award_at LIMIT 20 LOOP
+  -- Recheck after the same event lock used by moderation and settlement.
+  PERFORM pg_advisory_xact_lock(hashtext('contest:'||c.id::text));
+  SELECT current_event.* INTO c FROM public.hyt_contests current_event WHERE current_event.id=c.id;
+  IF NOT c.published OR c.cancelled OR c.paused OR NOT c.auto_publish OR c.announced_at IS NOT NULL OR c.award_at>clock_timestamp() THEN CONTINUE; END IF;
   IF EXISTS(SELECT 1 FROM public.hyt_contest_reports r JOIN public.hyt_contest_entries e ON e.id=r.entry_id WHERE e.contest_id=c.id AND r.resolved_at IS NULL) THEN CONTINUE; END IF;
   IF EXISTS(SELECT 1 FROM public.hyt_contest_votes WHERE contest_id=c.id AND enabled AND risk IS NOT NULL AND NOT excluded) THEN CONTINUE; END IF;
   PERFORM public.hyt_contest_settle(c.id);

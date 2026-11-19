@@ -39,6 +39,7 @@ jobs:
           CLOUDBASE_ENV_ID: hanyuantong-d8gjzt1jh12370215
           COMMUNITY_CONTESTS: enabled
           COMMUNITY_CONTESTS_SCHEDULER: scf
+          COMMUNITY_DEPLOY_VERIFY: contests-only
           HYT_EXISTING_ENV_FILE: /tmp/hyt-existing-environment.json
           CI: 'true'
           TCB_SITE: domestic

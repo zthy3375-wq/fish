@@ -13,7 +13,7 @@ test('scheduler skips manual events, coalesces existing timer and propagates pro
  const calls=[];const scf=async(a,b)=>{calls.push([a,b]);return {Triggers:[]}};
  const s=createContestScheduler({env:'test',scf,now:()=>0});
  await s.ensure({...contest,autoPublish:false});assert.equal(calls.length,0);
- const t=await s.ensure(contest);assert.equal(calls[1][0],'CreateTrigger');assert.equal(JSON.parse(calls[1][1].TriggerDesc).cron,'3 2 9 23 11 ? 2026');
+ const t=await s.ensure(contest);assert.equal(calls[1][0],'CreateTrigger');assert.equal(calls[1][1].TriggerDesc,'3 2 9 23 11 ? 2026');
  await s.remove(RECOVERY_TRIGGER);assert.equal(calls.length,2);
  await s.remove(t.name);assert.equal(calls[2][0],'DeleteTrigger');
  const existing=createContestScheduler({env:'test',now:()=>0,scf:async a=>{assert.equal(a,'ListTriggers');return {Triggers:[{TriggerName:t.name,Enable:1}]}}});await existing.ensure(contest);

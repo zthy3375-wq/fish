@@ -11,18 +11,27 @@ KEY=os.environ['CLOUDBASE_API_KEY'].strip()
 BACKUP=Path('artifacts/community-rollback.enc')
 enc_key=hmac.new(KEY.encode(),b'hyt-community-rollback-v1',hashlib.sha256).digest()
 def request(action, data):
-    req=getattr(models,action+'Request')(); req.from_json_string(json.dumps({'Namespace':ENV,**data}))
-    return json.loads(getattr(client,action)(req).to_json_string())
+    if action=='CreateFunction':
+        from tencentcloud.tcb.v20180608 import tcb_client
+        control=tcb_client.TcbClient(credential,'ap-shanghai')
+        result=json.loads(control.call(action,{'EnvId':ENV,'Stamp':'MINI_QCBASE',**data}))['Response']
+        if result.get('SCFErrorCode'): raise RuntimeError('CloudBase function creation: '+result['SCFErrorCode'])
+        return result
+    return json.loads(client.call(action,{'Namespace':ENV,**data}))['Response']
 def wait(name):
     for attempt in range(30):
-        data=request('GetFunction',{'FunctionName':name})
+        try: data=request('GetFunction',{'FunctionName':name})
+        except Exception as e:
+            if 'ResourceNotFound' not in str(e): raise
+            time.sleep(2); continue
         if data.get('Status')=='Active': return
         if data.get('Status') in ('CreateFailed','UpdateFailed'): raise RuntimeError('Function activation failed')
         time.sleep(2)
     raise RuntimeError('Function activation timeout')
 req=urllib.request.Request(f'https://{ENV}.ap-shanghai.tcb-api.tencentcloudapi.com/capi/credential',data=json.dumps({'env':ENV}).encode(),headers={'Authorization':'Bearer '+KEY,'Content-Type':'application/json'})
 with urllib.request.urlopen(req,timeout=20) as response: creds=json.load(response)['data']
-client=scf_client.ScfClient(Credential(creds['TmpSecretId'],creds['TmpSecretKey'],creds['Token']),'ap-shanghai')
+credential=Credential(creds['TmpSecretId'],creds['TmpSecretKey'],creds['Token'])
+client=scf_client.ScfClient(credential,'ap-shanghai')
 mode=sys.argv[1]
 if mode=='backup':
     config=request('GetFunction',{'FunctionName':'hyt-community'})
@@ -49,10 +58,13 @@ elif mode=='worker':
         request('UpdateFunctionCode',{'FunctionName':FUNCTION,'CodeSource':'ZipFile','ZipFile':code});wait(FUNCTION)
         request('UpdateFunctionConfiguration',{'FunctionName':FUNCTION,'Environment':environment,'MemorySize':128,'Timeout':60});wait(FUNCTION)
     else:
-        request('CreateFunction',{'FunctionName':FUNCTION,'Type':'Event','Runtime':'Nodejs20.19','Handler':'index.main','MemorySize':128,'Timeout':60,'Code':{'ZipFile':code},'Environment':environment,'Description':'Theme contest one-off settlement and daily recovery; no frequent idle polling'});wait(FUNCTION)
+        encrypted=BACKUP.read_bytes()
+        original=json.loads(AESGCM(enc_key).decrypt(encrypted[:12],encrypted[12:],None))['config']
+        role=original.get('Role') or 'TCB_QcsRole'
+        request('CreateFunction',{'FunctionName':FUNCTION,'Type':'Event','Role':role,'Runtime':'Nodejs20.19','Handler':'index.main','MemorySize':128,'Timeout':60,'Code':{'ZipFile':code},'Environment':environment,'Description':'Theme contest one-off settlement and daily recovery; no frequent idle polling'});wait(FUNCTION)
     triggers=request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[])
     if not any(t['TriggerName']=='hytc-daily-recovery' for t in triggers):
-        request('CreateTrigger',{'FunctionName':FUNCTION,'TriggerName':'hytc-daily-recovery','Type':'timer','Enable':'OPEN','TriggerDesc':json.dumps({'cron':'0 5 4 * * ? *'})})
+        request('CreateTrigger',{'FunctionName':FUNCTION,'TriggerName':'hytc-daily-recovery','Type':'timer','Enable':'OPEN','TriggerDesc':'0 5 4 * * ? *'})
     print('Settlement worker active; daily recovery installed')
 elif mode=='rollback':
     if not BACKUP.exists(): raise RuntimeError('No deployment backup')
@@ -60,7 +72,11 @@ elif mode=='rollback':
     request('UpdateFunctionCode',{'FunctionName':'hyt-community','CodeSource':'ZipFile','ZipFile':saved['code']});wait('hyt-community')
     request('UpdateFunctionConfiguration',{'FunctionName':'hyt-community','Environment':c['Environment'],'MemorySize':c['MemorySize'],'Timeout':c['Timeout']});wait('hyt-community')
     # Disable only settlement timers owned by this deployment; preserve all other services.
-    for t in request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[]):
+    try: triggers=request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[])
+    except Exception as e:
+        if 'ResourceNotFound' not in str(e): raise
+        triggers=[]
+    for t in triggers:
         if t['TriggerName'].startswith('hytc-'): request('DeleteTrigger',{'FunctionName':FUNCTION,'TriggerName':t['TriggerName'],'Type':'timer'})
     print('Previous community code/configuration restored; contest timers removed')
 else: raise RuntimeError('Unknown operation')
