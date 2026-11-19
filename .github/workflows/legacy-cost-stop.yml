@@ -1,0 +1,34 @@
+name: Stop retired analytics database wakeups
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths: ['cloudbase/retire-legacy-cost.py', '.github/workflows/legacy-cost-stop.yml']
+permissions:
+  contents: read
+concurrency:
+  group: legacy-analytics-retirement
+  cancel-in-progress: false
+jobs:
+  retire:
+    if: github.event.pull_request.head.ref == 'deploy/legacy-cost-stop-20261119' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix cloudbase/functions/analytics --omit=dev --ignore-scripts --no-audit --no-fund
+      - run: python -m pip install tencentcloud-sdk-python cryptography
+      - name: Verify retirement and stop only the legacy hourly timer
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+        run: python cloudbase/retire-legacy-cost.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy-cost-verification
+          path: artifacts/
+          retention-days: 14
