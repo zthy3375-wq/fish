@@ -36,6 +36,10 @@ final class PangguaiStore: ObservableObject {
         connected = credentials != nil; expired = credentials?.expired ?? false
         maskedPhone = credentials.map { String($0.phone.prefix(3)) + "****" + String($0.phone.suffix(4)) } ?? ""
     }
+    var waterBalanceText: String {
+        let merchant = PangguaiWalletMath.waterTicket(snapshot.tickets)
+        return PangguaiWalletMath.waterAmount(merchant?.balance).map { "¥" + $0 } ?? "暂未获取"
+    }
     func cancelPending() {
         generation = UUID(); operation?.cancel(); operation = nil; busy = false
         laundryQuote = nil; waterQuote = nil; settlementQuote = nil

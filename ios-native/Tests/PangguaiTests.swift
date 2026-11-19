@@ -319,6 +319,18 @@ final class PangguaiStoreTests: XCTestCase {
         XCTAssertFalse(api.calls.contains("order/afterPay/creating"))
         XCTAssertFalse(api.calls.contains("order/sync"))
     }
+    func testHomeAndWalletBalanceUseOnlyTheDrinkingWaterMerchant() throws {
+        let (store, api, _) = harness()
+        var snapshot = store.snapshot
+        snapshot.balance = "999.00"
+        let ticket = PGTicket(id: "water", name: "邯郸学院直饮水机", balance: "135", principal: nil, gift: nil)
+        for (tickets, expected) in [([PGTicket](), "暂未获取"), ([ticket], "¥1.35"), ([ticket, ticket], "暂未获取")] {
+            snapshot.tickets = tickets
+            try store.save(snapshot, epoch: store.generation)
+            XCTAssertEqual(store.waterBalanceText, expected)
+        }
+        XCTAssertTrue(api.calls.isEmpty)
+    }
     func testConfirmedPhysicalStopReleasesOnlyLocalLockAndPersistsOffline() async throws {
         for phase in ["starting", "using", "ending"] {
             let (store, api, vault) = harness()

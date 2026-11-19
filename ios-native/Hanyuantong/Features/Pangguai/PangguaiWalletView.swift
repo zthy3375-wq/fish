@@ -93,7 +93,7 @@ struct PangguaiWalletView: View {
         }
         VStack(alignment: .leading, spacing: 10) {
             Text("直饮水余额").font(.subheadline).foregroundStyle(CampusTheme.muted)
-            Text(PangguaiWalletMath.waterAmount(waterMerchant?.balance).map { "¥" + $0 } ?? "暂未获取").font(.system(size: 38, weight: .semibold)).privacySensitive()
+            Text(store.waterBalanceText).font(.system(size: 38, weight: .semibold)).privacySensitive()
             Text("查询于 " + updated(store.snapshot.ticketsUpdatedAt)).font(.caption).foregroundStyle(CampusTheme.muted)
             Button { scannerPresented = true } label: { Label("扫码识别设备", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked)
         }.campusCard()

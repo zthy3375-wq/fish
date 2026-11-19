@@ -57,6 +57,34 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue((completedRow.value as? String)?.hasPrefix("已完成") == true)
         screenshot("05-personal-task", app)
     }
+    func testHomeScheduleAndAnnouncementRoutes() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        app.buttons["home-open-schedule"].tap()
+        XCTAssertTrue(app.tabBars.buttons["课表"].isSelected)
+        app.tabBars.buttons["首页"].tap()
+        let bell = app.buttons["通知设置"]
+        bell.tap()
+        let toggle = app.switches["应用内提醒"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        if toggle.value as? String != "1" { toggle.tap() }
+        let mark = app.buttons["全部标为已读"]
+        if mark.exists { mark.tap() }
+        XCTAssertTrue(app.staticTexts["已读"].exists)
+        app.buttons["设置课程提醒与系统权限"].tap()
+        XCTAssertTrue(app.navigationBars["系统提醒"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.firstMatch.tap()
+        toggle.tap()
+        XCTAssertFalse(app.staticTexts["欢迎使用邯院通"].exists)
+        app.terminate()
+        app.launch()
+        bell.tap()
+        XCTAssertEqual(toggle.value as? String, "0")
+        toggle.tap()
+        XCTAssertTrue(app.staticTexts["已读"].exists)
+    }
+
     func testNativeServiceScreensWithoutCredentials() throws {
         let app = XCUIApplication()
         app.launch()
