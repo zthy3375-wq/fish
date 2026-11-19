@@ -1,0 +1,113 @@
+name: Hanyuantong TestFlight upload
+on:
+  push:
+    branches: ['ship/ios-testflight-0.1.0']
+    paths: ['.github/workflows/ios-testflight.yml']
+permissions:
+  contents: read
+concurrency:
+  group: hanyuantong-testflight-upload
+  cancel-in-progress: false
+jobs:
+  upload:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ship/ios-testflight-0.1.0'
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Check approved application source and installed SDK
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD:ios-native)" = c0e6a624d53195d609822e866e57fc43129f674a
+          xcodebuild -version
+          sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+          test "${sdk%%.*}" -ge 26
+          echo "TF_BUILD=$((1 + GITHUB_RUN_NUMBER / 10000)).$((GITHUB_RUN_NUMBER / 100 % 100)).$((GITHUB_RUN_NUMBER % 100))" >> "$GITHUB_ENV"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/hyt-sign/upload.p8" >> "$GITHUB_ENV"
+          mkdir -m 700 "$RUNNER_TEMP/hyt-sign"
+      - name: Check App Store Connect access and existing build
+        id: lookup
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          set -eu
+          umask 077
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pem = os.environ["ASC_PRIVATE_KEY"].strip().replace("\\n", "\n")
+          if not pem.startswith("-----BEGIN PRIVATE KEY-----"):
+              raise SystemExit("ASC_PRIVATE_KEY must contain the downloaded App Store Connect .p8 PEM")
+          Path(os.environ["ASC_KEY_PATH"]).write_text(pem + "\n")
+          PY
+          ruby .github/scripts/testflight_status.rb check
+      - name: Verify certificate and import signing identity
+        if: steps.lookup.outputs.exists == 'false'
+        env:
+          IOS_SIGNING_FILES_BASE64: ${{ secrets.IOS_SIGNING_FILES_BASE64 }}
+          IOS_SIGNING_KEY_PEM: ${{ secrets.IOS_SIGNING_KEY_PEM }}
+          IOS_SIGNING_KEY_PASSWORD: ${{ secrets.IOS_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          signing_dir="$RUNNER_TEMP/hyt-sign"
+          openssl_bin="$(brew --prefix openssl@3)/bin/openssl"
+          python3 .github/scripts/testflight_signing.py configure "$signing_dir" "$TF_BUILD"
+          printf '%s\n' "$IOS_SIGNING_KEY_PEM" > "$signing_dir/key.pem"
+          "$openssl_bin" x509 -inform DER -in "$signing_dir/distribution.cer" -out "$signing_dir/cert.pem"
+          "$openssl_bin" x509 -in "$signing_dir/cert.pem" -checkend 0 -noout
+          "$openssl_bin" x509 -in "$signing_dir/cert.pem" -pubkey -noout > "$signing_dir/cert.pub"
+          "$openssl_bin" pkey -in "$signing_dir/key.pem" -passin env:IOS_SIGNING_KEY_PASSWORD -pubout > "$signing_dir/key.pub"
+          cmp "$signing_dir/cert.pub" "$signing_dir/key.pub"
+          export IMPORT_PASSWORD
+          IMPORT_PASSWORD=$("$openssl_bin" rand -hex 32)
+          "$openssl_bin" pkcs12 -export -inkey "$signing_dir/key.pem" -passin env:IOS_SIGNING_KEY_PASSWORD \
+            -in "$signing_dir/cert.pem" -out "$signing_dir/identity.p12" -passout env:IMPORT_PASSWORD \
+            -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+          keychain="$signing_dir/distribution.keychain-db"
+          keychain_password=$("$openssl_bin" rand -hex 32)
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$signing_dir/identity.p12" -k "$keychain" -P "$IMPORT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          fingerprint=$("$openssl_bin" x509 -in "$signing_dir/cert.pem" -noout -sha1 -fingerprint | cut -d= -f2 | tr -d :)
+          security find-identity -v -p codesigning "$keychain" | grep -F "$fingerprint" >/dev/null
+          rm -f "$signing_dir/key.pem" "$signing_dir/identity.p12"
+      - name: Archive iPhone app and verify both signatures
+        if: steps.lookup.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          xcodebuild -quiet -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Hanyuantong.xcarchive" archive
+          python3 .github/scripts/testflight_signing.py verify "$RUNNER_TEMP/Hanyuantong.xcarchive" "$TF_BUILD"
+      - name: Upload approved build
+        if: steps.lookup.outputs.exists == 'false'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Hanyuantong.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/hyt-sign/ExportOptions.plist" -exportPath "$RUNNER_TEMP/hyt-export" \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Check Apple processing
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: ruby .github/scripts/testflight_status.rb wait
+      - name: Remove runner signing material
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/hyt-sign/distribution.keychain-db"
+          if [[ -f "$keychain" ]]; then security delete-keychain "$keychain"; fi
+          rm -rf "$RUNNER_TEMP/hyt-sign"
