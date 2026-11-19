@@ -84,7 +84,7 @@ DELETE FROM hyt_contests WHERE id=$1::uuid; COMMIT;`,[cid]);
  }
  for(const u of users){
   await core.execute('account.delete',{password:u.password},u.sessionToken,'deployment-contest');
-  await sql('DELETE FROM hyt_contest_achievements WHERE member_id=$1::uuid; DELETE FROM hyt_contest_year_awards WHERE member_id=$1::uuid; DELETE FROM hyt_members WHERE id=$1::uuid AND deleted_at IS NOT NULL',[u.user.id]);
+  await sql('DELETE FROM hyt_contest_achievements WHERE member_id=$1::uuid; DELETE FROM hyt_contest_year_awards WHERE member_id=$1::uuid; DELETE FROM hyt_awards WHERE member_id=$1::uuid; DELETE FROM hyt_members WHERE id=$1::uuid AND deleted_at IS NOT NULL',[u.user.id]);
  }
  console.log('Only generated contest smoke fixtures cleaned');
 }
