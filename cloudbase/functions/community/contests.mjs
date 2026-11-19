@@ -1,5 +1,5 @@
 // Validation shared by HTTP and native clients. Authorization stays in PostgreSQL.
-export const contestActions = ['contests.list','contests.get','contests.entries','contests.submit','contests.withdraw','contests.vote','contests.profile','contests.wear','contests.year','contests.themes','contests.suggest','contests.themevote','contests.report','contests.admin','contests.save','contests.manage','contests.review'];
+export const contestActions = ['contests.image','contests.list','contests.get','contests.entries','contests.submit','contests.withdraw','contests.vote','contests.profile','contests.wear','contests.year','contests.themes','contests.suggest','contests.themevote','contests.report','contests.admin','contests.save','contests.manage','contests.review'];
 export function sanitizeContest(action, input, {text,id,boolean,time,oneOf,fail}) {
  const integer=(v,min,max)=>{if(!Number.isInteger(v)||v<min||v>max)fail();return v;};
  const page=()=>({offset:integer(input.offset??0,0,100000)});
@@ -11,9 +11,10 @@ export function sanitizeContest(action, input, {text,id,boolean,time,oneOf,fail}
  if(action==='contests.suggest')return {title:text(input.title,3,80),requestId:id(input.requestId)};
  if(action==='contests.themevote')return {themeId:id(input.themeId),enabled:boolean(input.enabled)};
  if(action==='contests.admin')return {contestId:id(input.contestId,true),...page()};
- const out={contestId:id(input.contestId)};
+ const out={contestId:id(input.contestId,action==='contests.review'&&['theme','merge'].includes(input.kind))};
  if(action==='contests.get')return out;
- if(action==='contests.entries')return {...out,...page(),seed:id(input.seed),mine:input.mine===true};
+ if(action==='contests.image')return {...out,entryId:id(input.entryId),imageId:id(input.imageId)};
+ if(action==='contests.entries')return {...out,...page(),seed:id(input.seed),mine:input.mine===true,winnersOnly:input.winnersOnly===true};
  if(action==='contests.withdraw')return {...out,entryId:id(input.entryId)};
  if(action==='contests.vote')return {...out,entryId:id(input.entryId),enabled:boolean(input.enabled)};
  if(action==='contests.report')return {...out,entryId:id(input.entryId),reason:text(input.reason,2,300)};

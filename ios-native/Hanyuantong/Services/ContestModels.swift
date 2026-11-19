@@ -26,6 +26,27 @@ struct NativeContest: Codable, Identifiable {
     var coverPostId: String?
     let cover: TreeholeImage?
     static let labels = ["draft":"草稿", "upcoming":"未开始", "submitting":"投稿中", "waiting":"等待投票", "voting":"投票中", "reviewing":"结果审核中", "ended":"已结束", "cancelled":"已取消"]
+    static func date(_ value: String) -> Date? {
+        let parser = ISO8601DateFormatter()
+        if let date = parser.date(from: value) { return date }
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return parser.date(from: value)
+    }
+    func remaining(now: Date) -> String {
+        let end: String
+        switch state {
+        case "upcoming": end = startsAt
+        case "submitting": end = submissionEnds
+        case "waiting": end = votingStarts
+        case "voting": end = votingEnds
+        case "reviewing": end = awardAt
+        default: return ""
+        }
+        guard let date = Self.date(end) else { return "" }
+        let minutes = Int(ceil(date.timeIntervalSince(now) / 60))
+        if minutes <= 0 { return "阶段已到期，点击刷新" }
+        return minutes >= 1440 ? "剩余 \(minutes / 1440) 天 \(minutes % 1440 / 60) 小时" : "剩余 \(minutes / 60) 小时 \(minutes % 60) 分"
+    }
     var label: String { paused ? "已暂停" : Self.labels[state] ?? state }
     var payload: [String: Any] {
         ["contestId":id, "title":title, "type":type, "edition":edition, "description":description, "rules":rules,

@@ -419,6 +419,11 @@ async function loadDetail(post:TreeholePost,more=false){
   }
  }finally{if(epoch===accountEpoch&&request===detailRequest)detailLoading.value=false;}
 }
+async function openContestPost(id:string){
+ const epoch=accountEpoch;let post:TreeholePost|undefined;
+ await run(async()=>{post=(await api('posts.get',{postId:id})).post});
+ if(post&&alive&&epoch===accountEpoch)openPost(post);
+}
 function openPost(post:TreeholePost,discussion=false){
  if(busy.value||screen.value==='detail')return;
  rememberRoute();focusedThread.value=null;focusedCommentId.value='';
@@ -799,7 +804,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
         </form>
        </template>
       </template>
-      <ContestHub v-else-if="screen==='contests'" :user="user" :initial-id="contestId" @profile="openProfile" @post="id=>run(async()=>{const r=await api('posts.get',{postId:id});if(r.post)await openPost(r.post)})"/>
+      <ContestHub v-else-if="screen==='contests'" :user="user" :initial-id="contestId" @profile="openProfile" @post="openContestPost"/>
       <TreeholeAdmin v-else-if="screen==='moderate'&&moderationEnabled" :request="api" :initial-target="adminTarget" @changed="adminChanged" @expired="clearAccount"/>
       <section v-else-if="screen==='moderate'"><div class="th-feed-intro"><h2>举报处理</h2><p>认真对待每一次反馈。</p></div><p v-if="!reports.length" class="th-empty">暂无待处理举报。</p><article v-for="r in reports" :key="r.id" class="th-card"><p class="th-full-body">{{r.body}}</p><p class="th-muted">举报原因：{{r.reason}}</p><div class="th-moderation-actions"><button v-for="(name,key) in {remove:'删除',lock:'锁帖',ban:'禁言 7 天',dismiss:'忽略'}" :key="key" :disabled="busy" @click="resolveReport(r,key)">{{name}}</button></div></article></section>
      </div>

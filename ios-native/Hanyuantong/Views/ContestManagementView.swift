@@ -44,10 +44,10 @@ struct ContestManagementView: View {
         }.disabled(busy)
     }
     private func date(_ key: WritableKeyPath<NativeContest, String>) -> Binding<Date> {
-        Binding(get: { formatter.date(from: event[keyPath: key]) ?? Date() }, set: { event[keyPath: key] = formatter.string(from: $0) })
+        Binding(get: { NativeContest.date(event[keyPath: key]) ?? Date() }, set: { event[keyPath: key] = formatter.string(from: $0) })
     }
     private func duration(_ days: Int) {
-        let start = formatter.date(from: event.startsAt) ?? Date()
+        let start = NativeContest.date(event.startsAt) ?? Date()
         event.submissionEnds = formatter.string(from: start.addingTimeInterval(Double(days) * 86400 * 5 / 7))
         event.votingStarts = event.submissionEnds
         event.votingEnds = formatter.string(from: start.addingTimeInterval(Double(days) * 86400 * 6 / 7))
@@ -70,5 +70,55 @@ struct ContestEntryLink: View {
                 VStack(alignment: .leading, spacing: 4) { Text("主题赛事" + (event.map { " · " + $0.label } ?? "")).font(.caption).foregroundStyle(.secondary); Text(event?.title ?? "历届作品与冠军档案").font(.subheadline.weight(.semibold)); if let event { Text("\(event.participantCount) 人 · \(event.entryCount) 件作品").font(.caption2).foregroundStyle(.secondary) } }; Spacer(); Image(systemName: "chevron.right").font(.caption)
             }.padding(14).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 14))
         }.buttonStyle(.plain).task { event = try? await api.request("contests.list").contests?.first }
+    }
+}
+
+struct ContestProfileHonors: View {
+    let api: TreeholeService
+    let memberId: String
+    let open: (String) -> Void
+    @State private var result = TreeholeEnvelope()
+    @State private var error: String?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("赛事荣誉", systemImage: "trophy").font(.headline)
+            if let stats = result.stats { Text("参赛 \(stats.participations) · 冠军 \(stats.champions) · 前三 \(stats.podiums)").font(.caption) }
+            ForEach(result.awards ?? []) { award in
+                Button { if let id = award.contest_id { open(id) } } label: {
+                    HStack { Image(systemName: "medal"); Text((award.title ?? "主题赛事") + " · " + award.label); if result.worn == award.id { Image(systemName: "checkmark.seal.fill") } }.font(.caption)
+                }
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.secondary) }
+        }.padding(.vertical, 12).task { do { result = try await api.request("contests.profile", ["memberId":memberId]) } catch { self.error = "赛事荣誉暂未加载，重新进入主页可重试" } }
+    }
+}
+
+struct ContestGallery: View {
+    let selection: TreeholeGallerySelection
+    let api: TreeholeService
+    let contestId: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var urls: [String: URL] = [:]
+    @State private var error = false
+    @State private var scale: CGFloat = 1
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            TabView {
+                ForEach(selection.images) { image in
+                    AsyncImage(url: urls[image.id] ?? image.url.flatMap(URL.init(string:))) { loaded in loaded.resizable().scaledToFit().scaleEffect(scale).gesture(MagnificationGesture().onChanged { scale = min(4, max(1, $0)) }) } placeholder: { ProgressView().tint(.white) }
+                }
+            }.tabViewStyle(.page).task { await renew() }
+            VStack { Button("关闭") { dismiss() }; if error { Button("重试") { Task { await renew() } } } }.padding(20).foregroundStyle(.white)
+        }
+    }
+    private func renew() async {
+        error = false
+        do {
+            for image in selection.images {
+                let response = try await api.request("contests.image", ["contestId":contestId, "entryId":selection.postId, "imageId":image.id])
+                if let value = response.image?.url, let url = URL(string: value) { urls[image.id] = url }
+            }
+        } catch { self.error = true }
     }
 }

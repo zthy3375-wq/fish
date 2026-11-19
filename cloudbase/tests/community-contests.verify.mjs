@@ -19,7 +19,7 @@ before(async()=>{pg=new PGlite();await pg.exec(schema);api=createCommunity({cont
  const reg=username=>api.execute('register',{username,password:'synthetic-contest-password',agreed:true},'',username);
  owner=await reg('owner');users=[];for(let i=0;i<9;i++)users.push(await reg('member'+i));
  await pg.query('UPDATE hyt_members SET developer_since=now() WHERE id=$1',[owner.user.id]);await pg.exec("UPDATE hyt_members SET created_at=now()-interval '30 days'");});
-beforeEach(async()=>{await pg.exec('TRUNCATE hyt_contests CASCADE; DELETE FROM hyt_community_rate; DELETE FROM hyt_contest_themes CASCADE;');});
+beforeEach(async()=>{await pg.exec('TRUNCATE hyt_contests CASCADE; DELETE FROM hyt_community_rate; TRUNCATE hyt_contest_themes CASCADE;');});
 after(()=>pg.close());
 test('developer authorizes real schedule, supports arbitrary type and preserves old account data on migration',async()=>{
  await assert.rejects(call(users[0],'contests.save',config()),{code:'forbidden'});
@@ -75,4 +75,32 @@ test('underfilled events issue participation only and theme proposals need devel
  await call(owner,'contests.manage',{contestId:c,operation:'solicitation',enabled:true,reason:'征集下一期主题'});
  const r=await call(users[0],'contests.suggest',{title:'食堂美食摄影',requestId:randomUUID()});const theme=r.themes[0];assert.equal((await call(users[1],'contests.themes')).themes.length,0);
  await call(owner,'contests.review',{contestId:c,kind:'theme',targetId:theme.id,decision:'approve',reason:'适合校园摄影比赛'});await call(users[1],'contests.themevote',{themeId:theme.id,enabled:true});assert.equal((await call(users[1],'contests.themes')).themes[0].votes,1);
+});
+test('replayed request conflicts on changed content and edit retries preserve the same revision',async()=>{
+ const c=await event(),requestId=randomUUID();const e=await submit(users[0],c,{requestId});await assert.rejects(submit(users[0],c,{requestId,title:'改变重试内容'}),{code:'request_conflict'});
+ const editRequest=randomUUID(),first=await submit(users[0],c,{entryId:e.id,requestId:editRequest,title:'正式修订'}),second=await submit(users[0],c,{entryId:e.id,requestId:editRequest,title:'正式修订'});assert.equal(first.version,second.version);
+});
+test('exact voting deadline rejects withdrawal and a not-yet-started vote cannot be cast',async()=>{
+ const c=await event(),e=await submit(users[0],c);await assert.rejects(vote(users[8],c,e),{code:'contest_closed'});await voting(c);await vote(users[8],c,e);
+ await pg.query('UPDATE hyt_contests SET voting_ends=clock_timestamp() WHERE id=$1',[c]);await assert.rejects(vote(users[8],c,e,false),{code:'contest_closed'});
+});
+test('annual ranking is archived once, revisions revoke stale annual honors and achievements retain original dates',async()=>{
+ const c=await event({minEntries:1}),e=await submit(users[0],c);await voting(c);await vote(users[8],c,e);await ending(c);await pg.query('SELECT hyt_contest_tick()');
+ const profile=await call(users[0],'contests.profile');assert(profile.achievements.some(a=>a.code==='first_champion'));
+ const before=(await pg.query('SELECT unlocked_at FROM hyt_contest_achievements WHERE member_id=$1',[users[0].user.id])).rows[0].unlocked_at;
+ await pg.query("UPDATE hyt_contest_awards SET awarded_at=now()-interval '1 year' WHERE contest_id=$1",[c]);await pg.query('SELECT hyt_contest_achievements_refresh($1)',[c]);await pg.query('SELECT hyt_contest_tick()');
+ assert.equal((await call(users[0],'contests.profile')).annual.length,1);assert.equal((await pg.query('SELECT unlocked_at FROM hyt_contest_achievements WHERE member_id=$1',[users[0].user.id])).rows[0].unlocked_at.getTime(),before.getTime());
+ await call(owner,'contests.manage',{contestId:c,operation:'cancel',reason:'确认年度作品违规'});await pg.query('SELECT hyt_contest_tick()');const after=await call(users[0],'contests.profile');assert.deepEqual(after.annual,[]);assert.deepEqual(after.achievements,[]);
+});
+test('duplicate theme merge deduplicates supporters and preserves a moderation snapshot',async()=>{
+ const c=await event();await call(owner,'contests.manage',{contestId:c,operation:'solicitation',enabled:true,reason:'征集主题'});
+ const first=(await call(users[0],'contests.suggest',{title:'校园日出摄影',requestId:randomUUID()})).themes[0];const second=(await call(users[1],'contests.suggest',{title:'拍校园的日出',requestId:randomUUID()})).themes[0];
+ for(const theme of [first,second]){await call(owner,'contests.review',{contestId:c,kind:'theme',targetId:theme.id,decision:'approve',reason:'主题符合活动要求'});await call(users[8],'contests.themevote',{themeId:theme.id,enabled:true});}
+ await call(owner,'contests.review',{contestId:c,kind:'merge',targetId:second.id,mergeId:first.id,decision:'approve',reason:'合并相同摄影主题'});assert.equal((await call(users[8],'contests.themes')).themes[0].votes,1);
+ const log=(await pg.query("SELECT snapshot FROM hyt_contest_audit WHERE action='merge:approve'")).rows[0];assert.equal(log.snapshot.title,'拍校园的日出');
+});
+test('community account deletion removes competition content and retracts confirmed votes',async()=>{
+ const temp=await api.execute('register',{username:'temporary_contest_user',password:'synthetic-contest-password',agreed:true},'','temporary');await pg.query("UPDATE hyt_members SET created_at=now()-interval '30 days' WHERE id=$1",[temp.user.id]);
+ const c=await event({minEntries:1}),e=await submit(users[0],c);await submit(temp,c);await voting(c);await vote(temp,c,e);await ending(c);await pg.query('SELECT hyt_contest_tick()');
+ await call(temp,'account.delete',{password:'synthetic-contest-password'});assert.equal((await call(users[0],'contests.profile')).stats.champions,0);const wall=await call(users[1],'contests.entries',{contestId:c,seed:randomUUID()});assert.equal(wall.entries.length,1);assert.equal(wall.entries[0].votes,0);
 });
