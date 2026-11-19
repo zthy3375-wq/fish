@@ -635,3 +635,46 @@ extension TreeholeTests {
         XCTAssertNotNil(response.awards?.first?.revoked_at)
     }
 }
+
+extension TreeholeTests {
+    func testCompetitionVoteAcknowledgementWorksWithBothDeployedSchemaAndAuthoritativeResponse() throws {
+        let data = Data(#"{"id":"entry","contestId":"event","memberId":"author","title":"作品","body":"内容","author":"同学","status":"approved","mine":false,"voted":false,"images":[],"awards":[]}"#.utf8)
+        let entry = try JSONDecoder().decode(NativeContestEntry.self, from: data)
+        let fallback = NativeContestVoteConfirmation.apply(entry, enabled: true, used: 0, response: TreeholeEnvelope())
+        XCTAssertTrue(fallback.entry.voted); XCTAssertEqual(fallback.used, 1)
+        var confirmed = TreeholeEnvelope(); confirmed.entry = fallback.entry; confirmed.votesUsed = 2
+        let authoritative = NativeContestVoteConfirmation.apply(entry, enabled: true, used: 0, response: confirmed)
+        XCTAssertEqual(authoritative.used, 2)
+        let repeated = NativeContestVoteConfirmation.apply(fallback.entry, enabled: true, used: 1, response: TreeholeEnvelope())
+        XCTAssertEqual(repeated.used, 1)
+        let withdrawn = NativeContestVoteConfirmation.apply(fallback.entry, enabled: false, used: 1, response: TreeholeEnvelope())
+        XCTAssertFalse(withdrawn.entry.voted); XCTAssertEqual(withdrawn.used, 0)
+    }
+    @MainActor func testCompetitionDraftRetainsRetryIdentityAndDoesNotOverlapCommunityOrAnotherAccount() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = try ProtectedStorage(directory: directory)
+        let owner = UUID().uuidString, other = UUID().uuidString, event = UUID().uuidString
+        let key = "contest-v2-" + owner + "-" + event + "-new"
+        var draft = NativeContestSubmissionDraft(); draft.title = "未完成的作品"; draft.body = "已输入正文"; draft.attempted = true; draft.version = 3
+        try storage.write(draft, name: key)
+        let restored = try XCTUnwrap(storage.read(key, as: NativeContestSubmissionDraft.self))
+        XCTAssertEqual(restored, draft); XCTAssertEqual(restored.requestID, draft.requestID)
+        XCTAssertNil(try storage.read("contest-v2-" + other + "-" + event + "-new", as: NativeContestSubmissionDraft.self))
+        XCTAssertNil(try storage.read("treehole-draft-" + owner, as: TreeholeDraft.self))
+    }
+    func testCompetitionDetailCacheInvalidatesEvenWhenMutationResponseIsLost() async throws {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating:"c",count:43)
+        let api = service(vault); var reads = 0
+        TreeholeTestProtocol.handler = { request in
+            if request.url?.lastPathComponent == "contests.vote" { return (503,Data(#"{"error":"temporarily_unavailable"}"#.utf8)) }
+            reads += 1; return (200,Data(#"{"entries":[]}"#.utf8))
+        }
+        _ = try await api.request("contests.entries",["contestId":"event","seed":"seed"])
+        _ = try await api.request("contests.entries",["contestId":"event","seed":"seed"])
+        XCTAssertEqual(reads,1)
+        do { _ = try await api.request("contests.vote",["contestId":"event","entryId":"entry","enabled":true]); XCTFail("must report failure") } catch {}
+        _ = try await api.request("contests.entries",["contestId":"event","seed":"seed"])
+        XCTAssertEqual(reads,2)
+    }
+}

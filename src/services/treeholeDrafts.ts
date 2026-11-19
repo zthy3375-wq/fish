@@ -17,3 +17,7 @@ export async function prepareTreeholeImage(file:File,avatar=false):Promise<Draft
   if(!data||data.length>1_600_000)throw Error('image_too_large');return {id:crypto.randomUUID(),data,width:canvas.width,height:canvas.height};
  }finally{bitmap.close();}
 }
+
+export const readDraftRecord=<T>(key:string)=>operation<T|undefined>(key,'readonly',s=>s.get(key));
+export const writeDraftRecord=(key:string,value:unknown)=>operation(key,'readwrite',s=>s.put(JSON.parse(JSON.stringify(value)),key));
+export const deleteDraftRecord=(key:string)=>operation(key,'readwrite',s=>s.delete(key));

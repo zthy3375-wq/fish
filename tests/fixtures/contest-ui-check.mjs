@@ -5,6 +5,7 @@ import { parse, compileScript } from "@vue/compiler-sfc";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { JSDOM } from "jsdom";
+import { indexedDB, IDBKeyRange } from "fake-indexeddb";
 import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import assert from "node:assert/strict";
@@ -81,6 +82,7 @@ const bundle = await build({
     resolveDir: resolve("."),
     loader: "ts",
   },
+  loader: { ".css": "empty" },
   bundle: true,
   write: false,
   format: "iife",
@@ -143,6 +145,16 @@ async function mount(who) {
     runScripts: "outside-only",
   });
   const w = dom.window;
+  w.indexedDB = indexedDB;
+  w.IDBKeyRange = IDBKeyRange;
+  w.scrollTo = () => {};
+  w.matchMedia = () => ({ matches: true });
+  w.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  w.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
   w.fixtureUser = who.user;
   w.Capacitor = {
     PluginHeaders: [
@@ -161,57 +173,51 @@ async function mount(who) {
 }
 try {
   await mount(author);
-  await until(
-    () => [...dom.window.document.querySelectorAll(".event-row")].length === 1,
-  );
-  dom.window.document.querySelector(".event-row").click();
   await until(() => button("我要参赛"));
   button("我要参赛").click();
-  await until(() => dom.window.document.querySelector(".entry-form"));
+  await until(() => button("预览作品") && !button("预览作品").disabled);
   input("作品名称", "我们的早八");
-  input("文字内容", "教室窗前的一缕光。");
-  const checkbox = dom.window.document.querySelector(
-    ".entry-form input[required][type=checkbox]",
-  );
-  checkbox.click();
-  await new Promise((r) => setTimeout(r, 20));
+  input("作品内容", "教室窗前的一缕光。");
+  [...dom.window.document.querySelectorAll("label")]
+    .find((l) => l.textContent.includes("我已阅读规则"))
+    .querySelector("input")
+    .click();
   dom.window.document
-    .querySelector(".entry-form")
+    .querySelector("form")
     .dispatchEvent(
       new dom.window.Event("submit", { bubbles: true, cancelable: true }),
     );
-  await until(
-    () =>
-      dom.window.document.querySelector(".contest-work h3")?.textContent ===
-      "我们的早八",
-  );
-  assert(button("编辑"));
-  assert(!dom.window.document.body.textContent.includes("[图片]"));
-  button("编辑").click();
+  await until(() => button("确认参赛"));
+  button("确认参赛").click();
+  await until(() => button("编辑作品"));
+  assert(dom.window.document.body.textContent.includes("我们的早八"));
+  button("编辑作品").click();
   await until(() => button("选择我的帖子参赛"));
   button("选择我的帖子参赛").click();
   await until(() => dom.window.document.querySelector(".pick-post"));
   dom.window.document.querySelector(".pick-post").click();
   await until(() => button("改为直接投稿"));
-  const linkedBody = dom.window.document.querySelector(".entry-form textarea");
+  const linkedBody = dom.window.document.querySelector("textarea");
   assert.equal(linkedBody.value, original.body);
-  assert.equal(linkedBody.readOnly, true);
+  assert(linkedBody.readOnly);
   button("改为直接投稿").click();
   await until(() => !linkedBody.readOnly);
   button("选择我的帖子参赛").click();
   await until(() => dom.window.document.querySelector(".pick-post"));
   dom.window.document.querySelector(".pick-post").click();
   await until(() => linkedBody.readOnly);
-  dom.window.document
-    .querySelector(".entry-form input[required][type=checkbox]")
+  [...dom.window.document.querySelectorAll("label")]
+    .find((l) => l.textContent.includes("我已阅读规则"))
+    .querySelector("input")
     .click();
-  await new Promise((r) => setTimeout(r, 20));
   dom.window.document
-    .querySelector(".entry-form")
+    .querySelector("form")
     .dispatchEvent(
       new dom.window.Event("submit", { bubbles: true, cancelable: true }),
     );
-  await until(() => !dom.window.document.querySelector(".entry-form"));
+  await until(() => button("保存作品"));
+  button("保存作品").click();
+  await until(() => button("编辑作品"));
   const linked = (
     await db.query("SELECT post_id,linked,body FROM hyt_contest_entries")
   ).rows[0];
@@ -223,11 +229,14 @@ try {
     [id],
   );
   await mount(voter);
-  dom.window.document.querySelector(".event-row").click();
+  await until(() => dom.window.document.querySelector(".ct-work-open"));
+  dom.window.document.querySelector(".ct-work-open").click();
   await until(() => button("投一票"));
+  const before = actions.length;
   button("投一票").click();
   await until(() => button("已投票 · 撤回"));
-  assert(dom.window.document.body.textContent.includes("已用 1 / 3"));
+  assert.deepEqual(actions.slice(before), ["contests.vote"]);
+  assert(dom.window.document.body.textContent.includes("还可投 2 / 3 票"));
   assert.equal(
     (await db.query("SELECT count(*)::int AS n FROM hyt_contest_votes")).rows[0]
       .n,
@@ -236,13 +245,9 @@ try {
   const count = actions.length;
   await new Promise((r) => setTimeout(r, 150));
   assert.equal(actions.length, count);
-  assert(
-    !dom.window.document
-      .querySelector(".contest-work footer")
-      ?.textContent.includes("1 票"),
-  );
+  assert(!dom.window.document.querySelector(".ct-final-votes"));
   console.log(
-    "Vue normal entry: event list → details → text submission → own-post picker/edit → different-account voting confirmed; no vote count exposed; idle adds no API calls.",
+    "Vue 2.0: current event → independent preview/submit → own-post edit → detail voting; committed response, no detail refresh or idle calls.",
   );
 } finally {
   if (dom) {

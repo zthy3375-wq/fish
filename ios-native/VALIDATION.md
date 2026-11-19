@@ -159,3 +159,7 @@ Apple implementation references: [local notification scheduling](https://develop
 
 - Run [43018879724](https://github.com/zthy3375-wq/fish/actions/runs/43018879724), source1ee053b: all316 unit cases finished with315 passed, one explicit physical-device-protection skip and zero failures. Unsigned iPhone Release compiled successfully. Three UI scenarios passed; the two task flows still failed because their metadata belongs to a SwiftUI Other wrapper containing the real Button. The saved records are visible in exported screenshots and hierarchy; this remains a test-selector failure, not evidence of lost records. The exact wrapper/child structure is now used for the next targeted regression.
 - CI now runs the two task UI cases first, then all unit tests and the remaining three UI cases on the same source/build, avoiding duplicate execution while retaining full-suite coverage when both stages succeed. Each result bundle is preserved. Source after1ee053b also explicitly applies the existing high-contrast primary-label color to13 primary buttons and adds a four-appearance contrast assertion; this still requires its own runtime result.
+
+## 2026-11-20 主题赛事 2.0
+
+在独立重构分支同步当前赛事、次级档案、详情投票、独立投稿草稿和简化管理。NativeContest字段新增可选版本/风控参数，旧响应仍可解码；投票直接更新确认状态，不跟随详情读取。草稿使用现有ProtectedStorage按账号/赛事/作品隔离，图片压缩和稳定请求ID保留。新增3项原生单元回归；Xcode编译与模拟器测试以本分支CI为准，尚未真机验收。不签名分发、不上传TestFlight、不改生产后台。

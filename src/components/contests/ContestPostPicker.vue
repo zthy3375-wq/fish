@@ -5,7 +5,7 @@ import {
   treeholeError,
   type TreeholePost,
 } from "../../services/treehole";
-const props = defineProps<{ imageOnly?: boolean }>();
+const props = defineProps<{ imageOnly?: boolean; disabled?: boolean }>();
 const emit = defineEmits<{ choose: [post: TreeholePost] }>();
 const posts = ref<TreeholePost[]>([]),
   next = ref<Record<string, string> | null>(),
@@ -15,7 +15,7 @@ const posts = ref<TreeholePost[]>([]),
 let live = true;
 onBeforeUnmount(() => (live = false));
 async function load(append = false) {
-  if (busy.value) return;
+  if (busy.value || props.disabled) return;
   busy.value = true;
   open.value = true;
   error.value = "";
@@ -39,7 +39,7 @@ async function load(append = false) {
 </script>
 <template>
   <div class="contest-post-picker">
-    <button type="button" :disabled="busy" @click="load()">
+    <button type="button" :disabled="busy || disabled" @click="load()">
       {{ imageOnly ? "从我的图文帖选择封面" : "选择我的帖子参赛" }}
     </button>
     <section v-if="open">
@@ -68,9 +68,14 @@ async function load(append = false) {
         >
       </button>
       <p v-if="!busy && !posts.length">本页没有符合要求的帖子。</p>
-      <button v-if="next" type="button" :disabled="busy" @click="load(true)">
+      <button
+        v-if="next"
+        type="button"
+        :disabled="busy || disabled"
+        @click="load(true)"
+      >
         更多我的帖子</button
-      ><button type="button" :disabled="busy" @click="open = false">
+      ><button type="button" :disabled="busy || disabled" @click="open = false">
         收起选择
       </button>
     </section>

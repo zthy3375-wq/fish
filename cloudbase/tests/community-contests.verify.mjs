@@ -230,7 +230,7 @@ test("fixed registration qualification, deadline equality, pause and cancellatio
     operation: "resume",
     reason: "核查完成恢复",
   });
-  await vote(users[8], c, e);
+  for(let i=0;i<13;i++){await vote(users[8],c,e);if(i<12)await vote(users[8],c,e,false);}
   await ending(c);
   await assert.rejects(vote(users[8], c, e, false), { code: "contest_closed" });
   await call(owner, "contests.manage", {
@@ -252,7 +252,7 @@ test("risk votes stop automatic publication, review exclusions update tally and 
     "UPDATE hyt_members SET created_at=now()-interval '2 days' WHERE id=$1",
     [users[8].user.id],
   );
-  await vote(users[8], c, e);
+  for(let i=0;i<13;i++){await vote(users[8],c,e);if(i<12)await vote(users[8],c,e,false);}
   await ending(c);
   await pg.query("SELECT hyt_contest_tick()");
   assert.equal(
@@ -260,7 +260,7 @@ test("risk votes stop automatic publication, review exclusions update tally and 
     "reviewing",
   );
   const v = (await call(owner, "contests.admin", { contestId: c })).votes[0];
-  assert.equal(v.risk, "young_account");
+  assert.equal(v.risk, "vote_burst");
   await call(owner, "contests.review", {
     contestId: c,
     kind: "vote",
@@ -327,7 +327,7 @@ test("underfilled events issue participation only and theme proposals need devel
   const c = await event();
   const e = await submit(users[0], c);
   await voting(c);
-  await vote(users[8], c, e);
+  for(let i=0;i<13;i++){await vote(users[8],c,e);if(i<12)await vote(users[8],c,e,false);}
   await ending(c);
   await pg.query("SELECT hyt_contest_tick()");
   const profile = await call(users[0], "contests.profile");
@@ -395,7 +395,7 @@ test("annual ranking is archived once, revisions revoke stale annual honors and 
   const c = await event({ minEntries: 1 }),
     e = await submit(users[0], c);
   await voting(c);
-  await vote(users[8], c, e);
+  for(let i=0;i<13;i++){await vote(users[8],c,e);if(i<12)await vote(users[8],c,e,false);}
   await ending(c);
   await pg.query("SELECT hyt_contest_tick()");
   const profile = await call(users[0], "contests.profile");
@@ -603,7 +603,7 @@ test("developer report context and award ledger use competition-specific respons
     [],
   );
   await voting(c);
-  await vote(users[8], c, e);
+  for(let i=0;i<13;i++){await vote(users[8],c,e);if(i<12)await vote(users[8],c,e,false);}
   await ending(c);
   await pg.query("SELECT hyt_contest_tick()");
   assert(
@@ -647,4 +647,55 @@ test("historical podium corrections keep the original award year and refresh ann
     new Date(award.awarded_at).getFullYear(),
     new Date().getFullYear() - 1,
   );
+});
+
+test('v2: ordinary young voters and three quick distinct choices do not hold awards; vote responds with committed state',async()=>{
+ const c=await event({minEntries:1});const e=await submit(users[0],c),e2=await submit(users[2],c),e3=await submit(users[3],c);await voting(c);
+ await pg.query("UPDATE hyt_members SET created_at=now()-interval '36 hours' WHERE id=$1",[users[1].user.id]);
+ try{
+  const r=await vote(users[1],c,e);
+  assert.equal(r.entry?.voted,true);assert.equal(r.votesUsed,1);await vote(users[1],c,e2);const third=await vote(users[1],c,e3);assert.equal(third.votesUsed,3);assert.equal((await vote(users[1],c,e3)).votesUsed,3);
+  assert.equal((await pg.query('SELECT risk FROM hyt_contest_votes WHERE contest_id=$1',[c])).rows[0].risk,null);
+  await ending(c);assert.equal((await pg.query('SELECT hyt_contest_tick() AS result')).rows[0].result.announced,1);
+ }finally{await pg.query("UPDATE hyt_members SET created_at=now()-interval '30 days' WHERE id=$1",[users[1].user.id]);}
+});
+test('v2: theme moderation ignores legacy accidental contestId and never resettles or attributes the global audit to that event',async()=>{
+ const c=await event({minEntries:1});await submit(users[0],c);await ending(c);await pg.query('SELECT hyt_contest_tick()');
+ await call(owner,'contests.manage',{contestId:c,operation:'solicitation',enabled:true,reason:'开启主题征集'});
+ const r=await call(users[1],'contests.suggest',{title:'春天的校园摄影',requestId:randomUUID()});const t=r.themes[0];
+ await pg.query("UPDATE hyt_contests SET settled_at='2020-01-01T00:00:00Z' WHERE id=$1",[c]);
+ await call(owner,'contests.review',{contestId:c,kind:'theme',targetId:t.id,decision:'approve',reason:'符合校园主题'});
+ const result=(await pg.query('SELECT settled_at::text AS at FROM hyt_contests WHERE id=$1',[c])).rows[0];assert.match(result.at,/2020-01-01/);
+ assert.equal((await pg.query("SELECT contest_id FROM hyt_contest_audit WHERE target_id=$1 ORDER BY created_at DESC LIMIT 1",[t.id])).rows[0].contest_id,null);
+});
+test('v2: retried admin save is idempotent and stale edits conflict',async()=>{
+ const b={...config(),requestId:randomUUID()};await call(owner,'contests.save',b);await call(owner,'contests.save',b);
+ const version=(await pg.query('SELECT version FROM hyt_contests WHERE id=$1',[b.contestId])).rows[0].version;assert.equal(version,1);
+ await call(owner,'contests.save',{...b,requestId:randomUUID(),expectedVersion:1,title:'更新过的主题'});
+ await assert.rejects(call(owner,'contests.save',{...b,requestId:randomUUID(),expectedVersion:1,title:'过期的另一端编辑'}),{code:'contest_conflict'});
+});
+
+test('v2: concurrent revision edits reject stale data and withdrawal retries preserve one audit',async()=>{
+ const c=await event();const e=await submit(users[0],c);const revised=await submit(users[0],c,{entryId:e.id,expectedVersion:e.version,title:'已保存的新版本'});assert.equal(revised.version,e.version+1);
+ await assert.rejects(submit(users[0],c,{entryId:e.id,expectedVersion:e.version,title:'另一端的旧编辑'}),{code:'contest_conflict'});
+ await call(users[0],'contests.withdraw',{contestId:c,entryId:e.id});await call(users[0],'contests.withdraw',{contestId:c,entryId:e.id});
+ assert.equal((await pg.query("SELECT count(*)::int AS n FROM hyt_contest_audit WHERE target_id=$1 AND action='withdraw'",[e.id])).rows[0].n,1);
+});
+test('v2: pre-upgrade submission receipts remain retryable after adding optional version metadata',async()=>{
+ const c=await event();const requestId=randomUUID();const e=await submit(users[0],c,{requestId});
+ await pg.query("UPDATE hyt_contest_requests SET payload=payload-'expectedVersion' WHERE member_id=$1 AND request_id=$2",[users[0].user.id,requestId]);
+ const retried=await submit(users[0],c,{requestId});assert.equal(retried.id,e.id);assert.equal(retried.version,1);
+});
+test('v2: zero-hour eligibility explicitly allows accounts registered during voting',async()=>{
+ const c=await event();const e=await submit(users[0],c);await voting(c);
+ await pg.query('UPDATE hyt_members SET created_at=now() WHERE id=$1',[users[4].user.id]);
+ try{assert.equal((await vote(users[4],c,e)).entry.voted,true);}finally{await pg.query("UPDATE hyt_members SET created_at=now()-interval '30 days' WHERE id=$1",[users[4].user.id]);}
+});
+test('v2: atomic draft publication reserves its settlement task first; global themes never schedule an event',async()=>{
+ const calls=[],scheduled=[];const scheduledApi=createCommunity({contestsEnabled:true,db:async(a,b,t)=>{calls.push(a);return (await pg.query('SELECT hyt_community($1,$2::jsonb,$3) AS result',[a,JSON.stringify(b),t])).rows[0].result;},scheduler:{ensure:async c=>scheduled.push(c)}});
+ const b=config();await call(owner,'contests.save',b);
+ const r=await scheduledApi.execute('contests.save',{...b,publish:true,requestId:randomUUID()},owner.sessionToken,'fixture');assert.equal(r.contest.state,'submitting');assert.equal(scheduled.length,1);
+ await scheduledApi.execute('contests.manage',{contestId:null,operation:'solicitation',enabled:true,reason:'开启全局主题征集'},owner.sessionToken,'fixture');
+ const proposal=await call(users[1],'contests.suggest',{title:'春季校园故事征集',requestId:randomUUID()});calls.length=0;
+ await scheduledApi.execute('contests.review',{contestId:b.contestId,kind:'theme',targetId:proposal.themes[0].id,decision:'approve',reason:'采纳校园主题'},owner.sessionToken,'fixture');assert(!calls.includes('contests.schedule'));assert.equal(scheduled.length,1);
 });
