@@ -27,6 +27,7 @@ export interface Contest {
   cover?: TreeholeImage | null;
 }
 export interface ContestAward {
+  revoked_at?: string | null;
   id: string;
   kind: string;
   rank: number | null;
@@ -94,7 +95,12 @@ export interface ContestResult {
   leaders?: { id: string; nickname: string; score: number }[];
   votes?: ContestVote[];
   audit?: ContestAudit[];
-  reports?: { id: string; entry_id: string; reason: string }[];
+  contestReports?: {
+    id: string;
+    entry_id: string;
+    reason: string;
+    entry: ContestEntry;
+  }[];
   metrics?: Record<string, number>;
 }
 export const contestLabels: Record<string, string> = {

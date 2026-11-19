@@ -607,3 +607,13 @@ extension TreeholeTests {
         XCTAssertEqual(event.phase(at: instant.addingTimeInterval(3600)), "reviewing")
     }
 }
+
+extension TreeholeTests {
+    func testCompetitionModerationDoesNotDecodeReportsAsCommunityPostReports() throws {
+        let data = Data(#"{"contestReports":[{"id":"report","entry_id":"entry","reason":"请核实作品"}],"awards":[{"id":"award","kind":"champion","rank":1,"revoked_at":"2026-11-19T10:00:00Z"}]}"#.utf8)
+        let response = try JSONDecoder().decode(TreeholeEnvelope.self, from: data)
+        XCTAssertNil(response.reports)
+        XCTAssertEqual(response.contestReports?.first?.entry_id, "entry")
+        XCTAssertNotNil(response.awards?.first?.revoked_at)
+    }
+}

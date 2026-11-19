@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TreeholeImages from "../TreeholeImages.vue";
 import { Check, Trophy, Flag } from "lucide-vue-next";
 import type { ContestEntry } from "../../services/contests";
 import { awardLabels } from "../../services/contests";
@@ -10,6 +11,7 @@ const props = defineProps<{
   admin: boolean;
 }>();
 defineEmits<{
+  image: [index: number];
   vote: [];
   edit: [];
   withdraw: [];
@@ -38,21 +40,14 @@ defineEmits<{
           .join(" · ")
       }}
     </div>
-    <div v-if="entry.images.length" class="work-photos">
-      <a
-        v-for="(image, index) in entry.images"
-        :key="image.id"
-        :href="image.url || undefined"
-        target="_blank"
-        rel="noopener noreferrer"
-        ><img
-          v-if="image.url"
-          :src="image.url"
-          :alt="entry.title + ' 配图 ' + (index + 1)"
-          loading="lazy"
-        /><span v-else>图片暂不可用</span></a
-      >
-    </div>
+    <TreeholeImages
+      :key="entry.version"
+      :images="entry.images"
+      :post-id="entry.postId || entry.id"
+      :contest-id="entry.contestId"
+      :entry-id="entry.id"
+      @open="$emit('image', $event)"
+    />
     <div class="work-copy">
       <small v-if="entry.status !== 'approved'">{{
         entry.status === "removed" ? "已下架" : "已撤回"
@@ -109,22 +104,6 @@ defineEmits<{
   overflow: hidden;
   background: var(--color-raised, #fff);
   margin-bottom: 14px;
-}
-.work-photos {
-  display: flex;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-}
-.work-photos a {
-  flex: 0 0 100%;
-  scroll-snap-align: start;
-  aspect-ratio: 4/3;
-  background: var(--color-bg);
-}
-.work-photos img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
 }
 .work-copy {
   padding: 16px;

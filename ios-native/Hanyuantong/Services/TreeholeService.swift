@@ -78,6 +78,7 @@ struct TreeholeEnvelope: Decodable {
     var votes: [NativeContestVote]?
     var audit: [NativeContestAudit]?
     var metrics: [String: Int]?
+    var contestReports: [NativeContestReport]?
 
     var buddiesEnabled: Bool?; var participants: [TreeholeBuddyMember]?
     var pollsEnabled: Bool?; var commentImagesEnabled: Bool?

@@ -52,7 +52,7 @@ struct ContestView: View {
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             if busy { ProgressView("正在加载…") }
             if administration, let event = draftEvent {
-                ContestManagementView(api: api, event: event) { id in administration = false; run { try await open(id) } }
+                ContestManagementView(api: api, event: event, persisted: selected?.id == event.id) { id in administration = false; run { try await open(id) } }
             } else {
                 Picker("赛事栏目", selection: $page) { Text("赛事").tag("events"); Text("历届").tag("archive"); Text("年度").tag("year"); Text("征集").tag("themes"); Text("荣誉").tag("honors") }.pickerStyle(.segmented).onChange(of: page) { _ in selected = nil; run { try await load() } }
                 if let event = selected { detail(event) }
@@ -83,7 +83,7 @@ struct ContestView: View {
         if let image = event.cover { TreeholeImageGrid(postId: event.coverPostId ?? "", images: [image], full: false, api: api) { _ in } .allowsHitTesting(false) }
         VStack(alignment: .leading, spacing: 10) { Text(event.type + " · " + event.edition).font(.caption); Text(event.title).font(.title.bold()); Text(event.label(at: clock.addingTimeInterval(serverOffset))).font(.caption.weight(.semibold)); TimelineView(.periodic(from: .now, by: 60)) { context in Text(event.remaining(now: context.date.addingTimeInterval(serverOffset))).font(.caption).foregroundStyle(.secondary) }; Text(event.description).font(.body) }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 16))
         DisclosureGroup("规则、日程与奖励") {
-            VStack(alignment: .leading, spacing: 10) { Text(event.rules); Text("每人最多 \(event.maxEntries) 件作品、\(event.votesPerUser) 票。投票前账号注册满 \(event.minAccountHours) 小时。有效作品满 \(event.minEntries) 件，得票作品参与前三评选。同票并列，下一名次连续排列。所有有效参赛者保留纪念。"); Text("投稿截止 " + event.submissionEnds); Text("投票 " + event.votingStarts + " 至 " + event.votingEnds); Text("公布 " + event.awardAt) }.font(.caption).padding(.vertical, 8)
+            VStack(alignment: .leading, spacing: 10) { Text(event.rules); Text("每人最多 \(event.maxEntries) 件作品、\(event.votesPerUser) 票。投票开始前账号注册满 \(event.minAccountHours) 小时。有效作品满 \(event.minEntries) 件，得票作品参与前三评选。同票并列，下一名次连续排列。所有有效参赛者保留纪念。"); Text("投稿截止 " + event.submissionEnds); Text("投票 " + event.votingStarts + " 至 " + event.votingEnds); Text("公布 " + event.awardAt) }.font(.caption).padding(.vertical, 8)
         }
         if event.phase(at: clock.addingTimeInterval(serverOffset)) == "submitting" && !event.paused { Button("我要参赛") { compose() }.buttonStyle(.borderedProminent) }
         if event.phase(at: clock.addingTimeInterval(serverOffset)) == "voting" { Text("已用 \(votesUsed) / \(event.votesPerUser) 票").font(.subheadline) }
@@ -155,7 +155,10 @@ struct ContestView: View {
             }
             if admin {
                 TextField("审核／合并理由", text: $reason)
-                TextField("合并目标主题 ID（选填）", text: $mergeTarget)
+                Picker("合并到已通过的主题", selection: $mergeTarget) {
+                    Text("选择主题").tag("")
+                    ForEach((summary.themes ?? []).filter { $0.status == "approved" }) { item in Text(item.title).tag(item.id) }
+                }
             }
             ForEach(summary.themes ?? []) { item in
                 VStack(alignment: .leading, spacing: 8) {
@@ -172,17 +175,18 @@ struct ContestView: View {
                         HStack {
                             Button("通过") { reviewTheme(item.id, kind: "theme", decision: "approve") }
                             Button("移除") { reviewTheme(item.id, kind: "theme", decision: "remove") }
-                            Button("合并") { reviewTheme(item.id, kind: "merge", decision: "approve") }.disabled(mergeTarget.isEmpty)
+                            Button("合并") { reviewTheme(item.id, kind: "merge", decision: "approve") }.disabled(mergeTarget.isEmpty || mergeTarget == item.id)
                         }.disabled(reason.count < 2)
                     }
                 }
             }
+            if summaryMore { Button("更多候选主题") { run { try await load(more: true) } } }
         }
     }
     private func reviewTheme(_ id: String, kind: String, decision: String) {
         run {
             _ = try await api.request("contests.review", ["contestId":events.first?.id as Any? ?? NSNull(), "kind":kind, "targetId":id, "decision":decision, "reason":reason, "mergeId":mergeTarget.isEmpty ? NSNull() : mergeTarget as Any])
-            try await load()
+            mergeTarget = ""; try await load()
         }
     }
     private func compose(_ entry: NativeContestEntry? = nil) {
@@ -200,7 +204,12 @@ struct ContestView: View {
             summaryOffset = more ? summaryOffset + 20 : 0; summaryMore = (r.awards?.count ?? 0) > 20
             summary = r; summary.awards = previous + Array((r.awards ?? []).prefix(20)); return
         }
-        if page == "themes" { summary = try await api.request("contests.themes"); return }
+        if page == "themes" {
+            let response = try await api.request("contests.themes", ["offset":more ? summary.themes?.count ?? 0 : 0])
+            let previous = more ? summary.themes ?? [] : []
+            summaryMore = (response.themes?.count ?? 0)>20
+            summary = response; summary.themes = previous + Array((response.themes ?? []).prefix(20)); return
+        }
         if page == "year" {
             let r = try await api.request("contests.year", ["year":year, "offset":more ? summaryOffset + 20 : 0])
             let previous = more ? Array((summary.leaders ?? []).prefix(summaryOffset + 20)) : []
@@ -212,7 +221,7 @@ struct ContestView: View {
     }
     private func open(_ id: String) async throws { let r = try await api.request("contests.get", ["contestId":id]); selected = r.contest; if let time = r.serverTime.flatMap(NativeContest.date) { serverOffset = time.timeIntervalSinceNow }; votesUsed = r.votesUsed ?? 0; try await wall() }
     private func wall(more: Bool = false) async throws {
-        guard let selected else { return }; let r = try await api.request("contests.entries", ["contestId":selected.id, "seed":seed, "offset":more ? entries.count : 0]); self.more = (r.entries?.count ?? 0) > 20
+        guard let selected else { return }; let r = try await api.request("contests.entries", ["contestId":selected.id, "seed":seed, "offset":0, "afterId":more ? entries.last?.id as Any? ?? NSNull() : NSNull()]); self.more = (r.entries?.count ?? 0) > 20
         entries = more ? entries + Array((r.entries ?? []).prefix(20)) : Array((r.entries ?? []).prefix(20))
     }
 }

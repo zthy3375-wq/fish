@@ -61,6 +61,7 @@ export function sanitizeContest(
       ...out,
       ...page(),
       seed: id(input.seed),
+      afterId: id(input.afterId, true),
       mine: input.mine === true,
       winnersOnly: input.winnersOnly === true,
     };

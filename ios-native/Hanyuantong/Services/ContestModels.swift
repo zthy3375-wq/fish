@@ -88,6 +88,7 @@ struct NativeContestAward: Decodable, Identifiable {
     let title: String?
     let contest_id: String?
     let awarded_at: String?
+    let revoked_at: String?
     static let labels = ["champion":"冠军", "silver":"亚军", "bronze":"季军", "excellent":"优秀作品", "participation":"参赛纪念"]
     var label: String { Self.labels[kind] ?? kind }
 }
@@ -96,3 +97,5 @@ struct NativeContestTheme: Decodable, Identifiable { let id: String, title: Stri
 struct NativeContestLeader: Decodable, Identifiable { let id: String, nickname: String; let score: Int }
 struct NativeContestVote: Decodable, Identifiable { let id: String, entry_id: String; let risk: String?; let excluded: Bool, enabled: Bool }
 struct NativeContestAudit: Decodable, Identifiable { let id: String, action: String, reason: String, created_at: String }
+
+struct NativeContestReport: Decodable, Identifiable { let id: String, entry_id: String, reason: String; let entry: NativeContestEntry? }

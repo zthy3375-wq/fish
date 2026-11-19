@@ -2,6 +2,7 @@
 import {ref,computed,onMounted,onUnmounted,onActivated,onDeactivated,watch,nextTick} from 'vue';
 import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ChevronLeft,Bell,BellOff,MessagesSquare,ChevronDown,ChartNoAxesColumnIncreasing,CalendarPlus,Award,Settings} from 'lucide-vue-next';
 import TreeholeMessages from './TreeholeMessages.vue';
+import type {ContestEntry} from '../services/contests';
 import ContestHub from './contests/ContestHub.vue';
 import ContestHonors from './contests/ContestHonors.vue';
 import TreeholeAdmin from './TreeholeAdmin.vue';
@@ -87,7 +88,7 @@ const boardPrompt=computed(()=>boardPrompts[interest.value]);
 const boardName=computed(()=>treeholeDestinationName(category.value,interest.value));
 const category=ref('all'),postCategory=ref('daily'),sort=ref('latest'),postTitle=ref(''),images=ref<DraftImage[]>([]),imagesEnabled=ref(false),draftReady=ref(false),draftSaved=ref('');
 const expandedReplies=ref<Record<string,boolean>>({}),replyPages=ref<Record<string,Record<string,string>|null>>({});
-const gallery=ref<{post:TreeholePost;index:number}|null>(null),zoomed=ref(false),galleryX=ref(0);
+const gallery=ref<{post:Pick<TreeholePost,'id'|'images'>;index:number;contestId?:string;entryId?:string}|null>(null),zoomed=ref(false),galleryX=ref(0);
 const replyExpanded=ref(false),detailTab=ref('body'),galleryFailed=ref(false);
 const detailLoading=ref(false),detailError=ref(''),pageMotion=ref('forward'),selectedPhoto=ref<string|null>(null),edgeOffset=ref(0);
 let detailRequest=0,scrollIntentUntil=0;
@@ -193,8 +194,9 @@ watch([postTitle,body,postCategory,postInterest,anonymous,images,pollDraft,buddy
 watch(postCategory,(next)=>{if(next==='treehole')anonymous.value=true;if(postInterest.value&&treeholeTopicCategory(postInterest.value)!==next)postInterest.value='';});
 async function chooseImages(event:Event){const input=event.target as HTMLInputElement;const files=Array.from(input.files||[]);input.value='';if(images.value.length+files.length>9){error.value='最多添加 9 张图片';return;}await run(async()=>{for(const file of files)images.value.push(await prepareTreeholeImage(file));saveDraft();});}
 function removeImage(index:number){const old=images.value.splice(index,1)[0];if(old?.remote)void api('media.discard',{imageId:old.remote.id}).catch(()=>{});}
+function contestImageView(entry:ContestEntry,index:number){gallery.value={post:{id:entry.postId||entry.id,images:entry.images},index,contestId:entry.contestId,entryId:entry.id};zoomed.value=false;galleryFailed.value=false;void renewImage();}
 function imageView(post:TreeholePost,index:number){gallery.value={post,index};zoomed.value=false;galleryFailed.value=false;void renewImage();}
-async function renewImage(){galleryFailed.value=false;const g=gallery.value,im=currentImage.value;if(!g||!im)return;try{const fresh=(await api('media.url',{postId:g.post.id,imageId:im.id})).image;if(fresh&&gallery.value===g){Object.assign(im,fresh);if(currentImage.value?.id===im.id)galleryFailed.value=false;}}catch{}}
+async function renewImage(){galleryFailed.value=false;const g=gallery.value,im=currentImage.value;if(!g||!im)return;try{const fresh=(await api(g.contestId&&g.entryId?'contests.image':'media.url',{...(g.contestId&&g.entryId?{contestId:g.contestId,entryId:g.entryId}:{postId:g.post.id}),imageId:im.id})).image;if(fresh&&gallery.value===g){Object.assign(im,fresh);if(currentImage.value?.id===im.id)galleryFailed.value=false;}}catch{}}
 function galleryStep(delta:number){if(!gallery.value)return;const n=gallery.value.post.images?.length||1;gallery.value.index=(gallery.value.index+delta+n)%n;zoomed.value=false;void renewImage();}
 function imageGesture(event:TouchEvent){const distance=event.changedTouches[0].clientX-galleryX.value;if(!zoomed.value&&Math.abs(distance)>60)galleryStep(distance<0?1:-1);}
 function actionError(e:unknown,epoch:number){if(!alive||epoch!==accountEpoch)return;error.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired')clearAccount();}
@@ -804,7 +806,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
         </form>
        </template>
       </template>
-      <ContestHub v-else-if="screen==='contests'" :user="user" :initial-id="contestId" @profile="openProfile" @post="openContestPost"/>
+      <ContestHub v-else-if="screen==='contests'" :user="user" :initial-id="contestId" @profile="openProfile" @post="openContestPost" @image="contestImageView"/>
       <TreeholeAdmin v-else-if="screen==='moderate'&&moderationEnabled" :request="api" :initial-target="adminTarget" @changed="adminChanged" @expired="clearAccount"/>
       <section v-else-if="screen==='moderate'"><div class="th-feed-intro"><h2>举报处理</h2><p>认真对待每一次反馈。</p></div><p v-if="!reports.length" class="th-empty">暂无待处理举报。</p><article v-for="r in reports" :key="r.id" class="th-card"><p class="th-full-body">{{r.body}}</p><p class="th-muted">举报原因：{{r.reason}}</p><div class="th-moderation-actions"><button v-for="(name,key) in {remove:'删除',lock:'锁帖',ban:'禁言 7 天',dismiss:'忽略'}" :key="key" :disabled="busy" @click="resolveReport(r,key)">{{name}}</button></div></article></section>
      </div>

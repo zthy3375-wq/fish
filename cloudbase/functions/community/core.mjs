@@ -216,7 +216,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
   function collect(value){if(!value||typeof value!=='object')return;if(typeof value.key==='string'&&typeof value.id==='string'&&typeof value.width==='number')images.push(value);for(const child of Object.values(value))collect(child);}
   collect(r);
   const keys=[...new Set(images.map(i=>i.key))];let urls=new Map();
-  if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys,{fresh:action==='media.url'}):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
+  if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys,{fresh:action==='media.url'||action==='contests.image'}):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
   for(const image of images){image.url=urls.get(image.key)||null;delete image.key;}
   if(storage&&['posts.delete','comments.delete','account.delete','admin.resolve','admin.action','media.discard','media.upload','avatar.set'].includes(action)){
    try {const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}}catch{console.warn('Community image cleanup will retry');}

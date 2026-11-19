@@ -189,9 +189,18 @@ test("concurrent retries consume one vote, quota is enforced and own works are r
   });
   await vote(users[8], c, entries[0], false);
   await vote(users[8], c, entries[3]);
-  await call(owner,"contests.review",{contestId:c,kind:"entry",targetId:entries[3].id,decision:"remove",reason:"投票中下架违规作品"});
-  await vote(users[8],c,entries[4]);
-  assert.equal((await call(users[8],"contests.get",{contestId:c})).votesUsed,3);
+  await call(owner, "contests.review", {
+    contestId: c,
+    kind: "entry",
+    targetId: entries[3].id,
+    decision: "remove",
+    reason: "投票中下架违规作品",
+  });
+  await vote(users[8], c, entries[4]);
+  assert.equal(
+    (await call(users[8], "contests.get", { contestId: c })).votesUsed,
+    3,
+  );
   const wall = await call(users[7], "contests.entries", {
     contestId: c,
     seed: randomUUID(),
@@ -529,4 +538,95 @@ test("shared submission creates one community post and later competition edits p
   });
   assert.equal(edit.body, "重新编辑的正文");
   assert.equal(edit.postId, e.postId);
+});
+test("randomized cursor pagination remains disjoint when submissions arrive between pages", async () => {
+  const c = await event({ maxEntries: 4 }),
+    seed = randomUUID();
+  for (let i = 0; i < 9; i++)
+    for (let j = 0; j < 3; j++) await submit(users[i], c);
+  const first = (
+    await call(users[8], "contests.entries", { contestId: c, seed })
+  ).entries.slice(0, 20);
+  await submit(users[0], c, { title: "分页期间的新作品" });
+  const second = (
+    await call(users[8], "contests.entries", {
+      contestId: c,
+      seed,
+      afterId: first.at(-1).id,
+    })
+  ).entries;
+  assert(second.length >= 7);
+  assert(
+    second.every(
+      (entry) => !first.some((previous) => previous.id === entry.id),
+    ),
+  );
+});
+test("developer report context and award ledger use competition-specific response fields", async () => {
+  const c = await event({ minEntries: 1 }),
+    e = await submit(users[0], c);
+  await call(users[1], "contests.report", {
+    contestId: c,
+    entryId: e.id,
+    reason: "请核实作品授权",
+  });
+  const review = await call(owner, "contests.admin", { contestId: c });
+  assert.equal(review.contestReports[0].entry.title, e.title);
+  assert(!("reports" in review));
+  await call(owner, "contests.review", {
+    contestId: c,
+    kind: "entry",
+    targetId: e.id,
+    decision: "approve",
+    reason: "已核实作者授权",
+  });
+  assert.deepEqual(
+    (await call(owner, "contests.admin", { contestId: c })).contestReports,
+    [],
+  );
+  await voting(c);
+  await vote(users[8], c, e);
+  await ending(c);
+  await pg.query("SELECT hyt_contest_tick()");
+  assert(
+    (await call(owner, "contests.admin", { contestId: c })).awards.some(
+      (a) => a.kind === "champion",
+    ),
+  );
+});
+test("historical podium corrections keep the original award year and refresh annual honors immediately", async () => {
+  const c = await event({ minEntries: 1 }),
+    champ = await submit(users[0], c),
+    silver = await submit(users[1], c);
+  await voting(c);
+  await vote(users[8], c, champ);
+  await vote(users[7], c, champ);
+  await vote(users[6], c, silver);
+  await ending(c);
+  await pg.query("SELECT hyt_contest_tick()");
+  await pg.query(
+    "UPDATE hyt_contests SET announced_at=now()-interval '1 year' WHERE id=$1",
+    [c],
+  );
+  await pg.query(
+    "UPDATE hyt_contest_awards SET awarded_at=now()-interval '1 year' WHERE contest_id=$1",
+    [c],
+  );
+  await pg.query("SELECT hyt_contest_achievements_refresh($1)", [c]);
+  await call(owner, "contests.review", {
+    contestId: c,
+    kind: "entry",
+    targetId: champ.id,
+    decision: "remove",
+    reason: "确认往届冠军作品违规",
+  });
+  const corrected = await call(users[1], "contests.profile");
+  assert.equal(corrected.stats.champions, 1);
+  assert.equal(corrected.annual.length, 1);
+  assert.equal((await call(users[0], "contests.profile")).annual.length, 0);
+  const award = corrected.awards.find((a) => a.kind === "champion");
+  assert.equal(
+    new Date(award.awarded_at).getFullYear(),
+    new Date().getFullYear() - 1,
+  );
 });

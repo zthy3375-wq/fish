@@ -38,6 +38,7 @@ const emit = defineEmits<{
   open: [id?: string];
   profile: [id: string];
   post: [id: string];
+  image: [entry: ContestEntry, index: number];
 }>();
 const admin = computed(() => props.user.badges?.official?.code === "developer");
 const contests = ref<Contest[]>([]),
@@ -52,7 +53,6 @@ const more = ref(false),
   votesUsed = ref(0),
   clock = ref(Date.now()),
   serverOffset = ref(0),
-  offset = ref(0),
   winnersOnly = ref(false);
 const stage = computed(() =>
   selected.value
@@ -145,9 +145,9 @@ async function wall(append = false) {
     contestId: selected.value.id,
     seed,
     winnersOnly: winnersOnly.value,
-    offset: append ? offset.value + 20 : 0,
+    offset: 0,
+    afterId: append ? entries.value.at(-1)?.id : null,
   });
-  offset.value = append ? offset.value + 20 : 0;
   more.value = (r.entries?.length || 0) > 20;
   entries.value = append
     ? [...entries.value, ...(r.entries || []).slice(0, 20)]
@@ -263,8 +263,19 @@ async function decide() {
 function resetThemeRequest() {
   themeRequest.value = crypto.randomUUID();
 }
-async function themes() {
-  data.value = await request("contests.themes");
+const moreThemes = ref(false);
+async function themes(append = false) {
+  const result = await request("contests.themes", {
+    offset: append ? data.value.themes?.length || 0 : 0,
+  });
+  moreThemes.value = (result.themes?.length || 0) > 20;
+  data.value = {
+    ...result,
+    themes: [
+      ...(append ? data.value.themes || [] : []),
+      ...(result.themes || []).slice(0, 20),
+    ],
+  };
 }
 async function change(next: string) {
   view.value = next;
@@ -530,6 +541,7 @@ onMounted(() =>
           v-for="entry in entries"
           :key="entry.id"
           :entry="entry"
+          @image="emit('image', entry, $event)"
           :voting="stage === 'voting' && !selected.paused"
           :submitting="stage === 'submitting' && !selected.paused"
           :admin="admin"
@@ -685,6 +697,13 @@ onMounted(() =>
             </button></template
           >
         </article>
+        <button
+          v-if="moreThemes"
+          :disabled="busy"
+          @click="run(() => themes(true))"
+        >
+          更多候选主题
+        </button>
         <p class="quiet">最终主题与比赛规则由开发者审核发布。</p></template
       >
       <template v-else-if="view === 'year'"
@@ -757,7 +776,18 @@ onMounted(() =>
           rows="3"
         /></label
       ><label v-if="action.kind === 'merge'"
-        >合并到已通过主题 ID<input v-model="mergeId" required /></label
+        >合并到已通过的主题<select v-model="mergeId" required>
+          <option disabled value="">选择主题</option>
+          <option
+            v-for="item in data.themes?.filter(
+              (item) => item.status === 'approved' && item.id !== action?.id,
+            )"
+            :key="item.id"
+            :value="item.id"
+          >
+            {{ item.title }}
+          </option>
+        </select></label
       ><button class="primary" :disabled="busy || reason.trim().length < 2">
         确认提交</button
       ><button type="button" @click="action = undefined">取消</button>
