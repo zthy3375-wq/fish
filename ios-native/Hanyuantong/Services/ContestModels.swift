@@ -60,7 +60,7 @@ struct NativeContest: Codable, Identifiable {
         let start = calendar.nextDate(after: Date(), matching: DateComponents(hour: 0, weekday: 2), matchingPolicy: .nextTime)!
         let formatter = ISO8601DateFormatter()
         func time(_ days: Double) -> String { formatter.string(from: start.addingTimeInterval(days * 86400)) }
-        return NativeContest(id: UUID().uuidString, title: "", type: "摄影赛", edition: "", description: "", rules: "原创投稿，尊重隐私。同票并列，下一名次连续排列。", state: "draft", paused: false, startsAt: time(0), submissionEnds: time(5), votingStarts: time(5), votingEnds: time(6), awardAt: time(6.5), formats: ["text", "image", "mixed"], maxEntries: 1, votesPerUser: 3, minEntries: 5, minAccountHours: 24, excellence: 3, autoPublish: false, entryCount: 0, participantCount: 0)
+        return NativeContest(id: UUID().uuidString, title: "", type: "摄影赛", edition: "", description: "", rules: "原创投稿，尊重隐私。同票并列，下一名次连续排列。", state: "draft", paused: false, startsAt: time(0), submissionEnds: time(5), votingStarts: time(5), votingEnds: time(6), awardAt: time(6.5), formats: ["text", "image", "mixed"], maxEntries: 1, votesPerUser: 3, minEntries: 5, minAccountHours: 24, excellence: 3, autoPublish: false, entryCount: 0, participantCount: 0, cover: nil)
     }
 }
 struct NativeContestEntry: Decodable, Identifiable {

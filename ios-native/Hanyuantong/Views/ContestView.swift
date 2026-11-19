@@ -12,6 +12,7 @@ struct ContestView: View {
     @State private var selected: NativeContest?
     @State private var entries: [NativeContestEntry] = []
     @State private var page = "events"
+    @State private var operationTask: Task<Void, Never>?
     @State private var busy = false
     @State private var error: String?
     @State private var serverOffset: TimeInterval = 0
@@ -30,6 +31,8 @@ struct ContestView: View {
     @State private var picked: [PhotosPickerItem] = []
     @State private var agreed = false
     @State private var requestID = UUID().uuidString
+    @State private var summaryOffset = 0
+    @State private var summaryMore = false
     @State private var summary = TreeholeEnvelope()
     @State private var theme = ""
     @State private var reason = ""
@@ -56,6 +59,7 @@ struct ContestView: View {
                 else if page == "year" {
                     Stepper("\(year) 年", value: $year, in: 2020...9999).onChange(of: year) { _ in run { try await load() } }
                     Text("冠军5分、亚军3分、季军2分、优秀作品1分，同分并列。").font(.caption).foregroundStyle(.secondary)
+                    if summaryMore { Button("更多年度排名") { run { try await load(more: true) } } }
                     ForEach(summary.leaders ?? []) { leader in HStack { Text(leader.nickname); Spacer(); Text("\(leader.score) 分") }.padding(.vertical, 8) }
                 } else {
                     if page == "archive" {
@@ -68,6 +72,7 @@ struct ContestView: View {
                 }
             }
         }.sheet(item: $gallery) { selection in ContestGallery(selection: selection, api: api, contestId: selected?.id ?? "") }
+        .onDisappear { operationTask?.cancel() }
         .disabled(busy).task { await perform { page = initialPage; if let initialId { try await open(initialId) } else { try await load() } } }
     }
     @ViewBuilder private func detail(_ event: NativeContest) -> some View {
@@ -132,6 +137,7 @@ struct ContestView: View {
                 if stats.champions >= 1 { Text("初露锋芒") }; if stats.champions >= 5 { Text("常胜将军") }; if stats.champions >= 20 { Text("不败传说") }; if stats.participations >= 100 { Text("百战老兵") }; if stats.podiums >= 10 { Text("民间艺术家") }
             }
             ForEach(summary.annual ?? [], id: \.self) { year in Text("\(year) 年度赛事之王") }
+            if summaryMore { Button("更多赛事荣誉") { run { try await load(more: true) } } }
             ForEach(summary.awards ?? []) { award in VStack(alignment: .leading) { Button((award.title ?? "主题赛事") + " · " + award.label) { if let id = award.contest_id { run { try await open(id) } } }; Button(summary.worn == award.id ? "取消佩戴" : "佩戴") { run { _ = try await api.request("contests.wear", ["awardId":summary.worn == award.id ? NSNull() : award.id as Any]); try await load() } }.font(.caption) } }
         }
     }
@@ -179,15 +185,25 @@ struct ContestView: View {
     private func compose(_ entry: NativeContestEntry? = nil) {
         editingID = entry?.id; title = entry?.title ?? ""; bodyText = entry?.body ?? ""; postID = entry?.postId ?? ""; photos = []; attached = entry?.images.map(\.id) ?? []; agreed = false; requestID = UUID().uuidString; editor = true
     }
-    private func run(_ work: @escaping () async throws -> Void) { Task { await perform(work) } }
+    private func run(_ work: @escaping () async throws -> Void) { guard !busy else { return }; operationTask = Task { await perform(work) } }
     @MainActor private func perform(_ work: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = nil; defer { busy = false }
         do { try await work() } catch is CancellationError { } catch { self.error = (error as? TreeholeError)?.errorDescription ?? "连接失败，请稍后重试" }
     }
     private func load(more: Bool = false) async throws {
-        if page == "honors" { summary = try await api.request("contests.profile"); return }
+        if page == "honors" {
+            let r = try await api.request("contests.profile", ["offset":more ? summaryOffset + 20 : 0])
+            let previous = more ? Array((summary.awards ?? []).prefix(summaryOffset + 20)) : []
+            summaryOffset = more ? summaryOffset + 20 : 0; summaryMore = (r.awards?.count ?? 0) > 20
+            summary = r; summary.awards = previous + Array((r.awards ?? []).prefix(20)); return
+        }
         if page == "themes" { summary = try await api.request("contests.themes"); return }
-        if page == "year" { summary = try await api.request("contests.year", ["year":year]); return }
+        if page == "year" {
+            let r = try await api.request("contests.year", ["year":year, "offset":more ? summaryOffset + 20 : 0])
+            let previous = more ? Array((summary.leaders ?? []).prefix(summaryOffset + 20)) : []
+            summaryOffset = more ? summaryOffset + 20 : 0; summaryMore = (r.leaders?.count ?? 0) > 20
+            summary = r; summary.leaders = previous + Array((r.leaders ?? []).prefix(20)); return
+        }
         let r = try await api.request("contests.list", ["offset":more ? events.count : 0, "year":page == "archive" ? year : 0, "type":typeFilter]); self.more = (r.contests?.count ?? 0) > 20
         events = more ? events + Array((r.contests ?? []).prefix(20)) : Array((r.contests ?? []).prefix(20))
     }

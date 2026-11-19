@@ -1151,10 +1151,12 @@ CREATE TABLE IF NOT EXISTS public.hyt_contest_entries (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), contest_id uuid NOT NULL REFERENCES public.hyt_contests(id),
  member_id uuid NOT NULL REFERENCES public.hyt_members(id), request_id uuid NOT NULL,
  title text NOT NULL, body text NOT NULL, post_id uuid REFERENCES public.hyt_posts(id),
+ linked boolean NOT NULL DEFAULT false,
  status text NOT NULL DEFAULT 'approved' CHECK(status IN ('approved','removed','withdrawn')),
  votes int NOT NULL DEFAULT 0 CHECK(votes>=0), version int NOT NULL DEFAULT 1,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(member_id,request_id)
 );
+ALTER TABLE public.hyt_contest_entries ADD COLUMN IF NOT EXISTS linked boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS hyt_contest_entry_order ON public.hyt_contest_entries(contest_id,status,id);
 CREATE INDEX IF NOT EXISTS hyt_contest_entry_member ON public.hyt_contest_entries(member_id,contest_id);
 CREATE INDEX IF NOT EXISTS hyt_contest_media ON public.hyt_media(contest_entry_id) WHERE contest_entry_id IS NOT NULL;
@@ -1207,11 +1209,11 @@ CREATE OR REPLACE FUNCTION public.hyt_contest_json(c public.hyt_contests) RETURN
  'coverPostId',c.cover_post_id,'cover',(SELECT public.hyt_media_json(i) FROM public.hyt_media i JOIN public.hyt_posts p ON p.id=i.post_id WHERE p.id=c.cover_post_id AND p.deleted_at IS NULL AND i.ready AND i.deleted_at IS NULL ORDER BY i.position LIMIT 1));
 $$;
 CREATE OR REPLACE FUNCTION public.hyt_contest_entry_json(e public.hyt_contest_entries, viewer uuid, admin boolean DEFAULT false) RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
- SELECT jsonb_build_object('id',e.id,'contestId',e.contest_id,'memberId',e.member_id,'title',e.title,'body',e.body,'postId',e.post_id,'status',e.status,'version',e.version,
+ SELECT jsonb_build_object('id',e.id,'contestId',e.contest_id,'memberId',e.member_id,'title',e.title,'body',e.body,'postId',e.post_id,'linked',e.linked,'status',e.status,'version',e.version,
  'author',CASE WHEN m.deleted_at IS NULL THEN m.nickname ELSE '已注销同学' END,'mine',e.member_id=viewer,'createdAt',e.created_at,
  'voted',EXISTS(SELECT 1 FROM public.hyt_contest_votes v WHERE v.entry_id=e.id AND v.member_id=viewer AND v.enabled),
  'votes',CASE WHEN admin OR c.announced_at IS NOT NULL THEN e.votes ELSE NULL END,
- 'images',(SELECT coalesce(jsonb_agg(public.hyt_media_json(i) ORDER BY position),'[]'::jsonb) FROM public.hyt_media i WHERE (i.contest_entry_id=e.id OR (i.post_id=e.post_id AND i.comment_id IS NULL AND i.contest_entry_id IS NULL)) AND i.ready AND i.deleted_at IS NULL),
+ 'images',(SELECT coalesce(jsonb_agg(public.hyt_media_json(i) ORDER BY position),'[]'::jsonb) FROM public.hyt_media i WHERE (i.contest_entry_id=e.id OR (e.linked AND i.post_id=e.post_id AND i.comment_id IS NULL AND i.contest_entry_id IS NULL)) AND i.ready AND i.deleted_at IS NULL),
  'awards',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',a.id,'kind',a.kind,'rank',a.rank,'at',a.awarded_at)),'[]'::jsonb) FROM public.hyt_contest_awards a WHERE a.entry_id=e.id AND a.revoked_at IS NULL AND c.announced_at IS NOT NULL))
  FROM public.hyt_members m, public.hyt_contests c WHERE m.id=e.member_id AND c.id=e.contest_id;
 $$;
@@ -1401,7 +1403,7 @@ BEGIN
   ELSE
    IF (SELECT count(*) FROM public.hyt_contest_entries WHERE contest_id=cid AND member_id=m.id AND status='approved')>=c.max_entries THEN RETURN '{"status":409,"error":"contest_entry_limit"}'; END IF;
   END IF;
-  IF b->>'postId' IS NOT NULL THEN
+  IF b->>'postId' IS NOT NULL AND (old.id IS NULL OR old.linked OR old.post_id IS DISTINCT FROM (b->>'postId')::uuid) THEN
    SELECT * INTO p FROM public.hyt_posts WHERE id=(b->>'postId')::uuid AND author_id=m.id AND deleted_at IS NULL AND NOT anonymous;
    IF NOT FOUND THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
    -- A single original post can participate once per event; edits keep a stable snapshot.
@@ -1411,12 +1413,12 @@ BEGIN
   IF p.id IS NOT NULL THEN SELECT count(*) INTO n FROM public.hyt_media WHERE post_id=p.id AND comment_id IS NULL AND ready AND deleted_at IS NULL; END IF;
   op:=CASE WHEN n=0 THEN 'text' WHEN coalesce(nullif(p.body,''),b->>'body','')='' THEN 'image' ELSE 'mixed' END;
   IF NOT op=ANY(c.formats) OR (n=0 AND coalesce(p.body,b->>'body','')='') THEN RETURN '{"status":400,"error":"contest_format"}'; END IF;
-  IF p.id IS NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements_text(b->'images') ref WHERE NOT EXISTS(SELECT 1 FROM public.hyt_media i WHERE i.id=ref::uuid AND i.member_id=m.id AND i.ready AND i.deleted_at IS NULL AND i.purpose='post' AND i.post_id IS NULL AND (i.contest_entry_id IS NULL OR i.contest_entry_id=old.id))) THEN RETURN '{"status":409,"error":"image_unavailable"}'; END IF;
+  IF p.id IS NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements_text(b->'images') ref WHERE NOT EXISTS(SELECT 1 FROM public.hyt_media i WHERE i.id=ref::uuid AND i.member_id=m.id AND i.ready AND i.deleted_at IS NULL AND i.purpose='post' AND (i.post_id IS NULL OR (old.id IS NOT NULL AND i.contest_entry_id=old.id AND i.post_id=old.post_id)) AND (i.contest_entry_id IS NULL OR i.contest_entry_id=old.id))) THEN RETURN '{"status":409,"error":"image_unavailable"}'; END IF;
   IF old.id IS NOT NULL THEN
-   UPDATE public.hyt_contest_entries SET title=b->>'title',body=coalesce(p.body,b->>'body'),post_id=p.id,version=version+1,updated_at=now() WHERE id=old.id RETURNING * INTO e;
+   UPDATE public.hyt_contest_entries SET title=b->>'title',body=coalesce(p.body,b->>'body'),post_id=CASE WHEN old.linked THEN p.id ELSE coalesce(p.id,old.post_id) END,linked=p.id IS NOT NULL,version=version+1,updated_at=now() WHERE id=old.id RETURNING * INTO e;
    UPDATE public.hyt_media SET contest_entry_id=NULL WHERE contest_entry_id=e.id;
   ELSE
-   INSERT INTO public.hyt_contest_entries(contest_id,member_id,request_id,title,body,post_id) VALUES(cid,m.id,(b->>'requestId')::uuid,b->>'title',coalesce(p.body,b->>'body'),p.id) RETURNING * INTO e;
+   INSERT INTO public.hyt_contest_entries(contest_id,member_id,request_id,title,body,post_id,linked) VALUES(cid,m.id,(b->>'requestId')::uuid,b->>'title',coalesce(p.body,b->>'body'),p.id,p.id IS NOT NULL) RETURNING * INTO e;
   END IF;
   IF p.id IS NULL THEN
    UPDATE public.hyt_media i SET contest_entry_id=e.id,position=r.ord FROM jsonb_array_elements_text(b->'images') WITH ORDINALITY r(ref,ord) WHERE i.id=r.ref::uuid;
@@ -1425,7 +1427,7 @@ BEGIN
    NULL;
   END IF;
   IF (b->>'share')::boolean AND p.id IS NULL AND old.id IS NULL THEN
-   result:=public.hyt_community('posts.create',jsonb_build_object('body',left(e.body,2700)||E'\n参赛作品 · '||c.title||E'\n'||e.title,'title',e.title,'category','daily','anonymous',false,'requestId',b->>'requestId','images','[]'::jsonb),th);
+   result:=public.hyt_community('posts.create',jsonb_build_object('body',left(e.body,2700)||E'\n参赛作品 · '||c.title||E'\n'||e.title,'title',e.title,'category','daily','anonymous',false,'requestId',b->>'requestId','images',coalesce(b->'images','[]'::jsonb)),th);
    IF (result->>'status')::int>=400 THEN RAISE EXCEPTION 'community_share_failed'; END IF;
    UPDATE public.hyt_contest_entries SET post_id=(result->'post'->>'id')::uuid WHERE id=e.id RETURNING * INTO e;
   END IF;
@@ -1436,7 +1438,7 @@ BEGIN
  IF a='contests.image' THEN
   SELECT * INTO e FROM public.hyt_contest_entries WHERE id=(b->>'entryId')::uuid AND contest_id=cid AND (status='approved' OR member_id=m.id OR admin);
   IF NOT FOUND THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
-  SELECT public.hyt_media_json(i) INTO result FROM public.hyt_media i WHERE i.id=(b->>'imageId')::uuid AND (i.contest_entry_id=e.id OR (i.post_id=e.post_id AND i.comment_id IS NULL)) AND i.ready AND i.deleted_at IS NULL;
+  SELECT public.hyt_media_json(i) INTO result FROM public.hyt_media i WHERE i.id=(b->>'imageId')::uuid AND (i.contest_entry_id=e.id OR (e.linked AND i.post_id=e.post_id AND i.comment_id IS NULL)) AND i.ready AND i.deleted_at IS NULL;
   IF result IS NULL THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
   RETURN jsonb_build_object('status',200,'image',result);
  END IF;
@@ -1514,7 +1516,15 @@ DO $permissions$ DECLARE r text; f record; BEGIN
   FOR f IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname LIKE 'hyt_contest%' LOOP
    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',f.signature,r);
   END LOOP;
-  FOR f IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'hyt_contest%' LOOP EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I',f.tablename,r); END LOOP;
+  FOR f IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'hyt_contest%' LOOP
+   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',f.tablename);
+   EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC',f.tablename);
+   EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I',f.tablename,r);
+  END LOOP;
+ END LOOP;
+ FOR f IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'hyt_contest%' LOOP
+  EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',f.tablename);
+  EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC',f.tablename);
  END LOOP;
  FOR f IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname LIKE 'hyt_contest%' LOOP EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC',f.signature); END LOOP;
 END $permissions$;

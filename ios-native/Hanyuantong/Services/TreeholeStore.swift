@@ -87,7 +87,7 @@ import Combine
     func enter() {
         perform {
             let config = try await self.api.request("config")
-            self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.contestsEnabled = config.contestsEnabled == true; imagesEnabled = config.imagesEnabled == true
+            self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.contestsEnabled = config.contestsEnabled == true; self.imagesEnabled = config.imagesEnabled == true
             self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.buddiesEnabled = config.buddiesEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
             self.followingEnabled = config.followingEnabled == true; self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
             do { self.user = try await self.api.request("me").user; try await self.feed() }

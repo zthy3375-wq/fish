@@ -144,6 +144,7 @@ actor TreeholeService {
     }
     static func validToken(_ value: String) -> Bool { value.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil }
     func request(_ action: String, _ body: [String: Any] = [:]) async throws -> TreeholeEnvelope {
+        try Task.checkCancellation()
         guard Self.actions.contains(action) else { throw TreeholeError(code: "invalid_request") }
         let authenticating = ["register", "login", "recover"].contains(action)
         if authenticating || action == "logout" { generation += 1 }
