@@ -14,22 +14,35 @@ struct ContestView: View {
     @State private var events: [NativeContest] = []
     @State private var selected: NativeContest?
     @State private var selectedWork: NativeContestEntry?
-    @State private var entries: [NativeContestEntry] = [], mine: [NativeContestEntry] = []
-    @State private var page = "events", typeFilter = ""
+    @State private var entries: [NativeContestEntry] = []
+    @State private var mine: [NativeContestEntry] = []
+    @State private var page = "events"
+    @State private var typeFilter = ""
     @State private var operationTask: Task<Void, Never>?
-    @State private var busy = false, more = false, editor = false, administration = false, winnersOnly = false
-    @State private var error: String?, notice: String?
+    @State private var busy = false
+    @State private var more = false
+    @State private var mineReady = true
+    @State private var editor = false
+    @State private var administration = false
+    @State private var winnersOnly = false
+    @State private var error: String?
+    @State private var notice: String?
     @State private var serverOffset: TimeInterval = 0
     @State private var votesUsed = 0
     @State private var seed = UUID().uuidString
     @State private var editing: NativeContestEntry?
     @State private var draftEvent: NativeContest?
-    @State private var summaryOffset = 0, summaryMore = false
+    @State private var summaryOffset = 0
+    @State private var summaryMore = false
     @State private var summary = TreeholeEnvelope()
-    @State private var theme = "", reason = "", mergeTarget = "", requestID = UUID().uuidString
-    @State private var reportTarget: String?, withdrawTarget: NativeContestEntry?
+    @State private var theme = ""
+    @State private var reason = ""
+    @State private var mergeTarget = ""
+    @State private var requestID = UUID().uuidString
+    @State private var reportTarget: String?
+    @State private var withdrawTarget: NativeContestEntry?
     @State private var gallery: TreeholeGallerySelection?
-    @State private var year = Calendar(identifier: .gregorian).component(.year, from: Date())
+    @State private var year = NativeContest.campusYear()
     private var admin: Bool { user.badges?.official?.code == "developer" }
     private var now: Date { clock.addingTimeInterval(serverOffset) }
     var body: some View {
@@ -41,7 +54,7 @@ struct ContestView: View {
                 ContestSubmissionView(api: api, memberID: user.id, event: event, entry: editing, submitted: didSubmit, close: { editor = false })
             } else if administration, let event = draftEvent {
                 Button("返回比赛") { administration = false }.disabled(busy)
-                ContestManagementView(api: api, event: event, persisted: event.state != "draft" || events.contains(where: { $0.id == event.id }), backendSchema: backendSchema, saved: { id in administration = false; run { try await open(id) } })
+                ContestManagementView(api: api, event: event, persisted: selected?.id == event.id || events.contains(where: { $0.id == event.id }), backendSchema: backendSchema, saved: { id in administration = false; run { try await open(id) } })
             } else if let event = selected, let entry = selectedWork {
                 Button("返回作品墙") { selectedWork = nil; notice = nil }.disabled(busy)
                 work(entry, event: event)
@@ -61,7 +74,7 @@ struct ContestView: View {
             }
         }.sheet(item: $gallery) { selection in ContestGallery(selection: selection, api: api, contestId: selected?.id ?? "") }
         .confirmationDialog("撤回这件作品？", isPresented: Binding(get: { withdrawTarget != nil }, set: { if !$0 { withdrawTarget = nil } }), titleVisibility: .visible) {
-            Button("撤回作品", role: .destructive) { if let entry = withdrawTarget { run { _ = try await api.request("contests.withdraw", ["contestId":entry.contestId, "entryId":entry.id]); mine.removeAll { $0.id == entry.id }; entries.removeAll { $0.id == entry.id }; selectedWork = nil; notice = "作品已撤回，截止前可以重新投稿。" } } }
+            Button("撤回作品", role: .destructive) { if let entry = withdrawTarget { run { _ = try await api.request("contests.withdraw", ["contestId":entry.contestId, "entryId":entry.id]); if mine.contains(where: { $0.id == entry.id }) { selected?.entryCount = max(0,(selected?.entryCount ?? 1)-1); if mine.count == 1 { selected?.participantCount = max(0,(selected?.participantCount ?? 1)-1) } }; mine.removeAll { $0.id == entry.id }; entries.removeAll { $0.id == entry.id }; selectedWork = nil; notice = "作品已撤回，截止前可以重新投稿。" } } }
             Button("继续参赛", role: .cancel) {}
         }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { clock = $0 }
@@ -84,7 +97,7 @@ struct ContestView: View {
             HStack { Text(event.type).font(.caption); Spacer(); Text(event.label(at: now)).font(.caption.weight(.semibold)) }
             Text(event.title).font(.title.bold()); Text(event.description).font(.subheadline)
             Text(event.remaining(now: now) + " · \(event.participantCount)人 · \(event.entryCount)件作品").font(.caption).foregroundStyle(.secondary)
-            Button(primaryLabel(event)) { if event.phase(at: now) == "submitting" { if let own = mine.first { selectedWork = own } else { compose() } } else { notice = event.phase(at: now) == "reviewing" ? "结果统计与审核中，公布后会保留全部作品与荣誉。" : "在下方作品墙选择作品，点开查看完整内容。" } }.buttonStyle(.borderedProminent).disabled(busy || event.paused)
+            Button(primaryLabel(event)) { if event.phase(at: now) == "submitting" { if !mineReady { run { try await open(event.id, fresh: true) } } else if let own = mine.first { selectedWork = own } else { compose() } } else { notice = event.phase(at: now) == "reviewing" ? "结果统计与审核中，公布后会保留全部作品与荣誉。" : "在下方作品墙选择作品，点开查看完整内容。" } }.buttonStyle(.borderedProminent).disabled(busy || event.paused)
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 18))
         DisclosureGroup("比赛规则、日程与奖励") {
             VStack(alignment: .leading, spacing: 8) {
@@ -173,6 +186,7 @@ struct ContestView: View {
             }
             if admin {
                 TextField("审核／合并理由", text: $reason)
+                Button(summary.solicitation == true ? "结束主题征集" : "开启主题征集") { run { _ = try await api.request("contests.manage", ["contestId":backendSchema >= 14 ? NSNull() : events.first?.id as Any? ?? NSNull(),"operation":"solicitation","enabled":summary.solicitation != true,"reason":reason,"requestId":UUID().uuidString]); try await load() } }.disabled(reason.count < 2 || (backendSchema < 14 && events.isEmpty))
                 Picker("合并到已通过的主题", selection: $mergeTarget) {
                     Text("选择主题").tag("")
                     ForEach((summary.themes ?? []).filter { $0.status == "approved" }) { item in Text(item.title).tag(item.id) }
@@ -207,10 +221,10 @@ struct ContestView: View {
             mergeTarget = ""; try await load()
         }
     }
-    private func primaryLabel(_ event: NativeContest) -> String { if event.paused { return "比赛已暂停" }; if event.phase(at: now) == "submitting" { return mine.isEmpty ? "我要参赛" : "查看我的作品" }; return ["upcoming":"查看预告","waiting":"查看作品","voting":"参与投票","reviewing":"等待结果","ended":"查看结果","cancelled":"查看作品"][event.phase(at: now)] ?? "查看比赛" }
+    private func primaryLabel(_ event: NativeContest) -> String { if event.paused { return "比赛已暂停" }; if event.phase(at: now) == "submitting" { if !mineReady { return "确认我的参赛状态" }; return mine.isEmpty ? "我要参赛" : "查看我的作品" }; return ["upcoming":"查看预告","waiting":"查看作品","voting":"参与投票","reviewing":"等待结果","ended":"查看结果","cancelled":"查看作品"][event.phase(at: now)] ?? "查看比赛" }
     private func displayTime(_ value: String) -> String { let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.timeZone = TimeZone(identifier: "Asia/Shanghai"); f.dateFormat = "M月d日 HH:mm"; return NativeContest.date(value).map(f.string) ?? value }
     private func compose(_ entry: NativeContestEntry? = nil) { editing = entry; editor = true }
-    private func didSubmit(_ entry: NativeContestEntry) { mine.removeAll { $0.id == entry.id }; mine.insert(entry, at: 0); entries.removeAll { $0.id == entry.id }; entries.insert(entry, at: 0); selectedWork = entry; editor = false; notice = "作品已保存，参赛成功" }
+    private func didSubmit(_ entry: NativeContestEntry) { let existed = mine.contains { $0.id == entry.id }; if !existed { selected?.entryCount += 1; if mine.isEmpty { selected?.participantCount += 1 } }; mine.removeAll { $0.id == entry.id }; mine.insert(entry, at: 0); entries.removeAll { $0.id == entry.id }; entries.insert(entry, at: 0); selectedWork = entry; editor = false; notice = "作品已保存，参赛成功" }
     private func vote(_ entry: NativeContestEntry, event: NativeContest) { run { let enabled = !entry.voted; let r = try await api.request("contests.vote", ["contestId":event.id,"entryId":entry.id,"enabled":enabled]); let confirmed = NativeContestVoteConfirmation.apply(entry, enabled: enabled, used: votesUsed, response: r); votesUsed = confirmed.used; entries = entries.map { $0.id == entry.id ? confirmed.entry : $0 }; selectedWork = confirmed.entry; notice = confirmed.entry.voted ? "这一票，已送达" : "已撤回，可以重新选择" } }
     private func destination(_ value: String) { guard !busy else { return }; page = value; selected = nil; selectedWork = nil; entries = []; notice = nil; run { try await load() } }
     private func run(_ work: @escaping () async throws -> Void) { guard !busy else { return }; operationTask = Task { await perform(work) } }
@@ -232,7 +246,7 @@ struct ContestView: View {
         events = (more ? events : []) + Array((r.contests ?? []).prefix(20))
         if page == "events", let event = events.first(where: { !["ended","cancelled","draft"].contains($0.state) }) ?? events.first(where: { $0.state == "ended" }) { try await open(event.id, fresh: fresh) }
     }
-    private func open(_ id: String, fresh: Bool = false) async throws { let r = try await api.request("contests.get", ["contestId":id,"_fresh":fresh]); try Task.checkCancellation(); selected = r.contest; selectedWork = nil; winnersOnly = false; if let time = r.serverTime.flatMap(NativeContest.date) { serverOffset = time.timeIntervalSinceNow }; votesUsed = r.votesUsed ?? 0; mine = r.myEntries ?? []; try await wall(fresh: fresh); if r.myEntries == nil && selected?.phase(at: now) == "submitting" { mine = try await api.request("contests.entries", ["contestId":id,"seed":seed,"mine":true]).entries?.filter { $0.status == "approved" } ?? [] } }
+    private func open(_ id: String, fresh: Bool = false) async throws { let r = try await api.request("contests.get", ["contestId":id,"_fresh":fresh]); try Task.checkCancellation(); selected = r.contest; selectedWork = nil; winnersOnly = false; if let time = r.serverTime.flatMap(NativeContest.date) { serverOffset = time.timeIntervalSinceNow }; votesUsed = r.votesUsed ?? 0; mine = r.myEntries ?? []; mineReady = r.myEntries != nil || selected?.phase(at:now) != "submitting"; try await wall(fresh: fresh); if r.myEntries == nil && selected?.phase(at: now) == "submitting" { mine = try await api.request("contests.entries", ["contestId":id,"seed":seed,"mine":true]).entries?.filter { $0.status == "approved" } ?? []; mineReady = true } }
     private func wall(more: Bool = false, fresh: Bool = false) async throws { guard let selected else { return }; let r = try await api.request("contests.entries", ["contestId":selected.id,"seed":seed,"offset":0,"afterId":more ? entries.last?.id as Any? ?? NSNull() : NSNull(),"winnersOnly":winnersOnly,"_fresh":fresh]); try Task.checkCancellation(); self.more = (r.entries?.count ?? 0)>20; entries = (more ? entries : []) + Array((r.entries ?? []).prefix(20)) }
 }
 

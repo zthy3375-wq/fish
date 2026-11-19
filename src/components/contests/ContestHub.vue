@@ -63,6 +63,7 @@ const view = ref<Page>("home"),
 const votesUsed = ref(0),
   winners = ref(false),
   more = ref(false),
+  moreContests = ref(false),
   loading = ref(false),
   wallLoading = ref(false),
   mineReady = ref(true),
@@ -128,6 +129,7 @@ function routeSnapshot() {
     more: more.value,
     mineReady: mineReady.value,
     contests: contests.value,
+    moreContests: moreContests.value,
     offset,
     scroll: window.scrollY,
   };
@@ -146,6 +148,7 @@ function restore(s: Record<string, any>) {
   more.value = !!s.more;
   mineReady.value = s.mineReady !== false;
   contests.value = s.contests || contests.value;
+  moreContests.value = !!s.moreContests;
   offset = s.offset || 0;
 }
 function go(next: Page) {
@@ -191,13 +194,21 @@ async function run(work: () => Promise<void>) {
     showError(e);
   }
 }
-async function list(fresh = false) {
+async function list(fresh = false, append = false) {
   const r = await call(
     "contests.list",
-    { offset: 0, type: "", year: 0 },
+    { offset: append ? contests.value.length : 0, type: "", year: 0 },
     fresh,
   );
-  contests.value = (r.contests || []).slice(0, 20);
+  moreContests.value = (r.contests?.length || 0) > 20;
+  contests.value = [
+    ...new Map(
+      [
+        ...(append ? contests.value : []),
+        ...(r.contests || []).slice(0, 20),
+      ].map((c) => [c.id, c]),
+    ).values(),
+  ];
 }
 async function wall(append = false, fresh = false) {
   if (!selected.value) return;
@@ -306,13 +317,11 @@ async function primary() {
     if (own) openWork(own);
     else compose();
   } else
-    document
-      .getElementById("contest-wall")
-      ?.scrollIntoView({
-        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
-      });
+    document.getElementById("contest-wall")?.scrollIntoView({
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
 }
 function applyEntry(work: ContestEntry) {
   for (const previous of history) {
@@ -330,18 +339,38 @@ function applyEntry(work: ContestEntry) {
     mine.value = [work, ...mine.value.filter((e) => e.id !== work.id)];
   }
 }
+function updateEvent(contest: Contest) {
+  selected.value = contest;
+  contests.value = contests.value.map((c) =>
+    c.id === contest.id ? contest : c,
+  );
+  for (const previous of history) {
+    if (previous.selected?.id === contest.id) previous.selected = contest;
+    previous.contests = contests.value;
+  }
+}
+function syncOwnWork() {
+  if (!selected.value) return;
+  for (const previous of history) {
+    if (previous.selected?.id === selected.value.id) {
+      previous.mine = [...mine.value];
+      if (!previous.winners) previous.entries = [...entries.value];
+    }
+  }
+}
 function submitted(work: ContestEntry) {
   const was = mine.value.some((e) => e.id === work.id);
   applyEntry(work);
   if (!entries.value.some((e) => e.id === work.id)) entries.value.unshift(work);
   if (selected.value && !was) {
-    selected.value = {
+    updateEvent({
       ...selected.value,
       entryCount: selected.value.entryCount + 1,
       participantCount:
         selected.value.participantCount + (mine.value.length === 1 ? 1 : 0),
-    };
+    });
   }
+  syncOwnWork();
   view.value = "entry";
   notice.value = editing.value ? "作品已保存" : "参赛成功，期待同学们的喜欢";
   editing.value = undefined;
@@ -392,14 +421,15 @@ async function confirm() {
       });
       mine.value = mine.value.filter((e) => e.id !== op.entry.id);
       entries.value = entries.value.filter((e) => e.id !== op.entry.id);
-      selected.value = {
+      updateEvent({
         ...selected.value,
         entryCount: Math.max(0, selected.value.entryCount - 1),
         participantCount: Math.max(
           0,
           selected.value.participantCount - (mine.value.length ? 0 : 1),
         ),
-      };
+      });
+      syncOwnWork();
       confirmation.value = undefined;
       view.value = history.pop()?.view || "detail";
       notice.value = "作品已撤回，截止前可以重新投稿。";
@@ -637,6 +667,13 @@ onMounted(() => {
             >{{ contestLabels[c.state] }} · {{ c.entryCount }}件作品</small
           ></span
         ><ChevronRight :size="17" /></button
+      ><button
+        v-if="moreContests"
+        class="ct-secondary ct-more"
+        :disabled="loading"
+        @click="run(() => list(false, true))"
+      >
+        更多管理赛事</button
       ><button class="ct-link" @click="go('themes')">
         管理主题征集
       </button></template
@@ -653,7 +690,7 @@ onMounted(() => {
       ref="child"
       :owner="user.id"
       :contest="selected"
-      @updated="selected = $event"
+      @updated="updateEvent"
       @edit="go('edit')"
       @work="openWork"
     /><ContestThemes

@@ -2,7 +2,7 @@
 
 基线：PR97 e3edce0 为赛事源码，PR100 c74f72d 为交付APK源码（测试合并e1bbcd5），PR99 30dcbc3 为实际部署的schema13后台。30dcbc3与c74f72d的src/android/ios-native相同。此次从30dcbc3建立refactor/theme-contests-v2-20261120，不从main覆盖，也不部署、合并或改更新通道。
 
-## 已从调用链确认、待回归复现
+## 已从调用链确认并回归验证
 
 - Hub的type、year、contests同时服务本期和历史；切回本期仍带type条件。
 - vote先写投票，再get详情，最后才更新voted，第二步失败会把已成功的投票显示为失败。
@@ -25,3 +25,9 @@
 ## 验证边界
 
 问题的自动复现和修复结果另记VALIDATION.md。浏览器截图、PGlite及模拟桥接是合成数据测试，不能代替真实腾讯云并发、手机输入法、相册、弱网或真实账户验收。本次禁止线上迁移；生产端P0修复仅在后续授权部署后生效。
+
+## 冻结旧版复现证据
+
+使用30dcbc3的原始schema13与原始Node入口，在本地PGlite中独立复现：同一管理保存请求重复执行使version从1变2；注册36小时的正常首票被写入young_account并阻止自动公布；投票响应没有entry；全局主题审核携带旧赛事ID会改写无关赛事settled_at。结果见 [baseline-reproduction.json](baseline-reproduction.json)。全部为合成账号和赛事，无生产写入。
+
+2.0生产构建另与完整旧schema13/旧Node入口执行360/390/430px浏览器回归：普通投稿、编辑、投票回执、图片上传、开发者默认7天创建与发布/暂停/恢复/取消均通过。该兼容性不代表schema14服务端修复已在线上生效。

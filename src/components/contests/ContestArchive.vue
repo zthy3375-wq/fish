@@ -143,7 +143,7 @@ onMounted(() => load());
     </button>
     <div v-for="(leader, index) in leaders" :key="leader.id" class="ct-row">
       <strong>{{
-        leaders.findIndex((x) => x.score === leader.score) + 1
+        new Set(leaders.slice(0, index + 1).map((x) => x.score)).size
       }}</strong
       ><span class="ct-row-copy">{{ leader.nickname }}</span
       ><strong>{{ leader.score }}分</strong>

@@ -20,9 +20,16 @@ struct ContestSubmissionView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var draft = NativeContestSubmissionDraft()
     @State private var picked: [PhotosPickerItem] = []
-    @State private var preview = false, busy = false, loaded = false, restoring = false, leaving = false
-    @State private var message = "", error: String?
+    @State private var preview = false
+    @State private var busy = false
+    @State private var loaded = false
+    @State private var restoring = false
+    @State private var leaving = false
+    @State private var message = ""
+    @State private var error: String?
     @State private var saveTask: Task<Void, Never>?
+    @State private var workTask: Task<Void, Never>?
+    @State private var active = true
     private var key: String { "contest-v2-" + memberID + "-" + event.id + "-" + (entry?.id ?? "new") }
     private var hasImages: Bool { event.formats.contains("image") || event.formats.contains("mixed") }
     private var hasText: Bool { event.formats.contains("text") || event.formats.contains("mixed") }
@@ -73,7 +80,7 @@ struct ContestSubmissionView: View {
         }.task(id: key) { restore() }
             .onChange(of: draft) { _ in saveTask?.cancel(); saveTask = Task { try? await Task.sleep(nanoseconds: 250_000_000); if !Task.isCancelled { persist() } } }
             .onChange(of: scenePhase) { phase in if phase != .active { persist() } }
-            .onDisappear { saveTask?.cancel(); persist() }
+            .onDisappear { saveTask?.cancel(); persist(); active = false; workTask?.cancel() }
             .confirmationDialog("保存草稿并离开？", isPresented: $leaving, titleVisibility: .visible) {
                 Button("保存并离开") { if persist() { close() } }
                 Button("继续编辑", role: .cancel) {}
@@ -99,7 +106,7 @@ struct ContestSubmissionView: View {
         catch { error = "草稿暂时无法读取，可以继续编辑。" }
     }
     @discardableResult private func persist() -> Bool {
-        guard loaded, !restoring else { return true }
+        guard loaded, !restoring, active else { return true }
         do { try ProtectedStorage().write(draft, name: key); message = "草稿已保存在本机"; return true }
         catch { self.error = "草稿保存失败，请保留当前页面重试"; return false }
     }
@@ -110,18 +117,18 @@ struct ContestSubmissionView: View {
         if !event.formats.contains(kind) || (count == 0 && draft.body.isEmpty) { return "请根据本场允许的类型填写文字或上传图片" }
         return draft.agreed ? nil : "请先阅读并同意参赛规则"
     }
-    private func loadPhotos(_ items: [PhotosPickerItem]) { guard !busy else { return }; busy = true; Task { defer { busy = false }; do { for item in items.prefix(max(0, 3-draft.kept.count-draft.photos.count)) { if let data = try await item.loadTransferable(type: Data.self) { draft.photos.append(try TreeholeDraftStore.prepare(data)) } }; picked = []; persist() } catch { self.error = "图片读取失败，已保留其他图片，请重试" } } }
+    private func loadPhotos(_ items: [PhotosPickerItem]) { guard !busy else { return }; busy = true; workTask = Task { defer { busy = false }; do { for item in items.prefix(max(0, 3-draft.kept.count-draft.photos.count)) { if let data = try await item.loadTransferable(type: Data.self) { try Task.checkCancellation(); draft.photos.append(try TreeholeDraftStore.prepare(data)) } }; picked = []; persist() } catch { self.error = "图片读取失败，已保留其他图片，请重试" } } }
     private func send() {
         guard !busy else { return }; error = validate(); guard error == nil else { return }; busy = true
-        Task { defer { busy = false }; do {
+        workTask = Task { defer { busy = false }; do {
             for photo in draft.photos where photo.remote == nil {
                 guard let image = try await api.request("media.upload", ["data":photo.data.base64EncodedString(), "requestId":photo.id]).image, let index = draft.photos.firstIndex(where: { $0.id == photo.id }) else { throw TreeholeError(code: "image_unavailable") }
-                draft.photos[index].remote = image; persist()
+                try Task.checkCancellation(); draft.photos[index].remote = image; persist()
             }
             draft.attempted = true; persist()
             let payload: [String: Any] = ["contestId":event.id, "entryId":entry?.id as Any? ?? NSNull(), "requestId":draft.requestID, "title":draft.title, "body":draft.body, "images":draft.kept.map(\.id) + draft.photos.compactMap { $0.remote?.id }, "postId":draft.postID as Any? ?? NSNull(), "agreed":draft.agreed, "share":draft.share, "linkPost":draft.linked, "expectedVersion":draft.version as Any? ?? NSNull()]
             guard let result = try await api.request("contests.submit", payload).entry else { throw TreeholeError(code: "invalid_response") }
-            loaded = false; try? ProtectedStorage().remove(key); submitted(result)
-        } catch { if let code = (error as? TreeholeError)?.code, ["contest_conflict","contest_format","invalid_request","contest_closed","image_unavailable","contest_entry_limit"].contains(code) { draft.attempted = false }; self.error = (error as? TreeholeError)?.errorDescription ?? "连接失败，内容已保留。重试将确认同一次投稿。"; persist() } }
+            try Task.checkCancellation();guard active else { return }; loaded = false; try? ProtectedStorage().remove(key); submitted(result)
+        } catch { guard active else { return }; if let code = (error as? TreeholeError)?.code, ["contest_conflict","contest_format","invalid_request","contest_closed","image_unavailable","contest_entry_limit"].contains(code) { draft.attempted = false }; self.error = (error as? TreeholeError)?.errorDescription ?? "连接失败，内容已保留。重试将确认同一次投稿。"; persist() } }
     }
 }

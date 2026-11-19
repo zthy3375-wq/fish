@@ -113,22 +113,20 @@ beforeEach(() => {
     awards: [],
     version: 1,
   };
-  bridge.request
-    .mockReset()
-    .mockImplementation(async (action: string) =>
-      action === "contests.list"
-        ? { contests: [event] }
-        : action === "contests.get"
-          ? {
-              contest: event,
-              myEntries: [],
-              votesUsed: 0,
-              serverTime: new Date().toISOString(),
-            }
-          : action === "contests.entries"
-            ? { entries: [work] }
-            : { themes: [] },
-    );
+  bridge.request.mockReset().mockImplementation(async (action: string) =>
+    action === "contests.list"
+      ? { contests: [event] }
+      : action === "contests.get"
+        ? {
+            contest: event,
+            myEntries: [],
+            votesUsed: 0,
+            serverTime: new Date().toISOString(),
+          }
+        : action === "contests.entries"
+          ? { entries: [work] }
+          : { themes: [] },
+  );
   Object.defineProperty(window, "scrollTo", {
     value: vi.fn(),
     configurable: true,
@@ -405,4 +403,66 @@ it("a failed admin mutation never emits success and retry keeps identical reques
     (c) => c[0] === "contests.save",
   );
   expect(calls[0][1]).toEqual(calls[1][1]);
+});
+it("new submission and withdrawal keep the primary action and wall correct through multiple system backs", async () => {
+  bridge.request.mockImplementation(async (a: string, b: any) =>
+    a === "contests.list"
+      ? { contests: [event] }
+      : a === "contests.get"
+        ? { contest: event, myEntries: [] }
+        : a === "contests.entries"
+          ? { entries: [work] }
+          : a === "contests.submit"
+            ? {
+                entry: {
+                  ...work,
+                  id: "my-entry",
+                  title: b.title,
+                  body: b.body,
+                  mine: true,
+                  memberId: owner,
+                },
+              }
+            : {},
+  );
+  await mount(Hub, { user: { id: owner } });
+  await ready(() => btn("我要参赛"));
+  btn("我要参赛").click();
+  await ready(() => btn("预览作品") && !btn("预览作品").disabled);
+  type("作品名称", "我的新作品");
+  type("作品内容", "我的校园生活");
+  [...root.querySelectorAll("label")]
+    .find((l) => l.textContent?.includes("我已阅读规则"))!
+    .querySelector<HTMLInputElement>("input")!
+    .click();
+  await submitForm();
+  await ready(() => btn("确认参赛"));
+  btn("确认参赛").click();
+  await ready(() => btn("编辑作品"));
+  vm.requestBack();
+  await ready(() => btn("查看我的作品"));
+  btn("查看我的作品").click();
+  await ready(() => btn("撤回作品"));
+  btn("撤回作品").click();
+  await ready(() => root.querySelector("dialog[open]"));
+  const dialog = root.querySelector("dialog[open]")!;
+  [...dialog.querySelectorAll<HTMLButtonElement>("button")]
+    .find((b) => b.textContent?.trim() === "撤回作品")!
+    .click();
+  await ready(() => btn("我要参赛"));
+  expect([...root.querySelectorAll(".ct-work-open")].length).toBe(1);
+  expect(root.textContent).not.toContain("我的新作品");
+});
+it("late submission cleanup cannot delete a newer draft using the same account/event key", async () => {
+  const key = `contest-v2:${owner}:${event.id}:new`;
+  await writeDraftRecord(key, {
+    requestId: "new-request",
+    title: "重新开始的草稿",
+  });
+  await deleteDraftRecord(key, "old-request");
+  expect((await readDraftRecord<{ title: string }>(key))?.title).toBe(
+    "重新开始的草稿",
+  );
+  await deleteDraftRecord(key, "new-request");
+  expect(await readDraftRecord(key)).toBeUndefined();
 });

@@ -8,6 +8,7 @@ import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
 const bundle = await build({
   stdin: { contents: "import {createApp} from 'vue';import Feed from './src/components/Treehole.vue';import Messages from './src/components/TreeholeMessages.vue';window.app=createApp(window.subject==='feed'?Feed:Messages,{drafts:{}});window.app.mount('#app');", resolveDir: resolve('.'), loader: 'ts' },
+  loader: {".css":"empty"},
   bundle: true, write: false, format: 'iife', platform: 'browser',
   define: { 'process.env.NODE_ENV': '"test"', __VUE_OPTIONS_API__: 'true', __VUE_PROD_DEVTOOLS__: 'false', __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false' },
   plugins: [{ name: 'vue-sfc', setup(build) { build.onLoad({ filter: /\.vue$/ }, async ({ path }) => {
@@ -30,7 +31,7 @@ async function mount(subject) {
   w.scrollTo = () => {};
   w.Capacitor = { PluginHeaders: [{ name: 'Treehole', methods: [{ name: 'request', rtype: 'promise' }] }], nativePromise: async (_, __, options) => {
     const action = options.action; calls.push(action);
-    if (action === 'me') return { user: member, posts: [], next: null, config: { engagementEnabled: true, messagesEnabled: true, combinedUnread: true } };
+    if (action === 'me') return { user: member, posts: [], next: null, config: { contestsEnabled:true,schema:14,engagementEnabled: true, messagesEnabled: true, combinedUnread: true } };
     if (action === 'notifications.unread') return { unreadCount: 0, messageUnreadCount: 0 };
     if (action === 'messages.inbox') return { conversations: [thread], messageUnreadCount: 0, next: null };
     if (action === 'messages.list') return { conversation: thread, messages: [], next: null };

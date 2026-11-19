@@ -6,14 +6,22 @@ struct ContestManagementView: View {
     let persisted: Bool
     var backendSchema: Int = 13
     let saved: (String) -> Void
-    @State private var busy = false, editing = false, custom = false, automaticTimes = true
-    @State private var error: String?, notice: String?
-    @State private var reason = "", operation: String?
-    @State private var durationDays = 7, reportOffset = 0
+    @State private var busy = false
+    @State private var editing = false
+    @State private var automaticTimes = true
+    @State private var error: String?
+    @State private var notice: String?
+    @State private var reason = ""
+    @State private var operation: String?
+    @State private var durationDays = 7
+    @State private var reportOffset = 0
     @State private var reportMore = false
     @State private var report = TreeholeEnvelope()
-    @State private var requestID = UUID().uuidString, publicationID = UUID().uuidString
+    @State private var requestID = UUID().uuidString
+    @State private var publicationID = UUID().uuidString
     @State private var pendingSave: [String: Any]?
+    @State private var retryNonces: [String: String] = [:]
+    @State private var moderation: [String: Any]?
     private let formatter = ISO8601DateFormatter()
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -28,6 +36,10 @@ struct ContestManagementView: View {
             Button("确认处理", role: operation == "cancel" ? .destructive : nil) { confirmOperation() }
             Button("返回", role: .cancel) { operation = nil }
         } message: { Text("操作将保留审计记录。取消赛事会同步撤销本届奖项，保留作品与历史记录。") }
+        .confirmationDialog("确认这次审核处理？", isPresented: Binding(get: { moderation != nil }, set: { if !$0 { moderation = nil } }), titleVisibility: .visible) {
+            Button("确认审核") { if let payload = moderation { reviewMutation(payload) } }
+            Button("返回", role: .cancel) { moderation = nil }
+        } message: { Text("剔除异常票或撤销作品资格会同步更新排名、奖项和荣誉，审计记录将永久保留。") }
     }
     private var editor: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -77,7 +89,7 @@ struct ContestManagementView: View {
                 }.padding(.vertical, 8) }
             }
             DisclosureGroup("投票复核与剔除") { ForEach(report.votes ?? []) { vote in VStack(alignment: .leading, spacing: 8) { Text(vote.risk == "vote_burst" ? "反复切票，待复核" : ["young_account","rapid_votes"].contains(vote.risk ?? "") ? "历史风险标记，可复核" : "常规投票"); Text(vote.entry_id).font(.caption2); HStack { Button("确认有效") { review(vote.id, decision: "valid") }; Button("剔除") { review(vote.id, decision: "exclude") } }.disabled(busy || reason.count < 2) }.padding(.vertical, 8) } }
-            DisclosureGroup("奖励记录") { ForEach(report.awards ?? []) { award in Text((award.title ?? "主题赛事") + " · " + award.label + (award.revoked_at == nil ? " · 有效" : " · 已撤销")).font(.caption).padding(.vertical, 6) } }
+            DisclosureGroup("奖励记录") { ForEach(report.awards ?? []) { award in VStack(alignment: .leading, spacing: 8) { Text((award.title ?? "主题赛事") + " · " + award.label + (award.revoked_at == nil ? " · 有效" : " · 已撤销")).font(.caption); if let entry = award.entry_id { Button(award.revoked_at == nil ? "撤销作品资格" : "重新审核作品") { reviewEntry(entry,decision:award.revoked_at == nil ? "remove" : "approve") }.disabled(busy || reason.count < 2) } }.padding(.vertical, 6) } }
             DisclosureGroup("更多赛事操作") { VStack(alignment: .leading, spacing: 12) { if !["ended","cancelled"].contains(event.state) { action(event.paused ? "resume" : "pause", event.paused ? "恢复比赛" : "暂停比赛") }; if event.state != "cancelled" { action("cancel", "取消比赛并撤销奖项") }; Button("延期：编辑具体阶段时间") { editing = true; automaticTimes = false } } }
             DisclosureGroup("操作审计") { ForEach(report.audit ?? []) { log in VStack(alignment: .leading) { Text(log.action); Text(log.reason); Text(log.created_at).foregroundStyle(.secondary) }.font(.caption).padding(.vertical, 6) } }
             if reportMore { Button("更多管理记录") { run { try await loadReport(append: true) } } }
@@ -85,7 +97,7 @@ struct ContestManagementView: View {
     }
     private var operationTitle: String { ["publish":"发布这场赛事？","pause":"暂停比赛？","resume":"恢复比赛？","announce":"审核并公布结果？","cancel":"取消赛事并撤销奖项？"][operation ?? ""] ?? "确认管理操作？" }
     private func action(_ action: String, _ label: String) -> some View { Button(label) { operation = action }.disabled(busy || reason.count < 2) }
-    private func confirmOperation() { guard let op = operation else { return }; let nonce = UUID().uuidString; run { let r = try await api.request("contests.manage", ["contestId":event.id,"operation":op,"reason":reason,"requestId":nonce]); guard let confirmed = r.contest else { throw TreeholeError(code: "invalid_response") }; event = confirmed; operation = nil; notice = "处理已确认"; do { try await loadReport() } catch { self.error = "处理已成功，统计暂未刷新，请重试刷新。" } } }
+    private func confirmOperation() { guard let op = operation else { return }; run { let r = try await confirmedRequest("contests.manage", ["contestId":event.id,"operation":op,"reason":reason]); guard let confirmed = r.contest else { throw TreeholeError(code: "invalid_response") }; event = confirmed; operation = nil; notice = "处理已确认"; do { try await loadReport() } catch { self.error = "处理已成功，统计暂未刷新，请重试刷新。" } } }
     private func save(publish: Bool) { run {
         if pendingSave == nil { if !persisted && automaticTimes { event.startsAt = formatter.string(from: Date()); duration(durationDays == 0 ? customDays : durationDays) }; var payload = event.payload; payload["requestId"] = requestID; payload["publish"] = publish; pendingSave = payload }
         var response = try await api.request("contests.save", pendingSave!)
@@ -95,7 +107,14 @@ struct ContestManagementView: View {
     private func loadReport(append: Bool = false) async throws { var response = try await api.request("contests.admin", ["contestId":event.id,"offset":append ? reportOffset+20 : 0]); reportMore = (response.votes?.count ?? 0)>20 || (response.audit?.count ?? 0)>20 || (response.awards?.count ?? 0)>20; response.votes = (append ? report.votes ?? [] : []) + Array((response.votes ?? []).prefix(20)); response.audit = (append ? report.audit ?? [] : []) + Array((response.audit ?? []).prefix(20)); response.awards = (append ? report.awards ?? [] : []) + Array((response.awards ?? []).prefix(20)); reportOffset = append ? reportOffset+20 : 0; report = response }
     private func reviewEntry(_ id: String, decision: String) { reviewRequest("entry", id, decision) }
     private func review(_ id: String, decision: String) { reviewRequest("vote", id, decision) }
-    private func reviewRequest(_ kind: String, _ id: String, _ decision: String) { run { let response = try await api.request("contests.review", ["contestId":event.id,"kind":kind,"targetId":id,"decision":decision,"reason":reason,"requestId":UUID().uuidString]); if let confirmed = response.contest { event = confirmed }; notice = "审核已确认"; do { try await loadReport() } catch { self.error = "审核已成功，统计暂未刷新，请重试。" } } }
+    private func reviewRequest(_ kind: String, _ id: String, _ decision: String) { moderation = ["contestId":event.id,"kind":kind,"targetId":id,"decision":decision,"reason":reason] }
+    private func reviewMutation(_ payload: [String: Any]) { run { let response = try await confirmedRequest("contests.review",payload); if let confirmed = response.contest { event = confirmed }; moderation = nil; notice = "审核已确认"; do { try await loadReport() } catch { self.error = "审核已成功，统计暂未刷新，请重试。" } } }
+    private func confirmedRequest(_ action: String, _ body: [String: Any]) async throws -> TreeholeEnvelope {
+        let key = action + (try JSONSerialization.data(withJSONObject:body,options:[.sortedKeys])).base64EncodedString()
+        let nonce = retryNonces[key] ?? UUID().uuidString; retryNonces[key] = nonce
+        var payload = body; payload["requestId"] = nonce
+        let response = try await api.request(action,payload); retryNonces.removeValue(forKey:key); return response
+    }
     private func date(_ key: WritableKeyPath<NativeContest,String>) -> Binding<Date> { Binding(get: { NativeContest.date(event[keyPath:key]) ?? Date() }, set: { automaticTimes = false; event[keyPath:key] = formatter.string(from: $0) }) }
     private func duration(_ days: Int) { let start = NativeContest.date(event.startsAt) ?? Date(); event.submissionEnds = formatter.string(from: start.addingTimeInterval(Double(days)*86400*5/7)); event.votingStarts = event.submissionEnds; event.votingEnds = formatter.string(from: start.addingTimeInterval(Double(days)*86400*6/7)); event.awardAt = formatter.string(from: start.addingTimeInterval(Double(days)*86400)); automaticTimes = true }
     private func display(_ value: String) -> String { let f = DateFormatter(); f.locale = Locale(identifier:"zh_CN"); f.timeZone = TimeZone(identifier:"Asia/Shanghai"); f.dateFormat = "M月d日 HH:mm"; return NativeContest.date(value).map(f.string) ?? value }

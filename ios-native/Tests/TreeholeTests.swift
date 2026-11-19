@@ -612,6 +612,7 @@ extension TreeholeTests {
 
     func testContestClockParsesServerFractionsAndTransitionsAtExactDeadline() throws {
         XCTAssertNotNil(NativeContest.date("2026-11-19T10:00:00.123+00:00"))
+        XCTAssertEqual(NativeContest.campusYear(try XCTUnwrap(NativeContest.date("2026-12-31T18:00:00Z"))),2027)
         let instant = Date(timeIntervalSince1970: 1_795_082_400)
         let formatter = ISO8601DateFormatter()
         var event = NativeContest.draft()

@@ -279,7 +279,7 @@ async function submit() {
     active = false;
     clearTimeout(timer);
     await queue;
-    await deleteDraftRecord(key).catch(() => {});
+    await deleteDraftRecord(key, draft.value.requestId).catch(() => {});
     if (alive) emit("submitted", result.entry);
   } catch (e) {
     if (alive) {
@@ -323,7 +323,7 @@ async function checkStatus() {
     if (found) {
       active = false;
       await queue;
-      await deleteDraftRecord(key);
+      await deleteDraftRecord(key, draft.value.requestId);
       emit("submitted", found);
     } else {
       draft.value.lastSent = undefined;

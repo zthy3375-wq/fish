@@ -1,23 +1,135 @@
-import type {TreeholeImage,TreeholePollDraft,TreeholeBuddyDraft} from './treehole';
-export interface DraftImage {id:string;data:string;width:number;height:number;remote?:TreeholeImage}
-export interface TreeholeDraft {buddy?:TreeholeBuddyDraft|null;poll?:TreeholePollDraft|null;title:string;body:string;category:string;interest?:string;anonymous:boolean;requestId:string;images:DraftImage[]}
-let database:Promise<IDBDatabase>|undefined;
-function open(){return database??=new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('hyt-treehole-drafts-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>resolve(r.result);r.onerror=()=>{database=undefined;reject(r.error);};});}
-async function operation<T>(id:string,mode:IDBTransactionMode,work:(store:IDBObjectStore)=>IDBRequest){const db=await open();return new Promise<T>((resolve,reject)=>{const tx=db.transaction('drafts',mode),r=work(tx.objectStore('drafts'));tx.oncomplete=()=>resolve(r.result);tx.onerror=tx.onabort=()=>reject(tx.error);});}
-export const readTreeholeDraft=(id:string)=>operation<TreeholeDraft|undefined>(id,'readonly',s=>s.get(id));
-export const writeTreeholeDraft=(id:string,draft:TreeholeDraft)=>operation(id,'readwrite',s=>s.put(JSON.parse(JSON.stringify(draft)),id));
-export const deleteTreeholeDraft=(id:string)=>operation(id,'readwrite',s=>s.delete(id));
-export async function prepareTreeholeImage(file:File,avatar=false):Promise<DraftImage>{
- if(file.size>20_000_000)throw Error('image_too_large');
- let bitmap:ImageBitmap;try{bitmap=await createImageBitmap(file);}catch{throw Error('invalid_image');}
- try{
-  const side=Math.min(bitmap.width,bitmap.height),scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));const canvas=document.createElement('canvas');canvas.width=avatar?Math.min(512,side):Math.max(1,Math.round(bitmap.width*scale));canvas.height=avatar?canvas.width:Math.max(1,Math.round(bitmap.height*scale));
-  const ctx=canvas.getContext('2d');if(!ctx)throw Error('invalid_image');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);if(avatar)ctx.drawImage(bitmap,(bitmap.width-side)/2,(bitmap.height-side)/2,side,side,0,0,canvas.width,canvas.height);else ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
-  let data='';for(const quality of [.82,.7,.55,.4]){data=canvas.toDataURL('image/jpeg',quality).split(',')[1];if(data.length<=1_600_000)break;}
-  if(!data||data.length>1_600_000)throw Error('image_too_large');return {id:crypto.randomUUID(),data,width:canvas.width,height:canvas.height};
- }finally{bitmap.close();}
+import type {
+  TreeholeImage,
+  TreeholePollDraft,
+  TreeholeBuddyDraft,
+} from "./treehole";
+export interface DraftImage {
+  id: string;
+  data: string;
+  width: number;
+  height: number;
+  remote?: TreeholeImage;
+}
+export interface TreeholeDraft {
+  buddy?: TreeholeBuddyDraft | null;
+  poll?: TreeholePollDraft | null;
+  title: string;
+  body: string;
+  category: string;
+  interest?: string;
+  anonymous: boolean;
+  requestId: string;
+  images: DraftImage[];
+}
+let database: Promise<IDBDatabase> | undefined;
+function open() {
+  return (database ??= new Promise<IDBDatabase>((resolve, reject) => {
+    const r = indexedDB.open("hyt-treehole-drafts-v1", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("drafts");
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => {
+      database = undefined;
+      reject(r.error);
+    };
+  }));
+}
+async function operation<T>(
+  id: string,
+  mode: IDBTransactionMode,
+  work: (store: IDBObjectStore) => IDBRequest,
+) {
+  const db = await open();
+  return new Promise<T>((resolve, reject) => {
+    const tx = db.transaction("drafts", mode),
+      r = work(tx.objectStore("drafts"));
+    tx.oncomplete = () => resolve(r.result);
+    tx.onerror = tx.onabort = () => reject(tx.error);
+  });
+}
+export const readTreeholeDraft = (id: string) =>
+  operation<TreeholeDraft | undefined>(id, "readonly", (s) => s.get(id));
+export const writeTreeholeDraft = (id: string, draft: TreeholeDraft) =>
+  operation(id, "readwrite", (s) =>
+    s.put(JSON.parse(JSON.stringify(draft)), id),
+  );
+export const deleteTreeholeDraft = (id: string) =>
+  operation(id, "readwrite", (s) => s.delete(id));
+export async function prepareTreeholeImage(
+  file: File,
+  avatar = false,
+): Promise<DraftImage> {
+  if (file.size > 20_000_000) throw Error("image_too_large");
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw Error("invalid_image");
+  }
+  try {
+    const side = Math.min(bitmap.width, bitmap.height),
+      scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = avatar
+      ? Math.min(512, side)
+      : Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = avatar
+      ? canvas.width
+      : Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw Error("invalid_image");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (avatar)
+      ctx.drawImage(
+        bitmap,
+        (bitmap.width - side) / 2,
+        (bitmap.height - side) / 2,
+        side,
+        side,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+    else ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    let data = "";
+    for (const quality of [0.82, 0.7, 0.55, 0.4]) {
+      data = canvas.toDataURL("image/jpeg", quality).split(",")[1];
+      if (data.length <= 1_600_000) break;
+    }
+    if (!data || data.length > 1_600_000) throw Error("image_too_large");
+    return {
+      id: crypto.randomUUID(),
+      data,
+      width: canvas.width,
+      height: canvas.height,
+    };
+  } finally {
+    bitmap.close();
+  }
 }
 
-export const readDraftRecord=<T>(key:string)=>operation<T|undefined>(key,'readonly',s=>s.get(key));
-export const writeDraftRecord=(key:string,value:unknown)=>operation(key,'readwrite',s=>s.put(JSON.parse(JSON.stringify(value)),key));
-export const deleteDraftRecord=(key:string)=>operation(key,'readwrite',s=>s.delete(key));
+export const readDraftRecord = <T>(key: string) =>
+  operation<T | undefined>(key, "readonly", (s) => s.get(key));
+export const writeDraftRecord = (key: string, value: unknown) =>
+  operation(key, "readwrite", (s) =>
+    s.put(JSON.parse(JSON.stringify(value)), key),
+  );
+export async function deleteDraftRecord(
+  key: string,
+  expectedRequestId?: string,
+) {
+  if (!expectedRequestId)
+    return operation(key, "readwrite", (s) => s.delete(key));
+  const db = await open();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("drafts", "readwrite"),
+      store = tx.objectStore("drafts"),
+      read = store.get(key);
+    read.onsuccess = () => {
+      if (read.result?.requestId === expectedRequestId) store.delete(key);
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = tx.onabort = () => reject(tx.error);
+  });
+}
