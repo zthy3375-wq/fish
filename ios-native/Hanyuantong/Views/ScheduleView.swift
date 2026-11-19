@@ -7,7 +7,16 @@ struct ScheduleView: View {
     @State private var surprise: String?
     @State private var mode = 0
     @State private var adding = false
+    @State private var cell: ScheduleCell?
+    @State private var viewportHeight: CGFloat = 640
     @State private var managingPersonalSchedule = false
+    private var subtitle: String {
+        if store.isConnected { return "学校课表" }
+        if let state = store.personalSchedule, let term = try? PersonalSemesterRules.activeSemester(in: state) {
+            return term.title + " · 个人课表"
+        }
+        return "个人课表"
+    }
     private var days: [Date] {
         let calendar = CampusTheme.calendar
         let weekday = (calendar.component(.weekday, from: store.selectedDate) + 5) % 7
@@ -70,7 +79,10 @@ struct ScheduleView: View {
                     Button { store.connectSchool() } label: { Label("连接教务系统", systemImage: "link").frame(maxWidth: .infinity).padding(12) }.buttonStyle(.bordered).disabled(store.isBusy)
                 }
             }.padding(.horizontal, 8).padding(.vertical, 10).frame(maxWidth: 680)
-        }.background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
+        }.background(GeometryReader { bounds in
+            Color.clear.onAppear { viewportHeight = bounds.size.height }
+                .onChange(of: bounds.size.height) { viewportHeight = $0 }
+        }).background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .overlay(alignment:.top) { if let surprise { Text(surprise == "freeday" ? "今天属于你自己。" : "回到本周了。").padding(10).background(.thinMaterial,in:Capsule()).allowsHitTesting(false) } }
             .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; MedalJournal.shared.unlock(code); surprise=nil }
             .onAppear { if store.lastSynced != nil && store.courses.contains(where:{$0.source != "personal"}) { offline.start(scope:store.schoolMedalScope) } }
@@ -78,13 +90,14 @@ struct ScheduleView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
                 ToolbarItem(placement: .navigationBarLeading) {
-                    CampusRootTitle(title: "课程表", subtitle: store.isConnected ? "学校课表" : "个人课表")
+                    CampusRootTitle(title: "课程表", subtitle: subtitle)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { adding = true } label: { Image(systemName: "plus").frame(width: 40, height: 40).background(CampusTheme.tint, in: Circle()) }
                         .accessibilityLabel("添加课程")
                 }
             }.sheet(isPresented: $adding) { CourseEditorView() }
+            .sheet(item: $cell) { CourseEditorView(preset: $0) }
             .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
     }
     private var dayList: some View {
@@ -95,7 +108,11 @@ struct ScheduleView: View {
         }
     }
     private var weekList: some View {
-        TimetableGrid(days: days, courses: days.map { store.courses(on: $0) }, periods: store.visiblePeriods) { date in
+        TimetableGrid(days: days, courses: days.map { store.courses(on: $0) }, periods: store.visiblePeriods,
+                      viewportHeight: viewportHeight, create: { date, slot in
+            guard !store.isConnected else { return }
+            cell = ScheduleCell(date: date, slot: slot)
+        }, editable: !store.isConnected) { date in
             select(date, checkDay: false)
             mode = 1
         }
@@ -113,31 +130,90 @@ struct ScheduleView: View {
     }
 }
 
+struct ScheduleCell: Identifiable {
+    let id = UUID()
+    let date: Date
+    let slot: AndroidTimeSlot
+}
+
+/// Mirrors buildTimeAxis/timePosition in the Android timetable. A class during a
+/// break keeps its real duration, even when the user supplies a custom timetable.
+struct SchedulePeriodAxis {
+    struct Segment {
+        let start: Int
+        let end: Int
+        let from: CGFloat
+        let length: CGFloat
+    }
+    let segments: [Segment]
+    var units: CGFloat { segments.last.map { $0.from + $0.length } ?? 1 }
+    init(slots: [AndroidTimeSlot], events: [Range<Int>]) {
+        let teaching: [Range<Int>] = slots.compactMap { slot in
+            guard let a = TimetableDay.minutes(slot.start), let b = TimetableDay.minutes(slot.end), a < b else { return nil }
+            return a..<b
+        }.sorted { $0.lowerBound < $1.lowerBound }
+        var output: [Segment] = []
+        var position: CGFloat = 0
+        func add(_ a: Int, _ b: Int, length: CGFloat) {
+            guard a < b else { return }
+            output.append(Segment(start: a, end: b, from: position, length: length))
+            position += length
+        }
+        let earliest = min(teaching.first?.lowerBound ?? 1440, events.map(\.lowerBound).min() ?? 1440)
+        let latest = max(teaching.last?.upperBound ?? 0, events.map(\.upperBound).max() ?? 0)
+        var previous = earliest
+        for (index, period) in teaching.enumerated() {
+            let gap = CGFloat(period.lowerBound - previous) / 45
+            let occupied = events.contains {
+                ($0.lowerBound >= previous && $0.lowerBound < period.lowerBound) ||
+                ($0.upperBound > previous && $0.upperBound <= period.lowerBound)
+            }
+            add(previous, period.lowerBound, length: index == 0 || occupied ? gap : min(0.35, gap))
+            add(period.lowerBound, period.upperBound, length: 1)
+            previous = period.upperBound
+        }
+        add(previous, latest, length: CGFloat(latest - previous) / 45)
+        segments = output
+    }
+    func position(_ minute: Int) -> CGFloat {
+        guard let segment = segments.first(where: { $0.start <= minute && minute <= $0.end }) else {
+            return minute < (segments.first?.start ?? 1440) ? 0 : units
+        }
+        return segment.from + CGFloat(minute - segment.start) / CGFloat(segment.end - segment.start) * segment.length
+    }
+}
+
 /// A shared minute axis keeps free periods and simultaneous classes visible.
 /// Every overlapping event has its own lane; lanes never shrink below readable width.
 private struct TimetableGrid: View {
     let days: [Date]
-    let courses: [[Course]]
     let periods: [AndroidTimeSlot]
+    let viewportHeight: CGFloat
+    let create: (Date, AndroidTimeSlot) -> Void
+    let editable: Bool
     let openDay: (Date) -> Void
+    private let layouts: [TimetableDay]
+    private let axis: SchedulePeriodAxis
+    init(days: [Date], courses: [[Course]], periods: [AndroidTimeSlot], viewportHeight: CGFloat,
+         create: @escaping (Date, AndroidTimeSlot) -> Void, editable: Bool, openDay: @escaping (Date) -> Void) {
+        self.days = days; self.periods = periods
+        self.viewportHeight = viewportHeight; self.create = create; self.editable = editable; self.openDay = openDay
+        let daysLayout = courses.map(TimetableDay.init)
+        self.layouts = daysLayout
+        self.axis = SchedulePeriodAxis(slots: periods, events: daysLayout.flatMap(\.events).map { $0.start..<$0.end })
+    }
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var enlarged = false
     @ScaledMetric(relativeTo: .caption) private var laneWidth: CGFloat = 112
-    @ScaledMetric(relativeTo: .caption) private var minuteHeight: CGFloat = 1.15
+    @ScaledMetric(relativeTo: .caption) private var minimumRow: CGFloat = 38
     private let timeWidth: CGFloat = 54
     private let headerHeight: CGFloat = 44
-    private var layouts: [TimetableDay] { courses.map(TimetableDay.init) }
-    private var firstMinute: Int {
-        min(ticks.compactMap { TimetableDay.minutes($0.start) }.min() ?? 480, layouts.flatMap(\.events).map(\.start).min() ?? 1440)
-    }
-    private var lastMinute: Int {
-        max(ticks.compactMap { TimetableDay.minutes($0.end) }.max() ?? 1320, layouts.flatMap(\.events).map(\.end).max() ?? 0)
-    }
-    private var height: CGFloat { CGFloat(lastMinute - firstMinute) * minuteHeight }
+    private var rowHeight: CGFloat { max(minimumRow, min(60, (viewportHeight - 170) / max(1, axis.units))) }
+    private var height: CGFloat { axis.units * rowHeight }
     private var ticks: [AndroidTimeSlot] { periods.sorted { $0.start < $1.start } }
 
     private func dayWidth(_ layout: TimetableDay) -> CGFloat { CGFloat(layout.laneCount) * laneWidth }
-    private func y(_ minute: Int) -> CGFloat { CGFloat(minute - firstMinute) * minuteHeight }
+    private func y(_ minute: Int) -> CGFloat { axis.position(minute) * rowHeight }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -163,7 +239,7 @@ private struct TimetableGrid: View {
         let week = layouts
         return HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 0) {
-                Text("时间").font(.caption).frame(width: axisWidth, height: headerHeight)
+                Text("节次").font(.caption).frame(width: axisWidth, height: headerHeight)
                 ZStack(alignment: .topLeading) {
                     ForEach(ticks, id: \.number) { slot in
                         if let minute = TimetableDay.minutes(slot.start) {
@@ -196,9 +272,18 @@ private struct TimetableGrid: View {
                 .font(.caption.weight(.semibold)).frame(width: width, height: headerHeight)
                 .background(CampusTheme.calendar.isDateInToday(date) ? CampusTheme.tint : CampusTheme.background)
             ZStack(alignment: .topLeading) {
+                if CampusTheme.calendar.isDateInToday(date) {
+                    Rectangle().fill(CampusTheme.tint.opacity(0.30)).frame(width: width, height: height)
+                }
                 Rectangle().fill(CampusTheme.border).frame(width: 0.5, height: height)
                 ForEach(ticks, id: \.number) { slot in
                     if let minute = TimetableDay.minutes(slot.start) {
+                        if editable, let end = TimetableDay.minutes(slot.end) {
+                            Button { create(date, slot) } label: {
+                                Color.clear.frame(width: width, height: max(1, y(end) - y(minute))).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityLabel("添加" + CampusTheme.date(date, format: "EEEE") + "第\(slot.number)节课程")
+                                .offset(y: y(minute))
+                        }
                         Rectangle().fill(CampusTheme.border.opacity(0.7)).frame(width: width, height: 0.5).offset(y: y(minute))
                     }
                 }
@@ -224,7 +309,7 @@ private struct TimetableGrid: View {
                                 Text(event.course.room).font(.caption2).lineLimit(2)
                                 Text("\(event.course.start)–\(event.course.end)").font(.caption2.monospacedDigit()).lineLimit(1)
                                 if !event.course.period.isEmpty { Text(event.course.period).font(.caption2).lineLimit(1) }
-                            }.padding(6).frame(width: laneWidth - 6, height: max(1, CGFloat(event.end - event.start) * minuteHeight - 3), alignment: .topLeading)
+                            }.padding(6).frame(width: laneWidth - 6, height: max(1, y(event.end) - y(event.start) - 3), alignment: .topLeading)
                                 .foregroundStyle(CampusTheme.course(event.course.color))
                                 .background(CampusTheme.course(event.course.color).opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
                                 .clipped().contentShape(Rectangle())
@@ -232,6 +317,17 @@ private struct TimetableGrid: View {
                             .accessibilityLabel("\(CampusTheme.date(date))，\(event.course.name)，\(event.course.start)至\(event.course.end)，\(event.course.room)，\(event.course.period)")
                             .offset(x: CGFloat(event.lane) * laneWidth + 3, y: y(event.start))
                     }
+                }
+                if CampusTheme.calendar.isDateInToday(date) {
+                    TimelineView(.periodic(from: .now, by: 60)) { clock in
+                        let time = CampusTheme.calendar.dateComponents([.hour, .minute], from: clock.date)
+                        let position = y((time.hour ?? 0) * 60 + (time.minute ?? 0))
+                        if position > 0 && position < height {
+                            Rectangle().fill(CampusTheme.primary).frame(width: width, height: 1.5)
+                                .overlay(alignment: .leading) { Circle().fill(CampusTheme.primary).frame(width: 5, height: 5) }
+                                .offset(y: position)
+                        }
+                    }.allowsHitTesting(false).accessibilityHidden(true)
                 }
             }.frame(width: width, height: height + 20, alignment: .topLeading)
         }
@@ -363,6 +459,7 @@ struct CourseDetailView: View {
 }
 
 struct CourseEditorView: View {
+    var preset: ScheduleCell? = nil
     @EnvironmentObject var store: CampusStore
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -402,7 +499,18 @@ struct CourseEditorView: View {
                 .environment(\.timeZone, ScheduleMath.calendar.timeZone)
                 .onAppear {
                     if !initializedWeeks {
-                        lastWeek = maximumWeek; expectedSemesterID = store.personalSchedule?.activeSemesterId; initializedWeeks = true
+                        if let preset {
+                            day = ScheduleMath.weekday(on: preset.date)
+                            let week = ScheduleMath.week(on: preset.date, start: store.semesterStart)
+                            firstWeek = min(max(1, week), maximumWeek)
+                            lastWeek = firstWeek
+                            if let a = TimetableDay.minutes(preset.slot.start), let b = TimetableDay.minutes(preset.slot.end) {
+                                let midnight = CampusTheme.calendar.startOfDay(for: preset.date)
+                                start = midnight.addingTimeInterval(Double(a) * 60)
+                                end = midnight.addingTimeInterval(Double(b) * 60)
+                            }
+                        } else { lastWeek = maximumWeek }
+                        expectedSemesterID = store.personalSchedule?.activeSemesterId; initializedWeeks = true
                     }
                 }
                 .toolbar {

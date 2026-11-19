@@ -206,6 +206,7 @@ struct MedalCollection: View {
                 if own && viewer == nil && !loading { Text("登录社区后可同步身份与社区成就").font(.footnote).foregroundStyle(CampusTheme.muted) }
             }.padding(16).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16)).padding(12).frame(maxWidth:650)
         }.background(CampusTheme.background).navigationTitle("荣誉殿堂").navigationBarTitleDisplayMode(.inline)
+        .modifier(CampusDetailHeader(title: "荣誉殿堂"))
         .toolbar { if own { Button { showSettings = true } label: { Image(systemName:"slider.horizontal.3") }.accessibilityLabel("成就反馈设置") } }
         .sheet(item:$selectedStamp) { badge in HonorStampDetails(item:badge) }
         .sheet(isPresented:$showSettings) { MedalSettings() }

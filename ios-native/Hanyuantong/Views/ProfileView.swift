@@ -123,13 +123,59 @@ private struct ProfileSettingsView: View {
     @EnvironmentObject var pangguai: PangguaiStore
     @State private var managingPersonalSchedule = false
 
+    @State private var extraSettings = false
+
     var body: some View {
         List {
             Section("偏好与数据") {
-                CampusAppearanceControls(store: displayPreferences) { message in store.message = message }
-                NavigationLink { NativeReminderSettingsView(reminders: store.reminders) } label: { Label("通知设置", systemImage: "bell") }
-                NavigationLink { PersonalBackupView() } label: { Label("缓存管理与备份", systemImage: "externaldrive") }
+                CampusAppearanceControls(store: displayPreferences) { store.message = $0 }
+                NavigationLink { NativeReminderSettingsView(reminders: store.reminders) } label: {
+                    settingsRow("通知设置", "应用内提醒与消息", "bell")
+                }
+                NavigationLink { PersonalBackupView() } label: {
+                    settingsRow("缓存管理", "查看数据存储状态与备份", "externaldrive")
+                }.accessibilityLabel("备份与恢复")
+                Button { managingPersonalSchedule = true } label: {
+                    settingsRow("课表与数据管理", "课程、学期、备份与提醒", "slider.horizontal.3")
+                }.buttonStyle(CampusPressStyle()).accessibilityIdentifier("open-personal-schedule")
+                Button {
+                    extraSettings.toggle()
+                } label: {
+                    HStack {
+                        Image(systemName: extraSettings ? "chevron.down" : "chevron.right")
+                        Text("更多设置与校园服务")
+                    }.font(.subheadline).foregroundStyle(CampusTheme.muted)
+                }.accessibilityIdentifier("more-settings").accessibilityValue(extraSettings ? "已展开" : "已收起")
+
             }
+            if extraSettings { detailedSettings }
+            Section("帮助") {
+                NavigationLink { NativeHelpView() } label: { Label("问题反馈", systemImage: "bubble.left") }
+            }
+            Section("关于与隐私") {
+                NavigationLink("版本与更新日志") { CampusVersionPage() }
+                NavigationLink("隐私与本机数据") { PrivacyView() }
+                if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
+            }
+        }
+        .campusScrollBackground().background(CampusTheme.background)
+        .navigationTitle("设置与帮助").navigationBarTitleDisplayMode(.inline)
+        .modifier(CampusDetailHeader(title: "设置与帮助"))
+        .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
+    }
+
+    private func settingsRow(_ title: String, _ subtitle: String, _ icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(CampusTheme.primary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(CampusTheme.text)
+                Text(subtitle).font(.caption).foregroundStyle(CampusTheme.muted)
+            }
+            Spacer()
+        }.frame(minHeight: 48).contentShape(Rectangle())
+    }
+
+    @ViewBuilder private var detailedSettings: some View {
             Section("学校服务") { Link("邯郸学院官网",destination:URL(string:"https://www.hdc.edu.cn/")!); NavigationLink("统一日程") { CampusAgendaView() } }
             Section("学校课表设置") {
                 NavigationLink("学期校历") { SemesterCalendar() }
@@ -144,8 +190,7 @@ private struct ProfileSettingsView: View {
                 } else {
                     Text("旧个人记录已保留。校准第一周周一后尝试启用多学期管理；不兼容记录不会被丢弃。").font(.caption).foregroundStyle(CampusTheme.muted)
                 }
-                Button { managingPersonalSchedule = true } label: { Label("个人学期、课程与作息", systemImage: "calendar.badge.clock") }
-                    .accessibilityIdentifier("open-personal-schedule")
+
             }
             Section("显示与个人资料") {
                 NavigationLink("昵称、主题与紧凑布局") { DisplayPreferencesSettingsView(store: displayPreferences) }
@@ -153,8 +198,6 @@ private struct ProfileSettingsView: View {
             }
             Section("个人数据") {
                 NavigationLink { CourseImportView(semesterStart: store.semesterStart, existing: store.courses.filter { $0.source == "personal" }, weekCount: store.personalWeekCount, onReplace: store.replacePersonalCourses, onImport: store.importPersonalCourses) } label: { Label("导入课程文件", systemImage: "doc.badge.plus") }.accessibilityIdentifier("open-course-import")
-                NavigationLink { PersonalBackupView() } label: { Label("备份与恢复", systemImage: "externaldrive") }
-                NavigationLink { NativeReminderSettingsView(reminders: store.reminders) } label: { Label("系统提醒", systemImage: "bell.badge") }
                 NavigationLink { NativeWidgetSettingsView(publisher: store.widget) } label: { Label("课表小组件", systemImage: "rectangle.grid.1x2") }
             }
             Section("校园服务") {
@@ -163,18 +206,6 @@ private struct ProfileSettingsView: View {
                 NavigationLink { ParcelCenterView() } label: { Label("取快递", systemImage: "shippingbox") }
                 NavigationLink { CampusMapView() } label: { Label("校园平面图", systemImage: "map") }
             }
-            Section("关于邯院通") {
-                Text("学习 · 生活 · 校园")
-                Text("iPhone 原生开发版。教务数据以学校官方系统为准；各服务需独立登录，真实账号和设备联调尚待完成。").font(.caption).foregroundStyle(CampusTheme.muted)
-                NavigationLink("版本与更新日志") { CampusVersionPage() }
-                NavigationLink("隐私与本机数据") { PrivacyView() }
-                if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
-                NavigationLink("帮助与反馈") { NativeHelpView() }
-            }
-        }
-        .campusScrollBackground().background(CampusTheme.background)
-        .navigationTitle("设置与帮助").navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
     }
 }
 

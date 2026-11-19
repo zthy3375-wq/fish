@@ -10,10 +10,19 @@ final class HonorParityUITests:XCTestCase {
         app.tabBars.buttons["课表"].tap()
         XCTAssertTrue(app.buttons["添加课程"].waitForExistence(timeout:6))
         capture("schedule",app)
+        let cell = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label ENDSWITH %@", "添加", "第1节课程")).firstMatch
+        XCTAssertTrue(cell.waitForExistence(timeout: 5))
+        cell.tap()
+        XCTAssertTrue(app.navigationBars["添加课程"].waitForExistence(timeout: 5))
+        app.buttons["取消"].tap()
         app.buttons["放大查看"].tap()
         XCTAssertTrue(app.buttons["显示整周"].waitForExistence(timeout: 5))
         app.buttons["显示整周"].tap()
         app.tabBars.buttons["社区"].tap()
+        let connectedOrFailed = NSPredicate { _, _ in
+            app.buttons["重试连接"].exists || app.secureTextFields.firstMatch.exists || app.buttons["发帖"].exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: connectedOrFailed, object: app)], timeout: 70), .completed)
         capture("community",app)
         app.tabBars.buttons["待办"].tap()
         XCTAssertTrue(app.buttons["添加待办"].waitForExistence(timeout:6))

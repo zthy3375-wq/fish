@@ -97,13 +97,13 @@ struct TasksView: View {
                     } else { Image(systemName: "checkmark").foregroundStyle(CampusTheme.muted) }
                     Text(filter.search.isEmpty ? "这里暂时没有任务" : "没有匹配任务").font(.subheadline.weight(.semibold))
                     Text("在下方输入标题即可添加。").font(.caption).foregroundStyle(CampusTheme.muted)
-                }.frame(maxWidth: .infinity).padding(.vertical, 42).listRowBackground(Color.clear)
+                }.frame(maxWidth: .infinity).padding(.vertical, 46).listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
             ForEach(groups) { group in
                 Section(group.title) { ForEach(group.tasks) { task in taskRow(task) } }
             }
+            quickEntry.listRowInsets(EdgeInsets()).listRowBackground(Color.clear).listRowSeparator(.hidden)
         }.listStyle(.plain).campusScrollBackground().background(CampusTheme.background)
-            .safeAreaInset(edge: .bottom) { quickEntry }
     }
 
     private var quickEntry: some View {
