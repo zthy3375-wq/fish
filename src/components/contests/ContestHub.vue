@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import {
-  Trophy,
-  ArrowRight,
-  Plus,
-  Clock,
-  ChevronLeft,
-  RefreshCw,
-} from "lucide-vue-next";
+  ref,
+  computed,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+  nextTick,
+} from "vue";
+import { Trophy, ChevronRight, Plus } from "lucide-vue-next";
 import {
   contestRequest,
   contestStage,
@@ -17,1183 +17,767 @@ import {
   type ContestEntry,
   type ContestResult,
 } from "../../services/contests";
-import {
-  treeholeRequest,
-  treeholeError,
-  type TreeholeUser,
-  type TreeholePost,
-  type TreeholeImage,
-} from "../../services/treehole";
-import {
-  prepareTreeholeImage,
-  type DraftImage,
-} from "../../services/treeholeDrafts";
-import ContestPostPicker from "./ContestPostPicker.vue";
-import ContestEntryCard from "./ContestEntryCard.vue";
+import { treeholeError, type TreeholeUser } from "../../services/treehole";
+import { confirmedVote } from "../../domain/contests";
+import ContestDetail from "./ContestDetail.vue";
+import ContestWorkDetail from "./ContestWorkDetail.vue";
+import ContestComposer from "./ContestComposer.vue";
+import ContestArchive from "./ContestArchive.vue";
 import ContestAdmin from "./ContestAdmin.vue";
-import ContestHonors from "./ContestHonors.vue";
+import ContestManagement from "./ContestManagement.vue";
+import ContestThemes from "./ContestThemes.vue";
+import ContestDialog from "./ContestDialog.vue";
+import "./contests.css";
 const props = defineProps<{
   user: TreeholeUser;
   compact?: boolean;
   initialId?: string;
+  backendSchema?: number;
+  restore?: Record<string, any>;
 }>();
 const emit = defineEmits<{
   open: [id?: string];
   profile: [id: string];
   post: [id: string];
   image: [entry: ContestEntry, index: number];
+  heading: [title: string];
 }>();
-const admin = computed(() => props.user.badges?.official?.code === "developer");
-const contests = ref<Contest[]>([]),
+type Page =
+  | "home"
+  | "detail"
+  | "entry"
+  | "compose"
+  | "archive"
+  | "admin"
+  | "create"
+  | "edit"
+  | "manage"
+  | "themes";
+const view = ref<Page>("home"),
+  contests = ref<Contest[]>([]),
   selected = ref<Contest>(),
   entries = ref<ContestEntry[]>([]),
-  busy = ref(false),
-  error = ref(""),
-  notice = ref("");
-const more = ref(false),
+  mine = ref<ContestEntry[]>([]),
+  entry = ref<ContestEntry>(),
+  editing = ref<ContestEntry>();
+const votesUsed = ref(0),
+  winners = ref(false),
+  more = ref(false),
   moreContests = ref(false),
-  seed = crypto.randomUUID(),
-  votesUsed = ref(0),
-  clock = ref(Date.now()),
-  serverOffset = ref(0),
-  winnersOnly = ref(false);
-const stage = computed(() =>
-  selected.value
-    ? contestStage(selected.value, clock.value + serverOffset.value)
-    : "",
-);
-const managing = ref(false),
-  creating = ref(false),
-  view = ref("events"),
-  year = ref(new Date().getFullYear()),
-  type = ref(""),
-  data = ref<ContestResult>({});
-const draft = ref({
-    id: null as string | null,
-    title: "",
-    body: "",
-    postId: "",
-    linked: false,
-    linkedImages: [] as TreeholeImage[],
-    share: false,
-    agreed: false,
-    photos: [] as DraftImage[],
-    images: [] as string[],
-    requestId: crypto.randomUUID() as string,
-  }),
-  editing = ref(false);
-const action = ref<{
-    kind: "report" | "entry" | "theme" | "merge";
-    id: string;
-    decision: string;
-  }>(),
-  reason = ref(""),
-  mergeId = ref(""),
-  theme = ref(""),
-  themeRequest = ref(crypto.randomUUID());
+  loading = ref(false),
+  wallLoading = ref(false),
+  mineReady = ref(true),
+  pendingVote = ref(false),
+  error = ref(""),
+  notice = ref(""),
+  now = ref(Date.now());
+const child = ref<{ requestBack: () => boolean }>();
+const admin = computed(() => props.user.badges?.official?.code === "developer");
+const seed =
+  props.restore?.owner === props.user.id &&
+  typeof props.restore.seed === "string"
+    ? props.restore.seed
+    : crypto.randomUUID();
+let live = true,
+  epoch = 0,
+  offset = 0,
+  lastId = "";
 const head = computed(
   () =>
     contests.value.find(
       (c) =>
         !["ended", "cancelled", "draft"].includes(
-          contestStage(c, clock.value + serverOffset.value),
+          contestStage(c, now.value + offset),
         ),
     ) || contests.value.find((c) => c.state === "ended"),
 );
-let live = true;
-const timer = window.setInterval(() => (clock.value = Date.now()), 60000);
+const history: Record<string, any>[] = [];
+const title = computed(
+  () =>
+    ({
+      home: "主题赛事",
+      detail: "主题赛事",
+      entry: "作品详情",
+      compose: editing.value ? "编辑作品" : "我要参赛",
+      archive: "历届赛事",
+      admin: "赛事管理",
+      create: "创建赛事",
+      edit: "编辑赛事",
+      manage: "管理比赛",
+      themes: "主题征集",
+    })[view.value],
+);
+watch(
+  title,
+  (t) => {
+    if (!props.compact) emit("heading", t);
+  },
+  { immediate: true },
+);
+const clock = setInterval(() => (now.value = Date.now()), 60000);
 onBeforeUnmount(() => {
   live = false;
-  clearInterval(timer);
+  epoch++;
+  clearInterval(clock);
 });
-async function request(
+function routeSnapshot() {
+  return {
+    owner: props.user.id,
+    seed,
+    view: view.value,
+    selected: selected.value,
+    entries: entries.value,
+    mine: mine.value,
+    entry: entry.value,
+    votesUsed: votesUsed.value,
+    winners: winners.value,
+    more: more.value,
+    mineReady: mineReady.value,
+    contests: contests.value,
+    moreContests: moreContests.value,
+    offset,
+    scroll: window.scrollY,
+  };
+}
+function snapshot() {
+  return { ...routeSnapshot(), history: [...history] };
+}
+function restore(s: Record<string, any>) {
+  view.value = s.view;
+  selected.value = s.selected;
+  entries.value = s.entries || [];
+  mine.value = s.mine || [];
+  entry.value = s.entry;
+  votesUsed.value = s.votesUsed || 0;
+  winners.value = !!s.winners;
+  more.value = !!s.more;
+  mineReady.value = s.mineReady !== false;
+  contests.value = s.contests || contests.value;
+  moreContests.value = !!s.moreContests;
+  offset = s.offset || 0;
+}
+function go(next: Page) {
+  history.push(routeSnapshot());
+  if (history.length > 20) history.shift();
+  view.value = next;
+  notice.value = "";
+  error.value = "";
+  void nextTick(() => window.scrollTo({ top: 0, behavior: "instant" }));
+}
+async function call(
   action: string,
   body: Record<string, unknown> = {},
   fresh = false,
 ) {
-  if (!live) throw new Error("cancelled");
-  const r = await contestRequest(props.user.id, action, body, fresh);
-  if (!live) throw new Error("cancelled");
-  if (r.serverTime) serverOffset.value = Date.parse(r.serverTime) - Date.now();
+  const owner = props.user.id,
+    sequence = epoch;
+  const r = await contestRequest(owner, action, body, fresh);
+  if (
+    !live ||
+    (sequence !== epoch &&
+      ["contests.list", "contests.get", "contests.entries"].includes(action)) ||
+    owner !== props.user.id
+  )
+    throw Error("contest_account_changed");
+  if (r.serverTime)
+    offset = Date.parse(r.serverTime) - (r.receivedAt || Date.now());
   return r;
 }
+function showError(e: unknown) {
+  const message = (e as Error)?.message;
+  if (
+    live &&
+    !["contest_account_changed", "contest_stale_response"].includes(message)
+  )
+    error.value = treeholeError(e);
+}
 async function run(work: () => Promise<void>) {
-  if (busy.value) return;
-  busy.value = true;
   error.value = "";
   try {
     await work();
   } catch (e) {
-    if (live) error.value = treeholeError(e);
-  } finally {
-    if (live) busy.value = false;
+    showError(e);
   }
 }
-async function list(append = false, fresh = false) {
-  const r = await request(
+async function list(fresh = false, append = false) {
+  const r = await call(
     "contests.list",
-    {
-      offset: append ? contests.value.length : 0,
-      type: type.value,
-      year: view.value === "archive" ? year.value : 0,
-    },
+    { offset: append ? contests.value.length : 0, type: "", year: 0 },
     fresh,
   );
   moreContests.value = (r.contests?.length || 0) > 20;
-  contests.value = append
-    ? [...contests.value, ...(r.contests || []).slice(0, 20)]
-    : (r.contests || []).slice(0, 20);
+  contests.value = [
+    ...new Map(
+      [
+        ...(append ? contests.value : []),
+        ...(r.contests || []).slice(0, 20),
+      ].map((c) => [c.id, c]),
+    ).values(),
+  ];
 }
-async function wall(append = false) {
+async function wall(append = false, fresh = false) {
   if (!selected.value) return;
-  const r = await request("contests.entries", {
-    contestId: selected.value.id,
-    seed,
-    winnersOnly: winnersOnly.value,
-    offset: 0,
-    afterId: append ? entries.value.at(-1)?.id : null,
-  });
-  more.value = (r.entries?.length || 0) > 20;
-  entries.value = append
-    ? [...entries.value, ...(r.entries || []).slice(0, 20)]
-    : (r.entries || []).slice(0, 20);
-}
-async function open(id: string) {
-  const r = await request("contests.get", { contestId: id }, true);
-  selected.value = r.contest;
-  winnersOnly.value = r.contest?.state === "ended";
-  votesUsed.value = r.votesUsed || 0;
-  editing.value = false;
-  managing.value = false;
-  creating.value = false;
-  await wall();
-}
-async function vote(entry: ContestEntry) {
-  await request("contests.vote", {
-    contestId: selected.value!.id,
-    entryId: entry.id,
-    enabled: !entry.voted,
-  });
-  const r = await request("contests.get", { contestId: selected.value!.id });
-  votesUsed.value = r.votesUsed || 0;
-  selected.value = r.contest;
-  entry.voted = !entry.voted;
-  notice.value = entry.voted ? "投票已确认" : "已撤回投票";
-}
-function selectOriginalPost(post: TreeholePost) {
-  draft.value.postId = post.id;
-  draft.value.linked = true;
-  draft.value.body = post.body;
-  draft.value.title =
-    draft.value.title ||
-    post.title ||
-    Array.from(post.body).slice(0, 40).join("") ||
-    "图片作品";
-  draft.value.share = false;
-  draft.value.photos = [];
-  draft.value.images = [];
-  draft.value.linkedImages = post.images || [];
-}
-function compose(entry?: ContestEntry) {
-  draft.value = {
-    id: entry?.id || null,
-    title: entry?.title || "",
-    body: entry?.body || "",
-    postId: entry?.postId || "",
-    linked: !!entry?.linked,
-    linkedImages: entry?.linked ? entry.images : [],
-    share: false,
-    agreed: false,
-    photos: [],
-    images: entry?.linked ? [] : entry?.images.map((i) => i.id) || [],
-    requestId: crypto.randomUUID(),
-  };
-  editing.value = true;
-}
-async function photos(event: Event) {
-  const input = event.target as HTMLInputElement;
-  await run(async () => {
-    for (const file of [...(input.files || [])].slice(
-      0,
-      3 - draft.value.images.length - draft.value.photos.length,
-    ))
-      draft.value.photos.push(await prepareTreeholeImage(file));
-    input.value = "";
-  });
-}
-async function submit() {
-  for (const photo of draft.value.photos) {
-    if (!photo.remote)
-      photo.remote = (
-        await treeholeRequest("media.upload", {
-          data: photo.data,
-          requestId: photo.id,
-        })
-      ).image;
-    if (!photo.remote) throw new Error("image_unavailable");
+  const cid = selected.value.id,
+    mode = winners.value;
+  wallLoading.value = true;
+  try {
+    const r = await call(
+      "contests.entries",
+      {
+        contestId: cid,
+        seed,
+        winnersOnly: mode,
+        offset: 0,
+        afterId: append ? entries.value.at(-1)?.id : null,
+      },
+      fresh,
+    );
+    if (selected.value?.id !== cid || winners.value !== mode) return;
+    more.value = (r.entries?.length || 0) > 20;
+    const rows = (r.entries || []).slice(0, 20);
+    entries.value = [
+      ...new Map(
+        [...(append ? entries.value : []), ...rows].map((e) => [e.id, e]),
+      ).values(),
+    ];
+  } finally {
+    wallLoading.value = false;
   }
-  await request("contests.submit", {
-    contestId: selected.value!.id,
-    entryId: draft.value.id,
-    requestId: draft.value.requestId,
-    title: draft.value.title,
-    body: draft.value.body,
-    postId: draft.value.postId || null,
-    share: draft.value.share,
-    linkPost: draft.value.linked,
-    images: [
-      ...draft.value.images,
-      ...draft.value.photos.map((p) => p.remote!.id),
-    ],
-    agreed: draft.value.agreed,
-  });
-  await open(selected.value!.id);
-  notice.value = "作品已提交";
 }
-async function withdraw(entry: ContestEntry) {
-  await request("contests.withdraw", {
-    contestId: selected.value!.id,
-    entryId: entry.id,
-  });
-  await wall();
-  notice.value = "作品已撤回，记录已保留";
+async function loadEvent(id: string, fresh = false) {
+  lastId = id;
+  loading.value = true;
+  if (selected.value?.id !== id) {
+    selected.value = undefined;
+    entries.value = [];
+    mine.value = [];
+  }
+  try {
+    const r = await call("contests.get", { contestId: id }, fresh);
+    if (!r.contest) throw Error("invalid_response");
+    selected.value = r.contest;
+    votesUsed.value = r.votesUsed || 0;
+    mineReady.value =
+      r.myEntries !== undefined ||
+      contestStage(r.contest, now.value + offset) !== "submitting";
+    mine.value = r.myEntries || [];
+    winners.value = false;
+    await Promise.all([
+      wall(false, fresh),
+      mineReady.value
+        ? Promise.resolve()
+        : call(
+            "contests.entries",
+            { contestId: id, seed, mine: true },
+            fresh,
+          ).then((r) => {
+            if (selected.value?.id === id) {
+              mine.value = (r.entries || []).filter(
+                (e) => e.status === "approved",
+              );
+              mineReady.value = true;
+            }
+          }),
+    ]);
+  } finally {
+    loading.value = false;
+  }
 }
-async function decide() {
-  if (!action.value) return;
-  const a = action.value;
-  if (a.kind === "report")
-    await request("contests.report", {
-      contestId: selected.value!.id,
-      entryId: a.id,
-      reason: reason.value,
+async function home(fresh = false) {
+  loading.value = true;
+  try {
+    await list(fresh);
+    if (head.value) await loadEvent(head.value.id, fresh);
+  } finally {
+    loading.value = false;
+  }
+}
+function open(id: string, awardOnly = false) {
+  go("detail");
+  void run(async () => {
+    await loadEvent(id);
+    if (awardOnly && selected.value?.state === "ended") {
+      winners.value = true;
+      await wall();
+    }
+  });
+}
+function openWork(work: ContestEntry) {
+  go("entry");
+  entry.value = work;
+}
+function compose(work?: ContestEntry) {
+  editing.value = work;
+  go("compose");
+}
+async function primary() {
+  if (!selected.value) return;
+  const phase = contestStage(selected.value, now.value + offset);
+  if (phase === "submitting") {
+    if (!mineReady.value) {
+      await run(() => loadEvent(selected.value!.id, true));
+      return;
+    }
+    const own = mine.value.find((e) => e.status === "approved");
+    if (own) openWork(own);
+    else compose();
+  } else if (phase === "upcoming" || phase === "draft") {
+    const rules = document.getElementById(
+      "contest-rules",
+    ) as HTMLDetailsElement | null;
+    if (rules) {
+      rules.open = true;
+      rules.scrollIntoView({
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+    }
+  } else
+    document.getElementById("contest-wall")?.scrollIntoView({
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
     });
-  else
-    await request("contests.review", {
-      contestId: selected.value?.id || contests.value[0]?.id,
-      kind: a.kind,
-      targetId: a.id,
-      decision: a.decision,
-      reason: reason.value,
-      mergeId: mergeId.value || null,
+}
+function applyEntry(work: ContestEntry) {
+  for (const previous of history) {
+    if (previous.selected?.id === work.contestId) {
+      previous.entries = (previous.entries || []).map((e: ContestEntry) =>
+        e.id === work.id ? work : e,
+      );
+      if (previous.entry?.id === work.id) previous.entry = work;
+      previous.votesUsed = votesUsed.value;
+    }
+  }
+  entry.value = work;
+  entries.value = entries.value.map((e) => (e.id === work.id ? work : e));
+  if (work.mine) {
+    mine.value = [work, ...mine.value.filter((e) => e.id !== work.id)];
+  }
+}
+function updateEvent(contest: Contest) {
+  selected.value = contest;
+  contests.value = contests.value.map((c) =>
+    c.id === contest.id ? contest : c,
+  );
+  for (const previous of history) {
+    if (previous.selected?.id === contest.id) previous.selected = contest;
+    previous.contests = contests.value;
+  }
+}
+function syncOwnWork() {
+  if (!selected.value) return;
+  for (const previous of history) {
+    if (previous.selected?.id === selected.value.id) {
+      previous.mine = [...mine.value];
+      if (!previous.winners) previous.entries = [...entries.value];
+    }
+  }
+}
+function submitted(work: ContestEntry) {
+  const was = mine.value.some((e) => e.id === work.id);
+  applyEntry(work);
+  if (!entries.value.some((e) => e.id === work.id)) entries.value.unshift(work);
+  if (selected.value && !was) {
+    updateEvent({
+      ...selected.value,
+      entryCount: selected.value.entryCount + 1,
+      participantCount:
+        selected.value.participantCount + (mine.value.length === 1 ? 1 : 0),
     });
-  action.value = undefined;
-  reason.value = "";
-  if (view.value === "themes") await themes();
-  else await wall();
-  notice.value = "处理已保存";
+  }
+  syncOwnWork();
+  if (history.at(-1)?.view === "entry" && history.at(-1)?.entry?.id === work.id)
+    history.pop();
+  view.value = "entry";
+  void nextTick(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  notice.value = editing.value ? "作品已保存" : "参赛成功，期待同学们的喜欢";
+  editing.value = undefined;
 }
-function resetThemeRequest() {
-  themeRequest.value = crypto.randomUUID();
+async function vote() {
+  if (pendingVote.value || !entry.value || !selected.value) return;
+  const before = entry.value,
+    cid = selected.value.id,
+    enabled = !before.voted,
+    used = votesUsed.value;
+  pendingVote.value = true;
+  error.value = "";
+  try {
+    const r = await call("contests.vote", {
+      contestId: cid,
+      entryId: before.id,
+      enabled,
+    });
+    const committed = confirmedVote(before, enabled, used, r);
+    if (selected.value?.id === cid) {
+      votesUsed.value = committed.votesUsed;
+      applyEntry(committed.entry);
+      notice.value = committed.entry.voted
+        ? "这一票，已送达"
+        : "已撤回，可以重新选择";
+    }
+  } catch (e) {
+    showError(e);
+  } finally {
+    pendingVote.value = false;
+  }
 }
-const moreThemes = ref(false);
-async function themes(append = false) {
-  const result = await request("contests.themes", {
-    offset: append ? data.value.themes?.length || 0 : 0,
-  });
-  moreThemes.value = (result.themes?.length || 0) > 20;
-  data.value = {
-    ...result,
-    themes: [
-      ...(append ? data.value.themes || [] : []),
-      ...(result.themes || []).slice(0, 20),
-    ],
-  };
+const confirmation = ref<{
+  kind: "withdraw" | "report";
+  entry: ContestEntry;
+}>();
+const reportReason = ref(""),
+  confirmBusy = ref(false);
+async function confirm() {
+  if (!confirmation.value || !selected.value || confirmBusy.value) return;
+  const op = confirmation.value;
+  confirmBusy.value = true;
+  try {
+    if (op.kind === "withdraw") {
+      await call("contests.withdraw", {
+        contestId: selected.value.id,
+        entryId: op.entry.id,
+      });
+      mine.value = mine.value.filter((e) => e.id !== op.entry.id);
+      entries.value = entries.value.filter((e) => e.id !== op.entry.id);
+      updateEvent({
+        ...selected.value,
+        entryCount: Math.max(0, selected.value.entryCount - 1),
+        participantCount: Math.max(
+          0,
+          selected.value.participantCount - (mine.value.length ? 0 : 1),
+        ),
+      });
+      syncOwnWork();
+      confirmation.value = undefined;
+      view.value = history.pop()?.view || "detail";
+      notice.value = "作品已撤回，截止前可以重新投稿。";
+    } else {
+      if (reportReason.value.trim().length < 2) return;
+      await call("contests.report", {
+        contestId: selected.value.id,
+        entryId: op.entry.id,
+        reason: reportReason.value,
+      });
+      confirmation.value = undefined;
+      notice.value = "举报已提交，开发者会处理。";
+    }
+  } catch (e) {
+    showError(e);
+  } finally {
+    confirmBusy.value = false;
+  }
 }
-async function change(next: string) {
-  view.value = next;
+async function finishAdmin(id: string, known?: Contest) {
+  const r = known
+    ? { contest: known }
+    : await call("contests.get", { contestId: id }, true);
+  if (!r.contest) throw Error("invalid_response");
+  selected.value = r.contest;
+  contests.value = [r.contest, ...contests.value.filter((c) => c.id !== id)];
+  if (history.at(-1)?.view === "manage") history.pop();
+  view.value = "manage";
+  notice.value = "赛事已保存";
+  void nextTick(() => window.scrollTo({ top: 0, behavior: "instant" }));
+}
+function manage() {
+  go("manage");
+}
+function openManage(id: string) {
+  go("manage");
   selected.value = undefined;
-  managing.value = false;
-  creating.value = false;
-  editing.value = false;
-  if (next === "themes") await themes();
-  else if (next === "year")
-    data.value = await request("contests.year", {
-      year: year.value,
-      offset: 0,
-    });
-  else if (next !== "honors") await list();
+  loading.value = true;
+  void run(async () => {
+    try {
+      const r = await call("contests.get", { contestId: id });
+      if (!r.contest) throw Error("invalid_response");
+      selected.value = r.contest;
+    } finally {
+      loading.value = false;
+    }
+  });
 }
-onMounted(() =>
-  run(async () => {
-    await list();
-    if (props.initialId) await open(props.initialId);
-  }),
-);
+function popRoute() {
+  epoch++;
+  loading.value = false;
+  wallLoading.value = false;
+  error.value = "";
+  notice.value = "";
+  const previous = history.pop();
+  if (previous) {
+    restore(previous);
+    void nextTick(() =>
+      window.scrollTo({ top: previous.scroll || 0, behavior: "instant" }),
+    );
+    return true;
+  }
+  if (view.value !== "home") {
+    view.value = "home";
+    void run(() => home());
+    return true;
+  }
+  return false;
+}
+function requestBack() {
+  if (confirmation.value) {
+    if (!confirmBusy.value) confirmation.value = undefined;
+    return true;
+  }
+  if (child.value?.requestBack()) return true;
+  return popRoute();
+}
+defineExpose({ requestBack, snapshot });
+onMounted(() => {
+  if (props.restore?.owner === props.user.id && !props.compact) {
+    restore(props.restore);
+    history.push(...(props.restore.history || []));
+    return;
+  }
+  void run(async () => {
+    if (props.compact) {
+      await list();
+      return;
+    }
+    await home();
+    if (props.initialId) {
+      if (selected.value?.id !== props.initialId) open(props.initialId);
+      else go("detail");
+    }
+  });
+});
 </script>
 <template>
-  <button v-if="compact" class="contest-entry" @click="emit('open', head?.id)">
-    <span class="entry-trophy"><Trophy :size="24" /></span
-    ><span
+  <button
+    v-if="compact"
+    class="contest-entry ct-compact"
+    @click="emit('open', head?.id)"
+  >
+    <Trophy :size="23" /><span
       ><small
-        >主题赛事
-        {{
-          head
-            ? "· " +
-              (head.paused
-                ? "已暂停"
-                : contestLabels[contestStage(head, clock + serverOffset)])
-            : ""
+        >主题赛事{{
+          head ? " · " + contestLabels[contestStage(head, now + offset)] : ""
         }}</small
-      ><strong>{{ head?.title || "历届作品与冠军档案" }}</strong
-      ><small v-if="head"
-        >{{ head.participantCount }} 人 · {{ head.entryCount }} 件作品 ·
-        {{ contestRemaining(head, clock + serverOffset) }}</small
-      ></span
-    ><ArrowRight :size="18" />
+      ><strong>{{ head?.title || "校园里的每一份创作" }}</strong
+      ><small>{{
+        head
+          ? contestRemaining(head, now + offset) +
+            " · " +
+            head.entryCount +
+            "件作品"
+          : "参与比赛，收藏属于你的荣誉"
+      }}</small></span
+    ><ChevronRight :size="17" />
   </button>
-  <section v-else class="contest-hub" aria-label="主题赛事" :aria-busy="busy">
-    <header class="hub-header">
-      <div>
-        <small>邯院通 · 校园创作</small>
-        <h2>主题赛事</h2>
-      </div>
-      <button
-        :disabled="busy"
-        aria-label="刷新赛事"
-        @click="run(() => (selected ? open(selected.id) : list(false, true)))"
-      >
-        <RefreshCw :size="20" /></button
-      ><button
-        v-if="admin"
-        :disabled="busy"
-        aria-label="创建赛事"
+  <section v-else class="ct" :aria-busy="loading">
+    <p v-if="error" class="ct-error" role="alert">
+      {{ error
+      }}<button
+        v-if="!['compose', 'create', 'edit'].includes(view)"
+        class="ct-link"
         @click="
-          creating = true;
-          managing = true;
+          run(() => (selected ? loadEvent(selected.id, true) : home(true)))
         "
       >
-        <Plus :size="22" />
+        重试
       </button>
-    </header>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-    <p v-if="busy" class="quiet" role="status">正在加载…</p>
-    <ContestAdmin
-      v-if="managing"
-      :owner="user.id"
-      :contest="creating ? undefined : selected"
-      @saved="(id) => run(() => open(id))"
-      @close="managing = false"
-    />
-    <template v-else>
-      <nav class="hub-tabs" aria-label="赛事栏目">
-        <button
-          v-for="(label, key) in {
-            events: '本期',
-            archive: '历届赛事',
-            year: '年度榜',
-            themes: '主题征集',
-            honors: '我的荣誉',
-          }"
-          :key="key"
-          :aria-pressed="view === key"
-          :disabled="busy"
-          @click="run(() => change(key))"
-        >
-          {{ label }}
-        </button>
-      </nav>
-      <template v-if="selected">
-        <button class="back" @click="selected = undefined">
-          <ChevronLeft :size="17" />全部赛事
-        </button>
-        <div class="contest-cover">
-          <img
-            v-if="selected.cover?.url"
-            :src="selected.cover.url"
-            alt="赛事封面"
-          />
-          <div class="cover-title">
-            <small>{{ selected.type }} · {{ selected.edition }}</small>
-            <h2>{{ selected.title }}</h2>
-            <span>{{ selected.paused ? "已暂停" : contestLabels[stage] }}</span>
-          </div>
-        </div>
-        <div class="stage-line">
-          <Clock :size="16" /><span>{{
-            contestRemaining(selected, clock + serverOffset)
-          }}</span
-          ><span
-            >{{ selected.entryCount }} 件作品 ·
-            {{ selected.participantCount }} 人</span
-          >
-        </div>
-        <p class="description">{{ selected.description }}</p>
-        <details>
-          <summary>赛事规则与奖励</summary>
-          <p class="rules">{{ selected.rules }}</p>
-          <p>
-            每人最多 {{ selected.maxEntries }} 件作品，{{
-              selected.votesPerUser
-            }}
-            票，投给不同作品。投票账号需在投票开始前注册满
-            {{ selected.minAccountHours }} 小时。投票期可撤回，截止后锁定。
-          </p>
-          <p>
-            有效作品满
-            {{ selected.minEntries }}
-            件，向得票作品颁发前三与优秀作品奖。同票并列，下一名次连续排列。冠军5分、亚军3分、季军2分、优秀作品1分计入年度榜，年度同分并列。每位有效参赛者保留参赛纪念。
-          </p>
-          <ol>
-            <li>
-              投稿 {{ new Date(selected.startsAt).toLocaleString("zh-CN") }} 至
-              {{ new Date(selected.submissionEnds).toLocaleString("zh-CN") }}
-            </li>
-            <li>
-              投票
-              {{ new Date(selected.votingStarts).toLocaleString("zh-CN") }} 至
-              {{ new Date(selected.votingEnds).toLocaleString("zh-CN") }}
-            </li>
-            <li>
-              公布 {{ new Date(selected.awardAt).toLocaleString("zh-CN") }}
-            </li>
-          </ol>
-          <p>
-            已暂停的赛事停止投稿和投票，阶段时间继续按公布的日程计算。开发者可延长尚未结束的阶段。
-          </p>
-        </details>
-        <button
-          v-if="stage === 'submitting' && !selected.paused"
-          class="primary"
-          :disabled="busy"
-          @click="compose()"
-        >
-          我要参赛
-        </button>
-        <p v-else-if="stage === 'voting'" class="vote-budget">
-          {{ selected.paused ? "已暂停投票" : "参与投票" }} · 已用
-          {{ votesUsed }} / {{ selected.votesPerUser }} 票
-        </p>
-        <p v-else-if="stage === 'reviewing'" class="vote-budget">
-          结果统计与审核中
-        </p>
-        <p v-else-if="stage === 'ended'" class="ceremony">
-          <Trophy :size="24" />获奖作品已收入冠军档案馆
-        </p>
-        <button v-if="admin" class="manage-link" @click="managing = true">
-          管理本场赛事
-        </button>
-        <form v-if="editing" class="entry-form" @submit.prevent="run(submit)">
-          <h3>{{ draft.id ? "编辑作品" : "提交作品" }}</h3>
-          <label
-            >作品名称<input v-model="draft.title" required maxlength="80"
-          /></label>
-          <label
-            >文字内容<textarea
-              v-model="draft.body"
-              :readonly="draft.linked"
-              maxlength="3000"
-              rows="5"
-            ></textarea>
-          </label>
-          <ContestPostPicker @choose="selectOriginalPost" />
-          <p v-if="draft.linked" class="quiet">
-            使用原帖正文与配图，可修改作品标题或重新选择帖子。
-          </p>
-          <button
-            v-if="draft.linked"
-            type="button"
-            @click="
-              draft.linked = false;
-              draft.postId = '';
-              draft.linkedImages = [];
-            "
-          >
-            改为直接投稿
-          </button>
-          <div class="draft-photos">
-            <figure v-for="image in draft.linkedImages" :key="image.id">
-              <img v-if="image.url" :src="image.url" alt="所选原帖配图" />
-            </figure>
-            <figure v-for="(photo, index) in draft.photos" :key="photo.id">
-              <img
-                :src="'data:image/jpeg;base64,' + photo.data"
-                alt="待提交的配图"
-              /><button type="button" @click="draft.photos.splice(index, 1)">
-                移除
-              </button>
-            </figure>
-            <button
-              v-for="(image, index) in draft.images"
-              :key="image"
-              type="button"
-              @click="draft.images.splice(index, 1)"
-            >
-              移除已附图片 {{ index + 1 }}
-            </button>
-          </div>
-          <label
-            v-if="
-              !draft.linked && draft.images.length + draft.photos.length < 3
-            "
-            >添加图片，最多3张<input
-              type="file"
-              accept="image/*"
-              multiple
-              :disabled="busy"
-              @change="photos" /></label
-          ><label v-if="!draft.id && !draft.postId" class="check"
-            ><input
-              v-model="draft.share"
-              type="checkbox"
-            />同步生成一篇社区图文帖</label
-          ><label class="check"
-            ><input
-              v-model="draft.agreed"
-              type="checkbox"
-              required
-            />我已阅读规则，拥有作品的发布权</label
-          ><button class="primary" :disabled="busy || !draft.agreed">
-            提交作品</button
-          ><button type="button" :disabled="busy" @click="editing = false">
-            收起编辑
-          </button>
-        </form>
-        <div v-if="stage === 'ended'" class="filters">
-          <button
-            :aria-pressed="winnersOnly"
-            @click="
-              winnersOnly = true;
-              run(() => wall());
-            "
-          >
-            冠军档案馆 · 获奖作品</button
-          ><button
-            :aria-pressed="!winnersOnly"
-            @click="
-              winnersOnly = false;
-              run(() => wall());
-            "
-          >
-            全部作品
-          </button>
-        </div>
-        <h3 class="wall-heading">
-          {{ stage === "ended" ? "获奖作品与全部投稿" : "参赛作品"
-          }}<small>每位用户独立随机排序</small>
-        </h3>
-        <p v-if="!entries.length && !busy" class="empty">
-          还没有作品，投稿开启后可以在这里参赛。
-        </p>
-        <ContestEntryCard
-          v-for="entry in entries"
-          :key="entry.id"
-          :entry="entry"
-          @image="emit('image', entry, $event)"
-          :voting="stage === 'voting' && !selected.paused"
-          :submitting="stage === 'submitting' && !selected.paused"
-          :admin="admin"
-          :busy="busy"
-          @vote="run(() => vote(entry))"
-          @edit="compose(entry)"
-          @withdraw="run(() => withdraw(entry))"
-          @profile="emit('profile', entry.memberId)"
-          @post="entry.postId && emit('post', entry.postId)"
-          @report="action = { kind: 'report', id: entry.id, decision: '' }"
-          @review="
-            action = {
-              kind: 'entry',
-              id: entry.id,
-              decision: entry.status === 'approved' ? 'remove' : 'approve',
-            }
+    </p>
+    <p v-if="notice" class="ct-notice" role="status">{{ notice }}</p>
+    <template v-if="view === 'home' || view === 'detail'"
+      ><div class="ct-toolbar">
+        <button v-if="admin" class="ct-link" @click="go('admin')">
+          赛事管理</button
+        ><button
+          class="ct-link"
+          :disabled="loading"
+          @click="
+            run(() =>
+              view === 'home'
+                ? home(true)
+                : loadEvent(selected?.id || lastId, true),
+            )
           "
-        />
-        <button
-          v-if="more"
-          :disabled="busy"
-          class="more"
-          @click="run(() => wall(true))"
         >
-          更多作品
+          刷新
         </button>
-      </template>
-      <template v-else-if="view === 'events' || view === 'archive'"
-        ><div v-if="view === 'archive'" class="filters">
-          <label
-            >年份<input
-              v-model.number="year"
-              type="number"
-              min="2020"
-              max="9999"
-              @change="run(() => list())" /></label
-          ><label
-            >赛事类型<input
-              v-model="type"
-              placeholder="全部类型"
-              @change="run(() => list())"
-          /></label>
-        </div>
-        <p v-if="!contests.length && !busy" class="empty">
+      </div>
+      <ContestDetail
+        v-if="selected"
+        :contest="selected"
+        :entries="entries"
+        :mine="mine"
+        :mine-ready="mineReady"
+        :legacy-eligibility="(backendSchema || 13) < 14"
+        :now="now + offset"
+        :votes-used="votesUsed"
+        :more="more"
+        :loading="wallLoading"
+        :winners="winners"
+        :admin="admin"
+        :home="view === 'home'"
+        @primary="primary"
+        @entry="openWork"
+        @more="run(() => wall(true))"
+        @filter="
+          winners = $event;
+          run(() => wall(false, true));
+        "
+        @manage="manage" />
+      <p v-else-if="loading" class="ct-loading" role="status">正在打开比赛…</p>
+      <div v-else class="ct-empty">
+        <h3>下一场精彩，很快相遇</h3>
+        <p>
           {{
             admin
-              ? "创建第一场赛事，邀请同学留下自己的作品。"
-              : "赛事发布后会出现在这里。"
+              ? "创建一场比赛，邀请同学们留下作品。"
+              : "新赛事发布后，会出现在这里。先看看历届故事吧。"
           }}
         </p>
-        <button
-          v-for="contest in contests"
-          :key="contest.id"
-          class="event-row"
-          :disabled="busy"
-          @click="run(() => open(contest.id))"
-        >
-          <img
-            v-if="contest.cover?.url"
-            :src="contest.cover.url"
-            alt=""
-          /><Trophy v-else :size="27" /><span
-            ><small
-              >{{ contest.type }} ·
-              {{
-                contestLabels[contestStage(contest, clock + serverOffset)]
-              }}</small
-            ><strong>{{ contest.title }}</strong
-            ><small
-              >{{ contest.participantCount }} 人 ·
-              {{ contest.entryCount }} 件作品</small
-            ></span
-          ><ArrowRight :size="18" /></button
-        ><button
-          v-if="moreContests"
-          :disabled="busy"
-          @click="run(() => list(true))"
-        >
-          更多赛事
-        </button></template
-      >
-      <template v-else-if="view === 'themes'"
-        ><h3>下一场，比什么</h3>
-        <form
-          v-if="data.solicitation"
-          @submit.prevent="
-            run(async () => {
-              await request('contests.suggest', {
-                title: theme,
-                requestId: themeRequest,
-              });
-              resetThemeRequest();
-              theme = '';
-              await themes();
-            })
-          "
-        >
-          <label
-            >提议主题<input
-              v-model="theme"
-              required
-              minlength="3"
-              maxlength="80"
-              placeholder="写下你想参与的主题" /></label
-          ><button class="primary" :disabled="busy">提交提议</button>
-        </form>
-        <p v-else class="quiet">主题征集尚未开启，候选主题继续保留。</p>
-        <article v-for="item in data.themes" :key="item.id" class="theme-row">
-          <strong>{{ item.title }}</strong><small>{{
-            item.status === "pending"
-              ? "待审核"
-              : item.status === "merged"
-                ? "已合并"
-                : item.status === "removed"
-                  ? "已移除"
-                  : item.votes + " 人喜欢"
-          }}</small
-          ><button
-            v-if="data.solicitation && item.status === 'approved'"
-            :disabled="busy"
-            :aria-pressed="item.voted"
-            @click="
-              run(async () => {
-                await request('contests.themevote', {
-                  themeId: item.id,
-                  enabled: !item.voted,
-                });
-                await themes();
-              })
-            "
-          >
-            {{ item.voted ? "已支持" : "支持" }}</button
-          ><template v-if="admin"
-            ><button
-              @click="
-                action = { kind: 'theme', id: item.id, decision: 'approve' }
-              "
-            >
-              通过</button
-            ><button
-              @click="
-                action = { kind: 'theme', id: item.id, decision: 'remove' }
-              "
-            >
-              移除</button
-            ><button
-              @click="
-                action = { kind: 'merge', id: item.id, decision: 'approve' }
-              "
-            >
-              合并
-            </button></template
-          >
-        </article>
-        <button
-          v-if="moreThemes"
-          :disabled="busy"
-          @click="run(() => themes(true))"
-        >
-          更多候选主题
+        <button v-if="admin" class="ct-primary" @click="go('create')">
+          创建赛事
         </button>
-        <p class="quiet">最终主题与比赛规则由开发者审核发布。</p></template
-      >
-      <template v-else-if="view === 'year'"
-        ><h3>年度赛事榜</h3>
-        <label
-          >年份<input
-            v-model.number="year"
-            type="number"
-            min="2020"
-            max="9999"
-            @change="run(() => change('year'))"
-        /></label>
-        <p class="quiet">
-          冠军5分 · 亚军3分 · 季军2分 · 优秀作品1分。同分并列，年度结束后归档。
-        </p>
-        <p v-if="!data.leaders?.length" class="empty">
-          本年度暂未公布获奖记录。
-        </p>
-        <button
-          v-for="member in data.leaders"
-          :key="member.id"
-          class="leader"
-          @click="emit('profile', member.id)"
-        >
-          <Trophy :size="18" /><strong>{{ member.nickname }}</strong
-          ><span>{{ member.score }} 分</span></button
-        ><button
-          v-if="(data.leaders?.length || 0) > 20"
-          :disabled="busy"
-          @click="
-            run(async () => {
-              const rows = data.leaders!.slice(0, -1);
-              const r = await request('contests.year', {
-                year,
-                offset: rows.length,
-              });
-              data.leaders = [...rows, ...(r.leaders || [])];
-            })
-          "
-        >
-          更多排名
-        </button></template
-      >
-      <ContestHonors
-        v-else-if="view === 'honors'"
+      </div>
+      <footer class="ct-footer-links">
+        <button @click="go('archive')">
+          <Trophy :size="17" />历届赛事<ChevronRight :size="16" /></button
+        ><button @click="go('themes')">
+          下一期主题征集<ChevronRight :size="16" />
+        </button></footer></template
+    ><ContestWorkDetail
+      v-else-if="view === 'entry' && selected && entry"
+      :entry="entry"
+      :contest="selected"
+      :now="now + offset"
+      :votes-used="votesUsed"
+      :pending="pendingVote"
+      @vote="vote"
+      @edit="compose(entry)"
+      @withdraw="confirmation = { kind: 'withdraw', entry }"
+      @report="
+        confirmation = { kind: 'report', entry };
+        reportReason = '';
+      "
+      @profile="emit('profile', entry.memberId)"
+      @post="entry.postId && emit('post', entry.postId)"
+      @image="emit('image', entry, $event)"
+    /><ContestComposer
+      v-else-if="view === 'compose' && selected"
+      ref="child"
+      :owner="user.id"
+      :contest="selected"
+      :entry="editing"
+      @submitted="submitted"
+      @close="popRoute"
+    /><KeepAlive
+      ><ContestArchive
+        v-if="view === 'archive'"
         :owner="user.id"
-        :member-id="user.id"
-        personal
-        @open="(id) => run(() => open(id))"
-      />
-    </template>
-    <form v-if="action" class="review-form" @submit.prevent="run(decide)">
-      <h3>
+        @open="open" /></KeepAlive
+    ><template v-if="view === 'admin' && admin"
+      ><h2>赛事管理中心</h2>
+      <button class="ct-primary ct-more" @click="go('create')">
+        <Plus :size="17" />创建赛事</button
+      ><button
+        v-for="c in contests"
+        :key="c.id"
+        class="ct-row"
+        @click="openManage(c.id)"
+      >
+        <span class="ct-row-copy"
+          ><h3>{{ c.title }}</h3>
+          <small
+            >{{ contestLabels[c.state] }} · {{ c.entryCount }}件作品</small
+          ></span
+        ><ChevronRight :size="17" /></button
+      ><button
+        v-if="moreContests"
+        class="ct-secondary ct-more"
+        :disabled="loading"
+        @click="run(() => list(false, true))"
+      >
+        更多管理赛事</button
+      ><button class="ct-link" @click="go('themes')">
+        管理主题征集
+      </button></template
+    ><ContestAdmin
+      v-if="(view === 'create' || view === 'edit') && admin"
+      ref="child"
+      :owner="user.id"
+      :contest="view === 'edit' ? selected : undefined"
+      :backend-schema="backendSchema"
+      @saved="(id, c) => run(() => finishAdmin(id, c))"
+      @close="popRoute"
+    /><ContestManagement
+      v-if="view === 'manage' && selected && admin"
+      ref="child"
+      :owner="user.id"
+      :contest="selected"
+      @updated="updateEvent"
+      @edit="go('edit')"
+      @work="openWork"
+    /><ContestThemes
+      v-if="view === 'themes'"
+      ref="child"
+      :owner="user.id"
+      :admin="admin"
+      :legacy-contest-id="contests[0]?.id"
+      :backend-schema="backendSchema"
+    /><ContestDialog
+      :open="!!confirmation"
+      :title="
+        confirmation?.kind === 'withdraw' ? '撤回这件作品？' : '举报这件作品'
+      "
+      :busy="confirmBusy"
+      :danger="confirmation?.kind === 'withdraw'"
+      :confirm="confirmation?.kind === 'withdraw' ? '撤回作品' : '提交举报'"
+      @cancel="confirmation = undefined"
+      @confirm="confirm"
+      ><p>
         {{
-          action.kind === "report"
-            ? "举报作品"
-            : action.kind === "merge"
-              ? "合并主题"
-              : action.decision === "approve"
-                ? "恢复／通过"
-                : "下架或剔除"
+          confirmation?.kind === "withdraw"
+            ? "撤回后将从公开展示中移除，保留本人的投稿记录。截止前可以重新投稿。"
+            : "请说明不符合规则的地方，开发者会据此审核。"
         }}
-      </h3>
-      <label
-        >原因<textarea
-          v-model="reason"
-          required
-          minlength="2"
-          maxlength="300"
+      </p>
+      <label v-if="confirmation?.kind === 'report'" class="ct-form"
+        >举报原因<textarea
+          style="resize: none"
+          v-model="reportReason"
           rows="3"
-        /></label
-      ><label v-if="action.kind === 'merge'"
-        >合并到已通过的主题<select v-model="mergeId" required>
-          <option disabled value="">选择主题</option>
-          <option
-            v-for="item in data.themes?.filter(
-              (item) => item.status === 'approved' && item.id !== action?.id,
-            )"
-            :key="item.id"
-            :value="item.id"
-          >
-            {{ item.title }}
-          </option>
-        </select></label
-      ><button class="primary" :disabled="busy || reason.trim().length < 2">
-        确认提交</button
-      ><button type="button" @click="action = undefined">取消</button>
-    </form>
+          maxlength="300"
+        />
+      </label>
+      <p v-if="error" role="alert">{{ error }}</p></ContestDialog
+    >
   </section>
 </template>
 <style scoped>
-.contest-entry {
+.ct-compact {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
   text-align: left;
-  border: 1px solid #dddff0;
-  border-radius: 15px;
-  padding: 13px;
-  margin: 10px 0 18px;
-  background: #f7f7fd;
-  color: var(--color-text);
-}
-.entry-trophy {
-  width: 42px;
-  height: 46px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: #eaeaf7;
-  color: #666b9f;
-}
-.contest-entry > span:nth-child(2) {
-  flex: 1;
-  min-width: 0;
-}
-.contest-entry small {
-  display: block;
-  color: var(--color-muted);
-  font-size: 11px;
-  line-height: 1.8;
-}
-.contest-entry strong {
-  display: block;
-  font-size: 15px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.contest-entry > svg {
-  color: #777da7;
-}
-.hub-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 0;
-}
-.hub-header > div {
-  flex: 1;
-}
-.hub-header small {
-  font-size: 11px;
-  color: var(--color-muted);
-}
-.hub-header h2 {
-  font-size: 28px;
-  letter-spacing: -0.6px;
-}
-.hub-header button {
-  width: 44px;
-}
-.contest-hub button {
-  min-height: 44px;
-}
-.hub-tabs {
-  display: flex;
-  overflow: auto;
-  border-bottom: 1px solid var(--color-divider);
-  gap: 18px;
-  margin-bottom: 16px;
-  white-space: nowrap;
-}
-.hub-tabs button {
-  font-size: 13px;
-  flex-shrink: 0;
-  border-bottom: 2px solid transparent;
-}
-.hub-tabs [aria-pressed="true"] {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-.event-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  text-align: left;
-  padding: 19px 0;
-  border-bottom: 1px solid var(--color-divider);
-}
-.event-row > svg {
-  color: #777aa5;
-  flex-shrink: 0;
-}
-.event-row img {
-  width: 64px;
-  height: 68px;
-  object-fit: cover;
-  border-radius: 10px;
-}
-.event-row span {
-  flex: 1;
-  min-width: 0;
-}
-.event-row strong {
-  display: block;
-  font-size: 18px;
-  margin: 5px 0;
-}
-.event-row small,
-.quiet {
-  font-size: 12px;
-  color: var(--color-muted);
-  line-height: 1.8;
-}
-.contest-cover {
-  position: relative;
-  min-height: 200px;
-  overflow: hidden;
-  border-radius: 18px;
-  background: #e8eaf5;
-  color: #373d68;
-}
-.contest-cover > img {
-  width: 100%;
-  height: 250px;
-  object-fit: cover;
-  filter: brightness(0.65);
-}
-.cover-title {
-  position: relative;
-  padding: 36px 24px;
-}
-.contest-cover:has(img) .cover-title {
-  position: absolute;
-  bottom: 0;
-  color: white;
-}
-.cover-title small {
-  font-size: 12px;
-}
-.cover-title h2 {
-  font-size: 29px;
-  letter-spacing: -0.5px;
-  margin: 10px 0 20px;
-  line-height: 1.35;
-}
-.cover-title span {
-  font-size: 11px;
-  padding: 5px 9px;
-  border: 1px solid currentColor;
-  border-radius: 6px;
-}
-.stage-line {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  font-size: 11px;
-  color: var(--color-muted);
-  margin: 16px 0;
-}
-.stage-line span:last-child {
-  margin-left: auto;
-}
-.description {
-  font-size: 16px;
-  line-height: 1.9;
-  margin-bottom: 16px;
-  white-space: pre-wrap;
-}
-.contest-hub details {
-  background: var(--color-bg);
-  border-radius: 12px;
-  padding: 14px;
-  font-size: 12px;
-  line-height: 1.9;
-  margin-bottom: 16px;
-}
-.rules {
-  white-space: pre-wrap;
-}
-.contest-hub ol {
-  padding-left: 18px;
-}
-.primary {
-  width: 100%;
-  background: var(--color-primary);
-  color: white;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 14px;
-  margin: 10px 0;
-}
-.back {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--color-muted);
-  font-size: 12px;
-}
-.manage-link {
-  font-size: 12px;
-  color: var(--color-primary);
-  width: 100%;
-}
-.wall-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 24px 0 14px;
-  font-size: 17px;
-}
-.wall-heading small {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--color-muted);
-}
-.vote-budget,
-.ceremony {
-  padding: 16px;
-  text-align: center;
+  padding: 15px 14px;
   background: var(--color-tint);
-  border-radius: 12px;
-  color: var(--color-primary);
-  font-size: 13px;
-}
-.ceremony {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  animation: award-reveal 0.4s ease-out;
-}
-.empty {
-  padding: 36px 16px;
-  text-align: center;
-  color: var(--color-muted);
-  font-size: 13px;
-}
-.error {
-  background: var(--color-highlight);
-  padding: 12px;
-  color: var(--color-danger);
-  font-size: 13px;
-}
-.notice {
-  font-size: 13px;
-  color: var(--color-primary);
-  padding: 10px 0;
-}
-.entry-form,
-.review-form {
-  padding: 18px;
-  border: 1px solid var(--color-border);
   border-radius: 14px;
-  margin: 16px 0;
+  color: var(--color-primary);
+  margin: 8px 0 14px;
 }
-.contest-hub label {
-  display: block;
-  font-size: 12px;
-  margin: 12px 0;
-}
-.contest-hub input:not([type="checkbox"]),
-textarea {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  border-radius: 8px;
-  color: var(--color-text);
-  font: inherit;
-  min-height: 44px;
-  margin-top: 5px;
-}
-.check {
-  display: flex !important;
-  gap: 8px;
-  align-items: center;
-}
-.draft-photos {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.draft-photos figure {
-  width: 80px;
-  margin: 0;
-}
-.draft-photos img {
-  width: 80px;
-  height: 80px;
-  object-fit: cover;
-  border-radius: 8px;
-}
-.filters {
-  display: flex;
-  gap: 14px;
-}
-.filters label {
+.ct-compact span {
   flex: 1;
   min-width: 0;
+  display: grid;
+  gap: 4px;
 }
-.theme-row {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--color-divider);
+.ct-compact strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  color: var(--color-text);
 }
-.theme-row strong,
-.theme-row small {
-  display: block;
-}
-.theme-row small {
+.ct-compact small {
+  font-size: 11px;
   color: var(--color-muted);
-  font-size: 12px;
-  margin: 7px 0;
-}
-.theme-row button {
-  color: var(--color-primary);
-  font-size: 12px;
-  margin-right: 14px;
-}
-.leader {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  width: 100%;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-divider);
-  font-size: 14px;
-}
-.leader strong {
-  flex: 1;
-  text-align: left;
-}
-.leader span {
-  font-variant-numeric: tabular-nums;
-}
-.contest-hub button:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-.contest-hub button:disabled {
-  opacity: 0.45;
-}
-.more {
-  width: 100%;
-  color: var(--color-primary);
-}
-@keyframes award-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(7px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ceremony {
-    animation: none;
-  }
 }
 </style>

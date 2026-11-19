@@ -47,10 +47,13 @@ export function sanitizeContest(
     return { themeId: id(input.themeId), enabled: boolean(input.enabled) };
   if (action === "contests.admin")
     return { contestId: id(input.contestId, true), ...page() };
+  const operationMeta = ["contests.save","contests.manage","contests.review"].includes(action) ? {requestId:id(input.requestId,true), expectedVersion: input.expectedVersion == null ? null : integer(input.expectedVersion,1,2147483647)} : {};
+  const globalAction=(action==="contests.review"&&["theme","merge"].includes(input.kind))||(action==="contests.manage"&&input.operation==="solicitation");
   const out = {
+    ...operationMeta,
     contestId: id(
-      input.contestId,
-      action === "contests.review" && ["theme", "merge"].includes(input.kind),
+      globalAction ? null : input.contestId,
+      globalAction,
     ),
   };
   if (action === "contests.get") return out;
@@ -90,6 +93,7 @@ export function sanitizeContest(
     return {
       ...out,
       requestId: id(input.requestId),
+      expectedVersion: input.expectedVersion == null ? null : integer(input.expectedVersion,1,2147483647),
       entryId: id(input.entryId, true),
       title: text(input.title, 1, 80),
       body: text(input.body ?? "", 0, 3000),
@@ -125,6 +129,8 @@ export function sanitizeContest(
       minAccountHours: integer(input.minAccountHours ?? 24, 0, 8760),
       excellence: integer(input.excellence ?? 3, 0, 30),
       autoPublish: input.autoPublish === true,
+      reviewRisk: input.reviewRisk == null ? null : boolean(input.reviewRisk),
+      publish: input.publish === true,
     };
   }
   if (action === "contests.manage")

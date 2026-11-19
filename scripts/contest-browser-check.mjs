@@ -5,12 +5,20 @@ import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 import { chromium } from "playwright";
-import { createCommunity } from "../cloudbase/functions/community/core.mjs";
+const { createCommunity } = await import(
+  process.env.CONTEST_CORE_MODULE || "../cloudbase/functions/community/core.mjs"
+);
 
-const output = "/tmp/handan-community-contests-qa";
+const output =
+  process.env.CONTEST_QA_DIR || "/tmp/handan-community-contests-v2-qa";
 await mkdir(output, { recursive: true });
 const db = new PGlite();
-await db.exec(await readFile("cloudbase/community-schema.sql", "utf8"));
+await db.exec(
+  await readFile(
+    process.env.CONTEST_SCHEMA_PATH || "cloudbase/community-schema.sql",
+    "utf8",
+  ),
+);
 const media = new Map();
 let origin = "",
   sign = 0;
@@ -127,13 +135,14 @@ try {
   });
   for (const width of [360, 390, 430]) {
     const context = await browser.newContext({
-      viewport: { width, height: 844 },
+      viewport: { width, height: Number(process.env.CONTEST_QA_HEIGHT) || 844 },
       serviceWorkers: "block",
     });
     const actions = [];
+    let activeMember = voter;
     await context.exposeBinding("__contestNative", async (_, options) => {
       actions.push(options.action);
-      const result = await call(voter, options.action, options.body);
+      const result = await call(activeMember, options.action, options.body);
       delete result.sessionToken;
       return result;
     });
@@ -201,15 +210,28 @@ try {
     );
     await page.getByRole("button", { name: "我要参赛", exact: true }).click();
     await page.getByLabel("作品名称", { exact: true }).fill("窗外");
-    await page.getByLabel("文字内容", { exact: true }).fill("晚风穿过一页书。");
-    await page.getByLabel("我已阅读规则，拥有作品的发布权").check();
-    await page.getByRole("button", { name: "提交作品", exact: true }).click();
-    await page.getByText("作品已提交", { exact: true }).waitFor();
+    await page.getByLabel("作品内容", { exact: true }).fill("晚风穿过一页书。");
+    await page.getByLabel("我已阅读规则，作品符合投稿要求").check();
+    await page.screenshot({
+      path: path.join(output, `contest-compose-${width}.png`),
+      animations: "disabled",
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "预览作品", exact: true }).click();
+    await page.getByRole("button", { name: "确认参赛", exact: true }).click();
+    await page.getByRole("button", { name: "编辑作品", exact: true }).waitFor();
+    await page
+      .getByText("参赛成功，期待同学们的喜欢", { exact: true })
+      .waitFor();
+    await page.getByRole("button", { name: "返回上一层", exact: true }).click();
     await db.query(
       "UPDATE hyt_contests SET submission_ends=now()-interval '20 minutes',voting_starts=now()-interval '10 minutes' WHERE id=$1",
       [id],
     );
-    await page.getByRole("button", { name: "刷新赛事", exact: true }).click();
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await page
+      .getByRole("button", { name: "查看作品：早八路上的光", exact: true })
+      .click();
     await page.getByRole("button", { name: "投一票", exact: true }).click();
     await page
       .getByRole("button", { name: "已投票 · 撤回", exact: true })
@@ -224,7 +246,7 @@ try {
     );
     assert(
       !(await page
-        .locator(".contest-work footer")
+        .locator(".ct-work-detail .ct-final-votes")
         .filter({ hasText: /\d+ 票/ })
         .count()),
     );
@@ -264,22 +286,6 @@ try {
         operation: "publish",
         reason: "本地图片交互回归",
       });
-      const image = (
-        await call(author, "media.upload", {
-          data: (await readFile("public/campus/east-plan.jpg")).toString(
-            "base64",
-          ),
-          requestId: randomUUID(),
-        })
-      ).image;
-      await call(author, "contests.submit", {
-        contestId: imageEvent,
-        title: "校园平面图测试",
-        body: "",
-        images: [image.id],
-        agreed: true,
-        requestId: randomUUID(),
-      });
       let failedOnce = false;
       await page.route("**/fixtures/**", (route) => {
         if (!failedOnce) {
@@ -288,18 +294,31 @@ try {
         }
         return route.continue();
       });
-      await page.getByRole("button", { name: "全部赛事", exact: true }).click();
-      await page.getByRole("button", { name: "刷新赛事", exact: true }).click();
       await page
-        .locator(".event-row")
-        .filter({ hasText: "配图上传回归" })
+        .getByRole("button", { name: "返回上一层", exact: true })
         .click();
+      await page
+        .getByRole("button", { name: "返回上一层", exact: true })
+        .click();
+      await page.getByRole("button", { name: "刷新", exact: true }).click();
+      await page.getByRole("button", { name: "我要参赛", exact: true }).click();
+      await page.getByLabel("作品名称", { exact: true }).fill("校园平面图测试");
+      await page
+        .locator("input[type=file]")
+        .setInputFiles("public/campus/east-plan.jpg");
+      await page.getByAltText("待投稿图片").waitFor();
+      await page.getByLabel("我已阅读规则，作品符合投稿要求").check();
+      await page.getByRole("button", { name: "预览作品", exact: true }).click();
+      await page.getByRole("button", { name: "确认参赛", exact: true }).click();
+      await page
+        .getByRole("button", { name: "编辑作品", exact: true })
+        .waitFor();
       await page.waitForFunction(() => {
-        const image = document.querySelector(".contest-work .th-media img");
+        const image = document.querySelector(".ct-work-detail .th-media img");
         return image?.complete && image.naturalWidth > 0;
       });
       assert(actions.includes("contests.image"));
-      await page.locator(".contest-work .th-media button").click();
+      await page.locator(".ct-work-detail .th-media button").click();
       await page.waitForFunction(() => {
         const image = document.querySelector(".th-gallery img");
         return image?.complete && image.naturalWidth > 0;
@@ -318,7 +337,130 @@ try {
       checks.push(
         "390px JPEG submission, expired thumbnail renewal and existing full-screen gallery",
       );
+      activeMember = owner;
+      await page.reload();
+      await page.locator(".contest-entry").waitFor();
+      await page
+        .locator(".unlock-toast")
+        .waitFor({ state: "hidden", timeout: 10000 });
+      await page.locator(".contest-entry").click();
+      await page.getByRole("button", { name: "赛事管理", exact: true }).click();
+      await page.getByRole("button", { name: "创建赛事", exact: true }).click();
+      await page
+        .getByLabel("赛事名称", { exact: true })
+        .fill("精简创建流程回归");
+      await page
+        .getByLabel("主题与介绍", { exact: true })
+        .fill("只填写必要内容即可发布一场校园比赛。");
+      assert.equal(
+        await page.getByLabel("每人作品", { exact: true }).isVisible(),
+        false,
+      );
+      await page.screenshot({
+        path: path.join(output, "contest-create-390.png"),
+        animations: "disabled",
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: "发布赛事", exact: true }).click();
+      await page
+        .getByRole("heading", { name: "投稿中", exact: true })
+        .waitFor();
+      assert.equal(
+        await page.evaluate(() => window.scrollY),
+        0,
+        "successful creation returns to top of management",
+      );
+      const created = (
+        await db.query(
+          "SELECT id,published,extract(epoch from (award_at-starts_at))/86400 AS days FROM hyt_contests WHERE title='精简创建流程回归'",
+        )
+      ).rows[0];
+      assert.equal(created.published, true);
+      assert(Math.abs(Number(created.days) - 7) < 0.001);
+      await page.screenshot({
+        path: path.join(output, "contest-manage-390.png"),
+        animations: "disabled",
+        fullPage: true,
+      });
+      await call(author, "contests.submit", {
+        contestId: created.id,
+        requestId: randomUUID(),
+        title: "主动审核回归作品",
+        body: "审核入口保留公开作品与下架记录。",
+        images: [],
+        agreed: true,
+      });
+      await page.getByRole("button", { name: "刷新统计", exact: true }).click();
+      await page.getByText("作品审核", { exact: true }).click();
+      await page.getByRole("button", { name: "下架作品", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByLabel("处理原因", { exact: true })
+        .fill("主动核对授权信息");
+      await page.getByRole("button", { name: "确认处理", exact: true }).click();
+      await page
+        .getByRole("button", { name: "恢复作品", exact: true })
+        .waitFor();
+      await page.screenshot({
+        path: path.join(output, "contest-moderation-390.png"),
+        animations: "disabled",
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: "恢复作品", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByLabel("处理原因", { exact: true })
+        .fill("确认作者原创后恢复");
+      await page.getByRole("button", { name: "确认处理", exact: true }).click();
+      await page
+        .getByRole("button", { name: "下架作品", exact: true })
+        .waitFor();
+      await page.getByRole("button", { name: "查看作品", exact: true }).click();
+      await page
+        .getByRole("heading", { name: "主动审核回归作品", exact: true })
+        .waitFor();
+      await page
+        .getByRole("button", { name: "返回上一层", exact: true })
+        .click();
+      await page
+        .getByRole("heading", { name: "投稿中", exact: true })
+        .waitFor();
+      checks.push(
+        "390px proactive moderation: remove, restore, refreshed valid-entry count and work-detail return to management",
+      );
+      await page.getByText("更多赛事操作", { exact: true }).click();
+      await page.getByRole("button", { name: "暂停比赛", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByLabel("处理原因", { exact: true })
+        .fill("核对比赛规则");
+      await page.getByRole("button", { name: "确认处理", exact: true }).click();
+      await page
+        .getByRole("heading", { name: "比赛已暂停", exact: true })
+        .waitFor();
+      await page.getByRole("button", { name: "恢复比赛", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByLabel("处理原因", { exact: true })
+        .fill("核对完成恢复");
+      await page.getByRole("button", { name: "确认处理", exact: true }).click();
+      await page
+        .getByRole("heading", { name: "投稿中", exact: true })
+        .waitFor();
+      await page.getByRole("button", { name: "取消赛事", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByLabel("处理原因", { exact: true })
+        .fill("结束合成流程验证");
+      await page.getByRole("button", { name: "确认处理", exact: true }).click();
+      await page
+        .getByRole("heading", { name: "已取消", exact: true })
+        .waitFor();
+      checks.push(
+        "390px developer simple default-seven-day creation, confirmed publication, pause/resume/cancel and visible management metrics",
+      );
     }
+    assert.deepEqual(errors, []);
     metrics.push({
       width,
       requests: actions.reduce(

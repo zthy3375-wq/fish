@@ -1153,6 +1153,12 @@ CREATE TABLE IF NOT EXISTS public.hyt_contests (
  CHECK(starts_at<submission_ends AND submission_ends<=voting_starts AND voting_starts<voting_ends AND voting_ends<=award_at),
  CHECK(max_entries BETWEEN 1 AND 10 AND votes_per_user BETWEEN 1 AND 10 AND min_entries>0 AND min_account_hours>=0)
 );
+-- v14 additive: retain existing ballots and flags; administrative retry ledger.
+ALTER TABLE public.hyt_contests ADD COLUMN IF NOT EXISTS risk_review boolean NOT NULL DEFAULT true;
+CREATE TABLE IF NOT EXISTS public.hyt_contest_operations (
+ member_id uuid NOT NULL REFERENCES public.hyt_members(id), request_id uuid NOT NULL, action text NOT NULL,
+ payload jsonb NOT NULL, result jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(member_id,request_id)
+);
 CREATE INDEX IF NOT EXISTS hyt_contest_schedule ON public.hyt_contests(award_at,id) WHERE published AND NOT cancelled;
 CREATE TABLE IF NOT EXISTS public.hyt_contest_entries (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), contest_id uuid NOT NULL REFERENCES public.hyt_contests(id),
@@ -1174,6 +1180,8 @@ CREATE TABLE IF NOT EXISTS public.hyt_contest_votes (
  enabled boolean NOT NULL DEFAULT true, excluded boolean NOT NULL DEFAULT false, risk text,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(), UNIQUE(entry_id,member_id)
 );
+ALTER TABLE public.hyt_contest_votes ADD COLUMN IF NOT EXISTS window_started_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.hyt_contest_votes ADD COLUMN IF NOT EXISTS window_changes int NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS hyt_contest_vote_review ON public.hyt_contest_votes(contest_id,risk,created_at DESC,id);
 CREATE INDEX IF NOT EXISTS hyt_contest_voter ON public.hyt_contest_votes(contest_id,member_id) WHERE enabled;
 CREATE TABLE IF NOT EXISTS public.hyt_contest_awards (
@@ -1213,7 +1221,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.hyt_contest_json(c public.hyt_contests) RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
  SELECT jsonb_build_object('id',c.id,'title',c.title,'type',c.type,'edition',c.edition,'description',c.description,'rules',c.rules,
  'state',public.hyt_contest_state(c),'paused',c.paused,'startsAt',c.starts_at,'submissionEnds',c.submission_ends,'votingStarts',c.voting_starts,'votingEnds',c.voting_ends,'awardAt',c.award_at,
- 'formats',c.formats,'maxEntries',c.max_entries,'votesPerUser',c.votes_per_user,'minEntries',c.min_entries,'minAccountHours',c.min_account_hours,'excellence',c.excellence,'autoPublish',c.auto_publish,'version',c.version,
+ 'formats',c.formats,'maxEntries',c.max_entries,'votesPerUser',c.votes_per_user,'minEntries',c.min_entries,'minAccountHours',c.min_account_hours,'excellence',c.excellence,'autoPublish',c.auto_publish,'reviewRisk',c.risk_review,'version',c.version,
  'entryCount',(SELECT count(*) FROM public.hyt_contest_entries WHERE contest_id=c.id AND status='approved'),
  'participantCount',(SELECT count(DISTINCT member_id) FROM public.hyt_contest_entries WHERE contest_id=c.id AND status='approved'),
  'coverPostId',c.cover_post_id,'cover',(SELECT public.hyt_media_json(i) FROM public.hyt_media i JOIN public.hyt_posts p ON p.id=i.post_id WHERE p.id=c.cover_post_id AND p.deleted_at IS NULL AND i.ready AND i.deleted_at IS NULL ORDER BY i.position LIMIT 1));
@@ -1296,7 +1304,7 @@ BEGIN
   SELECT current_event.* INTO c FROM public.hyt_contests current_event WHERE current_event.id=c.id;
   IF NOT c.published OR c.cancelled OR c.paused OR NOT c.auto_publish OR c.announced_at IS NOT NULL OR c.award_at>clock_timestamp() THEN CONTINUE; END IF;
   IF EXISTS(SELECT 1 FROM public.hyt_contest_reports r JOIN public.hyt_contest_entries e ON e.id=r.entry_id WHERE e.contest_id=c.id AND r.resolved_at IS NULL) THEN CONTINUE; END IF;
-  IF EXISTS(SELECT 1 FROM public.hyt_contest_votes WHERE contest_id=c.id AND enabled AND risk IS NOT NULL AND NOT excluded) THEN CONTINUE; END IF;
+  IF EXISTS(SELECT 1 FROM public.hyt_contest_votes WHERE contest_id=c.id AND enabled AND risk IS NOT NULL AND risk NOT IN ('young_account','rapid_votes') AND NOT excluded) THEN CONTINUE; END IF;
   PERFORM public.hyt_contest_settle(c.id);
   UPDATE public.hyt_contests SET announced_at=now() WHERE id=c.id AND announced_at IS NULL;
   PERFORM public.hyt_contest_achievements_refresh(c.id);
@@ -1311,11 +1319,12 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.hyt_contests(a text,b jsonb,th text) RETURNS jsonb LANGUAGE plpgsql SET search_path=pg_catalog,public AS $contest$
 #variable_conflict use_column
-DECLARE m public.hyt_members; c public.hyt_contests; e public.hyt_contest_entries; old public.hyt_contest_entries;
+DECLARE previous_operation public.hyt_contest_operations; m public.hyt_members; c public.hyt_contests; e public.hyt_contest_entries; old public.hyt_contest_entries;
  p public.hyt_posts; t public.hyt_contest_themes; v public.hyt_contest_votes;
  cid uuid:=(b->>'contestId')::uuid; target uuid; result jsonb; rows jsonb; n int; delta int; off_n int:=coalesce((b->>'offset')::int,0); op text; stamp timestamptz:=clock_timestamp();
  admin boolean; mutation boolean:=a NOT IN ('contests.list','contests.get','contests.entries','contests.profile','contests.year','contests.themes','contests.admin','contests.image','contests.schedule');
 BEGIN
+ IF (a='contests.review' AND b->>'kind' IN ('theme','merge')) OR (a='contests.manage' AND b->>'operation'='solicitation') THEN cid:=NULL; END IF;
  SELECT u.* INTO m FROM public.hyt_sessions s JOIN public.hyt_members u ON u.id=s.member_id WHERE s.hash=th AND s.expires_at>now() AND u.deleted_at IS NULL;
  IF NOT FOUND THEN RETURN '{"status":401,"error":"session_expired"}'::jsonb; END IF;
  admin:=m.developer_since IS NOT NULL AND NOT coalesce(m.banned_until>now(),false);
@@ -1329,6 +1338,13 @@ BEGIN
   SELECT * INTO m FROM public.hyt_members WHERE id=m.id;
   IF m.deleted_at IS NOT NULL OR m.banned_until>now() THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
   IF a IN ('contests.save','contests.manage','contests.review') AND m.developer_since IS NULL THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
+ END IF;
+ IF a IN ('contests.save','contests.manage','contests.review') AND b->>'requestId' IS NOT NULL THEN
+  SELECT * INTO previous_operation FROM public.hyt_contest_operations WHERE member_id=m.id AND request_id=(b->>'requestId')::uuid;
+  IF FOUND THEN
+   IF previous_operation.action<>a OR previous_operation.payload<>b THEN RETURN '{"status":409,"error":"request_conflict"}'; END IF;
+   RETURN previous_operation.result;
+  END IF;
  END IF;
  IF a='contests.schedule' THEN
   SELECT * INTO c FROM public.hyt_contests WHERE id=cid;
@@ -1379,12 +1395,13 @@ BEGIN
  IF a='contests.save' THEN
   SELECT * INTO c FROM public.hyt_contests WHERE id=cid;
   IF FOUND AND (c.cancelled OR c.announced_at IS NOT NULL) THEN RETURN '{"status":409,"error":"contest_closed"}'; END IF;
+  IF c.id IS NOT NULL AND b->>'expectedVersion' IS NOT NULL AND c.version<>(b->>'expectedVersion')::int THEN RETURN '{"status":409,"error":"contest_conflict"}'; END IF;
   -- Rules and eligibility become immutable at opening. Extensions only move future deadlines forward.
-  IF c.published AND now()>=c.starts_at AND (c.title<>b->>'title' OR c.type<>b->>'type' OR c.rules<>b->>'rules' OR c.formats<>ARRAY(SELECT jsonb_array_elements_text(b->'formats')) OR c.votes_per_user<>(b->>'votesPerUser')::int OR c.min_entries<>(b->>'minEntries')::int OR c.max_entries<>(b->>'maxEntries')::int OR c.min_account_hours<>(b->>'minAccountHours')::int OR c.excellence<>(b->>'excellence')::int OR c.starts_at<>(b->>'startsAt')::timestamptz OR c.submission_ends>(b->>'submissionEnds')::timestamptz OR c.voting_starts>(b->>'votingStarts')::timestamptz OR c.voting_ends>(b->>'votingEnds')::timestamptz OR c.award_at>(b->>'awardAt')::timestamptz OR (now()>=c.submission_ends AND c.submission_ends<>(b->>'submissionEnds')::timestamptz) OR (now()>=c.voting_starts AND c.voting_starts<>(b->>'votingStarts')::timestamptz) OR (now()>=c.voting_ends AND c.voting_ends<>(b->>'votingEnds')::timestamptz)) THEN RETURN '{"status":409,"error":"contest_rules_locked"}'; END IF;
+  IF c.published AND now()>=c.starts_at AND (c.title<>b->>'title' OR c.type<>b->>'type' OR c.rules<>b->>'rules' OR c.formats<>ARRAY(SELECT jsonb_array_elements_text(b->'formats')) OR c.votes_per_user<>(b->>'votesPerUser')::int OR c.min_entries<>(b->>'minEntries')::int OR c.max_entries<>(b->>'maxEntries')::int OR c.min_account_hours<>(b->>'minAccountHours')::int OR c.excellence<>(b->>'excellence')::int OR c.risk_review<>coalesce((b->>'reviewRisk')::boolean,c.risk_review) OR c.starts_at<>(b->>'startsAt')::timestamptz OR c.submission_ends>(b->>'submissionEnds')::timestamptz OR c.voting_starts>(b->>'votingStarts')::timestamptz OR c.voting_ends>(b->>'votingEnds')::timestamptz OR c.award_at>(b->>'awardAt')::timestamptz OR (now()>=c.submission_ends AND c.submission_ends<>(b->>'submissionEnds')::timestamptz) OR (now()>=c.voting_starts AND c.voting_starts<>(b->>'votingStarts')::timestamptz) OR (now()>=c.voting_ends AND c.voting_ends<>(b->>'votingEnds')::timestamptz)) THEN RETURN '{"status":409,"error":"contest_rules_locked"}'; END IF;
   IF NOT ((b->>'startsAt')::timestamptz<(b->>'submissionEnds')::timestamptz AND (b->>'submissionEnds')::timestamptz<=(b->>'votingStarts')::timestamptz AND (b->>'votingStarts')::timestamptz<(b->>'votingEnds')::timestamptz AND (b->>'votingEnds')::timestamptz<=(b->>'awardAt')::timestamptz) THEN RETURN '{"status":400,"error":"invalid_request"}'; END IF;
-  INSERT INTO public.hyt_contests(id,title,type,edition,description,rules,cover_post_id,starts_at,submission_ends,voting_starts,voting_ends,award_at,formats,max_entries,votes_per_user,min_entries,min_account_hours,excellence,auto_publish)
-  VALUES(cid,b->>'title',b->>'type',b->>'edition',b->>'description',b->>'rules',(b->>'coverPostId')::uuid,(b->>'startsAt')::timestamptz,(b->>'submissionEnds')::timestamptz,(b->>'votingStarts')::timestamptz,(b->>'votingEnds')::timestamptz,(b->>'awardAt')::timestamptz,ARRAY(SELECT jsonb_array_elements_text(b->'formats')),(b->>'maxEntries')::int,(b->>'votesPerUser')::int,(b->>'minEntries')::int,(b->>'minAccountHours')::int,(b->>'excellence')::int,(b->>'autoPublish')::boolean)
-  ON CONFLICT(id) DO UPDATE SET title=excluded.title,type=excluded.type,edition=excluded.edition,description=excluded.description,rules=excluded.rules,cover_post_id=excluded.cover_post_id,starts_at=excluded.starts_at,submission_ends=excluded.submission_ends,voting_starts=excluded.voting_starts,voting_ends=excluded.voting_ends,award_at=excluded.award_at,formats=excluded.formats,max_entries=excluded.max_entries,votes_per_user=excluded.votes_per_user,min_entries=excluded.min_entries,min_account_hours=excluded.min_account_hours,excellence=excluded.excellence,auto_publish=excluded.auto_publish,version=hyt_contests.version+1;
+  INSERT INTO public.hyt_contests(id,title,type,edition,description,rules,cover_post_id,starts_at,submission_ends,voting_starts,voting_ends,award_at,formats,max_entries,votes_per_user,min_entries,min_account_hours,excellence,auto_publish,risk_review,published)
+  VALUES(cid,b->>'title',b->>'type',b->>'edition',b->>'description',b->>'rules',(b->>'coverPostId')::uuid,(b->>'startsAt')::timestamptz,(b->>'submissionEnds')::timestamptz,(b->>'votingStarts')::timestamptz,(b->>'votingEnds')::timestamptz,(b->>'awardAt')::timestamptz,ARRAY(SELECT jsonb_array_elements_text(b->'formats')),(b->>'maxEntries')::int,(b->>'votesPerUser')::int,(b->>'minEntries')::int,(b->>'minAccountHours')::int,(b->>'excellence')::int,(b->>'autoPublish')::boolean,coalesce((b->>'reviewRisk')::boolean,true),coalesce((b->>'publish')::boolean,false))
+  ON CONFLICT(id) DO UPDATE SET title=excluded.title,type=excluded.type,edition=excluded.edition,description=excluded.description,rules=excluded.rules,cover_post_id=excluded.cover_post_id,starts_at=excluded.starts_at,submission_ends=excluded.submission_ends,voting_starts=excluded.voting_starts,voting_ends=excluded.voting_ends,award_at=excluded.award_at,formats=excluded.formats,max_entries=excluded.max_entries,votes_per_user=excluded.votes_per_user,min_entries=excluded.min_entries,min_account_hours=excluded.min_account_hours,excellence=excluded.excellence,auto_publish=excluded.auto_publish,risk_review=coalesce((b->>'reviewRisk')::boolean,hyt_contests.risk_review),published=hyt_contests.published OR excluded.published,version=hyt_contests.version+1;
   INSERT INTO public.hyt_contest_audit(contest_id,actor_id,action,reason,snapshot) VALUES(cid,m.id,a,'保存赛事',to_jsonb(c));
  END IF;
  IF cid IS NOT NULL THEN
@@ -1393,6 +1410,7 @@ BEGIN
  END IF;
  IF a='contests.manage' THEN
   op:=b->>'operation';
+  IF b->>'expectedVersion' IS NOT NULL AND c.id IS NOT NULL AND c.version<>(b->>'expectedVersion')::int THEN RETURN '{"status":409,"error":"contest_conflict"}'; END IF;
   IF c.cancelled AND op<>'solicitation' THEN RETURN '{"status":409,"error":"contest_closed"}'; END IF;
   IF op='publish' THEN UPDATE public.hyt_contests SET published=true WHERE id=cid;
   ELSIF op='pause' THEN UPDATE public.hyt_contests SET paused=true WHERE id=cid AND announced_at IS NULL;
@@ -1403,17 +1421,17 @@ BEGIN
   ELSIF op='solicitation' THEN UPDATE public.hyt_contest_settings SET solicitation=(b->>'enabled')::boolean WHERE id;
   ELSIF op='announce' THEN
    IF c.paused OR clock_timestamp()<c.award_at THEN RETURN '{"status":409,"error":"contest_closed"}'; END IF;
-   IF EXISTS(SELECT 1 FROM public.hyt_contest_votes WHERE contest_id=cid AND enabled AND risk IS NOT NULL AND NOT excluded) THEN RETURN '{"status":409,"error":"contest_review_pending"}'; END IF;
+   IF EXISTS(SELECT 1 FROM public.hyt_contest_votes WHERE contest_id=cid AND enabled AND risk IS NOT NULL AND risk NOT IN ('young_account','rapid_votes') AND NOT excluded) THEN RETURN '{"status":409,"error":"contest_review_pending"}'; END IF;
    IF EXISTS(SELECT 1 FROM public.hyt_contest_reports r JOIN public.hyt_contest_entries e ON e.id=r.entry_id WHERE e.contest_id=cid AND r.resolved_at IS NULL) THEN RETURN '{"status":409,"error":"contest_review_pending"}'; END IF;
    IF c.announced_at IS NULL THEN PERFORM public.hyt_contest_settle(cid); UPDATE public.hyt_contests SET announced_at=now() WHERE id=cid; END IF;
   END IF;
   INSERT INTO public.hyt_contest_audit(contest_id,actor_id,action,reason,snapshot) VALUES(cid,m.id,op,b->>'reason',to_jsonb(c));
-  PERFORM public.hyt_contest_achievements_refresh(cid);
+  IF cid IS NOT NULL THEN UPDATE public.hyt_contests SET version=version+1 WHERE id=cid; PERFORM public.hyt_contest_achievements_refresh(cid); END IF;
  END IF;
  IF a='contests.submit' THEN
   SELECT entry_id,payload INTO target,result FROM public.hyt_contest_requests WHERE member_id=m.id AND request_id=(b->>'requestId')::uuid;
   IF FOUND THEN
-   IF result<>b THEN RETURN '{"status":409,"error":"request_conflict"}'; END IF;
+   IF (result-'expectedVersion')<>(b-'expectedVersion') OR (result ? 'expectedVersion' AND coalesce(result->>'expectedVersion','')<>coalesce(b->>'expectedVersion','')) THEN RETURN '{"status":409,"error":"request_conflict"}'; END IF;
    SELECT * INTO e FROM public.hyt_contest_entries WHERE id=target;
    RETURN jsonb_build_object('status',200,'entry',public.hyt_contest_entry_json(e,m.id));
   END IF;
@@ -1425,6 +1443,7 @@ BEGIN
   ELSE
    IF (SELECT count(*) FROM public.hyt_contest_entries WHERE contest_id=cid AND member_id=m.id AND status='approved')>=c.max_entries THEN RETURN '{"status":409,"error":"contest_entry_limit"}'; END IF;
   END IF;
+  IF old.id IS NOT NULL AND b->>'expectedVersion' IS NOT NULL AND old.version<>(b->>'expectedVersion')::int THEN RETURN '{"status":409,"error":"contest_conflict"}'; END IF;
   IF b->>'postId' IS NOT NULL AND (old.id IS NULL OR old.linked OR (b->>'linkPost')::boolean OR old.post_id IS DISTINCT FROM (b->>'postId')::uuid) THEN
    SELECT * INTO p FROM public.hyt_posts WHERE id=(b->>'postId')::uuid AND author_id=m.id AND deleted_at IS NULL AND NOT anonymous;
    IF NOT FOUND THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
@@ -1466,24 +1485,32 @@ BEGIN
  END IF;
  IF a='contests.withdraw' THEN
   IF c.cancelled OR c.paused OR public.hyt_contest_state(c)<>'submitting' THEN RETURN '{"status":409,"error":"contest_closed"}'; END IF;
-  UPDATE public.hyt_contest_entries SET status='withdrawn',updated_at=now() WHERE id=(b->>'entryId')::uuid AND contest_id=cid AND member_id=m.id AND status='approved' RETURNING * INTO e;
-  IF NOT FOUND THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
+  SELECT * INTO e FROM public.hyt_contest_entries WHERE id=(b->>'entryId')::uuid AND contest_id=cid AND member_id=m.id;
+  IF NOT FOUND OR e.status='removed' THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
+  IF e.status='withdrawn' THEN RETURN jsonb_build_object('status',200,'contest',public.hyt_contest_json(c)); END IF;
+  UPDATE public.hyt_contest_entries SET status='withdrawn',updated_at=now() WHERE id=e.id RETURNING * INTO e;
   INSERT INTO public.hyt_contest_audit(contest_id,actor_id,action,target_id,reason,snapshot) VALUES(cid,m.id,'withdraw',e.id,'截止前撤稿',to_jsonb(e));
  END IF;
  IF a='contests.vote' THEN
-  IF c.cancelled OR c.paused OR public.hyt_contest_state(c)<>'voting' THEN RETURN '{"status":409,"error":"contest_closed"}'; END IF;
-  IF m.created_at>c.voting_starts-make_interval(hours=>c.min_account_hours) THEN RETURN '{"status":403,"error":"contest_ineligible"}'; END IF;
+  IF c.cancelled OR c.paused THEN RETURN '{"status":409,"error":"contest_closed"}'; END IF;
   SELECT * INTO e FROM public.hyt_contest_entries WHERE id=(b->>'entryId')::uuid AND contest_id=cid AND status='approved';
   IF NOT FOUND OR e.member_id=m.id THEN RETURN '{"status":403,"error":"contest_self_vote"}'; END IF;
   SELECT * INTO v FROM public.hyt_contest_votes WHERE entry_id=e.id AND member_id=m.id;
-  IF coalesce(v.enabled,false)=(b->>'enabled')::boolean THEN RETURN '{"status":200}'; END IF;
-  IF (b->>'enabled')::boolean AND (SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid AND member_id=m.id AND enabled)>=c.votes_per_user THEN RETURN '{"status":409,"error":"contest_vote_limit"}'; END IF;
-  op:=CASE WHEN m.created_at>c.voting_starts-interval '7 days' THEN 'young_account' WHEN EXISTS(SELECT 1 FROM public.hyt_contest_votes WHERE member_id=m.id AND enabled AND created_at>stamp-interval '2 seconds') THEN 'rapid_votes' ELSE NULL END;
-  delta:=CASE WHEN (b->>'enabled')::boolean THEN 1 ELSE -1 END;
-  INSERT INTO public.hyt_contest_votes(contest_id,entry_id,member_id,enabled,risk) VALUES(cid,e.id,m.id,(b->>'enabled')::boolean,op)
-  ON CONFLICT(entry_id,member_id) DO UPDATE SET enabled=excluded.enabled;
-  IF NOT coalesce(v.excluded,false) THEN UPDATE public.hyt_contest_entries SET votes=votes+delta WHERE id=e.id; END IF;
-  RETURN '{"status":200}';
+  IF (v.id IS NULL OR v.enabled IS DISTINCT FROM (b->>'enabled')::boolean) THEN
+   IF public.hyt_contest_state(c)<>'voting' THEN RETURN '{"status":409,"error":"contest_closed"}'; END IF;
+   IF c.min_account_hours>0 AND m.created_at>c.voting_starts-make_interval(hours=>c.min_account_hours) THEN RETURN '{"status":403,"error":"contest_ineligible"}'; END IF;
+   IF coalesce(v.enabled,false) IS DISTINCT FROM (b->>'enabled')::boolean THEN
+    IF (b->>'enabled')::boolean AND (SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid AND member_id=m.id AND enabled)>=c.votes_per_user THEN RETURN '{"status":409,"error":"contest_vote_limit"}'; END IF;
+    n:=CASE WHEN v.window_started_at>stamp-interval '1 minute' THEN v.window_changes+1 ELSE 1 END;
+    op:=CASE WHEN c.risk_review AND n>=CASE WHEN m.created_at>c.voting_starts-interval '7 days' THEN 12 ELSE 30 END THEN 'vote_burst' ELSE NULL END;
+    delta:=CASE WHEN (b->>'enabled')::boolean THEN 1 ELSE -1 END;
+    INSERT INTO public.hyt_contest_votes(contest_id,entry_id,member_id,enabled,risk,window_started_at,window_changes)
+     VALUES(cid,e.id,m.id,(b->>'enabled')::boolean,op,stamp,1)
+     ON CONFLICT(entry_id,member_id) DO UPDATE SET enabled=excluded.enabled,risk=coalesce(op,hyt_contest_votes.risk),window_started_at=CASE WHEN hyt_contest_votes.window_started_at>stamp-interval '1 minute' THEN hyt_contest_votes.window_started_at ELSE stamp END,window_changes=n;
+    IF NOT coalesce(v.excluded,false) THEN UPDATE public.hyt_contest_entries SET votes=votes+delta WHERE id=e.id RETURNING * INTO e; END IF;
+   END IF;
+  END IF;
+  RETURN jsonb_build_object('status',200,'entry',public.hyt_contest_entry_json(e,m.id,admin),'serverTime',now(),'votesUsed',(SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid AND member_id=m.id AND enabled));
  END IF;
  IF a='contests.report' THEN
   IF NOT EXISTS(SELECT 1 FROM public.hyt_contest_entries WHERE id=(b->>'entryId')::uuid AND contest_id=cid AND status='approved') THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
@@ -1519,14 +1546,14 @@ BEGIN
    UPDATE public.hyt_contest_themes SET status=CASE WHEN op='merge' THEN 'merged' WHEN b->>'decision'='approve' THEN 'approved' ELSE 'removed' END,merged_into=CASE WHEN op='merge' THEN (b->>'mergeId')::uuid END WHERE id=target;
   END IF;
   INSERT INTO public.hyt_contest_audit(contest_id,actor_id,action,target_id,reason,snapshot) VALUES(cid,m.id,op||':'||(b->>'decision'),target,b->>'reason',CASE op WHEN 'entry' THEN to_jsonb(e) WHEN 'vote' THEN to_jsonb(v) ELSE to_jsonb(t) END);
-  IF c.announced_at IS NOT NULL THEN PERFORM public.hyt_contest_settle(cid); PERFORM public.hyt_contest_achievements_refresh(cid); END IF;
+  IF op IN ('entry','vote') AND c.announced_at IS NOT NULL THEN PERFORM public.hyt_contest_settle(cid); PERFORM public.hyt_contest_achievements_refresh(cid); END IF;
  END IF;
  IF a='contests.admin' THEN
   RETURN jsonb_build_object('status',200,'votes',(SELECT coalesce(jsonb_agg(to_jsonb(q)),'[]') FROM (SELECT id,entry_id,member_id,enabled,excluded,risk,created_at FROM public.hyt_contest_votes WHERE contest_id=cid ORDER BY risk NULLS LAST,created_at DESC LIMIT 21 OFFSET off_n) q),
    'contestReports',(SELECT coalesce(jsonb_agg(to_jsonb(q)),'[]') FROM (SELECT r.*,public.hyt_contest_entry_json(e,m.id,true) AS entry FROM public.hyt_contest_reports r JOIN public.hyt_contest_entries e ON e.id=r.entry_id WHERE e.contest_id=cid AND r.resolved_at IS NULL ORDER BY r.created_at LIMIT 50) q),
    'audit',(SELECT coalesce(jsonb_agg(to_jsonb(q)),'[]') FROM (SELECT * FROM public.hyt_contest_audit WHERE contest_id=cid ORDER BY created_at DESC,id LIMIT 21 OFFSET off_n) q),
    'awards',(SELECT coalesce(jsonb_agg(to_jsonb(q)),'[]') FROM (SELECT * FROM public.hyt_contest_awards WHERE contest_id=cid ORDER BY awarded_at DESC,id LIMIT 21 OFFSET off_n) q),
-   'metrics',jsonb_build_object('votes',(SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid),'entries',(SELECT count(*) FROM public.hyt_contest_entries WHERE contest_id=cid),'images',(SELECT count(*) FROM public.hyt_media i JOIN public.hyt_contest_entries e ON e.id=i.contest_entry_id WHERE e.contest_id=cid),'pendingRisk',(SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid AND enabled AND risk IS NOT NULL AND NOT excluded)));
+   'metrics',jsonb_build_object('validEntries',(SELECT count(*) FROM public.hyt_contest_entries WHERE contest_id=cid AND status='approved'),'validVotes',(SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid AND enabled AND NOT excluded),'pendingReports',(SELECT count(*) FROM public.hyt_contest_reports r JOIN public.hyt_contest_entries e ON e.id=r.entry_id WHERE e.contest_id=cid AND r.resolved_at IS NULL),'votes',(SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid),'entries',(SELECT count(*) FROM public.hyt_contest_entries WHERE contest_id=cid),'images',(SELECT count(*) FROM public.hyt_media i JOIN public.hyt_contest_entries e ON e.id=i.contest_entry_id WHERE e.contest_id=cid),'pendingRisk',(SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid AND enabled AND risk IS NOT NULL AND risk NOT IN ('young_account','rapid_votes') AND NOT excluded)));
  END IF;
  IF a='contests.entries' THEN
   SELECT coalesce(jsonb_agg(public.hyt_contest_entry_json(q.entry,m.id,admin) ORDER BY q.sort_key),'[]') INTO rows FROM
@@ -1535,7 +1562,11 @@ BEGIN
   RETURN jsonb_build_object('status',200,'entries',rows);
  END IF;
  SELECT * INTO c FROM public.hyt_contests WHERE id=cid;
- RETURN jsonb_build_object('status',200,'contest',public.hyt_contest_json(c),'serverTime',now(),'votesUsed',(SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid AND member_id=m.id AND enabled));
+ result:=CASE WHEN cid IS NULL THEN jsonb_build_object('status',200,'solicitation',(SELECT solicitation FROM public.hyt_contest_settings WHERE id)) ELSE jsonb_build_object('status',200,'contest',public.hyt_contest_json(c),'serverTime',now(),'votesUsed',(SELECT count(*) FROM public.hyt_contest_votes WHERE contest_id=cid AND member_id=m.id AND enabled),
+ 'myEntries',(SELECT coalesce(jsonb_agg(public.hyt_contest_entry_json(me,m.id,admin) ORDER BY me.created_at DESC),'[]') FROM public.hyt_contest_entries me WHERE me.contest_id=cid AND me.member_id=m.id AND me.status='approved')) END;
+ IF a='contests.review' AND b->>'kind'='entry' THEN SELECT * INTO e FROM public.hyt_contest_entries WHERE id=(b->>'targetId')::uuid AND contest_id=cid; result:=result||jsonb_build_object('entry',public.hyt_contest_entry_json(e,m.id,admin)); END IF;
+ IF a IN ('contests.save','contests.manage','contests.review') AND b->>'requestId' IS NOT NULL THEN INSERT INTO public.hyt_contest_operations(member_id,request_id,action,payload,result) VALUES(m.id,(b->>'requestId')::uuid,a,b,result); END IF;
+ RETURN result;
 END;
 $contest$;
 -- RPC functions are server-only, matching the existing service boundary.

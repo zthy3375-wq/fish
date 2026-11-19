@@ -61,6 +61,8 @@ struct TreeholeNotification: Codable, Identifiable, Equatable {
 struct TreeholePublicProfile: Codable, Equatable { let id: String, nickname: String, bio: String; let postCount: Int; var following: Bool? = nil; var avatar: TreeholeImage? = nil }
 struct TreeholeFollow: Codable, Identifiable, Equatable { let id: String, nickname: String, bio: String, followedAt: String; var avatar: TreeholeImage? = nil }
 struct TreeholeEnvelope: Decodable {
+    var schema: Int?
+    var myEntries: [NativeContestEntry]?
     var contestsEnabled: Bool?
     var contests: [NativeContest]?
     var contest: NativeContest?
@@ -98,7 +100,7 @@ struct TreeholeEnvelope: Decodable {
 struct TreeholeError: LocalizedError {
     let code: String
     var errorDescription: String? {
-        ["contests_unavailable":"主题赛事尚未启用", "contest_closed":"当前阶段已关闭或已暂停，请刷新赛事", "contest_entry_limit":"已达到本场投稿数量上限", "contest_vote_limit":"票数已用完，可先撤回其他作品的票", "contest_self_vote":"请给其他同学的作品投票", "contest_ineligible":"账号注册时间未达到投票要求", "contest_review_pending":"请先复核异常票", "contest_format":"作品类型不符合本场规则", "contest_rules_locked":"规则已固定，可延长尚未结束的阶段", "buddy_time": "请选择未来 90 天内的活动时间", "buddy_full": "已经招满了，可以稍后再看看", "buddy_closed": "已停止报名，仍可在帖子下继续交流", "buddy_host": "发起人不占报名名额", "poll_closed": "投票已结束", "following_limit": "关注已达到上限，请先整理关注名单", "invalid_image": "图片暂不支持，请换一张照片或截图", "image_too_large": "图片较大，请缩小后重试", "image_unavailable": "图片已过期，请重新添加", "upload_limit": "今天上传的图片较多，请明天再试", "images_unavailable": "图片服务暂不可用", "session_expired": "请登录邯院通账号", "invalid_credentials": "账号、密码或恢复码不正确",
+        ["contest_conflict":"作品或赛事已有更新，请重新打开后编辑", "contests_unavailable":"主题赛事尚未启用", "contest_closed":"当前阶段已关闭或已暂停，请刷新赛事", "contest_entry_limit":"已达到本场投稿数量上限", "contest_vote_limit":"票数已用完，可先撤回其他作品的票", "contest_self_vote":"请给其他同学的作品投票", "contest_ineligible":"账号注册时间未达到投票要求", "contest_review_pending":"请先复核异常票", "contest_format":"作品类型不符合本场规则", "contest_rules_locked":"规则已固定，可延长尚未结束的阶段", "buddy_time": "请选择未来 90 天内的活动时间", "buddy_full": "已经招满了，可以稍后再看看", "buddy_closed": "已停止报名，仍可在帖子下继续交流", "buddy_host": "发起人不占报名名额", "poll_closed": "投票已结束", "following_limit": "关注已达到上限，请先整理关注名单", "invalid_image": "图片暂不支持，请换一张照片或截图", "image_too_large": "图片较大，请缩小后重试", "image_unavailable": "图片已过期，请重新添加", "upload_limit": "今天上传的图片较多，请明天再试", "images_unavailable": "图片服务暂不可用", "session_expired": "请登录邯院通账号", "invalid_credentials": "账号、密码或恢复码不正确",
          "username_unavailable": "这个登录账号已被使用，请换一个", "invalid_username": "账号需以字母开头，使用 4–24 位字母、数字或下划线",
          "password_length": "密码需为 10–128 位", "invalid_request": "请检查填写内容和字数", "agreement_required": "请先同意树洞规则",
          "registration_closed": "树洞注册暂未开放", "invite_invalid": "内测邀请码不正确", "too_many_requests": "操作较频繁，请稍后重试",
@@ -137,6 +139,7 @@ actor TreeholeService {
     private let vault: TreeholeTokenVault
     private let session: URLSession
     private var generation = 0
+    private var contestRevision = 0
     private var contestListCache: [String: (at: Date, result: TreeholeEnvelope)] = [:]
     init(vault: TreeholeTokenVault = TreeholeKeychain(), session: URLSession? = nil) {
         self.vault = vault
@@ -155,14 +158,18 @@ actor TreeholeService {
         let token = try vault.read().flatMap { Self.validToken($0) ? $0 : nil }
         if action == "logout" { try vault.clear() }
         if !authenticating && action != "config" && action != "logout" && token == nil { throw TreeholeError(code: "session_expired") }
+        let contestRead = ["contests.list","contests.get","contests.entries","contests.profile","contests.year","contests.themes","contests.admin"].contains(action)
+        let contestWrite = action.hasPrefix("contests.") && !contestRead && action != "contests.image"
+        if contestWrite { contestRevision += 1; contestListCache.removeAll() }
+        let expectedRevision = contestRevision
         var cacheKey = ""
-        if action == "contests.list" {
+        if contestRead {
             let fingerprint = SHA256.hash(data: Data((token ?? "").utf8)).map { String(format: "%02x", $0) }.joined()
             let cacheBody = body.filter { $0.key != "_fresh" }
-            cacheKey = String(generation) + fingerprint + (try JSONSerialization.data(withJSONObject: cacheBody, options: [.sortedKeys])).base64EncodedString()
+            cacheKey = String(generation) + action + String(contestRevision) + fingerprint + (try JSONSerialization.data(withJSONObject: cacheBody, options: [.sortedKeys])).base64EncodedString()
             if body["_fresh"] as? Bool != true, let cached = contestListCache[cacheKey] {
                 let age = Date().timeIntervalSince(cached.at)
-                if age >= 0 && age < 120 {
+                if age >= 0 && age < (["contests.list","contests.profile","contests.year"].contains(action) ? 120 : 15) {
                     var result = cached.result
                     if let time = result.serverTime.flatMap(NativeContest.date) { result.serverTime = ISO8601DateFormatter().string(from: time.addingTimeInterval(age)) }
                     return result
@@ -194,11 +201,12 @@ actor TreeholeService {
             }
             if action == "account.delete" { generation += 1; try vault.clear() }
             result.sessionToken = nil
-            if action == "contests.list" {
+            if contestRead {
+                guard expectedRevision == contestRevision else { throw CancellationError() }
                 if contestListCache.count >= 16 { contestListCache.removeAll() }
                 contestListCache[cacheKey] = (Date(), result)
             } else if ["contests.submit","contests.withdraw","contests.vote","contests.save","contests.manage","contests.review","contests.wear","contests.suggest","contests.themevote","contests.report"].contains(action) || authenticating || action == "logout" || action == "account.delete" {
-                contestListCache.removeAll()
+                if contestWrite { contestRevision += 1 }; contestListCache.removeAll()
             }
             return result
         } catch {

@@ -82,7 +82,7 @@ struct TreeholeView: View {
                 if tree.user == nil && tree.ready { authentication }
                 if let user = tree.user {
                     switch screen {
-                    case "contests": ContestView(api: tree.api, user: user, initialId: contestTarget, initialPage: contestPage, onMember: showProfile, onPost: { id in Task { if let post = try? await tree.api.request("posts.get", ["postId": id]).post { open(post) } } })
+                    case "contests": ContestView(api: tree.api, user: user, initialId: contestTarget, initialPage: contestPage, backendSchema: tree.contestSchema, onMember: showProfile, onPost: { id in Task { if let post = try? await tree.api.request("posts.get", ["postId": id]).post { open(post) } } }).id(user.id)
                     case "compose": composer
                     case "detail": if let post = tree.current { discussion(post) }
                     case "account": account(user)

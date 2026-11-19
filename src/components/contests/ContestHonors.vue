@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Trophy } from "lucide-vue-next";
 import {
   contestRequest,
@@ -11,13 +11,23 @@ const props = defineProps<{
   owner: string;
   memberId: string;
   personal?: boolean;
+  collection?: boolean;
 }>();
-const emit = defineEmits<{ open: [id: string] }>();
+const emit = defineEmits<{ open: [id: string]; collection: [] }>();
 const data = ref<ContestResult>({}),
   error = ref(""),
   busy = ref(false),
   more = ref(false);
+const shown = computed(() =>
+  props.collection
+    ? data.value.awards
+    : data.value.awards?.filter((a) => a.id === data.value.worn).slice(0, 1)
+          .length
+      ? data.value.awards?.filter((a) => a.id === data.value.worn).slice(0, 1)
+      : data.value.awards?.slice(0, 1),
+);
 let revision = 0;
+onBeforeUnmount(() => revision++);
 async function load(append = false) {
   const requestRevision = ++revision;
   busy.value = true;
@@ -55,7 +65,7 @@ async function wear(id: string) {
 }
 onMounted(() => load());
 watch(
-  () => props.memberId,
+  () => [props.owner, props.memberId],
   () => {
     data.value = {};
     void load();
@@ -78,7 +88,7 @@ watch(
           >前三 <b>{{ data.stats.podiums }}</b></span
         >
       </div>
-      <p class="earned">
+      <p v-if="collection" class="earned">
         <span v-if="data.stats.champions >= 1">初露锋芒</span
         ><span v-if="data.stats.champions >= 5">常胜将军</span
         ><span v-if="data.stats.champions >= 20">不败传说</span
@@ -92,7 +102,7 @@ watch(
     <p v-if="!busy && !data.awards?.length" class="quiet">
       参赛和获奖经历会收藏在这里。
     </p>
-    <article v-for="a in data.awards" :key="a.id">
+    <article v-for="a in shown" :key="a.id">
       <button @click="emit('open', a.contest_id!)">
         <Trophy :size="19" /><span
           ><strong>{{ a.title }} {{ a.edition }}</strong
@@ -104,7 +114,7 @@ watch(
           ></span
         ></button
       ><button
-        v-if="personal"
+        v-if="personal && collection"
         :disabled="busy"
         :aria-pressed="data.worn === a.id"
         @click="wear(a.id)"
@@ -112,8 +122,11 @@ watch(
         {{ data.worn === a.id ? "已佩戴" : "佩戴" }}
       </button>
     </article>
-    <button v-if="more" :disabled="busy" @click="load(true)">
+    <button v-if="more && collection" :disabled="busy" @click="load(true)">
       更多赛事荣誉
+    </button>
+    <button v-if="!collection" @click="emit('collection')">
+      查看赛事荣誉收藏 →
     </button>
   </section>
 </template>

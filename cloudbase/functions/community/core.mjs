@@ -192,10 +192,10 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
    }
   }
   if(contestActions.includes(action))await rate('contest:'+tokenHash,120,60);
-  if(scheduler&&['contests.save','contests.manage','contests.review'].includes(action)){
+  if(scheduler&&((action==='contests.save')||(action==='contests.manage'&&['publish','resume'].includes(b.operation))||(action==='contests.review'&&['entry','vote'].includes(b.kind)))){
    const plan=await call('contests.schedule',{contestId:b.contestId},tokenHash);
-   const contest=plan.contest;
-   const needed=action==='contests.save'?contest?.published:
+   const contest=plan.contest||(action==='contests.save'&&b.publish?{...b,id:b.contestId,published:true}:null);
+   const needed=action==='contests.save'?(b.publish||contest?.published):
     action==='contests.manage'?['publish','resume'].includes(b.operation):contest?.published;
    if(needed&&contest){
     try{await scheduler.ensure(action==='contests.save'?{...contest,awardAt:b.awardAt,autoPublish:b.autoPublish}:contest)}
@@ -259,6 +259,6 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- function config(){return {contestsEnabled,registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:contestsEnabled?13:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ function config(){return {contestsEnabled,registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:contestsEnabled?14:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
  return {execute,config};
 }

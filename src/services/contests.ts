@@ -20,6 +20,7 @@ export interface Contest {
   minAccountHours: number;
   excellence: number;
   autoPublish: boolean;
+  reviewRisk?: boolean;
   version: number;
   entryCount: number;
   participantCount: number;
@@ -85,6 +86,8 @@ export interface ContestResult {
   entries?: ContestEntry[];
   entry?: ContestEntry;
   serverTime?: string;
+  receivedAt?: number;
+  myEntries?: ContestEntry[];
   votesUsed?: number;
   stats?: { participations: number; champions: number; podiums: number };
   awards?: ContestAward[];
@@ -143,31 +146,94 @@ export function contestRemaining(c: Contest, now = Date.now()): string {
     ? `${Math.floor(minutes / 1440)}天 ${Math.floor((minutes % 1440) / 60)}小时`
     : `${Math.floor(minutes / 60)}小时 ${minutes % 60}分`;
 }
+const reads = new Set([
+  "contests.list",
+  "contests.get",
+  "contests.entries",
+  "contests.profile",
+  "contests.themes",
+  "contests.year",
+  "contests.admin",
+]);
 const cache = new Map<string, { until: number; result: ContestResult }>();
+const pending = new Map<string, Promise<ContestResult>>();
+let activeOwner = "",
+  epoch = 0,
+  revision = 0;
+export function resetContestCache() {
+  epoch++;
+  revision++;
+  activeOwner = "";
+  cache.clear();
+  pending.clear();
+}
+function stable(value: unknown): unknown {
+  return Array.isArray(value)
+    ? value.map(stable)
+    : value && typeof value === "object"
+      ? Object.fromEntries(
+          Object.entries(value)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([k, v]) => [k, stable(v)]),
+        )
+      : value;
+}
+const copy = (r: ContestResult): ContestResult => JSON.parse(JSON.stringify(r));
 export async function contestRequest(
   owner: string,
   action: string,
   body: Record<string, unknown> = {},
   fresh = false,
 ): Promise<ContestResult> {
-  const key = owner + action + JSON.stringify(body),
-    read = ["contests.list", "contests.profile"].includes(action),
-    saved = cache.get(key);
-  if (read && !fresh && saved && saved.until > Date.now()) return saved.result;
-  const result = (await treeholeRequest(action, body)) as ContestResult;
-  if (read) {
-    if (cache.size > 30) cache.clear();
-    cache.set(key, { until: Date.now() + 120000, result });
-  } else if (
-    ![
-      "contests.get",
-      "contests.entries",
-      "contests.themes",
-      "contests.year",
-      "contests.admin",
-    ].includes(action)
-  )
-    for (const key of cache.keys())
-      if (key.startsWith(owner)) cache.delete(key);
-  return result;
+  if (activeOwner !== owner) {
+    resetContestCache();
+    activeOwner = owner;
+  }
+  const generation = epoch,
+    reading = reads.has(action);
+  if (!reading) {
+    revision++;
+    cache.clear();
+    pending.clear();
+  }
+  const version = revision,
+    key = JSON.stringify([owner, action, stable(body), version]);
+  if (reading) {
+    const saved = cache.get(key);
+    if (!fresh && saved && saved.until > Date.now()) return copy(saved.result);
+    const running = pending.get(key);
+    if (running) return copy(await running);
+  }
+  const operation = (async () => {
+    try {
+      const result = {
+        ...(await treeholeRequest(action, body)),
+        receivedAt: Date.now(),
+      } as ContestResult;
+      if (generation !== epoch || owner !== activeOwner)
+        throw Error("contest_account_changed");
+      if (reading && version !== revision)
+        throw Error("contest_stale_response");
+      if (reading) {
+        if (cache.size >= 60) cache.delete(cache.keys().next().value!);
+        const ttl = [
+          "contests.list",
+          "contests.profile",
+          "contests.year",
+        ].includes(action)
+          ? 120000
+          : 15000;
+        cache.set(key, { until: Date.now() + ttl, result: copy(result) });
+      } else {
+        revision++;
+        cache.clear();
+        pending.clear();
+      }
+      return result;
+    } finally {
+      if (reading) pending.delete(key);
+    }
+  })();
+  if (reading) pending.set(key, operation);
+  return copy(await operation);
 }

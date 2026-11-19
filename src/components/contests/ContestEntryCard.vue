@@ -1,178 +1,92 @@
 <script setup lang="ts">
-import TreeholeImages from "../TreeholeImages.vue";
-import { Check, Trophy, Flag } from "lucide-vue-next";
+import { ref, watch } from "vue";
+import { treeholeRequest } from "../../services/treehole";
+import { Trophy, Check } from "lucide-vue-next";
 import type { ContestEntry } from "../../services/contests";
 import { awardLabels } from "../../services/contests";
-const props = defineProps<{
-  entry: ContestEntry;
-  voting: boolean;
-  submitting: boolean;
-  busy: boolean;
-  admin: boolean;
-}>();
-defineEmits<{
-  image: [index: number];
-  vote: [];
-  edit: [];
-  withdraw: [];
-  report: [];
-  review: [];
-  profile: [];
-  post: [];
-}>();
+const props = defineProps<{ entry: ContestEntry }>();
+const renewed = ref<string | null>();
+let attempted = false;
+watch(
+  () => props.entry.images[0]?.url,
+  () => {
+    renewed.value = undefined;
+    attempted = false;
+  },
+);
+async function renew() {
+  if (attempted) {
+    renewed.value = null;
+    return;
+  }
+  attempted = true;
+  try {
+    renewed.value =
+      (
+        await treeholeRequest("contests.image", {
+          contestId: props.entry.contestId,
+          entryId: props.entry.id,
+          imageId: props.entry.images[0].id,
+        })
+      ).image?.url || null;
+  } catch {
+    renewed.value = null;
+  }
+}
+defineEmits<{ open: [] }>();
 </script>
 <template>
   <article
-    class="contest-work"
+    class="ct-work"
     :class="{
-      'is-winner': entry.awards.some((a) => a.kind === 'champion'),
-      'is-selected': entry.voted,
+      'ct-work-photo': entry.images.length,
+      'ct-work-winner': entry.awards.some((a) => a.kind === 'champion'),
     }"
   >
-    <div
-      v-if="entry.awards.some((a) => a.kind !== 'participation')"
-      class="work-award"
+    <button
+      class="ct-work-open"
+      @click="$emit('open')"
+      :aria-label="`查看作品：${entry.title}`"
     >
-      <Trophy :size="18" />{{
-        entry.awards
-          .filter((a) => a.kind !== "participation")
-          .map((a) => awardLabels[a.kind])
-          .join(" · ")
-      }}
-    </div>
-    <TreeholeImages
-      :key="entry.version"
-      :images="entry.images"
-      :post-id="entry.postId || entry.id"
-      :contest-id="entry.contestId"
-      :entry-id="entry.id"
-      @open="$emit('image', $event)"
-    />
-    <div class="work-copy">
-      <small v-if="entry.status !== 'approved'">{{
-        entry.status === "removed" ? "已下架" : "已撤回"
-      }}</small>
-      <h3>{{ entry.title }}</h3>
-      <p>{{ entry.body }}</p>
-      <button class="work-author" @click="$emit('profile')">
-        {{ entry.author }}{{ entry.mine ? " · 我" : "" }}
-      </button>
-      <footer>
-        <button
-          v-if="voting && !entry.mine && entry.status === 'approved'"
-          class="work-vote"
-          :class="{ 'is-voted': entry.voted }"
-          :aria-pressed="entry.voted"
-          :disabled="busy"
-          @click="$emit('vote')"
+      <div v-if="entry.images.length" class="ct-work-cover">
+        <img
+          v-if="renewed !== null"
+          :src="renewed || entry.images[0].url || undefined"
+          @error="renew"
+          referrerpolicy="no-referrer"
+          loading="lazy"
+          :width="entry.images[0].width"
+          :height="entry.images[0].height"
+          alt="作品封面"
+        /><span v-if="renewed === null" class="ct-image-missing"
+          >打开作品重试图片</span
+        ><span v-if="entry.images.length > 1" class="ct-image-count"
+          >{{ entry.images.length }}张</span
         >
-          <Check v-if="entry.voted" :size="15" />{{
-            entry.voted ? "已投票 · 撤回" : "投一票"
-          }}</button
-        ><span v-if="entry.votes !== null">{{ entry.votes }} 票</span
-        ><button
-          v-if="entry.mine && submitting && entry.status === 'approved'"
-          :disabled="busy"
-          @click="$emit('edit')"
+      </div>
+      <div class="ct-work-copy">
+        <span v-if="entry.status !== 'approved'" class="ct-medal"
+          >{{ entry.status === "withdrawn" ? "已撤回" : "已下架" }} ·
+          {{ entry.mine ? "仅你和管理者可见" : "管理记录" }}</span
         >
-          编辑</button
-        ><button
-          v-if="entry.mine && submitting && entry.status === 'approved'"
-          :disabled="busy"
-          @click="$emit('withdraw')"
+        <span
+          v-if="entry.awards.some((a) => a.kind !== 'participation')"
+          class="ct-medal"
+          ><Trophy :size="13" />{{
+            awardLabels[
+              entry.awards.find((a) => a.kind !== "participation")!.kind
+            ]
+          }}</span
         >
-          撤回</button
-        ><button v-if="entry.postId" @click="$emit('post')">原帖</button
-        ><button v-if="admin" :disabled="busy" @click="$emit('review')">
-          审核</button
-        ><button
-          v-else
-          :disabled="busy"
-          aria-label="举报作品"
-          @click="$emit('report')"
-        >
-          <Flag :size="16" />
-        </button>
-      </footer>
-    </div>
+        <h3>{{ entry.title }}</h3>
+        <p v-if="!entry.images.length" class="ct-work-excerpt">
+          {{ entry.body }}
+        </p>
+        <footer>
+          <span>{{ entry.author }}{{ entry.mine ? " · 我" : "" }}</span
+          ><Check v-if="entry.voted" :size="15" aria-label="已投票" />
+        </footer>
+      </div>
+    </button>
   </article>
 </template>
-<style scoped>
-.contest-work {
-  border: 1px solid var(--color-divider);
-  border-radius: 18px;
-  overflow: hidden;
-  background: var(--color-raised, #fff);
-  margin-bottom: 14px;
-}
-.work-copy {
-  padding: 16px;
-}
-.work-copy h3 {
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-.work-copy p {
-  white-space: pre-wrap;
-  line-height: 1.8;
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-.work-author {
-  font-size: 12px;
-  color: var(--color-muted);
-  min-height: 44px;
-}
-.work-copy footer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  border-top: 1px solid var(--color-divider);
-  padding-top: 8px;
-  font-size: 12px;
-}
-.work-copy footer button {
-  min-height: 44px;
-}
-.work-vote {
-  padding: 0 15px;
-  border-radius: 10px;
-  background: var(--color-tint);
-  color: var(--color-primary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.is-voted {
-  background: var(--color-primary);
-  color: white;
-  animation: vote-confirm 0.22s ease-out;
-}
-.is-selected {
-  border-color: var(--color-primary);
-}
-.is-winner {
-  border-color: #b2b5d9;
-}
-.work-award {
-  padding: 12px 16px;
-  background: #f0eff9;
-  color: #595d8c;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-@keyframes vote-confirm {
-  50% {
-    transform: scale(1.05);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .is-voted {
-    animation: none;
-  }
-}
-</style>
