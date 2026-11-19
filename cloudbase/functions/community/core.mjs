@@ -1,3 +1,4 @@
+import {contestActions,sanitizeContest} from './contests.mjs';
 import {cleanImage,MAX_IMAGE_BYTES} from './media.mjs';
 import {randomBytes,createHash,createHmac,scrypt,timingSafeEqual} from 'node:crypto';
 import {promisify} from 'node:util';
@@ -35,6 +36,7 @@ export async function verifyPassword(value,stored){
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
 export const clientActions=new Set(['honors.hall','honors.wear','honors.manage','honors.change','honors.ack','register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','admin.context','admin.content','admin.history','admin.action','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
+contestActions.forEach(action=>clientActions.add(action));
 const awardCodes=['arrival','firstpost','hello','liked','sprout','neighbor','popular','collector','month','year'];
 const honorKinds=['seed','creator','contributor'];
 const permissions=['content','reports','users','recommend'];
@@ -45,6 +47,7 @@ function selection(values,choices,limit){
 }
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
+ if(contestActions.includes(action))return sanitizeContest(action,b,{text,id,boolean,time,oneOf,fail});
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
  if(action==='honors.hall')return {memberId:id(b.memberId,true)};
  if(action==='honors.ack')return {codes:selection(b.codes,awardCodes,awardCodes.length)};
@@ -141,11 +144,12 @@ function sanitize(action,b){
  return out;
 }
 /** db is a server-only RPC adapter; client-controlled proof, ids and roles are discarded. */
-export function createCommunity({db,storage=null,registrationEnabled=false,boardsEnabled=true,rateSalt=randomBytes(32).toString('hex')}){
+export function createCommunity({db,storage=null,registrationEnabled=false,boardsEnabled=true,contestsEnabled=false,rateSalt=randomBytes(32).toString('hex')}){
  async function call(action,payload={},token=''){const r=await db(action,payload,token);if(!r||!Number.isInteger(r.status))throw Error('database_response');if(r.status>=400)fail(r.error||'temporarily_unavailable',r.status);return r;}
  const rate=(key,limit,seconds)=>call('rate',{key:createHmac('sha256',rateSalt).update(new Date().toISOString().slice(0,10)+':'+key).digest('hex'),limit,seconds});
  async function execute(action,input={},bearer='',peer='unknown'){
   if(!clientActions.has(action))fail('not_found',404);
+  if(contestActions.includes(action)&&!contestsEnabled)fail('contests_unavailable',503);
   const b=sanitize(action,input);if(!boardsEnabled&&boardTopics.has(b.interest))fail('invalid_request');let tokenHash='';let sessionToken;let recoveryCode;
   if(['register','login','recover'].includes(action)){
    await rate('auth-ip:'+peer,30,900);await rate('auth-name:'+b.username,12,900);
@@ -179,6 +183,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
     if(action==='password.change'){b.passwordHash=await hashPassword(password(input.newPassword));recoveryCode=secret();b.recoveryHash=digest(recoveryCode);}
    }
   }
+  if(contestActions.includes(action))await rate('contest:'+tokenHash,120,60);
   let r;
   if(action==='media.upload'){
    if(!storage)fail('images_unavailable',503);
@@ -236,6 +241,6 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ function config(){return {contestsEnabled,registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:contestsEnabled?13:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
  return {execute,config};
 }

@@ -79,6 +79,7 @@ struct TreeholeView: View {
                 if tree.user == nil && tree.ready { authentication }
                 if let user = tree.user {
                     switch screen {
+                    case "contests": ContestView(api: tree.api, user: user)
                     case "compose": composer
                     case "detail": if let post = tree.current { discussion(post) }
                     case "account": account(user)
@@ -245,6 +246,7 @@ struct TreeholeView: View {
     }
     private var feed: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if tree.contestsEnabled { ContestEntryLink(api: tree.api) { screen = "contests" }.padding(.vertical, 10) }
             if tree.engagementEnabled {
                 TreeholeFeedScopes(tree: tree, select: accountFeed)
             }
@@ -644,6 +646,7 @@ struct TreeholeView: View {
                 Text("@" + user.username).font(.caption).foregroundStyle(.secondary)
                 Text("用自己的昵称，留下校园里的回声。").font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity).padding(.vertical, 18)
+            if tree.contestsEnabled { Button("赛事荣誉") { screen = "contests" } }
             if tree.avatarsEnabled { TreeholeAvatarEditor(tree: tree) }
             HStack(spacing: 0) {
                 Button { accountFeed("mine") } label: { VStack(spacing: 10) { Image(systemName: "bubble.left").font(.title3); Text("我的帖子").font(.subheadline) }.frame(maxWidth: .infinity).padding(.vertical, 8) }

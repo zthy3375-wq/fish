@@ -1,0 +1,27 @@
+name: Theme contest settlement
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: contest-settlement
+  cancel-in-progress: false
+jobs:
+  settle:
+    # Remains inert until the owner enables the migrated backend and this repository variable.
+    if: github.ref == 'refs/heads/main' && vars.COMMUNITY_CONTESTS_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Settle due competitions
+        env:
+          COMMUNITY_CONTESTS: enabled
+          CLOUDBASE_ENV_ID: ${{ vars.CLOUDBASE_ENV_ID }}
+          CLOUDBASE_APIKEY: ${{ secrets.CLOUDBASE_API_KEY }}
+        run: node scripts/cloudbase/settle-contests.mjs
