@@ -9,6 +9,7 @@ struct ContestView: View {
     var initialPage: String = "events"
     var onMember: ((String) -> Void)? = nil
     var onPost: ((String) -> Void)? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var clock = Date()
     @State private var events: [NativeContest] = []
     @State private var selected: NativeContest?
@@ -91,7 +92,7 @@ struct ContestView: View {
         if event.phase(at: clock.addingTimeInterval(serverOffset)) == "submitting" && !event.paused { Button("我要参赛") { compose() }.buttonStyle(.borderedProminent) }
         if event.phase(at: clock.addingTimeInterval(serverOffset)) == "voting" { Text("已用 \(votesUsed) / \(event.votesPerUser) 票").font(.subheadline) }
         if event.phase(at: clock.addingTimeInterval(serverOffset)) == "reviewing" { Label("结果统计与审核中", systemImage: "clock").font(.subheadline) }
-        if event.state == "ended" { Label("获奖作品已归档", systemImage: "trophy.fill").font(.headline).foregroundStyle(TreeholeTheme.primary) }
+        if event.state == "ended" { ContestResultCeremony().id(event.id) }
         if admin { Button("管理本场赛事") { draftEvent = event; administration = true } }
         if editor { submission(event) }
         ForEach(entries) { entry in work(entry, event: event) }
@@ -112,12 +113,17 @@ struct ContestView: View {
             ForEach(Array(entry.images.enumerated()), id: \.element.id) { index, image in Button { gallery = TreeholeGallerySelection(postId: entry.id, images: entry.images, index: index) } label: { AsyncImage(url: image.url.flatMap(URL.init(string:))) { image in image.resizable().scaledToFit() } placeholder: { Text("点开重试图片").font(.caption) }.frame(maxHeight: 300) }.buttonStyle(.plain) }
             Text(entry.title).font(.title3.bold()); Text(entry.body).font(.body); Button(entry.author) { onMember?(entry.memberId) }.font(.caption).foregroundStyle(.secondary)
             HStack {
-                if event.phase(at: clock.addingTimeInterval(serverOffset)) == "voting" && !event.paused && !entry.mine { Button(entry.voted ? "已投票 · 撤回" : "投一票") { run { _ = try await api.request("contests.vote", ["contestId":event.id, "entryId":entry.id, "enabled":!entry.voted]); try await open(event.id) } }.buttonStyle(.bordered) }
+                if event.phase(at: clock.addingTimeInterval(serverOffset)) == "voting" && !event.paused && !entry.mine {
+                    Button { run { _ = try await api.request("contests.vote", ["contestId":event.id, "entryId":entry.id, "enabled":!entry.voted]); try await open(event.id) } } label: {
+                        Label(entry.voted ? "已投票 · 撤回" : "投一票", systemImage: entry.voted ? "checkmark.circle.fill" : "hand.thumbsup")
+                    }.buttonStyle(.bordered).scaleEffect(entry.voted ? 1.03 : 1)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: entry.voted)
+                }
                 if let votes = entry.votes { Text("\(votes) 票").font(.caption) }
                 if entry.mine && event.phase(at: clock.addingTimeInterval(serverOffset)) == "submitting" { Button("编辑") { compose(entry) }; Button("撤回") { run { _ = try await api.request("contests.withdraw", ["contestId":event.id, "entryId":entry.id]); try await open(event.id) } } }
                 if let post = entry.postId { Button("原帖") { onPost?(post) } }; Spacer(); if admin { Button("审核") { reviewingEntry = true; restoreEntry = entry.status != "approved"; reportTarget = entry.id } } else { Button("举报") { reviewingEntry = false; reportTarget = entry.id } }
             }.font(.caption)
-        }.padding(16).background(Color.white, in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).stroke(TreeholeTheme.tint))
+        }.padding(16).background(Color.white, in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).stroke(entry.awards.contains { $0.kind == "champion" } ? TreeholeTheme.primary.opacity(0.45) : TreeholeTheme.tint))
     }
     private func submission(_ event: NativeContest) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -234,5 +240,28 @@ struct ContestView: View {
     private func wall(more: Bool = false) async throws {
         guard let selected else { return }; let r = try await api.request("contests.entries", ["contestId":selected.id, "seed":seed, "offset":0, "afterId":more ? entries.last?.id as Any? ?? NSNull() : NSNull()]); self.more = (r.entries?.count ?? 0) > 20
         entries = more ? entries + Array((r.entries ?? []).prefix(20)) : Array((r.entries ?? []).prefix(20))
+    }
+}
+
+private struct ContestResultCeremony: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "trophy.fill").font(.system(size: 30, weight: .medium)).foregroundStyle(TreeholeTheme.primary)
+                .frame(width: 64, height: 64).background(Color.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 18))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("本届结果已公布").font(.headline)
+                Text("获奖作品与赛事荣誉已归档").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }.padding(18).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 20))
+            .opacity(appeared ? 1 : 0).scaleEffect(appeared ? 1 : 0.96)
+            .accessibilityElement(children: .combine)
+            .onAppear {
+                if reduceMotion { appeared = true }
+                else { withAnimation(.easeOut(duration: 0.4)) { appeared = true } }
+            }
+            .onChange(of: reduceMotion) { enabled in if enabled { appeared = true } }
     }
 }
