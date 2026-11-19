@@ -64,7 +64,7 @@ elif mode=='worker':
         request('CreateFunction',{'FunctionName':FUNCTION,'Type':'Event','Role':role,'Runtime':'Nodejs20.19','Handler':'index.main','MemorySize':128,'Timeout':60,'Code':{'ZipFile':code},'Environment':environment,'Description':'Theme contest one-off settlement and daily recovery; no frequent idle polling'});wait(FUNCTION)
     triggers=request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[])
     if not any(t['TriggerName']=='hytc-daily-recovery' for t in triggers):
-        request('CreateTrigger',{'FunctionName':FUNCTION,'TriggerName':'hytc-daily-recovery','Type':'timer','Enable':'OPEN','TriggerDesc':json.dumps({'cron':'0 5 4 * * ? *'})})
+        request('CreateTrigger',{'FunctionName':FUNCTION,'TriggerName':'hytc-daily-recovery','Type':'timer','Enable':'OPEN','TriggerDesc':'0 5 4 * * ? *'})
     print('Settlement worker active; daily recovery installed')
 elif mode=='rollback':
     if not BACKUP.exists(): raise RuntimeError('No deployment backup')

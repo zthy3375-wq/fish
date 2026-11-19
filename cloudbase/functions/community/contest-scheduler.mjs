@@ -18,8 +18,8 @@ export function createContestScheduler({env=process.env.CLOUDBASE_ENV_ID,scf=cre
    if(!contest||!contest.autoPublish||contest.cancelled||contest.state==='ended')return null;
    const timer=contestTimer(contest,{now:now(),offsetHours});
    const list=await scf('ListTriggers',{...target,Limit:100});
-   if((list.Triggers||[]).some(t=>t.TriggerName===timer.name&&t.Enable!==0))return timer;
-   try{await scf('CreateTrigger',{...target,TriggerName:timer.name,Type:'timer',Enable:'OPEN',TriggerDesc:JSON.stringify({cron:timer.cron}),CustomArgument:JSON.stringify({contestId:contest.id})});}
+   if((list.Triggers||[]).some(t=>t.TriggerName===timer.name&&(t.BindStatus==='on'||t.Enable===1)))return timer;
+   try{await scf('CreateTrigger',{...target,TriggerName:timer.name,Type:'timer',Enable:'OPEN',TriggerDesc:timer.cron,CustomArgument:JSON.stringify({contestId:contest.id})});}
    catch(error){if(!String(error.code).startsWith('ResourceInUse'))throw error;}
    return timer;
   },
