@@ -65,7 +65,7 @@ function sanitize(action,b){
   if(action==='messages.inbox')return b.beforeSeq!=null?{beforeSeq:seq(b.beforeSeq),beforeId:id(b.beforeId)}:{};
   const out={conversationId:id(b.conversationId)};
   if(action==='messages.send')return {...out,body:text(b.body,1,1000),requestId:id(b.requestId)};
-  if(action==='messages.read')return {...out,throughSeq:seq(b.throughSeq)};
+  if(action==='messages.read')return {...out,throughSeq:seq(b.throughSeq),withUnread:b.withUnread===true};
   if(b.beforeSeq!=null&&b.afterSeq!=null)fail();
   return {...out,...(b.beforeSeq!=null?{beforeSeq:seq(b.beforeSeq)}:{}),...(b.afterSeq!=null?{afterSeq:seq(b.afterSeq)}:{})};
  }
@@ -141,9 +141,17 @@ function sanitize(action,b){
  return out;
 }
 /** db is a server-only RPC adapter; client-controlled proof, ids and roles are discarded. */
-export function createCommunity({db,storage=null,registrationEnabled=false,boardsEnabled=true,rateSalt=randomBytes(32).toString('hex')}){
+export function createCommunity({db,storage=null,registrationEnabled=false,boardsEnabled=true,rateSalt=randomBytes(32).toString('hex'),now=Date.now}){
  async function call(action,payload={},token=''){const r=await db(action,payload,token);if(!r||!Number.isInteger(r.status))throw Error('database_response');if(r.status>=400)fail(r.error||'temporarily_unavailable',r.status);return r;}
  const rate=(key,limit,seconds)=>call('rate',{key:createHmac('sha256',rateSalt).update(new Date().toISOString().slice(0,10)+':'+key).digest('hex'),limit,seconds});
+ let nextUploadCleanup=-Infinity,uploadCleanupPending=null;
+ async function cleanupMedia(){const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}return (stale.images||[]).length;}
+ async function uploadCleanup(){
+  if(uploadCleanupPending||now()<nextUploadCleanup)return;
+  nextUploadCleanup=now()+600000;
+  uploadCleanupPending=cleanupMedia().then(count=>{if(count>=20)nextUploadCleanup=now();}).catch(()=>{nextUploadCleanup=now()+60000;console.warn('Community image cleanup will retry');}).finally(()=>{uploadCleanupPending=null;});
+  await uploadCleanupPending;
+ }
  async function execute(action,input={},bearer='',peer='unknown'){
   if(!clientActions.has(action))fail('not_found',404);
   const b=sanitize(action,input);if(!boardsEnabled&&boardTopics.has(b.interest))fail('invalid_request');let tokenHash='';let sessionToken;let recoveryCode;
@@ -214,7 +222,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
   if(storage&&keys.length){try{urls=storage.urls?await storage.urls(keys,{fresh:action==='media.url'}):new Map(await Promise.all(keys.map(async key=>[key,await storage.url(key)])));}catch{}}
   for(const image of images){image.url=urls.get(image.key)||null;delete image.key;}
   if(storage&&['posts.delete','comments.delete','account.delete','admin.resolve','admin.action','media.discard','media.upload','avatar.set'].includes(action)){
-   try {const stale=await call('media.cleanup');for(const image of stale.images||[]){await storage.remove(image.key);await call('media.purge',{imageId:image.id});}}catch{console.warn('Community image cleanup will retry');}
+   try {if(action==='media.upload')await uploadCleanup();else await cleanupMedia();}catch{console.warn('Community image cleanup will retry');}
   }
   // Older clients can browse topic posts through their parent category without unknown labels.
   if(input.boardTopics!==true){

@@ -113,7 +113,7 @@ const screen=ref<Screen>('feed');
 const engagementEnabled=ref(false),unreadCount=ref(0),notifications=ref<TreeholeNotification[]>([]),inboxFilter=ref('all'),inboxLoading=ref(false),inboxError=ref(''),inboxNext=ref<Record<string,string>|null>(null);
 const profile=ref<TreeholeProfile|null>(null),profilePosts=ref<TreeholePost[]>([]),profileNext=ref<Record<string,string>|null>(null),bio=ref('');
 const focusedThread=ref<TreeholeComment|null>(null),focusedCommentId=ref(''),watchPending=ref(false);
-let lastUnreadAt=-Infinity,inboxRevision=0,pendingUnreadEpoch:number|null=null,unreadTimer:ReturnType<typeof setInterval>|undefined;
+let lastUnreadAt=-Infinity,inboxRevision=0,pendingUnreadEpoch:number|null=null;
 const routeHistory:Array<{screen:Screen;scroll:number;detail:TreeholePost|null;comments:TreeholeComment[];commentNext:Record<string,string>|null;profile:TreeholeProfile|null;profilePosts:TreeholePost[];profileNext:Record<string,string>|null;context:TreeholeComment|null}>=[];
 const scopeLabels:Record<string,string>={joined:'我报名的',mine:'我的帖子',saved:'我的收藏',participated:'我参与的',watching:'关注的讨论',following:'关注动态'};
 const posts=ref<TreeholePost[]>([]),scope=ref('all'),query=ref(''),feedNext=ref<Record<string,string>|null>(null);
@@ -598,8 +598,8 @@ function requestBack(){
  if(!user.value&&auth.value!=='login'){auth.value='login';password.value='';return true;}return false;
 }
 function flushDraft(){clearTimeout(draftTimer);saveDraft();if(!document.hidden)void refreshUnread();}
-function bindEvents(){document.addEventListener('visibilitychange',flushDraft);document.addEventListener('keydown',trapKeys,true);window.addEventListener('resize',sizePostInput,{passive:true});window.addEventListener('scroll',trackDetailScroll,{passive:true});window.addEventListener('wheel',manualScroll,{passive:true});if(!unreadTimer)unreadTimer=setInterval(()=>void refreshUnread(),180000);}
-function unbindEvents(){document.removeEventListener('visibilitychange',flushDraft);document.removeEventListener('keydown',trapKeys,true);window.removeEventListener('resize',sizePostInput);window.removeEventListener('scroll',trackDetailScroll);window.removeEventListener('wheel',manualScroll);cancelAnimationFrame(scrollFrame);clearInterval(unreadTimer);unreadTimer=undefined;}
+function bindEvents(){document.addEventListener('visibilitychange',flushDraft);document.addEventListener('keydown',trapKeys,true);window.addEventListener('resize',sizePostInput,{passive:true});window.addEventListener('scroll',trackDetailScroll,{passive:true});window.addEventListener('wheel',manualScroll,{passive:true});}
+function unbindEvents(){document.removeEventListener('visibilitychange',flushDraft);document.removeEventListener('keydown',trapKeys,true);window.removeEventListener('resize',sizePostInput);window.removeEventListener('scroll',trackDetailScroll);window.removeEventListener('wheel',manualScroll);cancelAnimationFrame(scrollFrame);}
 defineExpose({requestBack,refresh});
 onMounted(()=>{void initialize();bindEvents();});
 onActivated(()=>{active=true;bindEvents();publishTabNavigation();void refreshUnread();});

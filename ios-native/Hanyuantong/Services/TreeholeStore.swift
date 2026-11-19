@@ -74,7 +74,10 @@ import Combine
     private var epoch = 0
     private var discussion = 0
     let api: TreeholeService
-    init(api: TreeholeService = TreeholeService()) { self.api = api }
+    private let now: () -> Date
+    private var lastUnreadAt = Date.distantPast
+    private var lastUnreadEpoch = -1
+    init(api: TreeholeService = TreeholeService(), now: @escaping () -> Date = { Date() }) { self.api = api; self.now = now }
     func perform(_ work: @escaping @MainActor () async throws -> Void) {
         guard !busy else { return }; busy = true; message = nil
         Task { defer { busy = false }; do { try await work() } catch is CancellationError { } catch {
@@ -203,8 +206,11 @@ import Combine
         detailRequest += 1; discussion += 1; detailLoading = false; detailError = nil
         current = nil; comments = []; commentNext = nil; expandedReplies = []; replyPages = [:]; loadedThreads = []; focusedThread = nil
     }
-    func refreshUnread() async {
+    func refreshUnread(force: Bool = false) async {
         guard engagementEnabled, user != nil, !unreadBusy else { return }
+        let instant = now()
+        guard force || lastUnreadEpoch != epoch || instant.timeIntervalSince(lastUnreadAt) >= 30 else { return }
+        lastUnreadAt = instant; lastUnreadEpoch = epoch
         let generation = epoch; unreadBusy = true; defer { unreadBusy = false }
         do { let r = try await api.request("notifications.unread"); guard generation == epoch else { return }; unreadCount = r.unreadCount ?? 0 }
         catch { if generation == epoch, let e = error as? TreeholeError, e.code == "session_expired" { clear() } }

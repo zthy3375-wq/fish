@@ -339,6 +339,24 @@ final class TreeholeTests: XCTestCase {
             XCTAssertEqual(store.current?.id, clears ? nil : "next"); XCTAssertNil(store.detailError); XCTAssertFalse(store.detailLoading)
         }
     }
+    @MainActor func testUnreadRefreshCoalescesForegroundSignalsAndAllowsExplicitRefreshAndNewSession() async {
+        let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
+        var instant = Date(timeIntervalSince1970: 1_000), calls = 0
+        let store = TreeholeStore(api: service(vault), now: { instant })
+        let member = TreeholeMember(id: "viewer", username: "viewer", nickname: "同学", role: "member", bannedUntil: nil)
+        store.user = member; store.engagementEnabled = true
+        TreeholeTestProtocol.handler = { request in
+            XCTAssertEqual(request.url?.lastPathComponent, "notifications.unread")
+            calls += 1; return (200, Data("{\"unreadCount\":7}".utf8))
+        }
+        await store.refreshUnread(); await store.refreshUnread()
+        XCTAssertEqual(calls, 1); XCTAssertEqual(store.unreadCount, 7)
+        instant = instant.addingTimeInterval(31); await store.refreshUnread()
+        XCTAssertEqual(calls, 2)
+        await store.refreshUnread(force: true); XCTAssertEqual(calls, 3)
+        store.clear(); store.user = member; await store.refreshUnread()
+        XCTAssertEqual(calls, 4); XCTAssertEqual(store.unreadCount, 7)
+    }
     @MainActor func testInboxSurvivesReadFailureAndDoesNotRestoreClearedAccount() async throws {
         let vault = TreeholeMemoryVault(); vault.token = String(repeating: "a", count: 43)
         let store = TreeholeStore(api: service(vault))

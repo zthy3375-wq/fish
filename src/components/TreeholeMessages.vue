@@ -9,7 +9,7 @@ const emit=defineEmits<{unread:[count:number];expired:[];blocked:[];title:[name:
 const threads=ref<TreeholeConversation[]>([]),conversation=ref<TreeholeConversation|null>(null),messages=ref<TreeholeMessage[]>([]);
 const inboxNext=ref<Record<string,string>|null>(null),older=ref<Record<string,string>|null>(null),loading=ref(false),loadingOlder=ref(false),sending=ref(false),error=ref(''),readError=ref(false),confirmBlock=ref(false),blocked=ref(false);
 const scroller=ref<HTMLElement>(),textarea=ref<HTMLTextAreaElement>(),nearBottom=ref(true),newMessages=ref(false);
-const text=ref('');let alive=true,generation=0,polling=false,ackBusy=false,ackSeq='0',timer:ReturnType<typeof setInterval>;
+const text=ref('');let alive=true,generation=0,polling=false,ackBusy=false,ackSeq='0',timer:ReturnType<typeof setInterval>,lastInteractionAt=Date.now();
 const canSend=computed(()=>text.value.trim().length>0&&text.value.trim().length<=1000&&!sending.value&&!blocked.value&&!loading.value);
 const draft=computed(()=>conversation.value?props.drafts[conversation.value.id]:undefined);
 function saveDraft(){if(!conversation.value)return;props.drafts[conversation.value.id]={body:text.value,requestId:draft.value?.requestId||crypto.randomUUID(),failed:draft.value?.failed};}
@@ -22,7 +22,7 @@ async function inbox(more=false,quiet=false){
 }
 async function acknowledge(){
  const c=conversation.value,last=messages.value.at(-1),g=generation;if(!c||!last||!nearBottom.value||document.hidden||!visibleTab||blocked.value||ackBusy||BigInt(last.seq)<=BigInt(ackSeq))return;ackBusy=true;
- try{await treeholeRequest('messages.read',{conversationId:c.id,throughSeq:last.seq});if(!alive||g!==generation)return;readError.value=false;const r=await treeholeRequest('messages.unread');if(alive&&g===generation){ackSeq=last.seq;emit('unread',r.messageUnreadCount||0);}}
+ try{const acknowledged=await treeholeRequest('messages.read',{conversationId:c.id,throughSeq:last.seq,withUnread:true});if(!alive||g!==generation)return;readError.value=false;const r=typeof acknowledged.messageUnreadCount==='number'?acknowledged:await treeholeRequest('messages.unread');if(alive&&g===generation){ackSeq=last.seq;emit('unread',r.messageUnreadCount||0);}}
  catch(e){if(alive&&g===generation){readError.value=true;if(treeholeErrorCode(e)==='session_expired'){alive=false;emit('expired');}}}finally{if(g===generation)ackBusy=false;}
 }
 function ordered(rows:TreeholeMessage[]){return [...new Map(rows.map(x=>[x.id,x])).values()].sort((a,b)=>BigInt(a.seq)<BigInt(b.seq)?-1:1);}
@@ -36,7 +36,7 @@ async function history(more=false,quiet=false){
  try{
   let cursor=more?older.value:quiet&&messages.value.length?{afterSeq:messages.value.at(-1)!.seq}:{};
   do{const r=await treeholeRequest('messages.list',{conversationId:c.id,...cursor});if(!alive||g!==generation)return;
-   conversation.value=r.conversation||c;const fresh=r.messages||[];messages.value=ordered([...messages.value,...fresh]);
+   conversation.value=r.conversation||c;const fresh=r.messages||[];messages.value=ordered([...messages.value,...fresh]);if(fresh.length)lastInteractionAt=Date.now();
    for(const m of fresh)if(m.mine&&m.requestId){if(draft.value?.requestId===m.requestId){delete props.drafts[c.id];text.value='';error.value='';}}
    if(more||!quiet)older.value=r.next||null;
    cursor=quiet?r.next||null:null;
@@ -46,7 +46,7 @@ async function history(more=false,quiet=false){
  }catch(e){if(g===generation)fail(e);}finally{if(g===generation){loading.value=false;loadingOlder.value=false;polling=false;}}
 }
 async function openThread(id:string,member=false){
- if(loading.value||sending.value)return;saveDraft();generation++;ackBusy=false;ackSeq='0';polling=false;messages.value=[];older.value=null;error.value='';blocked.value=false;confirmBlock.value=false;nearBottom.value=true;loading.value=true;const g=generation;
+ if(loading.value||sending.value)return;lastInteractionAt=Date.now();saveDraft();generation++;ackBusy=false;ackSeq='0';polling=false;messages.value=[];older.value=null;error.value='';blocked.value=false;confirmBlock.value=false;nearBottom.value=true;loading.value=true;const g=generation;
  try{let c:TreeholeConversation|undefined;if(member)c=(await treeholeRequest('messages.open',{memberId:id})).conversation;else c=threads.value.find(t=>t.id===id);
   if(!alive||g!==generation||!c)return;conversation.value=c;text.value=props.drafts[c.id]?.body||'';emit('title',c.member.nickname);loading.value=false;await history();
  }catch(e){if(g===generation)fail(e);}finally{if(g===generation)loading.value=false;}
@@ -64,10 +64,12 @@ function back(){if(sending.value)return true;saveDraft();if(conversation.value&&
 let visibleTab=true,lastInboxPoll=-Infinity;
 function refresh(force=false){
  if(document.hidden||!alive||!visibleTab)return;
+ if(!force&&(!conversation.value||Date.now()-lastInteractionAt>=120000))return;
  if(conversation.value){void history(false,true);return}
  if(inboxNext.value||!force&&Date.now()-lastInboxPoll<60000)return;
  lastInboxPoll=Date.now();void inbox(false,true);
 }
+function activity(){const idle=Date.now()-lastInteractionAt>=120000;lastInteractionAt=Date.now();if(idle)refresh(true);}
 function onVisibility(){if(!document.hidden)refresh(true)}
 onMounted(()=>{lastInboxPoll=Date.now();if(props.initialMember)void openThread(props.initialMember,true);else void inbox();timer=setInterval(()=>refresh(),8000);document.addEventListener('visibilitychange',onVisibility);});
 onDeactivated(()=>{visibleTab=false});
@@ -76,7 +78,7 @@ onUnmounted(()=>{if(alive)saveDraft();alive=false;generation++;clearInterval(tim
 defineExpose({back});
 </script>
 <template>
- <section class="th-dm" :class="{'is-chat':conversation}" aria-label="私信">
+ <section class="th-dm" :class="{'is-chat':conversation}" aria-label="私信" @pointerdown.capture="activity" @keydown.capture="activity" @input.capture="activity" @scroll.capture.passive="activity">
   <template v-if="!conversation">
    <div class="dm-list-heading"><span>与同学的私下交流</span><button aria-label="刷新私信" :disabled="loading" @click="inbox()"><RefreshCw :size="18"/></button></div>
    <button v-for="thread in threads" :key="thread.id" class="dm-thread" :data-conversation-id="thread.id" @click="openThread(thread.id)"><TreeholeAvatar :name="thread.member.nickname" :url="thread.member.avatar?.url" :size="44"/><span><strong>{{thread.member.nickname}}</strong><small>{{thread.lastMessage}}</small></span><span class="dm-thread-meta"><time>{{treeholeTimestamp(thread.updatedAt)}}</time><b v-if="thread.unreadCount">{{thread.unreadCount>99?'99+':thread.unreadCount}}</b></span><ChevronRight :size="15"/></button>
