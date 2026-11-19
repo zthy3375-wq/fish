@@ -724,6 +724,11 @@ BEGIN
    -- Acknowledgement is bounded to messages already delivered on this thread; newer messages remain unread.
    IF NOT EXISTS(SELECT 1 FROM public.hyt_dm_messages WHERE thread_id=dm.id AND seq=(b->>'throughSeq')::bigint) THEN RETURN '{"status":400,"error":"invalid_request"}'::jsonb; END IF;
    INSERT INTO public.hyt_dm_reads VALUES(dm.id,m.id,(b->>'throughSeq')::bigint) ON CONFLICT(thread_id,member_id) DO UPDATE SET last_seq=greatest(hyt_dm_reads.last_seq,excluded.last_seq);
+   IF coalesce((b->>'withUnread')::boolean,false) THEN
+   SELECT count(*) INTO n FROM public.hyt_dm_messages d JOIN public.hyt_dm_visible(m.id) t ON t.id=d.thread_id
+    WHERE d.sender_id<>m.id AND d.seq>coalesce((SELECT last_seq FROM public.hyt_dm_reads WHERE thread_id=t.id AND member_id=m.id),0);
+   RETURN jsonb_build_object('status',200,'messageUnreadCount',n);
+   END IF;
    RETURN '{"status":200}'::jsonb;
   END IF;
   IF a='messages.list' THEN
@@ -753,7 +758,9 @@ BEGIN
  IF a IN ('notifications.list','notifications.unread') THEN
   SELECT count(*) INTO n FROM public.hyt_visible_notifications(m.id) WHERE read_at IS NULL;
   IF b->>'withMessages'='true' THEN
-   k=public.hyt_community('messages.unread','{}'::jsonb,th)->>'messageUnreadCount';
+   -- Reuse the authenticated caller instead of recursively repeating auth and rate writes.
+   SELECT count(*)::text INTO k FROM public.hyt_dm_messages d JOIN public.hyt_dm_visible(m.id) t ON t.id=d.thread_id
+    WHERE d.sender_id<>m.id AND d.seq>coalesce((SELECT last_seq FROM public.hyt_dm_reads WHERE thread_id=t.id AND member_id=m.id),0);
   END IF;
   IF a='notifications.unread' THEN RETURN public.hyt_award_pending(m.id)||jsonb_strip_nulls(jsonb_build_object('status',200,'unreadCount',n,'messageUnreadCount',k::int)); END IF;
   SELECT coalesce(jsonb_agg(public.hyt_notification_json(q,m.id) ORDER BY q.created_at DESC,q.id DESC),'[]'::jsonb) INTO result
@@ -1303,13 +1310,13 @@ CREATE OR REPLACE FUNCTION public.hyt_contests(a text,b jsonb,th text) RETURNS j
 DECLARE m public.hyt_members; c public.hyt_contests; e public.hyt_contest_entries; old public.hyt_contest_entries;
  p public.hyt_posts; t public.hyt_contest_themes; v public.hyt_contest_votes;
  cid uuid:=(b->>'contestId')::uuid; target uuid; result jsonb; rows jsonb; n int; delta int; off_n int:=coalesce((b->>'offset')::int,0); op text; stamp timestamptz:=clock_timestamp();
- admin boolean; mutation boolean:=a NOT IN ('contests.list','contests.get','contests.entries','contests.profile','contests.year','contests.themes','contests.admin','contests.image');
+ admin boolean; mutation boolean:=a NOT IN ('contests.list','contests.get','contests.entries','contests.profile','contests.year','contests.themes','contests.admin','contests.image','contests.schedule');
 BEGIN
  SELECT u.* INTO m FROM public.hyt_sessions s JOIN public.hyt_members u ON u.id=s.member_id WHERE s.hash=th AND s.expires_at>now() AND u.deleted_at IS NULL;
  IF NOT FOUND THEN RETURN '{"status":401,"error":"session_expired"}'::jsonb; END IF;
  admin:=m.developer_since IS NOT NULL AND NOT coalesce(m.banned_until>now(),false);
  IF mutation AND m.banned_until>now() THEN RETURN '{"status":403,"error":"account_muted"}'::jsonb; END IF;
- IF a IN ('contests.save','contests.manage','contests.review','contests.admin') AND NOT admin THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
+ IF a IN ('contests.save','contests.manage','contests.review','contests.admin','contests.schedule') AND NOT admin THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
  IF mutation THEN
   PERFORM pg_advisory_xact_lock(hashtext('contest-member:'||m.id::text));
   IF a IN ('contests.suggest','contests.themevote') OR (a='contests.review' AND b->>'kind' IN ('theme','merge')) OR (a='contests.manage' AND b->>'operation'='solicitation') THEN PERFORM pg_advisory_xact_lock(hashtext('contest:global')); END IF;
@@ -1318,6 +1325,10 @@ BEGIN
   SELECT * INTO m FROM public.hyt_members WHERE id=m.id;
   IF m.deleted_at IS NOT NULL OR m.banned_until>now() THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
   IF a IN ('contests.save','contests.manage','contests.review') AND m.developer_since IS NULL THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
+ END IF;
+ IF a='contests.schedule' THEN
+  SELECT * INTO c FROM public.hyt_contests WHERE id=cid;
+  RETURN jsonb_build_object('status',200,'contest',CASE WHEN c.id IS NULL THEN NULL ELSE public.hyt_contest_json(c)||jsonb_build_object('published',c.published,'cancelled',c.cancelled) END);
  END IF;
  IF a='contests.list' THEN
   SELECT coalesce(jsonb_agg(public.hyt_contest_json(q) ORDER BY CASE WHEN q.cancelled THEN 4 WHEN q.announced_at IS NOT NULL THEN 3 WHEN NOT q.published THEN 5 WHEN q.starts_at>now() THEN 2 ELSE 1 END,CASE WHEN q.starts_at>now() THEN q.starts_at END ASC,q.starts_at DESC),'[]') INTO rows FROM

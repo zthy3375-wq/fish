@@ -22,4 +22,5 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: node tests/fixtures/contest-ui-check.mjs
+      - run: node tests/fixtures/community-idle-check.mjs
       - run: npm audit --audit-level=high

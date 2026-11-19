@@ -24,6 +24,7 @@ struct TreeholeView: View {
     @State private var pickedPhotos: [PhotosPickerItem] = []
     @State private var gallery: TreeholeGallerySelection?
     @Environment(\.scenePhase) private var scenePhase
+    @State private var communityVisible = false
     private var anonymous: Bool { draft.value.anonymous }
     @State private var replyExpanded = false
     @State private var detailTab = "body"
@@ -134,7 +135,7 @@ struct TreeholeView: View {
             guard screen == "feed", tree.user != nil, !tree.busy else { return }
             tree.busy = true; tree.message = nil
             defer { tree.busy = false }
-            do { try await tree.feed() } catch {
+            do { try await tree.feed(); await tree.refreshUnread(force: true) } catch {
                 if let error = error as? TreeholeError, error.code == "session_expired" { tree.clear() }
                 tree.message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
             }
@@ -175,14 +176,12 @@ struct TreeholeView: View {
     private func lifecycle<Content: View>(_ content: Content) -> some View {
         content
         .task { draft.bind(tree.user?.id); if !tree.ready { tree.enter() } }
-        .onDisappear { draft.flush() }
-        .onChange(of: scenePhase) { if $0 != .active { draft.flush() } else { Task { await tree.refreshUnread() } } }
+        .onAppear { communityVisible = true; if tree.ready { Task { await tree.refreshUnread() } } }
+        .onDisappear { communityVisible = false; draft.flush() }
+        .onChange(of: scenePhase) { if $0 != .active { draft.flush() } else if communityVisible { Task { await tree.refreshUnread() } } }
         .task(id: tree.user?.id) {
             guard tree.user != nil else { return }
-            while !Task.isCancelled {
-                if scenePhase == .active { await tree.refreshUnread() }
-                do { try await Task.sleep(nanoseconds: 60_000_000_000) } catch { break }
-            }
+            if scenePhase == .active && communityVisible { await tree.refreshUnread() }
         }
         .onChange(of: pickedPhotos) { items in loadPhotos(items) }
         .onChange(of: pickedReplyPhotos) { items in loadReplyPhotos(items) }

@@ -1,0 +1,60 @@
+name: Deploy community contests and cost fixes
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths: ['cloudbase/**', 'scripts/cloudbase/**', '.github/workflows/community-contests-deploy.yml']
+permissions:
+  contents: read
+concurrency:
+  group: community-authorized-deployment
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event.pull_request.head.ref == 'deploy/community-contests-cost-20261119' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate combined frontend, backend and build
+        run: npm run check
+      - name: Install deployment tools
+        run: |
+          npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
+          python -m pip install tencentcloud-sdk-python cryptography
+      - name: Back up current service
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+        run: python scripts/cloudbase/contest-service.py backup
+      - name: Deploy and verify live community with contests enabled
+        id: activation
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          CLOUDBASE_ENV_ID: hanyuantong-d8gjzt1jh12370215
+          COMMUNITY_CONTESTS: enabled
+          COMMUNITY_CONTESTS_SCHEDULER: scf
+          HYT_EXISTING_ENV_FILE: /tmp/hyt-existing-environment.json
+          CI: 'true'
+          TCB_SITE: domestic
+        run: |
+          python scripts/cloudbase/contest-service.py worker
+          node scripts/cloudbase/deploy-community.mjs
+          node scripts/cloudbase/verify-contests-live.mjs
+      - name: Restore previous service if deployment verification fails
+        if: failure() && steps.activation.outcome == 'failure'
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+        run: python scripts/cloudbase/contest-service.py rollback
+      - name: Save encrypted rollback and sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: community-deployment-evidence
+          path: artifacts/
+          retention-days: 14

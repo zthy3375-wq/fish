@@ -11,7 +11,7 @@ const envId='hanyuantong-d8gjzt1jh12370215',region='ap-shanghai';
 const base=`https://${envId}-1527874185.${region}.app.tcloudbase.com/hyt-community`;
 const activation=JSON.parse(readFileSync('cloudbase/community-test-deploy.json','utf8'));
 if(activation.mode!=='private-treehole-test'||activation.service!=='hyt-community'||activation.registration!=='open')throw Error('Invalid private-test activation');
-if(process.env.GITHUB_REF&&!['refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test12-20261116','refs/heads/deploy/community-test15-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
+if(process.env.GITHUB_HEAD_REF!=='deploy/community-contests-cost-20261119'&&process.env.GITHUB_REF&&!['refs/heads/deploy/community-contests-cost-20261119','refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test12-20261116','refs/heads/deploy/community-test15-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
 const key=process.env.CLOUDBASE_API_KEY?.trim();if(!key)throw Error('CloudBase deployment key unavailable');
 const response=await fetch(`https://${envId}.${region}.tcb-api.tencentcloudapi.com/capi/credential`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({env:envId}),signal:AbortSignal.timeout(25000)});
 const envelope=await response.json();if(envelope.code!==0)throw Error('CloudBase credential exchange failed');const credentials=envelope.data;
@@ -46,7 +46,7 @@ DROP POLICY IF EXISTS hyt_community_private_bucket ON storage.buckets;
 CREATE POLICY hyt_community_private_bucket ON storage.buckets AS RESTRICTIVE FOR ALL TO anon,authenticated USING(id<>'hyt-community') WITH CHECK(id<>'hyt-community');
 COMMIT;`,'--json']);
 
-const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-community',type:'HTTP',runtime:'Nodejs20.19',timeout:30,memorySize:512,installDependency:false,public:true,gatewayPath:'/hyt-community',envVariables:{CLOUDBASE_ENV_ID:envId,CLOUDBASE_APIKEY:key,COMMUNITY_REGISTRATION:'open',COMMUNITY_BOARDS:'enabled',COMMUNITY_CONTESTS:contestsEnabled?'enabled':'disabled',COMMUNITY_RATE_SALT:rateSalt}}]};
+const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-community',type:'HTTP',runtime:'Nodejs20.19',timeout:30,memorySize:512,installDependency:false,public:true,gatewayPath:'/hyt-community',envVariables:{...(process.env.HYT_EXISTING_ENV_FILE?JSON.parse(readFileSync(process.env.HYT_EXISTING_ENV_FILE,'utf8')):{}),CLOUDBASE_ENV_ID:envId,CLOUDBASE_APIKEY:key,COMMUNITY_REGISTRATION:'open',COMMUNITY_BOARDS:'enabled',COMMUNITY_CONTESTS:contestsEnabled?'enabled':'disabled',COMMUNITY_CONTESTS_SCHEDULER:process.env.COMMUNITY_CONTESTS_SCHEDULER||'disabled',COMMUNITY_RATE_SALT:rateSalt}}]};
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/community/scf_bootstrap',0o755);
 try{cli(['fn','deploy','hyt-community','--httpFn','--dir','cloudbase/functions/community','--force','--json']);}finally{unlinkSync('cloudbaserc.json');}
 let configuration;
