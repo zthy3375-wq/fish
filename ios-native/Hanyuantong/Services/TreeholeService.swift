@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import CryptoKit
 
 struct ContestIdentity: Codable, Equatable {
     struct Badge: Codable, Equatable { let code: String }
@@ -135,6 +136,7 @@ actor TreeholeService {
     private let vault: TreeholeTokenVault
     private let session: URLSession
     private var generation = 0
+    private var contestListCache: [String: (at: Date, result: TreeholeEnvelope)] = [:]
     init(vault: TreeholeTokenVault = TreeholeKeychain(), session: URLSession? = nil) {
         self.vault = vault
         let config = URLSessionConfiguration.ephemeral
@@ -147,11 +149,25 @@ actor TreeholeService {
         try Task.checkCancellation()
         guard Self.actions.contains(action) else { throw TreeholeError(code: "invalid_request") }
         let authenticating = ["register", "login", "recover"].contains(action)
-        if authenticating || action == "logout" { generation += 1 }
+        if authenticating || action == "logout" { generation += 1; contestListCache.removeAll() }
         let expected = generation
         let token = try vault.read().flatMap { Self.validToken($0) ? $0 : nil }
         if action == "logout" { try vault.clear() }
         if !authenticating && action != "config" && action != "logout" && token == nil { throw TreeholeError(code: "session_expired") }
+        var cacheKey = ""
+        if action == "contests.list" {
+            let fingerprint = SHA256.hash(data: Data((token ?? "").utf8)).map { String(format: "%02x", $0) }.joined()
+            let cacheBody = body.filter { $0.key != "_fresh" }
+            cacheKey = String(generation) + fingerprint + (try JSONSerialization.data(withJSONObject: cacheBody, options: [.sortedKeys])).base64EncodedString()
+            if body["_fresh"] as? Bool != true, let cached = contestListCache[cacheKey] {
+                let age = Date().timeIntervalSince(cached.at)
+                if age >= 0 && age < 120 {
+                    var result = cached.result
+                    if let time = result.serverTime.flatMap(NativeContest.date) { result.serverTime = ISO8601DateFormatter().string(from: time.addingTimeInterval(age)) }
+                    return result
+                }
+            }
+        }
         let endpoint = URL(string: "https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-community/v1/\(action)")!
         var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = action == "config" ? "GET" : "POST"
@@ -177,6 +193,12 @@ actor TreeholeService {
             }
             if action == "account.delete" { generation += 1; try vault.clear() }
             result.sessionToken = nil
+            if action == "contests.list" {
+                if contestListCache.count >= 16 { contestListCache.removeAll() }
+                contestListCache[cacheKey] = (Date(), result)
+            } else if ["contests.submit","contests.withdraw","contests.vote","contests.save","contests.manage","contests.review","contests.wear","contests.suggest","contests.themevote","contests.report"].contains(action) || authenticating || action == "logout" || action == "account.delete" {
+                contestListCache.removeAll()
+            }
             return result
         } catch {
             if action == "logout" { return TreeholeEnvelope() }

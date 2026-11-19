@@ -1261,6 +1261,7 @@ BEGIN
  ('first_champion',champions>=1),('five_champions',champions>=5),('twenty_champions',champions>=20),('hundred_events',participations>=100),('ten_podiums',podiums>=10)) awards(code,earned) WHERE earned
  ON CONFLICT(member_id,code) DO UPDATE SET revoked_at=NULL;
  INSERT INTO public.hyt_contest_year_dirty SELECT DISTINCT extract(year FROM awarded_at AT TIME ZONE 'Asia/Shanghai')::int FROM public.hyt_contest_awards WHERE contest_id=cid ON CONFLICT DO NOTHING;
+ PERFORM public.hyt_contest_year_refresh(year) FROM public.hyt_contest_year_dirty WHERE year<extract(year FROM now() AT TIME ZONE 'Asia/Shanghai') ORDER BY year;
 END;
 $$;
 CREATE OR REPLACE FUNCTION public.hyt_contest_year_refresh(y int) RETURNS void LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
@@ -1308,6 +1309,7 @@ BEGIN
  IF a IN ('contests.save','contests.manage','contests.review','contests.admin') AND NOT admin THEN RETURN '{"status":403,"error":"forbidden"}'::jsonb; END IF;
  IF mutation THEN
   PERFORM pg_advisory_xact_lock(hashtext('contest-member:'||m.id::text));
+  IF a IN ('contests.suggest','contests.themevote') OR (a='contests.review' AND b->>'kind' IN ('theme','merge')) OR (a='contests.manage' AND b->>'operation'='solicitation') THEN PERFORM pg_advisory_xact_lock(hashtext('contest:global')); END IF;
   PERFORM pg_advisory_xact_lock(hashtext('contest:'||coalesce(cid::text,'global')));
   -- Recheck role and mute state inside the transaction after acquiring the serialization lock.
   SELECT * INTO m FROM public.hyt_members WHERE id=m.id;
@@ -1474,6 +1476,10 @@ BEGIN
   IF op='entry' THEN
    SELECT * INTO e FROM public.hyt_contest_entries WHERE id=target AND contest_id=cid;
    IF NOT FOUND THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
+   IF b->>'decision'='remove' THEN
+    UPDATE public.hyt_contest_votes SET enabled=false WHERE entry_id=target AND enabled;
+    UPDATE public.hyt_contest_entries SET votes=0 WHERE id=target;
+   END IF;
    UPDATE public.hyt_contest_entries SET status=CASE WHEN b->>'decision'='approve' THEN 'approved' ELSE 'removed' END WHERE id=target;
    UPDATE public.hyt_contest_reports SET resolved_at=now() WHERE entry_id=target;
   ELSIF op='vote' THEN
@@ -1537,6 +1543,8 @@ BEGIN
  FOR cid IN SELECT contest_id FROM public.hyt_contest_entries WHERE member_id=NEW.id UNION SELECT contest_id FROM public.hyt_contest_votes WHERE member_id=NEW.id ORDER BY contest_id LOOP
   PERFORM pg_advisory_xact_lock(hashtext('contest:'||cid::text));
   UPDATE public.hyt_contest_entries SET status='removed',title='作品已删除',body='' WHERE contest_id=cid AND member_id=NEW.id;
+  UPDATE public.hyt_contest_votes SET enabled=false WHERE entry_id IN (SELECT id FROM public.hyt_contest_entries WHERE contest_id=cid AND member_id=NEW.id);
+  UPDATE public.hyt_contest_entries SET votes=0 WHERE contest_id=cid AND member_id=NEW.id;
   UPDATE public.hyt_contest_entries e SET votes=e.votes-q.total FROM
    (SELECT entry_id,count(*)::int AS total FROM public.hyt_contest_votes WHERE contest_id=cid AND member_id=NEW.id AND enabled AND NOT excluded GROUP BY entry_id) q WHERE e.id=q.entry_id;
   UPDATE public.hyt_contest_votes SET enabled=false WHERE contest_id=cid AND member_id=NEW.id;

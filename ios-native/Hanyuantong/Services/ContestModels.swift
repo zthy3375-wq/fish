@@ -32,9 +32,17 @@ struct NativeContest: Codable, Identifiable {
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return parser.date(from: value)
     }
+    func phase(at now: Date) -> String {
+        if ["draft", "ended", "cancelled"].contains(state) { return state }
+        guard let start = Self.date(startsAt), let submission = Self.date(submissionEnds), let voting = Self.date(votingStarts), let end = Self.date(votingEnds) else { return state }
+        if now < start { return "upcoming" }
+        if now < submission { return "submitting" }
+        if now < voting { return "waiting" }
+        return now < end ? "voting" : "reviewing"
+    }
     func remaining(now: Date) -> String {
         let end: String
-        switch state {
+        switch phase(at: now) {
         case "upcoming": end = startsAt
         case "submitting": end = submissionEnds
         case "waiting": end = votingStarts
@@ -47,7 +55,8 @@ struct NativeContest: Codable, Identifiable {
         if minutes <= 0 { return "阶段已到期，点击刷新" }
         return minutes >= 1440 ? "剩余 \(minutes / 1440) 天 \(minutes % 1440 / 60) 小时" : "剩余 \(minutes / 60) 小时 \(minutes % 60) 分"
     }
-    var label: String { paused ? "已暂停" : Self.labels[state] ?? state }
+    func label(at now: Date) -> String { paused ? "已暂停" : Self.labels[phase(at: now)] ?? state }
+    var label: String { label(at: Date()) }
     var payload: [String: Any] {
         ["contestId":id, "title":title, "type":type, "edition":edition, "description":description, "rules":rules,
          "startsAt":startsAt, "submissionEnds":submissionEnds, "votingStarts":votingStarts, "votingEnds":votingEnds, "awardAt":awardAt,
@@ -66,6 +75,7 @@ struct NativeContest: Codable, Identifiable {
 struct NativeContestEntry: Decodable, Identifiable {
     let id: String, contestId: String, memberId: String, title: String, body: String, author: String, status: String
     let postId: String?
+    let linked: Bool?
     let mine: Bool
     let voted: Bool
     let votes: Int?

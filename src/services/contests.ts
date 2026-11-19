@@ -38,6 +38,7 @@ export interface ContestAward {
   entry_id?: string;
 }
 export interface ContestEntry {
+  linked: boolean;
   id: string;
   contestId: string;
   memberId: string;

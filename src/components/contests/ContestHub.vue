@@ -184,7 +184,7 @@ function compose(entry?: ContestEntry) {
     share: false,
     agreed: false,
     photos: [],
-    images: entry?.images.map((i) => i.id) || [],
+    images: entry?.linked ? [] : entry?.images.map((i) => i.id) || [],
     requestId: crypto.randomUUID(),
   };
   editing.value = true;

@@ -189,6 +189,9 @@ test("concurrent retries consume one vote, quota is enforced and own works are r
   });
   await vote(users[8], c, entries[0], false);
   await vote(users[8], c, entries[3]);
+  await call(owner,"contests.review",{contestId:c,kind:"entry",targetId:entries[3].id,decision:"remove",reason:"投票中下架违规作品"});
+  await vote(users[8],c,entries[4]);
+  assert.equal((await call(users[8],"contests.get",{contestId:c})).votesUsed,3);
   const wall = await call(users[7], "contests.entries", {
     contestId: c,
     seed: randomUUID(),

@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Combine
 
 struct ContestView: View {
     let api: TreeholeService
@@ -8,6 +9,7 @@ struct ContestView: View {
     var initialPage: String = "events"
     var onMember: ((String) -> Void)? = nil
     var onPost: ((String) -> Void)? = nil
+    @State private var clock = Date()
     @State private var events: [NativeContest] = []
     @State private var selected: NativeContest?
     @State private var entries: [NativeContestEntry] = []
@@ -46,7 +48,7 @@ struct ContestView: View {
     private var admin: Bool { user.badges?.official?.code == "developer" }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { Text("主题赛事").font(.largeTitle.bold()); Spacer(); Button { run { try await load() } } label: { Image(systemName: "arrow.clockwise") }; if admin { Button { draftEvent = .draft(); administration = true } label: { Image(systemName: "plus") } } }
+            HStack { Text("主题赛事").font(.largeTitle.bold()); Spacer(); Button { run { try await load(fresh: true) } } label: { Image(systemName: "arrow.clockwise") }; if admin { Button { draftEvent = .draft(); administration = true } label: { Image(systemName: "plus") } } }
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             if busy { ProgressView("正在加载…") }
             if administration, let event = draftEvent {
@@ -73,18 +75,19 @@ struct ContestView: View {
             }
         }.sheet(item: $gallery) { selection in ContestGallery(selection: selection, api: api, contestId: selected?.id ?? "") }
         .onDisappear { operationTask?.cancel() }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { clock = $0 }
         .disabled(busy).task { await perform { page = initialPage; if let initialId { try await open(initialId) } else { try await load() } } }
     }
     @ViewBuilder private func detail(_ event: NativeContest) -> some View {
         Button("返回赛事列表") { selected = nil }
         if let image = event.cover { TreeholeImageGrid(postId: event.coverPostId ?? "", images: [image], full: false, api: api) { _ in } .allowsHitTesting(false) }
-        VStack(alignment: .leading, spacing: 10) { Text(event.type + " · " + event.edition).font(.caption); Text(event.title).font(.title.bold()); Text(event.label).font(.caption.weight(.semibold)); TimelineView(.periodic(from: .now, by: 60)) { context in Text(event.remaining(now: context.date.addingTimeInterval(serverOffset))).font(.caption).foregroundStyle(.secondary) }; Text(event.description).font(.body) }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 16))
+        VStack(alignment: .leading, spacing: 10) { Text(event.type + " · " + event.edition).font(.caption); Text(event.title).font(.title.bold()); Text(event.label(at: clock.addingTimeInterval(serverOffset))).font(.caption.weight(.semibold)); TimelineView(.periodic(from: .now, by: 60)) { context in Text(event.remaining(now: context.date.addingTimeInterval(serverOffset))).font(.caption).foregroundStyle(.secondary) }; Text(event.description).font(.body) }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 16))
         DisclosureGroup("规则、日程与奖励") {
             VStack(alignment: .leading, spacing: 10) { Text(event.rules); Text("每人最多 \(event.maxEntries) 件作品、\(event.votesPerUser) 票。投票前账号注册满 \(event.minAccountHours) 小时。有效作品满 \(event.minEntries) 件，得票作品参与前三评选。同票并列，下一名次连续排列。所有有效参赛者保留纪念。"); Text("投稿截止 " + event.submissionEnds); Text("投票 " + event.votingStarts + " 至 " + event.votingEnds); Text("公布 " + event.awardAt) }.font(.caption).padding(.vertical, 8)
         }
-        if event.state == "submitting" && !event.paused { Button("我要参赛") { compose() }.buttonStyle(.borderedProminent) }
-        if event.state == "voting" { Text("已用 \(votesUsed) / \(event.votesPerUser) 票").font(.subheadline) }
-        if event.state == "reviewing" { Label("结果统计与审核中", systemImage: "clock").font(.subheadline) }
+        if event.phase(at: clock.addingTimeInterval(serverOffset)) == "submitting" && !event.paused { Button("我要参赛") { compose() }.buttonStyle(.borderedProminent) }
+        if event.phase(at: clock.addingTimeInterval(serverOffset)) == "voting" { Text("已用 \(votesUsed) / \(event.votesPerUser) 票").font(.subheadline) }
+        if event.phase(at: clock.addingTimeInterval(serverOffset)) == "reviewing" { Label("结果统计与审核中", systemImage: "clock").font(.subheadline) }
         if event.state == "ended" { Label("获奖作品已归档", systemImage: "trophy.fill").font(.headline).foregroundStyle(TreeholeTheme.primary) }
         if admin { Button("管理本场赛事") { draftEvent = event; administration = true } }
         if editor { submission(event) }
@@ -106,9 +109,9 @@ struct ContestView: View {
             ForEach(Array(entry.images.enumerated()), id: \.element.id) { index, image in Button { gallery = TreeholeGallerySelection(postId: entry.id, images: entry.images, index: index) } label: { AsyncImage(url: image.url.flatMap(URL.init(string:))) { image in image.resizable().scaledToFit() } placeholder: { Text("点开重试图片").font(.caption) }.frame(maxHeight: 300) }.buttonStyle(.plain) }
             Text(entry.title).font(.title3.bold()); Text(entry.body).font(.body); Button(entry.author) { onMember?(entry.memberId) }.font(.caption).foregroundStyle(.secondary)
             HStack {
-                if event.state == "voting" && !event.paused && !entry.mine { Button(entry.voted ? "已投票 · 撤回" : "投一票") { run { _ = try await api.request("contests.vote", ["contestId":event.id, "entryId":entry.id, "enabled":!entry.voted]); try await open(event.id) } }.buttonStyle(.bordered) }
+                if event.phase(at: clock.addingTimeInterval(serverOffset)) == "voting" && !event.paused && !entry.mine { Button(entry.voted ? "已投票 · 撤回" : "投一票") { run { _ = try await api.request("contests.vote", ["contestId":event.id, "entryId":entry.id, "enabled":!entry.voted]); try await open(event.id) } }.buttonStyle(.bordered) }
                 if let votes = entry.votes { Text("\(votes) 票").font(.caption) }
-                if entry.mine && event.state == "submitting" { Button("编辑") { compose(entry) }; Button("撤回") { run { _ = try await api.request("contests.withdraw", ["contestId":event.id, "entryId":entry.id]); try await open(event.id) } } }
+                if entry.mine && event.phase(at: clock.addingTimeInterval(serverOffset)) == "submitting" { Button("编辑") { compose(entry) }; Button("撤回") { run { _ = try await api.request("contests.withdraw", ["contestId":event.id, "entryId":entry.id]); try await open(event.id) } } }
                 if let post = entry.postId { Button("原帖") { onPost?(post) } }; Spacer(); if admin { Button("审核") { reviewingEntry = true; restoreEntry = entry.status != "approved"; reportTarget = entry.id } } else { Button("举报") { reviewingEntry = false; reportTarget = entry.id } }
             }.font(.caption)
         }.padding(16).background(Color.white, in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).stroke(TreeholeTheme.tint))
@@ -183,14 +186,14 @@ struct ContestView: View {
         }
     }
     private func compose(_ entry: NativeContestEntry? = nil) {
-        editingID = entry?.id; title = entry?.title ?? ""; bodyText = entry?.body ?? ""; postID = entry?.postId ?? ""; photos = []; attached = entry?.images.map(\.id) ?? []; agreed = false; requestID = UUID().uuidString; editor = true
+        editingID = entry?.id; title = entry?.title ?? ""; bodyText = entry?.body ?? ""; postID = entry?.postId ?? ""; photos = []; attached = entry?.linked == true ? [] : entry?.images.map(\.id) ?? []; agreed = false; requestID = UUID().uuidString; editor = true
     }
     private func run(_ work: @escaping () async throws -> Void) { guard !busy else { return }; operationTask = Task { await perform(work) } }
     @MainActor private func perform(_ work: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = nil; defer { busy = false }
         do { try await work() } catch is CancellationError { } catch { self.error = (error as? TreeholeError)?.errorDescription ?? "连接失败，请稍后重试" }
     }
-    private func load(more: Bool = false) async throws {
+    private func load(more: Bool = false, fresh: Bool = false) async throws {
         if page == "honors" {
             let r = try await api.request("contests.profile", ["offset":more ? summaryOffset + 20 : 0])
             let previous = more ? Array((summary.awards ?? []).prefix(summaryOffset + 20)) : []
@@ -204,7 +207,7 @@ struct ContestView: View {
             summaryOffset = more ? summaryOffset + 20 : 0; summaryMore = (r.leaders?.count ?? 0) > 20
             summary = r; summary.leaders = previous + Array((r.leaders ?? []).prefix(20)); return
         }
-        let r = try await api.request("contests.list", ["offset":more ? events.count : 0, "year":page == "archive" ? year : 0, "type":typeFilter]); self.more = (r.contests?.count ?? 0) > 20
+        let r = try await api.request("contests.list", ["offset":more ? events.count : 0, "year":page == "archive" ? year : 0, "type":typeFilter, "_fresh":fresh]); if let time = r.serverTime.flatMap(NativeContest.date) { serverOffset = time.timeIntervalSinceNow }; self.more = (r.contests?.count ?? 0) > 20
         events = more ? events + Array((r.contests ?? []).prefix(20)) : Array((r.contests ?? []).prefix(20))
     }
     private func open(_ id: String) async throws { let r = try await api.request("contests.get", ["contestId":id]); selected = r.contest; if let time = r.serverTime.flatMap(NativeContest.date) { serverOffset = time.timeIntervalSinceNow }; votesUsed = r.votesUsed ?? 0; try await wall() }

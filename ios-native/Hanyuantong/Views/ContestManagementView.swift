@@ -79,6 +79,8 @@ struct ContestProfileHonors: View {
     let open: (String) -> Void
     @State private var result = TreeholeEnvelope()
     @State private var error: String?
+    @State private var more = false
+    @State private var busy = false
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("赛事荣誉", systemImage: "trophy").font(.headline)
@@ -88,8 +90,19 @@ struct ContestProfileHonors: View {
                     HStack { Image(systemName: "medal"); Text((award.title ?? "主题赛事") + " · " + award.label); if result.worn == award.id { Image(systemName: "checkmark.seal.fill") } }.font(.caption)
                 }
             }
-            if let error { Text(error).font(.caption).foregroundStyle(.secondary) }
-        }.padding(.vertical, 12).task { do { result = try await api.request("contests.profile", ["memberId":memberId]) } catch { self.error = "赛事荣誉暂未加载，重新进入主页可重试" } }
+            if more { Button("更多赛事荣誉") { Task { await load(append: true) } }.disabled(busy) }
+            if let error { Text(error).font(.caption).foregroundStyle(.secondary); Button("重试") { Task { await load() } }.disabled(busy) }
+        }.padding(.vertical, 12).task(id: memberId) { result = TreeholeEnvelope(); await load() }
+    }
+    @MainActor private func load(append: Bool = false) async {
+        guard !busy else { return }; busy = true; defer { busy = false }; error = nil
+        do {
+            var response = try await api.request("contests.profile", ["memberId":memberId, "offset":append ? result.awards?.count ?? 0 : 0])
+            try Task.checkCancellation()
+            more = (response.awards?.count ?? 0) > 20
+            response.awards = (append ? result.awards ?? [] : []) + Array((response.awards ?? []).prefix(20))
+            result = response
+        } catch is CancellationError { } catch { self.error = "赛事荣誉暂未加载" }
     }
 }
 
@@ -101,14 +114,15 @@ struct ContestGallery: View {
     @State private var urls: [String: URL] = [:]
     @State private var error = false
     @State private var scale: CGFloat = 1
+    @State private var index = 0
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
-            TabView {
-                ForEach(selection.images) { image in
-                    AsyncImage(url: urls[image.id] ?? image.url.flatMap(URL.init(string:))) { loaded in loaded.resizable().scaledToFit().scaleEffect(scale).gesture(MagnificationGesture().onChanged { scale = min(4, max(1, $0)) }) } placeholder: { ProgressView().tint(.white) }
+            TabView(selection: $index) {
+                ForEach(Array(selection.images.enumerated()), id: \.element.id) { offset, image in
+                    AsyncImage(url: urls[image.id] ?? image.url.flatMap(URL.init(string:))) { loaded in loaded.resizable().scaledToFit().scaleEffect(scale).gesture(MagnificationGesture().onChanged { scale = min(4, max(1, $0)) }) } placeholder: { ProgressView().tint(.white) }.tag(offset)
                 }
-            }.tabViewStyle(.page).task { await renew() }
+            }.tabViewStyle(.page).task { index = selection.index; await renew() }
             VStack { Button("关闭") { dismiss() }; if error { Button("重试") { Task { await renew() } } } }.padding(20).foregroundStyle(.white)
         }
     }
