@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CampusAgendaView:View {
+    var embedded = false
     @EnvironmentObject var campus:CampusStore
     @EnvironmentObject var learning:LearningStore
     @State private var day=Date()
@@ -10,6 +11,9 @@ struct CampusAgendaView:View {
         t.plannedDay == dateKey || [t.plannedAt,t.deadline].compactMap{$0}.contains { ScheduleMath.calendar.isDate($0,inSameDayAs:day) }
     } }
     var body:some View {
+        if embedded { agendaList } else { agendaList.navigationTitle("统一日程") }
+    }
+    private var agendaList: some View {
         List {
             DatePicker("日期",selection:$day,displayedComponents:.date)
             Section("课程") {
@@ -33,7 +37,7 @@ struct CampusAgendaView:View {
                     VStack(alignment:.leading) { Text(item.title); Text(LearningDisplay.state(item).label).font(.caption) }
                 }.disabled(!item.hasLink) }
             }
-        }.navigationTitle("统一日程").sheet(item:$task) { TaskEditorView(task:$0) }
+        }.sheet(item:$task) { TaskEditorView(task:$0) }
     }
 }
 

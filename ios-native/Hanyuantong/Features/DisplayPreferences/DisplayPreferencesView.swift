@@ -23,21 +23,7 @@ extension CampusDisplayTheme {
                     .font(.caption).foregroundStyle(CampusTheme.muted)
             }
             Section("偏好与数据") {
-                Picker("主题", selection: Binding(get: { store.preferences.theme }, set: { value in
-                    perform { try store.updateTheme(value) }
-                })) {
-                    ForEach(CampusDisplayTheme.allCases) { theme in
-                        Label(theme.title, systemImage: theme.symbol).tag(theme)
-                    }
-                }.pickerStyle(.segmented).disabled(!store.canEdit).accessibilityIdentifier("display-theme")
-                Toggle(isOn: Binding(get: { store.preferences.compact }, set: { value in
-                    perform { try store.updateCompact(value) }
-                })) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("紧凑布局")
-                        Text("更少留白，更高信息密度").font(.caption).foregroundStyle(CampusTheme.muted)
-                    }
-                }.disabled(!store.canEdit).accessibilityIdentifier("display-compact")
+                CampusAppearanceControls(store: store) { message = $0 }
                 Text("主题与布局立即应用，保存失败时保留原设置。紧凑布局不会缩小系统文字；辅助功能大字号仍保留阅读空间。")
                     .font(.caption).foregroundStyle(CampusTheme.muted)
             }
@@ -77,6 +63,33 @@ extension CampusDisplayTheme {
     }
 }
 
+@MainActor struct CampusAppearanceControls: View {
+    @ObservedObject var store: DisplayPreferencesStore
+    let failed: (String) -> Void
+    var body: some View {
+        Group {
+                Picker("主题", selection: Binding(get: { store.preferences.theme }, set: { value in
+                    perform { try store.updateTheme(value) }
+                })) {
+                    ForEach(CampusDisplayTheme.allCases) { theme in
+                        Label(theme.title, systemImage: theme.symbol).tag(theme)
+                    }
+                }.pickerStyle(.segmented).disabled(!store.canEdit).accessibilityIdentifier("display-theme")
+                Toggle(isOn: Binding(get: { store.preferences.compact }, set: { value in
+                    perform { try store.updateCompact(value) }
+                })) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("紧凑布局")
+                        Text("更少留白，更高信息密度").font(.caption).foregroundStyle(CampusTheme.muted)
+                    }
+                }.disabled(!store.canEdit).accessibilityIdentifier("display-compact")
+        }
+    }
+    private func perform(_ action: () throws -> Void) {
+        do { try action() } catch { failed(error.localizedDescription) }
+    }
+}
+
 /// Keeps the existing profile strip and official-profile precedence; edits remain strictly local.
 @MainActor struct LocalProfileSummaryView: View {
     @ObservedObject var store: DisplayPreferencesStore
@@ -103,7 +116,7 @@ extension CampusDisplayTheme {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(name).font(.title3.weight(.semibold)).foregroundStyle(CampusTheme.text)
                     if !major.isEmpty { Text(major).font(.subheadline).foregroundStyle(CampusTheme.muted) }
-                    Text(nonempty(academicClass) ?? "本地资料").font(.caption).foregroundStyle(CampusTheme.muted)
+                    if let academicClass = nonempty(academicClass) { Text(academicClass).font(.caption).foregroundStyle(CampusTheme.muted) }
                 }
                 Spacer(minLength: 4)
                 Label("编辑", systemImage: "chevron.right").font(.caption).foregroundStyle(CampusTheme.primary)

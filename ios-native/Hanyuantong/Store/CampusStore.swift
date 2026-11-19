@@ -30,6 +30,14 @@ final class CampusStore: ObservableObject {
     private var session: AcademicSession?
     var schoolMedalScope: String? { isConnected ? snapshot?.scope : nil }
     var personalDataAvailable: Bool { loadedPersonal }
+    var visiblePeriods: [AndroidTimeSlot] {
+        if isConnected, let snapshot {
+            return SchoolCourseAdjustments.periods(snapshot).map { AndroidTimeSlot(number: $0.number, start: $0.start, end: $0.end) }
+        }
+        if let state = personalSchedule, let semester = try? PersonalSemesterRules.activeSemester(in: state),
+           let table = try? PersonalSemesterRules.table(for: semester, in: state) { return table.slots }
+        return PersonalSemesterRules.standardTimeTable().slots
+    }
     private var snapshot: AcademicSnapshot?
     private var personalCourses: [Course] = []
     private var requestGeneration = 0

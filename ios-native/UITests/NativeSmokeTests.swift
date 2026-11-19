@@ -52,7 +52,7 @@ final class NativeSmokeTests: XCTestCase {
         let restoredRow = taskRow(title, identifier: persistedIdentity, in: app)
         XCTAssertTrue((restoredRow.value as? String)?.hasPrefix("未完成") == true)
         app.buttons["完成：" + title].tap()
-        app.buttons["已完成"].tap()
+        selectTaskScope("已完成", in: app)
         let completedRow = taskRow(title, identifier: persistedIdentity, in: app)
         XCTAssertTrue((completedRow.value as? String)?.hasPrefix("已完成") == true)
         screenshot("05-personal-task", app)
@@ -93,7 +93,7 @@ final class NativeSmokeTests: XCTestCase {
         app.tabBars.buttons["我的"].tap()
         for (identifier, title, shot) in [("open-quzhi", "趣智校园", "06-quzhi"), ("open-pangguai", "胖乖生活", "07-pangguai"), ("open-learning", "学习通", "08-learning")] {
             let isWallet = identifier != "open-learning"
-            if isWallet { app.buttons["profile-settings"].tap() }
+            if isWallet { app.buttons["profile-settings"].tap(); app.buttons["more-settings"].tap() }
             let entry = app.buttons[identifier]
             for _ in 0..<5 { if entry.isHittable { break }; app.swipeUp() }
             XCTAssertTrue(entry.waitForExistence(timeout: 5))
@@ -160,6 +160,14 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["我的待办"].waitForExistence(timeout: 5))
         screenshot("09-task-edit-persistence", app)
     }
+    private func selectTaskScope(_ scope: String, in app: XCUIApplication) {
+        app.buttons["筛选"].tap()
+        let menu = app.buttons["task-scope-picker"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+        app.buttons[scope].firstMatch.tap()
+        app.buttons["筛选"].tap()
+    }
     private func taskEditorField(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         let field = app.textFields[identifier]
         if field.waitForExistence(timeout: 1) { return field }
@@ -179,6 +187,7 @@ final class NativeSmokeTests: XCTestCase {
             matches = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "task-edit-", expectedLabel))
         }
         let row = matches.firstMatch
+        if !row.exists { selectTaskScope("全部", in: app) }
         for _ in 0..<5 {
             if row.exists && row.isHittable { break }
             app.swipeUp()
@@ -230,6 +239,7 @@ final class NativeSmokeTests: XCTestCase {
         app.buttons["完成"].tap()
         XCTAssertTrue(app.navigationBars["设置与帮助"].waitForExistence(timeout: 5))
         semesters.tap(); app.buttons["完成"].tap()
+        app.buttons["more-settings"].tap()
         let display = app.buttons["open-display-preferences"]
         for _ in 0..<6 { if display.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(display.waitForExistence(timeout: 5)); display.tap()
@@ -238,7 +248,7 @@ final class NativeSmokeTests: XCTestCase {
         app.buttons["浅色"].tap(); screenshot("11-light-preferences", app)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let backup = app.buttons["备份与恢复"]
-        for _ in 0..<6 { if backup.isHittable { break }; app.swipeUp() }
+        for _ in 0..<6 { if backup.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(backup.waitForExistence(timeout: 5)); backup.tap()
         XCTAssertTrue(app.buttons["exportNativePersonalBackup"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["exportAndroidScheduleBackup"].exists)

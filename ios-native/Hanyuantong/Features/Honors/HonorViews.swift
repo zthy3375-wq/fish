@@ -68,29 +68,37 @@ struct HonorShelfLink: View {
     }
     var body:some View {
         VStack(alignment:.leading,spacing:10) {
-            Button { selectedCode=nil; opened=true } label: {
-                HStack(spacing:14) {
-                    Image(systemName:"rosette").font(.title).foregroundStyle(Color(hex:0xa77828))
-                        .frame(width:50,height:54).background(Color(hex:0xd2a44e).opacity(0.12),in:RoundedRectangle(cornerRadius:13))
-                    VStack(alignment:.leading,spacing:4) {
-                        Text("荣誉殿堂").font(.headline)
-                        Text(badges?.visible.first.map{HonorByline.style($0.code).0} ?? "身份与成就收藏").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer(); Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
-                }
-            }.buttonStyle(.borderless).accessibilityIdentifier("open-honor-shelf")
-            if !displayMedals.isEmpty {
-                HStack(spacing:8) {
+            Button { selectedCode = nil; opened = true } label: {
+                HStack(spacing: 8) {
+                    Text("荣誉殿堂").font(.headline)
+                    if let badge = badges?.visible.first { Text(HonorByline.style(badge.code).0).font(.caption2) }
+                    Spacer()
+                    Text("查看全部").font(.caption)
+                    Image(systemName: "chevron.right").font(.caption2)
+                }.frame(minHeight: 32).contentShape(Rectangle())
+            }.buttonStyle(CampusPressStyle()).accessibilityIdentifier("open-honor-shelf")
+            if displayMedals.isEmpty {
+                Label("校园纪念章会陈列在这里", systemImage: "book").font(.caption).foregroundStyle(CampusTheme.muted)
+            } else {
+                HStack(spacing: 6) {
                     ForEach(displayMedals) { medal in
-                        Button { selectedCode=medal.code; opened=true } label:{
-                            HStack(spacing:4) { Image(systemName:medal.symbol);Text(medal.name).lineLimit(2) }
-                                .font(.caption).frame(maxWidth:.infinity,minHeight:44)
-                                .background(Color(hex:0xb8974f).opacity(0.10),in:RoundedRectangle(cornerRadius:10))
-                        }.buttonStyle(.borderless).accessibilityLabel("查看成就，"+medal.name)
+                        Button { selectedCode = medal.code; opened = true } label: {
+                            HStack(spacing: 8) {
+                                MedalEmblem(medal: medal, locked: false)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(medal.name).font(.caption.weight(.semibold)).lineLimit(2)
+                                    if displayMedals.count == 1 && personal {
+                                        Text("你的邯院收藏，从这里开始").font(.caption2).foregroundStyle(CampusTheme.muted)
+                                    }
+                                }
+                            }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                        }.buttonStyle(CampusPressStyle()).accessibilityLabel("查看成就，" + medal.name)
                     }
                 }
             }
-        }.padding(.vertical,6)
+        }.padding(12)
+        .background(CampusTheme.adaptive(light: 0xfffcf7, dark: 0x302d29), in: RoundedRectangle(cornerRadius: 17))
+        .overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(CampusTheme.adaptive(light: 0xe7dfd1, dark: 0x514c44), lineWidth: 1).allowsHitTesting(false))
         .background(NavigationLink(isActive:$opened) {
             MedalCollection(memberID:memberID,initialCode:selectedCode)
         } label: { EmptyView() }.hidden().accessibilityHidden(true))
@@ -123,6 +131,13 @@ struct MedalCollection: View {
         if m.source == "community" { return MedalDates.parse(current?.awards[m.code]) }
         return journal.stamp(m,scope:m.source == "school" ? campus.schoolMedalScope : learning.cache.account)
     }
+    private func stateLabel(_ medal: CampusMedal, locked: Bool) -> String {
+        guard locked else { return "已解锁" }
+        if medal.source == "community" && current == nil { return "待同步" }
+        if medal.source == "school" && campus.schoolMedalScope == nil { return "待连接" }
+        if medal.source == "learning" && learning.cache.account.isEmpty { return "待连接" }
+        return "未解锁"
+    }
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:18) {
@@ -142,13 +157,20 @@ struct MedalCollection: View {
                         }
                     }
                 }
-                if own && viewer == nil && !loading { Text("登录社区账号后，这里也会显示你的社区荣誉。").font(.footnote).foregroundStyle(.secondary) }
                 if let cacheNote { Text(cacheNote).font(.footnote).foregroundStyle(.secondary) }
                 if loading { ProgressView("读取社区荣誉") }
                 if let error { Text(error).font(.footnote).foregroundStyle(.secondary); Button("重新读取") { Task { await refresh(force:true) } } }
                 if own {
                     let count = medals.filter { date($0) != nil }.count
-                    HStack { Text("成就收藏馆").font(.title2.bold()); Spacer(); Text("\(count) / \(medals.count)").monospacedDigit() }
+                    Text("成就收藏馆").font(.headline)
+                    Text("你的每一段校园经历，都值得被记住").font(.caption).foregroundStyle(CampusTheme.muted)
+                    HStack(alignment: .lastTextBaseline) {
+                        Text(String(count)).font(.title.bold())
+                        Text("/ \(medals.count)").font(.subheadline)
+                        Spacer()
+                        Text("\(count * 100 / max(1, medals.count))% 完成").font(.caption.weight(.semibold))
+                            .padding(6).background(CampusTheme.walletGreen, in: Capsule())
+                    }
                     ProgressView(value:Double(count),total:Double(max(1,medals.count))).tint(.purple)
                     LazyVGrid(columns:[GridItem(.adaptive(minimum:60),spacing:4)],alignment:.leading,spacing:2) {
                         ForEach(["全部","初识","学习","生活","社区","时光","隐藏"],id:\.self) { key in
@@ -156,24 +178,35 @@ struct MedalCollection: View {
                                 Text(key).font(.subheadline.weight(.medium))
                                     .frame(maxWidth:.infinity,minHeight:44).contentShape(Rectangle())
                             }.buttonStyle(.plain)
-                                .background(group == key ? CampusTheme.tint : .clear,in:Capsule())
+                                .background(group == key ? CampusTheme.text : .clear,in:Capsule())
+                                .foregroundStyle(group == key ? CampusTheme.surface : CampusTheme.text)
                                 .accessibilityAddTraits(group == key ? .isSelected : [])
                         }
                     }.accessibilityIdentifier("medal-groups")
                 } else { Text("展示成就").font(.headline) }
                 if medals.isEmpty && !loading { Text(own ? "收藏目录读取失败" : "还没有展示成就").foregroundStyle(.secondary) }
-                LazyVGrid(columns:[GridItem(.adaptive(minimum:88),spacing:8)],spacing:10) {
+                LazyVGrid(columns:[GridItem(.adaptive(minimum:68),spacing:8)],spacing:10) {
                     ForEach(medals.filter { group == "全部" || $0.group == group }) { m in
                         let locked = date(m) == nil
                         Button { chosen = m } label: {
-                            VStack(spacing:8) { MedalEmblem(medal:m,locked:locked); Text(locked && m.hidden == true ? "???" : m.name).font(.caption.weight(.medium)).multilineTextAlignment(.center).lineLimit(2) }
+                            VStack(spacing: 5) {
+                                if locked {
+                                    Image(systemName: m.hidden == true ? "questionmark.circle" : "lock")
+                                        .font(.system(size: 24)).foregroundStyle(CampusTheme.muted).frame(height: 43)
+                                } else { MedalEmblem(medal: m, locked: false) }
+                                Text(locked && m.hidden == true ? "隐藏成就" : m.name)
+                                    .font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2)
+                                Text(stateLabel(m, locked: locked)).font(.caption2).foregroundStyle(CampusTheme.muted)
+                            }
                                 .frame(maxWidth:.infinity,minHeight:94).padding(4)
                                 .background(Color.secondary.opacity(0.07),in:RoundedRectangle(cornerRadius:16))
                         }.buttonStyle(.plain)
                     }
                 }
-            }.padding(20).frame(maxWidth:650)
-        }.navigationTitle("荣誉殿堂").navigationBarTitleDisplayMode(.inline)
+                if own && viewer == nil && !loading { Text("登录社区后可同步身份与社区成就").font(.footnote).foregroundStyle(CampusTheme.muted) }
+            }.padding(16).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16)).padding(12).frame(maxWidth:650)
+        }.background(CampusTheme.background).navigationTitle("荣誉殿堂").navigationBarTitleDisplayMode(.inline)
+        .modifier(CampusDetailHeader(title: "荣誉殿堂"))
         .toolbar { if own { Button { showSettings = true } label: { Image(systemName:"slider.horizontal.3") }.accessibilityLabel("成就反馈设置") } }
         .sheet(item:$selectedStamp) { badge in HonorStampDetails(item:badge) }
         .sheet(isPresented:$showSettings) { MedalSettings() }
