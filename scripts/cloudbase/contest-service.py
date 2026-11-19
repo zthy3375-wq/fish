@@ -11,18 +11,27 @@ KEY=os.environ['CLOUDBASE_API_KEY'].strip()
 BACKUP=Path('artifacts/community-rollback.enc')
 enc_key=hmac.new(KEY.encode(),b'hyt-community-rollback-v1',hashlib.sha256).digest()
 def request(action, data):
-    # CloudBase namespaces require the documented Stamp, absent from the public SCF SDK model.
-    return json.loads(client.call(action,{'Namespace':ENV,'Stamp':'MINI_QCBASE',**data}))['Response']
+    if action=='CreateFunction':
+        from tencentcloud.tcb.v20180608 import tcb_client
+        control=tcb_client.TcbClient(credential,'ap-shanghai')
+        result=json.loads(control.call(action,{'EnvId':ENV,'Stamp':'MINI_QCBASE',**data}))['Response']
+        if result.get('SCFErrorCode'): raise RuntimeError('CloudBase function creation: '+result['SCFErrorCode'])
+        return result
+    return json.loads(client.call(action,{'Namespace':ENV,**data}))['Response']
 def wait(name):
     for attempt in range(30):
-        data=request('GetFunction',{'FunctionName':name})
+        try: data=request('GetFunction',{'FunctionName':name})
+        except Exception as e:
+            if 'ResourceNotFound' not in str(e): raise
+            time.sleep(2); continue
         if data.get('Status')=='Active': return
         if data.get('Status') in ('CreateFailed','UpdateFailed'): raise RuntimeError('Function activation failed')
         time.sleep(2)
     raise RuntimeError('Function activation timeout')
 req=urllib.request.Request(f'https://{ENV}.ap-shanghai.tcb-api.tencentcloudapi.com/capi/credential',data=json.dumps({'env':ENV}).encode(),headers={'Authorization':'Bearer '+KEY,'Content-Type':'application/json'})
 with urllib.request.urlopen(req,timeout=20) as response: creds=json.load(response)['data']
-client=scf_client.ScfClient(Credential(creds['TmpSecretId'],creds['TmpSecretKey'],creds['Token']),'ap-shanghai')
+credential=Credential(creds['TmpSecretId'],creds['TmpSecretKey'],creds['Token'])
+client=scf_client.ScfClient(credential,'ap-shanghai')
 mode=sys.argv[1]
 if mode=='backup':
     config=request('GetFunction',{'FunctionName':'hyt-community'})

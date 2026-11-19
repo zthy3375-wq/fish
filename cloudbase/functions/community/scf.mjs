@@ -15,7 +15,7 @@ export function createScf({env=process.env.CLOUDBASE_ENV_ID,key=process.env.CLOU
    await pending;
   }
   const host='scf.tencentcloudapi.com',timestamp=Math.floor(now()/1000),date=new Date(timestamp*1000).toISOString().slice(0,10),scope=date+'/scf/tc3_request';
-  const body=JSON.stringify({Stamp:'MINI_QCBASE',...input}),canonical=['POST','/','','content-type:application/json\nhost:'+host+'\n','content-type;host',sha(body)].join('\n');
+  const body=JSON.stringify(input),canonical=['POST','/','','content-type:application/json\nhost:'+host+'\n','content-type;host',sha(body)].join('\n');
   const signature=createHmac('sha256',mac(mac(mac('TC3'+credentials.TmpSecretKey,date),'scf'),'tc3_request')).update(['TC3-HMAC-SHA256',timestamp,scope,sha(canonical)].join('\n')).digest('hex');
   const response=await fetcher('https://'+host,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`TC3-HMAC-SHA256 Credential=${credentials.TmpSecretId}/${scope}, SignedHeaders=content-type;host, Signature=${signature}`,'X-TC-Action':action,'X-TC-Version':'2018-04-16','X-TC-Region':'ap-shanghai','X-TC-Timestamp':String(timestamp),'X-TC-Token':credentials.Token},body,signal:AbortSignal.timeout(20000)});
   const result=(await response.json()).Response;
