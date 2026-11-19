@@ -22,6 +22,7 @@ const props = defineProps<{
   admin?: boolean;
   home?: boolean;
   mineReady?: boolean;
+  legacyEligibility?: boolean;
 }>();
 const emit = defineEmits<{
   primary: [];
@@ -76,8 +77,11 @@ const pictures = computed(() =>
         </button>
       </div>
     </div>
-    <details class="ct-rules">
-      <summary>比赛规则、日程与奖励</summary>
+    <details id="contest-rules" class="ct-rules">
+      <summary>主题介绍、规则与奖励</summary>
+      <h3>完整主题</h3>
+      <p class="ct-pre">{{ contest.description }}</p>
+      <h3>参赛规则</h3>
       <p class="ct-pre">{{ contest.rules }}</p>
       <p>
         每人{{ contest.maxEntries }}件作品、{{
@@ -90,7 +94,9 @@ const pictures = computed(() =>
         {{
           contest.minAccountHours > 0
             ? `投票开始前需注册满${contest.minAccountHours}小时。`
-            : "普通社区账号均可参与，异常票可复核。"
+            : legacyEligibility
+              ? "本场需在投票开始前注册，投票资格由后台确认。"
+              : "普通社区账号均可参与，异常票可复核。"
         }}投稿截止前可以编辑或撤回。
       </p>
       <dl>

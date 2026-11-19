@@ -129,7 +129,7 @@ export function sanitizeContest(
       minAccountHours: integer(input.minAccountHours ?? 24, 0, 8760),
       excellence: integer(input.excellence ?? 3, 0, 30),
       autoPublish: input.autoPublish === true,
-      reviewRisk: input.reviewRisk !== false,
+      reviewRisk: input.reviewRisk == null ? null : boolean(input.reviewRisk),
       publish: input.publish === true,
     };
   }

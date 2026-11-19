@@ -316,6 +316,18 @@ async function primary() {
     const own = mine.value.find((e) => e.status === "approved");
     if (own) openWork(own);
     else compose();
+  } else if (phase === "upcoming" || phase === "draft") {
+    const rules = document.getElementById(
+      "contest-rules",
+    ) as HTMLDetailsElement | null;
+    if (rules) {
+      rules.open = true;
+      rules.scrollIntoView({
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+    }
   } else
     document.getElementById("contest-wall")?.scrollIntoView({
       behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -586,6 +598,7 @@ onMounted(() => {
         :entries="entries"
         :mine="mine"
         :mine-ready="mineReady"
+        :legacy-eligibility="(backendSchema || 13) < 14"
         :now="now + offset"
         :votes-used="votesUsed"
         :more="more"
@@ -713,7 +726,7 @@ onMounted(() => {
       ><p>
         {{
           confirmation?.kind === "withdraw"
-            ? "撤回后将从作品墙移除，截止前可以重新投稿。"
+            ? "撤回后将从公开展示中移除，保留本人的投稿记录。截止前可以重新投稿。"
             : "请说明不符合规则的地方，开发者会据此审核。"
         }}
       </p>

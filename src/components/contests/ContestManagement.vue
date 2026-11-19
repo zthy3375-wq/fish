@@ -31,6 +31,36 @@ const operation = ref<{
   danger: boolean;
 }>();
 const reason = ref("");
+const works = ref<ContestEntry[]>([]),
+  worksLoaded = ref(false),
+  moreWorks = ref(false),
+  workSeed = crypto.randomUUID();
+async function loadWorks(append = false) {
+  const r = await contestRequest(
+    props.owner,
+    "contests.entries",
+    {
+      contestId: props.contest.id,
+      seed: workSeed,
+      afterId: append ? works.value.at(-1)?.id : null,
+    },
+    true,
+  );
+  if (!alive) return;
+  moreWorks.value = (r.entries?.length || 0) > 20;
+  works.value = [
+    ...new Map(
+      [...(append ? works.value : []), ...(r.entries || []).slice(0, 20)].map(
+        (e) => [e.id, e],
+      ),
+    ).values(),
+  ];
+  worksLoaded.value = true;
+}
+function openWorks(event: Event) {
+  if ((event.target as HTMLDetailsElement).open && !worksLoaded.value)
+    void run(() => loadWorks());
+}
 async function load(append = false) {
   const r = await contestRequest(
     props.owner,
@@ -107,10 +137,16 @@ async function confirm() {
     });
     if (!alive) return;
     if (r.contest) emit("updated", r.contest);
+    if (r.entry)
+      works.value = works.value.map((e) =>
+        e.id === r.entry!.id ? r.entry! : e,
+      );
     operation.value = undefined;
     notice.value = "处理已确认";
     try {
       await load();
+      if (worksLoaded.value && op.body.kind === "entry" && !r.entry)
+        await loadWorks();
     } catch {
       error.value = "处理已成功，统计暂未刷新，请手动重试。";
     }
@@ -118,7 +154,7 @@ async function confirm() {
 }
 function requestBack() {
   if (operation.value) {
-    operation.value = undefined;
+    if (!busy.value) operation.value = undefined;
     return true;
   }
   return busy.value;
@@ -134,7 +170,14 @@ onMounted(() => run(() => load()));
     <p v-if="notice" role="status" class="ct-notice">{{ notice }}</p>
     <div class="ct-stats">
       <div>
-        <small>有效作品</small><strong>{{ contest.entryCount }}</strong>
+        <small>{{
+          data.metrics?.validEntries === undefined ? "投稿记录" : "有效作品"
+        }}</small
+        ><strong>{{
+          data.metrics?.validEntries ??
+          data.metrics?.entries ??
+          contest.entryCount
+        }}</strong>
       </div>
       <div>
         <small>{{
@@ -177,6 +220,56 @@ onMounted(() => run(() => load()));
         刷新统计
       </button>
     </div>
+    <details class="ct-rules" @toggle="openWorks">
+      <summary>作品审核</summary>
+      <p class="ct-subtitle">
+        公开作品与下架记录在这里集中处理，普通作品卡片保持简洁。
+      </p>
+      <button class="ct-link" :disabled="busy" @click="run(() => loadWorks())">
+        刷新审核作品
+      </button>
+      <p v-if="!worksLoaded">展开后按需读取，暂不加载全部作品。</p>
+      <p v-else-if="!works.length">还没有投稿记录。</p>
+      <article v-for="work in works" :key="work.id" class="ct-section">
+        <strong>{{ work.title }}</strong>
+        <p>
+          {{ work.author }} ·
+          {{
+            work.status === "approved"
+              ? "公开展示"
+              : work.status === "withdrawn"
+                ? "用户已撤回"
+                : "已下架"
+          }}
+        </p>
+        <button class="ct-link" @click="emit('work', work)">查看作品</button>
+        <div v-if="work.status !== 'withdrawn'" class="ct-pair">
+          <button
+            v-if="work.status === 'removed'"
+            class="ct-secondary"
+            :disabled="busy"
+            @click="review('entry', work.id, 'approve', '恢复这件作品？')"
+          >
+            恢复作品</button
+          ><button
+            v-else
+            class="ct-link"
+            :disabled="busy"
+            @click="review('entry', work.id, 'remove', '下架这件作品？')"
+          >
+            下架作品
+          </button>
+        </div>
+      </article>
+      <button
+        v-if="moreWorks"
+        class="ct-secondary ct-more"
+        :disabled="busy"
+        @click="run(() => loadWorks(true))"
+      >
+        更多审核作品
+      </button>
+    </details>
     <section v-if="data.contestReports?.length" class="ct-section">
       <h3>待处理举报</h3>
       <div
@@ -296,6 +389,17 @@ onMounted(() => run(() => load()));
         </button>
       </div>
       <button class="ct-link" @click="emit('edit')">延长尚未结束的阶段</button>
+    </details>
+    <details class="ct-rules">
+      <summary>资源统计</summary>
+      <p>
+        投稿记录 {{ data.metrics?.entries ?? "—" }} · 图片资源
+        {{ data.metrics?.images ?? "—" }} · 投票记录
+        {{ data.metrics?.votes ?? "—" }}
+      </p>
+      <small
+        >投稿和票记录包含撤回与下架；图片仅统计直接附在赛事作品上的资源。这些是数据规模参考，不是腾讯云账单。</small
+      >
     </details>
     <details class="ct-rules">
       <summary>操作审计</summary>

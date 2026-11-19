@@ -6,6 +6,8 @@ struct ContestManagementView: View {
     let persisted: Bool
     var backendSchema: Int = 13
     let saved: (String) -> Void
+    var onUpdated: ((NativeContest) -> Void)? = nil
+    var onWork: ((NativeContestEntry) -> Void)? = nil
     @State private var busy = false
     @State private var editing = false
     @State private var automaticTimes = true
@@ -22,6 +24,10 @@ struct ContestManagementView: View {
     @State private var pendingSave: [String: Any]?
     @State private var retryNonces: [String: String] = [:]
     @State private var moderation: [String: Any]?
+    @State private var reviewEntries: [NativeContestEntry] = []
+    @State private var reviewMore = false
+    @State private var reviewLoaded = false
+    @State private var reviewSeed = UUID().uuidString
     private let formatter = ISO8601DateFormatter()
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -77,11 +83,12 @@ struct ContestManagementView: View {
     private var management: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(event.title).font(.headline); Text(event.label).foregroundStyle(TreeholeTheme.primary)
-            Text("有效作品 \(event.entryCount) · \(report.metrics?["validVotes"] == nil ? "投票记录" : "有效票数") \(report.metrics?["validVotes"] ?? report.metrics?["votes"] ?? 0) · 待处理举报 \(report.metrics?["pendingReports"] ?? report.contestReports?.count ?? 0) · 异常票 \(report.metrics?["pendingRisk"] ?? 0)").font(.caption)
+            Text("\(report.metrics?["validEntries"] == nil ? "投稿记录" : "有效作品") \(report.metrics?["validEntries"] ?? report.metrics?["entries"] ?? event.entryCount) · \(report.metrics?["validVotes"] == nil ? "投票记录" : "有效票数") \(report.metrics?["validVotes"] ?? report.metrics?["votes"] ?? 0) · 待处理举报 \(report.metrics?["pendingReports"] ?? report.contestReports?.count ?? 0) · 异常票 \(report.metrics?["pendingRisk"] ?? 0)").font(.caption)
             TextField("处理原因（至少两个字）", text: $reason)
             if event.state == "draft" { action("publish", "发布赛事") }
             if event.state == "reviewing" { action("announce", "审核并公布结果") }
             HStack { Button("编辑日程与规则") { editing = true; automaticTimes = false }; Button("刷新统计") { run { try await loadReport() } } }.disabled(busy)
+            DisclosureGroup("作品审核") { reviewWorks }
             DisclosureGroup("待处理举报") {
                 ForEach(report.contestReports ?? []) { item in VStack(alignment: .leading, spacing: 8) {
                     Text(item.entry?.title ?? "作品举报").font(.headline); Text(item.reason); if let entry = item.entry { Text(entry.body); ForEach(entry.images) { image in if let url = image.url.flatMap(URL.init(string:)) { Link("查看被举报图片", destination: url) } } }
@@ -91,24 +98,45 @@ struct ContestManagementView: View {
             DisclosureGroup("投票复核与剔除") { ForEach(report.votes ?? []) { vote in VStack(alignment: .leading, spacing: 8) { Text(vote.risk == "vote_burst" ? "反复切票，待复核" : ["young_account","rapid_votes"].contains(vote.risk ?? "") ? "历史风险标记，可复核" : "常规投票"); Text(vote.entry_id).font(.caption2); HStack { Button("确认有效") { review(vote.id, decision: "valid") }; Button("剔除") { review(vote.id, decision: "exclude") } }.disabled(busy || reason.count < 2) }.padding(.vertical, 8) } }
             DisclosureGroup("奖励记录") { ForEach(report.awards ?? []) { award in VStack(alignment: .leading, spacing: 8) { Text((award.title ?? "主题赛事") + " · " + award.label + (award.revoked_at == nil ? " · 有效" : " · 已撤销")).font(.caption); if let entry = award.entry_id { Button(award.revoked_at == nil ? "撤销作品资格" : "重新审核作品") { reviewEntry(entry,decision:award.revoked_at == nil ? "remove" : "approve") }.disabled(busy || reason.count < 2) } }.padding(.vertical, 6) } }
             DisclosureGroup("更多赛事操作") { VStack(alignment: .leading, spacing: 12) { if !["ended","cancelled"].contains(event.state) { action(event.paused ? "resume" : "pause", event.paused ? "恢复比赛" : "暂停比赛") }; if event.state != "cancelled" { action("cancel", "取消比赛并撤销奖项") }; Button("延期：编辑具体阶段时间") { editing = true; automaticTimes = false } } }
+            DisclosureGroup("资源统计") { Text("投稿记录 \(report.metrics?["entries"] ?? 0) · 图片资源 \(report.metrics?["images"] ?? 0) · 投票记录 \(report.metrics?["votes"] ?? 0)").font(.caption); Text("包含撤回与下架记录，图片仅统计直接附在赛事作品上的资源。为数据规模参考，非腾讯云账单。").font(.caption).foregroundStyle(.secondary) }
             DisclosureGroup("操作审计") { ForEach(report.audit ?? []) { log in VStack(alignment: .leading) { Text(log.action); Text(log.reason); Text(log.created_at).foregroundStyle(.secondary) }.font(.caption).padding(.vertical, 6) } }
             if reportMore { Button("更多管理记录") { run { try await loadReport(append: true) } } }
         }
     }
+    private var reviewWorks: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button("刷新审核作品") { run { try await loadReviewEntries() } }.disabled(busy)
+            if !reviewLoaded { Text("按需读取公开作品与下架记录，不会加载全部投稿。").font(.caption).foregroundStyle(.secondary) }
+            if reviewLoaded && reviewEntries.isEmpty { Text("还没有投稿记录").font(.caption) }
+            ForEach(reviewEntries) { entry in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(entry.title).font(.headline)
+                    Text(entry.author + " · " + (entry.status == "approved" ? "公开展示" : entry.status == "withdrawn" ? "用户已撤回" : "已下架")).font(.caption)
+                    Button("查看作品") { onWork?(entry) }.disabled(busy || onWork == nil)
+                    if entry.status != "withdrawn" { Button(entry.status == "removed" ? "恢复作品" : "下架作品") { reviewEntry(entry.id,decision:entry.status == "removed" ? "approve" : "remove") }.disabled(busy || reason.count < 2) }
+                }.padding(.vertical, 8)
+            }
+            if reviewMore { Button("更多审核作品") { run { try await loadReviewEntries(append:true) } }.disabled(busy) }
+        }
+    }
+    private func loadReviewEntries(append: Bool = false) async throws {
+        let response = try await api.request("contests.entries",["contestId":event.id,"seed":reviewSeed,"afterId":append ? reviewEntries.last?.id as Any? ?? NSNull() : NSNull(),"_fresh":true])
+        reviewMore = (response.entries?.count ?? 0)>20; reviewEntries = (append ? reviewEntries : []) + Array((response.entries ?? []).prefix(20)); reviewLoaded = true
+    }
     private var operationTitle: String { ["publish":"发布这场赛事？","pause":"暂停比赛？","resume":"恢复比赛？","announce":"审核并公布结果？","cancel":"取消赛事并撤销奖项？"][operation ?? ""] ?? "确认管理操作？" }
     private func action(_ action: String, _ label: String) -> some View { Button(label) { operation = action }.disabled(busy || reason.count < 2) }
-    private func confirmOperation() { guard let op = operation else { return }; run { let r = try await confirmedRequest("contests.manage", ["contestId":event.id,"operation":op,"reason":reason]); guard let confirmed = r.contest else { throw TreeholeError(code: "invalid_response") }; event = confirmed; operation = nil; notice = "处理已确认"; do { try await loadReport() } catch { self.error = "处理已成功，统计暂未刷新，请重试刷新。" } } }
+    private func confirmOperation() { guard let op = operation else { return }; run { let r = try await confirmedRequest("contests.manage", ["contestId":event.id,"operation":op,"reason":reason]); guard let confirmed = r.contest else { throw TreeholeError(code: "invalid_response") }; event = confirmed; onUpdated?(confirmed); operation = nil; notice = "处理已确认"; do { try await loadReport() } catch { self.error = "处理已成功，统计暂未刷新，请重试刷新。" } } }
     private func save(publish: Bool) { run {
         if pendingSave == nil { if !persisted && automaticTimes { event.startsAt = formatter.string(from: Date()); duration(durationDays == 0 ? customDays : durationDays) }; var payload = event.payload; payload["requestId"] = requestID; payload["publish"] = publish; pendingSave = payload }
         var response = try await api.request("contests.save", pendingSave!)
         if publish && response.contest?.state == "draft" { response = try await api.request("contests.manage", ["contestId":event.id,"operation":"publish","reason":"发布已确认的主题与规则","requestId":publicationID]) }
-        guard let confirmed = response.contest else { throw TreeholeError(code: "invalid_response") }; event = confirmed; pendingSave = nil; saved(event.id)
+        guard let confirmed = response.contest else { throw TreeholeError(code: "invalid_response") }; event = confirmed; onUpdated?(confirmed); pendingSave = nil; saved(event.id)
     } }
     private func loadReport(append: Bool = false) async throws { var response = try await api.request("contests.admin", ["contestId":event.id,"offset":append ? reportOffset+20 : 0]); reportMore = (response.votes?.count ?? 0)>20 || (response.audit?.count ?? 0)>20 || (response.awards?.count ?? 0)>20; response.votes = (append ? report.votes ?? [] : []) + Array((response.votes ?? []).prefix(20)); response.audit = (append ? report.audit ?? [] : []) + Array((response.audit ?? []).prefix(20)); response.awards = (append ? report.awards ?? [] : []) + Array((response.awards ?? []).prefix(20)); reportOffset = append ? reportOffset+20 : 0; report = response }
     private func reviewEntry(_ id: String, decision: String) { reviewRequest("entry", id, decision) }
     private func review(_ id: String, decision: String) { reviewRequest("vote", id, decision) }
     private func reviewRequest(_ kind: String, _ id: String, _ decision: String) { moderation = ["contestId":event.id,"kind":kind,"targetId":id,"decision":decision,"reason":reason] }
-    private func reviewMutation(_ payload: [String: Any]) { run { let response = try await confirmedRequest("contests.review",payload); if let confirmed = response.contest { event = confirmed }; moderation = nil; notice = "审核已确认"; do { try await loadReport() } catch { self.error = "审核已成功，统计暂未刷新，请重试。" } } }
+    private func reviewMutation(_ payload: [String: Any]) { run { let response = try await confirmedRequest("contests.review",payload); if let confirmed = response.contest { event = confirmed; onUpdated?(confirmed) }; if let entry = response.entry { reviewEntries = reviewEntries.map { $0.id == entry.id ? entry : $0 } }; moderation = nil; notice = "审核已确认"; do { try await loadReport(); if reviewLoaded && response.entry == nil { try await loadReviewEntries() } } catch { self.error = "审核已成功，统计暂未刷新，请重试。" } } }
     private func confirmedRequest(_ action: String, _ body: [String: Any]) async throws -> TreeholeEnvelope {
         let key = action + (try JSONSerialization.data(withJSONObject:body,options:[.sortedKeys])).base64EncodedString()
         let nonce = retryNonces[key] ?? UUID().uuidString; retryNonces[key] = nonce

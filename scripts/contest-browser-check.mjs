@@ -5,13 +5,20 @@ import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 import { chromium } from "playwright";
-const { createCommunity } = await import(process.env.CONTEST_CORE_MODULE || "../cloudbase/functions/community/core.mjs");
+const { createCommunity } = await import(
+  process.env.CONTEST_CORE_MODULE || "../cloudbase/functions/community/core.mjs"
+);
 
 const output =
   process.env.CONTEST_QA_DIR || "/tmp/handan-community-contests-v2-qa";
 await mkdir(output, { recursive: true });
 const db = new PGlite();
-await db.exec(await readFile(process.env.CONTEST_SCHEMA_PATH || "cloudbase/community-schema.sql", "utf8"));
+await db.exec(
+  await readFile(
+    process.env.CONTEST_SCHEMA_PATH || "cloudbase/community-schema.sql",
+    "utf8",
+  ),
+);
 const media = new Map();
 let origin = "",
   sign = 0;
@@ -128,7 +135,7 @@ try {
   });
   for (const width of [360, 390, 430]) {
     const context = await browser.newContext({
-      viewport: { width, height: Number(process.env.CONTEST_QA_HEIGHT)||844 },
+      viewport: { width, height: Number(process.env.CONTEST_QA_HEIGHT) || 844 },
       serviceWorkers: "block",
     });
     const actions = [];
@@ -370,6 +377,52 @@ try {
         animations: "disabled",
         fullPage: true,
       });
+      await call(author, "contests.submit", {
+        contestId: created.id,
+        requestId: randomUUID(),
+        title: "主动审核回归作品",
+        body: "审核入口保留公开作品与下架记录。",
+        images: [],
+        agreed: true,
+      });
+      await page.getByRole("button", { name: "刷新统计", exact: true }).click();
+      await page.getByText("作品审核", { exact: true }).click();
+      await page.getByRole("button", { name: "下架作品", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByLabel("处理原因", { exact: true })
+        .fill("主动核对授权信息");
+      await page.getByRole("button", { name: "确认处理", exact: true }).click();
+      await page
+        .getByRole("button", { name: "恢复作品", exact: true })
+        .waitFor();
+      await page.screenshot({
+        path: path.join(output, "contest-moderation-390.png"),
+        animations: "disabled",
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: "恢复作品", exact: true }).click();
+      await page
+        .getByRole("dialog")
+        .getByLabel("处理原因", { exact: true })
+        .fill("确认作者原创后恢复");
+      await page.getByRole("button", { name: "确认处理", exact: true }).click();
+      await page
+        .getByRole("button", { name: "下架作品", exact: true })
+        .waitFor();
+      await page.getByRole("button", { name: "查看作品", exact: true }).click();
+      await page
+        .getByRole("heading", { name: "主动审核回归作品", exact: true })
+        .waitFor();
+      await page
+        .getByRole("button", { name: "返回上一层", exact: true })
+        .click();
+      await page
+        .getByRole("heading", { name: "投稿中", exact: true })
+        .waitFor();
+      checks.push(
+        "390px proactive moderation: remove, restore, refreshed valid-entry count and work-detail return to management",
+      );
       await page.getByText("更多赛事操作", { exact: true }).click();
       await page.getByRole("button", { name: "暂停比赛", exact: true }).click();
       await page
@@ -402,6 +455,7 @@ try {
         "390px developer simple default-seven-day creation, confirmed publication, pause/resume/cancel and visible management metrics",
       );
     }
+    assert.deepEqual(errors, []);
     metrics.push({
       width,
       requests: actions.reduce(

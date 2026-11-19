@@ -699,3 +699,13 @@ test('v2: atomic draft publication reserves its settlement task first; global th
  const proposal=await call(users[1],'contests.suggest',{title:'春季校园故事征集',requestId:randomUUID()});calls.length=0;
  await scheduledApi.execute('contests.review',{contestId:b.contestId,kind:'theme',targetId:proposal.themes[0].id,decision:'approve',reason:'采纳校园主题'},owner.sessionToken,'fixture');assert(!calls.includes('contests.schedule'));assert.equal(scheduled.length,1);
 });
+test('v2: legacy clients omitting new risk metadata preserve the published event setting',async()=>{
+ const b={...config(),reviewRisk:false,publish:true};await call(owner,'contests.save',b);
+ const legacy={...b,publish:false,submissionEnds:iso(5.5),votingStarts:iso(5.5),votingEnds:iso(6.5),awardAt:iso(7.5)};delete legacy.reviewRisk;
+ const r=await call(owner,'contests.save',legacy);assert.equal(r.contest.reviewRisk,false);
+});
+test('v2: moderation replies carry the committed entry and refreshed metrics for proactive review',async()=>{
+ const c=await event();const e=await submit(users[0],c);
+ const removed=await call(owner,'contests.review',{contestId:c,kind:'entry',targetId:e.id,decision:'remove',reason:'主动核对作品授权',requestId:randomUUID()});assert.equal(removed.entry.status,'removed');assert.equal((await call(owner,'contests.admin',{contestId:c})).metrics.validEntries,0);
+ const restored=await call(owner,'contests.review',{contestId:c,kind:'entry',targetId:e.id,decision:'approve',reason:'已核实作品为原创',requestId:randomUUID()});assert.equal(restored.entry.status,'approved');assert.equal((await call(owner,'contests.admin',{contestId:c})).metrics.validEntries,1);
+});

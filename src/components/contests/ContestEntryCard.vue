@@ -65,6 +65,10 @@ defineEmits<{ open: [] }>();
         >
       </div>
       <div class="ct-work-copy">
+        <span v-if="entry.status !== 'approved'" class="ct-medal"
+          >{{ entry.status === "withdrawn" ? "已撤回" : "已下架" }} ·
+          {{ entry.mine ? "仅你和管理者可见" : "管理记录" }}</span
+        >
         <span
           v-if="entry.awards.some((a) => a.kind !== 'participation')"
           class="ct-medal"

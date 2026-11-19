@@ -1,5 +1,6 @@
 .ct {
   --ct-radius: 16px;
+  overflow-wrap: anywhere;
   color: var(--color-text);
   padding: 4px 0 20px;
   min-width: 0;

@@ -61,7 +61,7 @@ struct ContestSubmissionView: View {
                         }
                         DisclosureGroup("选择已有帖子或同步到社区") {
                             ContestPostPicker(api: api) { post in draft.postID = post.id; draft.linked = true; draft.body = post.body; draft.kept = post.images ?? []; draft.photos = []; if draft.title.isEmpty { draft.title = post.title?.isEmpty == false ? post.title! : String(post.body.prefix(40)) }; draft.share = false }
-                            if draft.linked { Button("改为直接投稿") { draft.linked = false; draft.postID = nil; draft.kept = [] } }
+                            if draft.linked { Button("改为直接投稿") { draft.linked = false; if !hasText { draft.body = "" }; draft.postID = nil; draft.kept = [] } }
                             else { Toggle("同时发布到社区", isOn: $draft.share) }
                         }
                         DisclosureGroup("参赛规则") { Text(event.rules).font(.caption) }
@@ -103,7 +103,7 @@ struct ContestSubmissionView: View {
     private func restore() {
         reset(); defer { loaded = true }
         do { if var saved = try ProtectedStorage().read(key, as: NativeContestSubmissionDraft.self) { if saved.version != entry?.version { saved.version = entry?.version; saved.attempted = false; saved.requestID = UUID().uuidString }; draft = saved; restoring = true } }
-        catch { error = "草稿暂时无法读取，可以继续编辑。" }
+        catch { self.error = "草稿暂时无法读取，可以继续编辑。" }
     }
     @discardableResult private func persist() -> Bool {
         guard loaded, !restoring, active else { return true }

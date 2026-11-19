@@ -5,6 +5,7 @@ import { createApp, nextTick, type Component } from "vue";
 import { randomUUID } from "node:crypto";
 import Hub from "../src/components/contests/ContestHub.vue";
 import Composer from "../src/components/contests/ContestComposer.vue";
+import Management from "../src/components/contests/ContestManagement.vue";
 import Admin from "../src/components/contests/ContestAdmin.vue";
 import {
   contestRequest,
@@ -127,6 +128,10 @@ beforeEach(() => {
           ? { entries: [work] }
           : { themes: [] },
   );
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    value: vi.fn(),
+    configurable: true,
+  });
   Object.defineProperty(window, "scrollTo", {
     value: vi.fn(),
     configurable: true,
@@ -465,4 +470,186 @@ it("late submission cleanup cannot delete a newer draft using the same account/e
   );
   await deleteDraftRecord(key, "new-request");
   expect(await readDraftRecord(key)).toBeUndefined();
+});
+it("management loads work moderation on demand and applies the confirmed restore without reloading entries", async () => {
+  work.status = "removed";
+  const updated = vi.fn(),
+    opened = vi.fn();
+  bridge.request.mockImplementation(async (a: string) => {
+    if (a === "contests.admin")
+      return {
+        metrics: { validEntries: work.status === "approved" ? 1 : 0 },
+        votes: [],
+        awards: [],
+        audit: [],
+      };
+    if (a === "contests.entries") return { entries: [work] };
+    if (a === "contests.review") {
+      work = { ...work, status: "approved" };
+      return { contest: event, entry: work };
+    }
+    return {};
+  });
+  await mount(Management, {
+    owner,
+    contest: event,
+    onUpdated: updated,
+    onWork: opened,
+  });
+  await ready(() => btn("刷新统计") && !btn("刷新统计").disabled);
+  expect(
+    bridge.request.mock.calls.some((c) => c[0] === "contests.entries"),
+  ).toBe(false);
+  const fold = [...root.querySelectorAll("details")].find(
+    (d) => d.querySelector("summary")?.textContent === "作品审核",
+  )!;
+  fold.open = true;
+  fold.dispatchEvent(new Event("toggle"));
+  await ready(() => btn("恢复作品"));
+  btn("查看作品").click();
+  expect(opened).toHaveBeenCalledWith(expect.objectContaining({ id: work.id }));
+  btn("恢复作品").click();
+  await ready(() => root.querySelector("dialog[open]"));
+  const reason = root.querySelector<HTMLTextAreaElement>("dialog textarea")!;
+  reason.value = "已核实为原创";
+  reason.dispatchEvent(new Event("input", { bubbles: true }));
+  await nextTick();
+  btn("确认处理").click();
+  await ready(() => btn("下架作品"));
+  expect(updated).toHaveBeenCalledTimes(1);
+  expect(
+    bridge.request.mock.calls.filter((c) => c[0] === "contests.entries"),
+  ).toHaveLength(1);
+});
+it("failed moderation keeps its dialog and nonce and never announces a successful mutation", async () => {
+  let fail = true;
+  const updated = vi.fn();
+  bridge.request.mockImplementation(async (a: string) => {
+    if (a === "contests.admin")
+      return { metrics: { validEntries: 1 }, votes: [], awards: [], audit: [] };
+    if (a === "contests.entries") return { entries: [work] };
+    if (a === "contests.review") {
+      if (fail) throw Error("network_unavailable");
+      return { contest: event, entry: { ...work, status: "removed" } };
+    }
+    return {};
+  });
+  await mount(Management, { owner, contest: event, onUpdated: updated });
+  await ready(() => btn("刷新统计") && !btn("刷新统计").disabled);
+  const fold = [...root.querySelectorAll("details")].find(
+    (d) => d.querySelector("summary")?.textContent === "作品审核",
+  )!;
+  fold.open = true;
+  fold.dispatchEvent(new Event("toggle"));
+  await ready(() => btn("下架作品"));
+  btn("下架作品").click();
+  await ready(() => root.querySelector("dialog[open]"));
+  const reason = root.querySelector<HTMLTextAreaElement>("dialog textarea")!;
+  reason.value = "核对作品授权";
+  reason.dispatchEvent(new Event("input", { bubbles: true }));
+  await nextTick();
+  btn("确认处理").click();
+  vm.requestBack();
+  await ready(() => root.querySelector(".ct-error"));
+  expect(root.querySelector("dialog[open]")).not.toBeNull();
+  expect(updated).not.toHaveBeenCalled();
+  expect(root.textContent).not.toContain("处理已确认");
+  fail = false;
+  btn("确认处理").click();
+  await ready(() => btn("恢复作品"));
+  const calls = bridge.request.mock.calls.filter(
+    (c) => c[0] === "contests.review",
+  );
+  expect(calls[0][1]).toEqual(calls[1][1]);
+});
+it("switching a captioned original post to direct image-only submission clears text that the form cannot edit", async () => {
+  event.formats = ["image"];
+  const key = `contest-v2:${owner}:${event.id}:new`;
+  await writeDraftRecord(key, {
+    title: "图片作品",
+    body: "原帖附带的文字",
+    postId: work.id,
+    linked: true,
+    kept: [
+      {
+        id: randomUUID(),
+        url: "https://fixture.invalid/image.jpg",
+        width: 400,
+        height: 300,
+      },
+    ],
+    photos: [],
+    share: false,
+    agreed: true,
+    requestId: randomUUID(),
+    savedAt: Date.now(),
+  });
+  await mount(Composer, { owner, contest: event });
+  await ready(() => btn("恢复草稿"));
+  btn("恢复草稿").click();
+  await ready(() => btn("改为直接投稿"));
+  btn("改为直接投稿").click();
+  document.dispatchEvent(new Event("visibilitychange"));
+  await ready(
+    async () => (await readDraftRecord<{ body: string }>(key))?.body === "",
+  );
+  expect(root.querySelector("input[type=file]")).not.toBeNull();
+  await deleteDraftRecord(key);
+});
+it("an upload finishing after unmount cannot overwrite a newer draft or automatically submit the old account work", async () => {
+  event.formats = ["image"];
+  const key = `contest-v2:${owner}:${event.id}:new`;
+  await writeDraftRecord(key, {
+    title: "上传中的作品",
+    body: "",
+    postId: null,
+    linked: false,
+    kept: [],
+    photos: [{ id: randomUUID(), data: "YQ==", width: 1, height: 1 }],
+    share: false,
+    agreed: true,
+    requestId: randomUUID(),
+    savedAt: Date.now(),
+  });
+  let release!: (r: object) => void;
+  bridge.request.mockImplementation((a: string) =>
+    a === "media.upload"
+      ? new Promise((r) => (release = r))
+      : Promise.resolve({}),
+  );
+  await mount(Composer, { owner, contest: event });
+  await ready(() => btn("恢复草稿"));
+  btn("恢复草稿").click();
+  await ready(() => btn("预览作品"));
+  await submitForm();
+  await ready(() => btn("确认参赛"));
+  btn("确认参赛").click();
+  await ready(() => !!release);
+  vm.requestBack();
+  await nextTick();
+  expect(btn("正在确认…")).toBeTruthy();
+  app!.unmount();
+  app = undefined;
+  await new Promise((r) => setTimeout(r, 30));
+  await writeDraftRecord(key, { requestId: "new-draft", title: "新的作品" });
+  release({ image: { id: randomUUID(), width: 1, height: 1 } });
+  await new Promise((r) => setTimeout(r, 40));
+  expect(
+    bridge.request.mock.calls.some((c) => c[0] === "contests.submit"),
+  ).toBe(false);
+  expect((await readDraftRecord<{ requestId: string }>(key))?.requestId).toBe(
+    "new-draft",
+  );
+  await deleteDraftRecord(key);
+});
+it("an upcoming preview opens the complete theme and rules instead of pointing to an empty work wall", async () => {
+  event.startsAt = iso(2);
+  event.description = "完整主题介绍".repeat(40);
+  await mount(Hub, { user: { id: owner } });
+  await ready(() => btn("查看预告"));
+  btn("查看预告").click();
+  await nextTick();
+  const rules = root.querySelector<HTMLDetailsElement>("#contest-rules")!;
+  expect(rules.open).toBe(true);
+  expect(rules.textContent).toContain(event.description);
 });

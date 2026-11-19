@@ -88,7 +88,7 @@ const completed = computed(
   () => draft.value.photos.filter((p) => p.remote).length,
 );
 async function persist() {
-  if (!ready.value || !active) return false;
+  if (!alive || !ready.value || !active) return false;
   const snapshot = JSON.parse(
     JSON.stringify({ ...draft.value, savedAt: Date.now() }),
   );
@@ -252,6 +252,7 @@ async function submit() {
   busy.value = true;
   try {
     for (const photo of draft.value.photos) await upload(photo);
+    if (!alive) return;
     const payload = draft.value.lastSent || {
       contestId: props.contest.id,
       entryId: props.entry?.id || null,
@@ -308,6 +309,7 @@ async function checkStatus() {
       { contestId: props.contest.id, seed: crypto.randomUUID(), mine: true },
       true,
     );
+    if (!alive) return;
     const found = r.entries?.find(
       (e) =>
         e.status === "approved" &&
@@ -337,6 +339,7 @@ async function checkStatus() {
   }
 }
 function requestBack() {
+  if (busy.value) return true;
   if (preview.value) {
     preview.value = false;
     return true;
@@ -468,6 +471,7 @@ defineExpose({ requestBack });
                 class="ct-link"
                 @click="
                   draft.linked = false;
+                  if (!canText) draft.body = '';
                   draft.postId = null;
                   draft.kept = [];
                 "

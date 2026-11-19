@@ -163,3 +163,5 @@ Apple implementation references: [local notification scheduling](https://develop
 ## 2026-11-20 主题赛事 2.0
 
 在独立重构分支同步当前赛事、次级档案、详情投票、独立投稿草稿和简化管理。NativeContest字段新增可选版本/风控参数，旧响应仍可解码；投票直接更新确认状态，不跟随详情读取。草稿使用现有ProtectedStorage按账号/赛事/作品隔离，图片压缩和稳定请求ID保留。新增3项原生单元回归；Xcode编译与模拟器测试以本分支CI为准，尚未真机验收。不签名分发、不上传TestFlight、不改生产后台。
+
+首轮赛事2.0模拟器及未签名设备编译报告了ContestSubmissionView草稿读取catch内变量遮蔽，现已改为self.error，等待修正后的CI。主动作品审核与资源统计已保留，管理操作回执同步父页面；未将首轮失败写为验证成功。

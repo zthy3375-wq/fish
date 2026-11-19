@@ -24,7 +24,9 @@ struct ContestView: View {
     @State private var mineReady = true
     @State private var editor = false
     @State private var administration = false
+    @State private var workFromManagement = false
     @State private var winnersOnly = false
+    @State private var rulesExpanded = false
     @State private var error: String?
     @State private var notice: String?
     @State private var serverOffset: TimeInterval = 0
@@ -54,9 +56,9 @@ struct ContestView: View {
                 ContestSubmissionView(api: api, memberID: user.id, event: event, entry: editing, submitted: didSubmit, close: { editor = false })
             } else if administration, let event = draftEvent {
                 Button("返回比赛") { administration = false }.disabled(busy)
-                ContestManagementView(api: api, event: event, persisted: selected?.id == event.id || events.contains(where: { $0.id == event.id }), backendSchema: backendSchema, saved: { id in administration = false; run { try await open(id) } })
+                ContestManagementView(api: api, event: event, persisted: selected?.id == event.id || events.contains(where: { $0.id == event.id }), backendSchema: backendSchema, saved: { id in if administration && draftEvent?.id == id { administration = false; run { try await open(id) } } }, onUpdated: { updated in if selected?.id == updated.id { selected = updated }; if draftEvent?.id == updated.id { draftEvent = updated }; events = events.map { $0.id == updated.id ? updated : $0 } }, onWork: { entry in selectedWork = entry; workFromManagement = true; administration = false })
             } else if let event = selected, let entry = selectedWork {
-                Button("返回作品墙") { selectedWork = nil; notice = nil }.disabled(busy)
+                Button(workFromManagement ? "返回赛事管理" : "返回作品墙") { selectedWork = nil; notice = nil; if workFromManagement { administration = true; workFromManagement = false } }.disabled(busy)
                 work(entry, event: event)
             } else {
                 header
@@ -95,15 +97,16 @@ struct ContestView: View {
         if let cover = event.cover { AsyncImage(url: cover.url.flatMap(URL.init(string:))) { $0.resizable().scaledToFill() } placeholder: { Color.white }.frame(height: 175).clipped().clipShape(RoundedRectangle(cornerRadius: 16)) }
         VStack(alignment: .leading, spacing: 12) {
             HStack { Text(event.type).font(.caption); Spacer(); Text(event.label(at: now)).font(.caption.weight(.semibold)) }
-            Text(event.title).font(.title.bold()); Text(event.description).font(.subheadline)
+            Text(event.title).font(.title.bold()); Text(event.description).font(.subheadline).lineLimit(2)
             Text(event.remaining(now: now) + " · \(event.participantCount)人 · \(event.entryCount)件作品").font(.caption).foregroundStyle(.secondary)
-            Button(primaryLabel(event)) { if event.phase(at: now) == "submitting" { if !mineReady { run { try await open(event.id, fresh: true) } } else if let own = mine.first { selectedWork = own } else { compose() } } else { notice = event.phase(at: now) == "reviewing" ? "结果统计与审核中，公布后会保留全部作品与荣誉。" : "在下方作品墙选择作品，点开查看完整内容。" } }.buttonStyle(.borderedProminent).disabled(busy || event.paused)
+            Button(primaryLabel(event)) { if event.phase(at: now) == "submitting" { if !mineReady { run { try await open(event.id, fresh: true) } } else if let own = mine.first { selectedWork = own } else { compose() } } else if event.phase(at:now) == "upcoming" { rulesExpanded = true } else { notice = event.phase(at: now) == "reviewing" ? "结果统计与审核中，公布后会保留全部作品与荣誉。" : "在下方作品墙选择作品，点开查看完整内容。" } }.buttonStyle(.borderedProminent).disabled(busy || event.paused)
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 18))
-        DisclosureGroup("比赛规则、日程与奖励") {
+        DisclosureGroup("主题介绍、规则与奖励", isExpanded:$rulesExpanded) {
             VStack(alignment: .leading, spacing: 8) {
+                Text(event.description)
                 Text(event.rules)
                 Text("每人\(event.maxEntries)件作品、\(event.votesPerUser)票。禁止自投，同票并列。满\(event.minEntries)件有效作品且有有效票时颁发前三，其他有效作品保留纪念。")
-                Text(event.minAccountHours > 0 ? "投票开始前需注册满\(event.minAccountHours)小时" : "普通社区账号均可参与，异常票可复核")
+                Text(event.minAccountHours > 0 ? "投票开始前需注册满\(event.minAccountHours)小时" : backendSchema < 14 ? "本场需在投票开始前注册，投票资格由后台确认" : "普通社区账号均可参与，异常票可复核")
                 ForEach([("投稿截止",event.submissionEnds),("投票开始",event.votingStarts),("投票截止",event.votingEnds),("公布时间",event.awardAt)], id: \.0) { label, value in Text(label + " · " + displayTime(value)) }
                 Text("以上日程均为北京时间")
             }.font(.caption).padding(.vertical, 8)
@@ -125,6 +128,7 @@ struct ContestView: View {
             VStack(alignment: .leading, spacing: 9) {
                 if let image = entry.images.first { AsyncImage(url: image.url.flatMap(URL.init(string:))) { $0.resizable().scaledToFill() } placeholder: { Image(systemName: "photo") }.frame(height: 160).frame(maxWidth: .infinity).clipped() }
                 if let award = entry.awards.first(where: { $0.kind != "participation" }) { Label(award.label, systemImage: "trophy").font(.caption).foregroundStyle(TreeholeTheme.primary) }
+                if entry.status != "approved" { Text(entry.status == "withdrawn" ? "已撤回 · 管理记录" : "已下架 · 管理记录").font(.caption).foregroundStyle(.secondary) }
                 Text(entry.title).font(.headline).foregroundStyle(.primary)
                 if entry.images.isEmpty { Text(entry.body).font(.subheadline).lineLimit(3).foregroundStyle(.secondary) }
                 HStack { Text(entry.author + (entry.mine ? " · 我" : "")).font(.caption).foregroundStyle(.secondary); Spacer(); if entry.voted { Image(systemName: "checkmark.circle.fill").foregroundStyle(TreeholeTheme.primary) } }
@@ -246,7 +250,7 @@ struct ContestView: View {
         events = (more ? events : []) + Array((r.contests ?? []).prefix(20))
         if page == "events", let event = events.first(where: { !["ended","cancelled","draft"].contains($0.state) }) ?? events.first(where: { $0.state == "ended" }) { try await open(event.id, fresh: fresh) }
     }
-    private func open(_ id: String, fresh: Bool = false) async throws { let r = try await api.request("contests.get", ["contestId":id,"_fresh":fresh]); try Task.checkCancellation(); selected = r.contest; selectedWork = nil; winnersOnly = false; if let time = r.serverTime.flatMap(NativeContest.date) { serverOffset = time.timeIntervalSinceNow }; votesUsed = r.votesUsed ?? 0; mine = r.myEntries ?? []; mineReady = r.myEntries != nil || selected?.phase(at:now) != "submitting"; try await wall(fresh: fresh); if r.myEntries == nil && selected?.phase(at: now) == "submitting" { mine = try await api.request("contests.entries", ["contestId":id,"seed":seed,"mine":true]).entries?.filter { $0.status == "approved" } ?? []; mineReady = true } }
+    private func open(_ id: String, fresh: Bool = false) async throws { let r = try await api.request("contests.get", ["contestId":id,"_fresh":fresh]); try Task.checkCancellation(); selected = r.contest; selectedWork = nil; winnersOnly = false; rulesExpanded = false; if let time = r.serverTime.flatMap(NativeContest.date) { serverOffset = time.timeIntervalSinceNow }; votesUsed = r.votesUsed ?? 0; mine = r.myEntries ?? []; mineReady = r.myEntries != nil || selected?.phase(at:now) != "submitting"; try await wall(fresh: fresh); if r.myEntries == nil && selected?.phase(at: now) == "submitting" { mine = try await api.request("contests.entries", ["contestId":id,"seed":seed,"mine":true]).entries?.filter { $0.status == "approved" } ?? []; mineReady = true } }
     private func wall(more: Bool = false, fresh: Bool = false) async throws { guard let selected else { return }; let r = try await api.request("contests.entries", ["contestId":selected.id,"seed":seed,"offset":0,"afterId":more ? entries.last?.id as Any? ?? NSNull() : NSNull(),"winnersOnly":winnersOnly,"_fresh":fresh]); try Task.checkCancellation(); self.more = (r.entries?.count ?? 0)>20; entries = (more ? entries : []) + Array((r.entries ?? []).prefix(20)) }
 }
 
