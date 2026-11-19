@@ -562,3 +562,58 @@ final class TreeholeTests: XCTestCase {
     }
 
 }
+
+extension TreeholeTests {
+    func testContestCacheRefreshAndLogoutStayBoundToNativeSession() async throws {
+        let vault = TreeholeMemoryVault()
+        vault.token = String(repeating: "c", count: 43)
+        let api = service(vault)
+        var calls = 0
+        TreeholeTestProtocol.handler = { request in
+            calls += 1
+            if request.url?.lastPathComponent == "contests.list" {
+                return (200, Data(#"{"contests":[],"serverTime":"2026-11-19T10:00:00.123+00:00"}"#.utf8))
+            }
+            return (200, Data("{}".utf8))
+        }
+        _ = try await api.request("contests.list")
+        _ = try await api.request("contests.list")
+        XCTAssertEqual(calls, 1)
+        _ = try await api.request("contests.list", ["_fresh": true])
+        XCTAssertEqual(calls, 2)
+        _ = try await api.request("contests.vote", ["contestId":UUID().uuidString, "entryId":UUID().uuidString, "enabled":true])
+        _ = try await api.request("contests.list")
+        XCTAssertEqual(calls, 4)
+        _ = try await api.request("logout")
+        do {
+            _ = try await api.request("contests.list")
+            XCTFail("signed-out session must not read cached developer drafts")
+        } catch let error as TreeholeError { XCTAssertEqual(error.code, "session_expired") }
+        XCTAssertEqual(calls, 5)
+    }
+
+    func testContestClockParsesServerFractionsAndTransitionsAtExactDeadline() throws {
+        XCTAssertNotNil(NativeContest.date("2026-11-19T10:00:00.123+00:00"))
+        let instant = Date(timeIntervalSince1970: 1_795_082_400)
+        let formatter = ISO8601DateFormatter()
+        var event = NativeContest.draft()
+        event.state = "submitting"
+        event.startsAt = formatter.string(from: instant.addingTimeInterval(-3600))
+        event.submissionEnds = formatter.string(from: instant)
+        event.votingStarts = event.submissionEnds
+        event.votingEnds = formatter.string(from: instant.addingTimeInterval(3600))
+        XCTAssertEqual(event.phase(at: instant.addingTimeInterval(-1)), "submitting")
+        XCTAssertEqual(event.phase(at: instant), "voting")
+        XCTAssertEqual(event.phase(at: instant.addingTimeInterval(3600)), "reviewing")
+    }
+}
+
+extension TreeholeTests {
+    func testCompetitionModerationDoesNotDecodeReportsAsCommunityPostReports() throws {
+        let data = Data(#"{"contestReports":[{"id":"report","entry_id":"entry","reason":"请核实作品"}],"awards":[{"id":"award","kind":"champion","rank":1,"revoked_at":"2026-11-19T10:00:00Z"}]}"#.utf8)
+        let response = try JSONDecoder().decode(TreeholeEnvelope.self, from: data)
+        XCTAssertNil(response.reports)
+        XCTAssertEqual(response.contestReports?.first?.entry_id, "entry")
+        XCTAssertNotNil(response.awards?.first?.revoked_at)
+    }
+}

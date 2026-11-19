@@ -137,6 +137,7 @@ jobs:
       - run: bash scripts/install-ui-fonts.sh
       - run: node scripts/academic-browser-check.mjs
       - run: npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund
+      - run: node scripts/contest-browser-check.mjs
       - run: node scripts/admin-browser-check.mjs
       - run: node scripts/treehole-browser-check.mjs
       - run: node scripts/community-messages-browser-check.mjs
