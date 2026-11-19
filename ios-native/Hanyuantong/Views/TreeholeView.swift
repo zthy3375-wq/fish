@@ -70,12 +70,13 @@ struct TreeholeView: View {
                 if tree.busy { ProgressView(tree.ready ? "正在处理…" : "正在连接社区").frame(maxWidth: .infinity) }
                 if let message = tree.message {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(message).font(.subheadline).foregroundStyle(.red)
+                        Label(message, systemImage: "info.circle").font(.subheadline).foregroundStyle(CampusTheme.text)
                         if !tree.ready { Button("重试连接") { tree.enter() } }
                         else if tree.user != nil && screen == "feed" { Button("重新加载") { tree.perform { try await tree.feed() } } }
-                    }.campusCard().accessibilityElement(children: .combine)
+                    }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(CampusTheme.adaptive(light: 0xfff1e9, dark: 0x3a302b), in: RoundedRectangle(cornerRadius: 14))
                 }
-                if tree.user == nil { authentication }
+                if tree.ready && tree.user == nil { authentication }
                 if let user = tree.user {
                     switch screen {
                     case "compose": composer
@@ -158,9 +159,9 @@ struct TreeholeView: View {
                         detailTabButton("正文", value: "body") { scrollIntentUntil = Date().addingTimeInterval(0.65); withAnimation(pageAnimation) { proxy.scrollTo("post", anchor: .top) } }
                         detailTabButton("评论", value: "comments") { scrollIntentUntil = Date().addingTimeInterval(0.65); withAnimation(pageAnimation) { proxy.scrollTo("comments", anchor: .top) } }
                     }
-                } else { Text(title).font(.headline) }
+                } else if screen != "feed" { Text(title).font(.headline) } else { Color.clear.frame(width: 1, height: 1) }
             }
-            ToolbarItem(placement: .navigationBarLeading) { if screen != "feed" { Button { back() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("返回社区").disabled(tree.busy) } }
+            ToolbarItem(placement: .navigationBarLeading) { if screen == "feed" { CampusRootTitle(title: title) } else { Button { back() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("返回社区").disabled(tree.busy) } }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 if screen == "compose" { Button("发布", action: publish).font(.body.weight(.semibold)).disabled(tree.busy || !buddyValid || (bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.value.photos.isEmpty && draft.value.poll == nil) || (draft.value.poll != nil && (!tree.pollsEnabled || draft.value.poll?.valid != true))) }
                 else if screen == "account" && accountPage == "overview" {

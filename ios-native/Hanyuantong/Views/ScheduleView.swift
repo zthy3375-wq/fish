@@ -16,15 +16,29 @@ struct ScheduleView: View {
     }
     var body: some View {
         ScrollView {
-            VStack(spacing: 18) {
+            VStack(spacing: 8) {
                 if store.pausedCourseAdjustments > 0 { Text("学校原安排已变化，\(store.pausedCourseAdjustments) 条按周调课记录已暂停，请按新课表重新核对。").font(.caption).foregroundStyle(CampusTheme.muted) }
-                Picker("课表视图", selection: $mode) { Text("周课表").tag(0); Text("日程").tag(1) }.pickerStyle(.segmented)
+                HStack {
+                    Text("视图类型").font(.caption).foregroundStyle(CampusTheme.muted)
+                    Spacer()
+                    Picker("课表视图", selection: $mode) { Text("日视图").tag(1); Text("周视图").tag(0) }
+                        .pickerStyle(.segmented).frame(maxWidth: 138)
+                    Spacer()
+                    Button("回到本周") { select(Date(), checkDay: false) }.font(.caption)
+                }
+                HStack {
+                    Text(store.isConnected ? "学校课表" : "个人课表").font(.caption).foregroundStyle(CampusTheme.muted)
+                    Spacer()
+                    Button { managingPersonalSchedule = true } label: {
+                        Label("管理个人课表", systemImage: "slider.horizontal.3").font(.caption)
+                    }.accessibilityIdentifier("manage-personal-schedule")
+                }.frame(minHeight: 40)
                 HStack {
                     Button { shift(-7) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("上一周")
                     Spacer()
                     VStack(spacing: 5) {
-                        Text("\(store.isConnected ? "学校" : "个人")第\(store.week(for: store.selectedDate))周").font(.headline)
-                        Text(CampusTheme.date(store.selectedDate, format: "yyyy年M月")).font(.caption).foregroundStyle(CampusTheme.muted)
+                        Text("第 \(store.week(for: store.selectedDate)) 周").font(.headline)
+                        Text(CampusTheme.date(days.first ?? store.selectedDate, format: "M/d") + " – " + CampusTheme.date(days.last ?? store.selectedDate, format: "M/d")).font(.caption).foregroundStyle(CampusTheme.muted)
                         if store.isConnected, store.courses.contains(where: { $0.source == "personal" }) {
                             Text("个人第\(ScheduleMath.week(on: store.selectedDate, start: store.semesterStart))周").font(.caption).foregroundStyle(CampusTheme.muted)
                         }
@@ -32,12 +46,13 @@ struct ScheduleView: View {
                     Spacer()
                     Button { shift(7) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.accessibilityLabel("下一周")
                 }
-                HStack(spacing: 4) {
+                if mode == 1 { HStack(spacing: 4) {
                     ForEach(days, id: \.self) { date in
                         Button { select(date,checkDay:true) } label: {
                             VStack(spacing: 9) { Text(CampusTheme.date(date, format: "EE")).font(.caption2); Text(CampusTheme.date(date, format: "d")).font(.subheadline.weight(.semibold)); Circle().fill(CampusTheme.calendar.isDate(date, inSameDayAs: Date()) ? CampusTheme.primary : .clear).frame(width: 4, height: 4) }.frame(maxWidth: .infinity).padding(.vertical, 10).background(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? CampusTheme.tint : .clear, in: RoundedRectangle(cornerRadius: 12))
                         }.accessibilityLabel(CampusTheme.date(date)).accessibilityAddTraits(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? .isSelected : [])
                     }
+                }
                 }
                 if mode == 0 { weekList } else { dayList }
                 if !store.practice.isEmpty {
@@ -54,18 +69,20 @@ struct ScheduleView: View {
                 if !store.isConnected {
                     Button { store.connectSchool() } label: { Label("连接教务系统", systemImage: "link").frame(maxWidth: .infinity).padding(12) }.buttonStyle(.bordered).disabled(store.isBusy)
                 }
-            }.padding(20).frame(maxWidth: 680)
+            }.padding(.horizontal, 8).padding(.vertical, 10).frame(maxWidth: 680)
         }.background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .overlay(alignment:.top) { if let surprise { Text(surprise == "freeday" ? "今天属于你自己。" : "回到本周了。").padding(10).background(.thinMaterial,in:Capsule()).allowsHitTesting(false) } }
             .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; MedalJournal.shared.unlock(code); surprise=nil }
             .onAppear { if store.lastSynced != nil && store.courses.contains(where:{$0.source != "personal"}) { offline.start(scope:store.schoolMedalScope) } }
             .onDisappear { offline.stop(); firstWeekContext=nil }
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) { Button("今天") { select(Date(),checkDay:false) } }
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    Button { managingPersonalSchedule = true } label: { Image(systemName: "slider.horizontal.3") }
-                        .accessibilityLabel("管理个人课表").accessibilityIdentifier("manage-personal-schedule")
-                    Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("添加课程")
+                ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    CampusRootTitle(title: "课程表", subtitle: store.isConnected ? "学校课表" : "个人课表")
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { adding = true } label: { Image(systemName: "plus").frame(width: 40, height: 40).background(CampusTheme.tint, in: Circle()) }
+                        .accessibilityLabel("添加课程")
                 }
             }.sheet(isPresented: $adding) { CourseEditorView() }
             .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
@@ -78,7 +95,7 @@ struct ScheduleView: View {
         }
     }
     private var weekList: some View {
-        TimetableGrid(days: days, courses: days.map { store.courses(on: $0) }) { date in
+        TimetableGrid(days: days, courses: days.map { store.courses(on: $0) }, periods: store.visiblePeriods) { date in
             select(date, checkDay: false)
             mode = 1
         }
@@ -101,22 +118,24 @@ struct ScheduleView: View {
 private struct TimetableGrid: View {
     let days: [Date]
     let courses: [[Course]]
+    let periods: [AndroidTimeSlot]
     let openDay: (Date) -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var enlarged = false
     @ScaledMetric(relativeTo: .caption) private var laneWidth: CGFloat = 112
-    @ScaledMetric(relativeTo: .caption) private var minuteHeight: CGFloat = 1.4
+    @ScaledMetric(relativeTo: .caption) private var minuteHeight: CGFloat = 1.15
     private let timeWidth: CGFloat = 54
-    private let headerHeight: CGFloat = 48
+    private let headerHeight: CGFloat = 44
     private var layouts: [TimetableDay] { courses.map(TimetableDay.init) }
     private var firstMinute: Int {
-        min(480, (layouts.flatMap(\.events).map(\.start).min() ?? 480) / 60 * 60)
+        min(ticks.compactMap { TimetableDay.minutes($0.start) }.min() ?? 480, layouts.flatMap(\.events).map(\.start).min() ?? 1440)
     }
     private var lastMinute: Int {
-        max(1320, ((layouts.flatMap(\.events).map(\.end).max() ?? 1320) + 59) / 60 * 60)
+        max(ticks.compactMap { TimetableDay.minutes($0.end) }.max() ?? 1320, layouts.flatMap(\.events).map(\.end).max() ?? 0)
     }
     private var height: CGFloat { CGFloat(lastMinute - firstMinute) * minuteHeight }
-    private var hours: [Int] { Array(stride(from: firstMinute, through: lastMinute, by: 60)) }
+    private var ticks: [AndroidTimeSlot] { periods.sorted { $0.start < $1.start } }
+
     private func dayWidth(_ layout: TimetableDay) -> CGFloat { CGFloat(layout.laneCount) * laneWidth }
     private func y(_ minute: Int) -> CGFloat { CGFloat(minute - firstMinute) * minuteHeight }
     var body: some View {
@@ -146,10 +165,14 @@ private struct TimetableGrid: View {
             VStack(spacing: 0) {
                 Text("时间").font(.caption).frame(width: axisWidth, height: headerHeight)
                 ZStack(alignment: .topLeading) {
-                    ForEach(hours, id: \.self) { minute in
-                        Text(String(format: "%02d:%02d", minute / 60, minute % 60))
-                            .font(.caption2.monospacedDigit()).foregroundStyle(CampusTheme.muted)
-                            .frame(width: axisWidth, alignment: .center).offset(y: y(minute))
+                    ForEach(ticks, id: \.number) { slot in
+                        if let minute = TimetableDay.minutes(slot.start) {
+                            VStack(spacing: 1) {
+                                Text(String(slot.number)).font(.caption.weight(.semibold))
+                                Text(slot.start); Text(slot.end)
+                            }.font(.system(size: 9)).monospacedDigit().foregroundStyle(CampusTheme.muted)
+                                .frame(width: axisWidth).offset(y: y(minute) + 2)
+                        }
                     }
                 }.frame(width: axisWidth, height: height + 20, alignment: .topLeading)
             }.accessibilityHidden(true)
@@ -164,17 +187,20 @@ private struct TimetableGrid: View {
     private func dayColumn(_ date: Date, layout: TimetableDay, compactDayWidth: CGFloat?) -> some View {
         let width = compactDayWidth ?? dayWidth(layout)
         return VStack(spacing: 0) {
-            Text(CampusTheme.date(date, format: compactDayWidth == nil ? "EE M/d" : "EE"))
+            Button { openDay(date) } label: {
+                VStack(spacing: 2) {
+                    Text(CampusTheme.date(date, format: "EE"))
+                    Text(CampusTheme.date(date, format: "M/d")).font(.system(size: 9))
+                }.frame(maxWidth: .infinity)
+            }.buttonStyle(CampusPressStyle()).accessibilityLabel(CampusTheme.date(date))
                 .font(.caption.weight(.semibold)).frame(width: width, height: headerHeight)
                 .background(CampusTheme.calendar.isDateInToday(date) ? CampusTheme.tint : CampusTheme.background)
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(CampusTheme.border).frame(width: 0.5, height: height)
-                ForEach(hours, id: \.self) { minute in
-                    Rectangle().fill(CampusTheme.border.opacity(0.7)).frame(width: width, height: 0.5).offset(y: y(minute))
-                }
-                if layout.events.isEmpty {
-                    Text("无课").font(.caption).foregroundStyle(CampusTheme.muted)
-                        .frame(width: width).padding(.top, 22)
+                ForEach(ticks, id: \.number) { slot in
+                    if let minute = TimetableDay.minutes(slot.start) {
+                        Rectangle().fill(CampusTheme.border.opacity(0.7)).frame(width: width, height: 0.5).offset(y: y(minute))
+                    }
                 }
                 if compactDayWidth != nil {
                     ForEach(layout.clusters, id: \.firstID) { cluster in
@@ -263,7 +289,7 @@ struct TimetableDay {
         return result
     }
 
-    private static func minutes(_ value: String) -> Int? {
+    static func minutes(_ value: String) -> Int? {
         let parts = value.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2, (0...23).contains(parts[0]), (0...59).contains(parts[1]) else { return nil }
         return parts[0] * 60 + parts[1]

@@ -22,7 +22,17 @@ def locate(label, bottom=False, timeout=35):
     while time.monotonic() < deadline:
         matches = []
         try:
-            for node in tree().iter("node"):
+            nodes = list(tree().iter("node"))
+            # The cold emulator can show a Pixel Launcher ANR above our app.
+            launcher_error = any("pixel launcher" in node.get("text", "").lower() and
+                                 node.get("resource-id") == "android:id/alertTitle" for node in nodes)
+            if launcher_error:
+                close = next((node for node in nodes if node.get("resource-id") == "android:id/aerr_close"), None)
+                if close is not None:
+                    left, top, right, bottom_edge = map(int, re.findall(r"-?\d+", close.get("bounds", "")))
+                    adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom_edge) // 2))
+                    continue
+            for node in nodes:
                 text = node.get("text","") or node.get("content-desc","")
                 if (text == label if bottom else label in text):
                     x1,y1,x2,y2 = map(int,re.findall(r"-?\d+",node.get("bounds","")))

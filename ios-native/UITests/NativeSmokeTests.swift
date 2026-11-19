@@ -52,7 +52,7 @@ final class NativeSmokeTests: XCTestCase {
         let restoredRow = taskRow(title, identifier: persistedIdentity, in: app)
         XCTAssertTrue((restoredRow.value as? String)?.hasPrefix("未完成") == true)
         app.buttons["完成：" + title].tap()
-        app.buttons["已完成"].tap()
+        selectTaskScope("已完成", in: app)
         let completedRow = taskRow(title, identifier: persistedIdentity, in: app)
         XCTAssertTrue((completedRow.value as? String)?.hasPrefix("已完成") == true)
         screenshot("05-personal-task", app)
@@ -160,6 +160,14 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["我的待办"].waitForExistence(timeout: 5))
         screenshot("09-task-edit-persistence", app)
     }
+    private func selectTaskScope(_ scope: String, in app: XCUIApplication) {
+        app.buttons["筛选"].tap()
+        let menu = app.buttons["task-scope-picker"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+        app.buttons[scope].firstMatch.tap()
+        app.buttons["筛选"].tap()
+    }
     private func taskEditorField(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         let field = app.textFields[identifier]
         if field.waitForExistence(timeout: 1) { return field }
@@ -179,6 +187,7 @@ final class NativeSmokeTests: XCTestCase {
             matches = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "task-edit-", expectedLabel))
         }
         let row = matches.firstMatch
+        if !row.exists { selectTaskScope("全部", in: app) }
         for _ in 0..<5 {
             if row.exists && row.isHittable { break }
             app.swipeUp()

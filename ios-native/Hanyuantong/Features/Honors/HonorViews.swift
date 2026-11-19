@@ -148,7 +148,15 @@ struct MedalCollection: View {
                 if let error { Text(error).font(.footnote).foregroundStyle(.secondary); Button("重新读取") { Task { await refresh(force:true) } } }
                 if own {
                     let count = medals.filter { date($0) != nil }.count
-                    HStack { Text("成就收藏馆").font(.title2.bold()); Spacer(); Text("\(count) / \(medals.count)").monospacedDigit() }
+                    Text("成就收藏馆").font(.headline)
+                    Text("你的每一枚校园勋章，都值得被记住").font(.caption).foregroundStyle(CampusTheme.muted)
+                    HStack(alignment: .lastTextBaseline) {
+                        Text(String(count)).font(.title.bold())
+                        Text("/ \(medals.count)").font(.subheadline)
+                        Spacer()
+                        Text("\(count * 100 / max(1, medals.count))% 完成").font(.caption.weight(.semibold))
+                            .padding(6).background(CampusTheme.walletGreen, in: Capsule())
+                    }
                     ProgressView(value:Double(count),total:Double(max(1,medals.count))).tint(.purple)
                     LazyVGrid(columns:[GridItem(.adaptive(minimum:60),spacing:4)],alignment:.leading,spacing:2) {
                         ForEach(["全部","初识","学习","生活","社区","时光","隐藏"],id:\.self) { key in
@@ -156,13 +164,14 @@ struct MedalCollection: View {
                                 Text(key).font(.subheadline.weight(.medium))
                                     .frame(maxWidth:.infinity,minHeight:44).contentShape(Rectangle())
                             }.buttonStyle(.plain)
-                                .background(group == key ? CampusTheme.tint : .clear,in:Capsule())
+                                .background(group == key ? CampusTheme.text : .clear,in:Capsule())
+                                .foregroundStyle(group == key ? CampusTheme.surface : CampusTheme.text)
                                 .accessibilityAddTraits(group == key ? .isSelected : [])
                         }
                     }.accessibilityIdentifier("medal-groups")
                 } else { Text("展示成就").font(.headline) }
                 if medals.isEmpty && !loading { Text(own ? "收藏目录读取失败" : "还没有展示成就").foregroundStyle(.secondary) }
-                LazyVGrid(columns:[GridItem(.adaptive(minimum:88),spacing:8)],spacing:10) {
+                LazyVGrid(columns:[GridItem(.adaptive(minimum:68),spacing:8)],spacing:10) {
                     ForEach(medals.filter { group == "全部" || $0.group == group }) { m in
                         let locked = date(m) == nil
                         Button { chosen = m } label: {
@@ -172,8 +181,8 @@ struct MedalCollection: View {
                         }.buttonStyle(.plain)
                     }
                 }
-            }.padding(20).frame(maxWidth:650)
-        }.navigationTitle("荣誉殿堂").navigationBarTitleDisplayMode(.inline)
+            }.padding(16).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16)).padding(12).frame(maxWidth:650)
+        }.background(CampusTheme.background).navigationTitle("荣誉殿堂").navigationBarTitleDisplayMode(.inline)
         .toolbar { if own { Button { showSettings = true } label: { Image(systemName:"slider.horizontal.3") }.accessibilityLabel("成就反馈设置") } }
         .sheet(item:$selectedStamp) { badge in HonorStampDetails(item:badge) }
         .sheet(isPresented:$showSettings) { MedalSettings() }

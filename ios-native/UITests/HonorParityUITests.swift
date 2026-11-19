@@ -39,6 +39,24 @@ final class HonorParityUITests:XCTestCase {
         app.terminate(); app.launch(); app.tabBars.buttons["我的"].tap(); app.buttons["open-honor-shelf"].tap()
         XCTAssertTrue(app.buttons.containing(NSPredicate(format:"label CONTAINS %@", "你好，邯院")).firstMatch.waitForExistence(timeout:5))
     }
+    func testAndroidQuickEntryAndDayAgenda() {
+        let app = XCUIApplication()
+        app.launch()
+        app.tabBars.buttons["待办"].tap()
+        app.buttons["未安排"].tap()
+        let title = "Quick-" + String(UUID().uuidString.prefix(6))
+        let field = app.textFields["quick-task-title"]
+        field.tap()
+        field.typeText(title + "\n")
+        XCTAssertTrue(app.buttons["完成：" + title].waitForExistence(timeout: 6))
+        app.segmentedControls.buttons["日程"].tap()
+        XCTAssertTrue(app.datePickers.firstMatch.waitForExistence(timeout: 5))
+        app.terminate(); app.launch()
+        app.tabBars.buttons["待办"].tap()
+        app.buttons["未安排"].tap()
+        XCTAssertTrue(app.buttons["完成：" + title].waitForExistence(timeout: 5))
+    }
+
     private func capture(_ name:String,_ app:XCUIApplication) {
         let image=XCTAttachment(screenshot:app.screenshot()); image.name="parity-"+name; image.lifetime = .keepAlways; add(image)
     }

@@ -11,6 +11,7 @@ struct HanyuantongApp: App {
     @StateObject private var analytics = AnonymousAnalyticsStore()
     @StateObject private var displayPreferences = DisplayPreferencesStore()
     @Environment(\.scenePhase) private var scenePhase
+    init() { CampusTabChrome.configure() }
     var body: some Scene {
         WindowGroup {
             RootView()

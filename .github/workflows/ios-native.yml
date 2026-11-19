@@ -73,10 +73,12 @@ jobs:
           version = max(c[0] for c in candidates)
           models = [c for c in candidates if c[0] == version]
           _, name, device = max(models, key=lambda c: ("Pro Max" in c[1], c[1]))
-          others = [c for c in models if c[1] != name and "Max" not in c[1] and "Plus" not in c[1]]
-          if not others: raise SystemExit("Second iPhone size unavailable")
-          _, second_name, second = max(others,key=lambda c: ("SE" in c[1], c[1]))
-          print(name, second_name)
+          runtime_id = next(key for key in devices if key.endswith(f'iOS-{version[0]}-{version[1]}'))
+          phone13 = next((c for c in models if c[1] == 'iPhone 13'), None)
+          second = phone13[2] if phone13 else subprocess.check_output([
+              'xcrun', 'simctl', 'create', 'Parity iPhone 13',
+              'com.apple.CoreSimulator.SimDeviceType.iPhone-13', runtime_id], text=True).strip()
+          print(f'Primary {name}, second iPhone 13, installed runtime {runtime_id}; iOS 15.4 runtime installed: {any("iOS-15-4" in k for k in devices)}')
           # WebKit bug 293831 affects <=18.3 deployment targets on 18.4/18.5 simulators.
           # Official workaround applies to this simulator test build only; device build remains iOS15.4.
           deployment = '18.4' if (18, 4) <= version < (18, 6) else '15.4'
@@ -131,7 +133,7 @@ jobs:
           # The two task flows already passed above against these exact build products.
           # Unit tests ran in their own invocation; exercise every other UI flow once.
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/xcodebuild.log"
-      - name: Check collection on a second iPhone size
+      - name: Check five tabs and quick entry on iPhone 13
         if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
         run: |
           set -o pipefail

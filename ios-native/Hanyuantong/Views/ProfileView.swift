@@ -16,10 +16,12 @@ struct ProfileView: View {
                 HonorShelfLink(badges: tree.user?.badges, pins: tree.user?.showcase ?? [], personal: true)
             }
             Section("常用教务") {
-                NavigationLink { AcademicRecordsView() } label: { Label("成绩与学业", systemImage: "chart.bar") }
-                NavigationLink { AcademicRecordsView(initialSelection: 1) } label: { Label("考试安排", systemImage: "calendar.badge.clock") }
-                NavigationLink { SemesterCalendar() } label: { Label("学期校历", systemImage: "calendar") }
-                NavigationLink { NativeWidgetSettingsView(publisher: store.widget) } label: { Label("桌面课表", systemImage: "rectangle.grid.1x2") }
+                HStack(alignment: .top, spacing: 0) {
+                    shortcut("成绩与学业", icon: "chart.bar") { AcademicRecordsView() }
+                    shortcut("考试安排", icon: "calendar.badge.clock") { AcademicRecordsView(initialSelection: 1) }
+                    shortcut("学期校历", icon: "calendar") { SemesterCalendar() }
+                    shortcut("桌面课表", icon: "rectangle.grid.1x2") { NativeWidgetSettingsView(publisher: store.widget) }
+                }.listRowInsets(EdgeInsets(top: 6, leading: 3, bottom: 6, trailing: 3))
             }
             Section("账号与连接") {
                 HStack(spacing: 12) {
@@ -72,8 +74,10 @@ struct ProfileView: View {
         .campusScrollBackground().background(CampusTheme.background)
         .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
+            ToolbarItem(placement: .navigationBarLeading) { CampusRootTitle(title: "我的") }
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink { ProfileSettingsView() } label: { Image(systemName: "gearshape") }
+                NavigationLink { ProfileSettingsView() } label: { Label("设置", systemImage: "slider.horizontal.3").labelStyle(.titleAndIcon).font(.subheadline) }
                     .accessibilityLabel("设置与帮助").accessibilityIdentifier("profile-settings")
             }
         }
@@ -81,6 +85,16 @@ struct ProfileView: View {
             Button("断开连接", role: .destructive) { store.disconnectSchool() }
         }
     }
+    private func shortcut<Content: View>(_ title: String, icon: String, @ViewBuilder destination: () -> Content) -> some View {
+        NavigationLink(destination: destination()) {
+            VStack(spacing: 7) {
+                Image(systemName: icon).font(.system(size: 18)).foregroundStyle(CampusTheme.primary)
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(CampusTheme.text)
+                    .multilineTextAlignment(.center)
+            }.frame(maxWidth: .infinity, minHeight: 56).contentShape(Rectangle())
+        }.buttonStyle(CampusPressStyle()).accessibilityLabel(title)
+    }
+
 }
 
 private struct ProfileSettingsView: View {
@@ -93,6 +107,11 @@ private struct ProfileSettingsView: View {
 
     var body: some View {
         List {
+            Section("偏好与数据") {
+                CampusAppearanceControls(store: displayPreferences) { message in store.message = message }
+                NavigationLink { NativeReminderSettingsView(reminders: store.reminders) } label: { Label("通知设置", systemImage: "bell") }
+                NavigationLink { PersonalBackupView() } label: { Label("缓存管理与备份", systemImage: "externaldrive") }
+            }
             Section("学校服务") { Link("邯郸学院官网",destination:URL(string:"https://www.hdc.edu.cn/")!); NavigationLink("统一日程") { CampusAgendaView() } }
             Section("学校课表设置") {
                 NavigationLink("学期校历") { SemesterCalendar() }
