@@ -442,7 +442,23 @@ it("new submission and withdrawal keep the primary action and wall correct throu
     .click();
   await submitForm();
   await ready(() => btn("确认参赛"));
+  vi.mocked(window.scrollTo).mockClear();
   btn("确认参赛").click();
+  await ready(() => btn("编辑作品"));
+  expect(window.scrollTo).toHaveBeenLastCalledWith({
+    top: 0,
+    behavior: "instant",
+  });
+  btn("编辑作品").click();
+  await ready(() => btn("预览作品") && !btn("预览作品").disabled);
+  type("作品名称", "我的修订作品");
+  [...root.querySelectorAll("label")]
+    .find((l) => l.textContent?.includes("我已阅读规则"))!
+    .querySelector<HTMLInputElement>("input")!
+    .click();
+  await submitForm();
+  await ready(() => btn("保存作品"));
+  btn("保存作品").click();
   await ready(() => btn("编辑作品"));
   vm.requestBack();
   await ready(() => btn("查看我的作品"));
@@ -652,4 +668,38 @@ it("an upcoming preview opens the complete theme and rules instead of pointing t
   const rules = root.querySelector<HTMLDetailsElement>("#contest-rules")!;
   expect(rules.open).toBe(true);
   expect(rules.textContent).toContain(event.description);
+});
+it("restoring an event after visiting a profile keeps the original random seed and pagination cursor", async () => {
+  const works = Array.from({ length: 21 }, (_, i) => ({
+    ...work,
+    id: randomUUID(),
+    title: "分页作品" + i,
+  }));
+  bridge.request.mockImplementation(async (a: string, b: any) =>
+    a === "contests.list"
+      ? { contests: [event] }
+      : a === "contests.get"
+        ? { contest: event, myEntries: [] }
+        : a === "contests.entries"
+          ? { entries: b.afterId ? [works[20]] : works }
+          : {},
+  );
+  await mount(Hub, { user: { id: owner } });
+  await ready(() => btn("查看更多作品"));
+  const originalSeed = bridge.request.mock.calls.find(
+    (c) => c[0] === "contests.entries",
+  )![1].seed;
+  const saved = vm.snapshot();
+  app!.unmount();
+  app = undefined;
+  root.remove();
+  await mount(Hub, { user: { id: owner }, restore: saved });
+  await ready(() => btn("查看更多作品"));
+  btn("查看更多作品").click();
+  await ready(() => root.querySelectorAll(".ct-work-open").length === 21);
+  const last = bridge.request.mock.calls
+    .filter((c) => c[0] === "contests.entries")
+    .at(-1)!;
+  expect(last[1].seed).toBe(originalSeed);
+  expect(last[1].afterId).toBe(works[19].id);
 });

@@ -365,6 +365,11 @@ try {
       await page
         .getByRole("heading", { name: "投稿中", exact: true })
         .waitFor();
+      assert.equal(
+        await page.evaluate(() => window.scrollY),
+        0,
+        "successful creation returns to top of management",
+      );
       const created = (
         await db.query(
           "SELECT id,published,extract(epoch from (award_at-starts_at))/86400 AS days FROM hyt_contests WHERE title='精简创建流程回归'",

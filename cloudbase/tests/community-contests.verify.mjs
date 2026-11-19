@@ -141,6 +141,7 @@ test("submission quotas, retry, foreign posts, edit and withdrawal obey server s
     ).entries.length,
     0,
   );
+  const reentered=await submit(users[0],c,{title:'撤回后的新作品'});assert.notEqual(reentered.id,e.id);assert.equal(reentered.status,'approved');
   await voting(c);
   await assert.rejects(submit(users[1], c), { code: "contest_closed" });
   await assert.rejects(

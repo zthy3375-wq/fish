@@ -73,7 +73,11 @@ const votesUsed = ref(0),
   now = ref(Date.now());
 const child = ref<{ requestBack: () => boolean }>();
 const admin = computed(() => props.user.badges?.official?.code === "developer");
-const seed = crypto.randomUUID();
+const seed =
+  props.restore?.owner === props.user.id &&
+  typeof props.restore.seed === "string"
+    ? props.restore.seed
+    : crypto.randomUUID();
 let live = true,
   epoch = 0,
   offset = 0,
@@ -119,6 +123,7 @@ onBeforeUnmount(() => {
 function routeSnapshot() {
   return {
     owner: props.user.id,
+    seed,
     view: view.value,
     selected: selected.value,
     entries: entries.value,
@@ -383,7 +388,10 @@ function submitted(work: ContestEntry) {
     });
   }
   syncOwnWork();
+  if (history.at(-1)?.view === "entry" && history.at(-1)?.entry?.id === work.id)
+    history.pop();
   view.value = "entry";
+  void nextTick(() => window.scrollTo({ top: 0, behavior: "instant" }));
   notice.value = editing.value ? "作品已保存" : "参赛成功，期待同学们的喜欢";
   editing.value = undefined;
 }
@@ -471,6 +479,7 @@ async function finishAdmin(id: string, known?: Contest) {
   if (history.at(-1)?.view === "manage") history.pop();
   view.value = "manage";
   notice.value = "赛事已保存";
+  void nextTick(() => window.scrollTo({ top: 0, behavior: "instant" }));
 }
 function manage() {
   go("manage");

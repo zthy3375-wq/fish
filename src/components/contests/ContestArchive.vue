@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { ref, onMounted, onBeforeUnmount, onActivated } from "vue";
 import { ChevronRight, Trophy } from "lucide-vue-next";
 import {
   contestRequest,
@@ -30,7 +30,7 @@ const currentYear = Number(
     timeZone: "Asia/Shanghai",
   }).format(new Date()),
 );
-async function load(append = false) {
+async function load(append = false, fresh = false) {
   const request = ++revision;
   busy.value = true;
   error.value = "";
@@ -45,6 +45,7 @@ async function load(append = false) {
             type: type.value.trim(),
             offset: append ? offset + 20 : 0,
           },
+      fresh,
     );
     if (!alive || request !== revision) return;
     offset = append ? offset + 20 : 0;
@@ -73,6 +74,7 @@ function change(next: string) {
   void load();
 }
 onMounted(() => load());
+onActivated(() => load());
 </script>
 <template>
   <section>
@@ -90,6 +92,9 @@ onMounted(() => load());
         {{ label }}
       </button>
     </div>
+    <button class="ct-link" :disabled="busy" @click="load(false, true)">
+      刷新档案
+    </button>
     <form class="ct-form" novalidate @submit.prevent="load()">
       <div class="ct-pair">
         <label
