@@ -39,7 +39,7 @@ try{
  const [first,second]=await Promise.all([http('contests.submit',submit,users[0].sessionToken),http('contests.submit',submit,users[0].sessionToken)]);
  assert.equal(first.status,200);assert.equal(first.entry.id,second.entry.id);
  const other=await http('contests.submit',{...submit,requestId:randomUUID()},users[1].sessionToken);assert.equal(other.status,200);
- assert.equal((await http('contests.entries',{contestId:cid},users[2].sessionToken)).entries.length,2);
+ assert.equal((await http('contests.entries',{contestId:cid,seed:randomUUID()},users[2].sessionToken)).entries.length,2);
  checks.push('real HTTP submission, concurrent idempotence and entry wall');
  const awardAt=new Date(Date.now()+110000).toISOString();
  await sql("UPDATE hyt_contests SET starts_at=now()-interval '3 hours',submission_ends=now()-interval '2 seconds',voting_starts=now()-interval '1 second',voting_ends=$2::timestamptz-interval '20 seconds',award_at=$2::timestamptz,auto_publish=true WHERE id=$1::uuid",[cid,awardAt]);
@@ -50,7 +50,7 @@ try{
  await vote(users[1],first.entry.id);
  const votes=await sql('SELECT id FROM hyt_contest_votes WHERE contest_id=$1::uuid',[cid]);assert.equal(votes.length,2);
  for(const v of votes)await admin('contests.review',{contestId:cid,kind:'vote',targetId:v.id,decision:'valid',reason:'临时联调实名账号，人工复核有效'});
- assert.ok((await http('contests.entries',{contestId:cid},users[2].sessionToken)).entries.every(e=>e.votes===null));
+ assert.ok((await http('contests.entries',{contestId:cid,seed:randomUUID()},users[2].sessionToken)).entries.every(e=>e.votes===null));
  checks.push('self-vote rejection, concurrent duplicate-vote prevention, risk review and hidden totals');
  // No client request invokes settlement. Wait for the actual SCF one-off trigger.
  while(Date.now()<Date.parse(awardAt)+20000)await new Promise(r=>setTimeout(r,Math.min(45000,Date.parse(awardAt)+20000-Date.now())));
