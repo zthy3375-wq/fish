@@ -1410,7 +1410,7 @@ BEGIN
   ELSE
    IF (SELECT count(*) FROM public.hyt_contest_entries WHERE contest_id=cid AND member_id=m.id AND status='approved')>=c.max_entries THEN RETURN '{"status":409,"error":"contest_entry_limit"}'; END IF;
   END IF;
-  IF b->>'postId' IS NOT NULL AND (old.id IS NULL OR old.linked OR old.post_id IS DISTINCT FROM (b->>'postId')::uuid) THEN
+  IF b->>'postId' IS NOT NULL AND (old.id IS NULL OR old.linked OR (b->>'linkPost')::boolean OR old.post_id IS DISTINCT FROM (b->>'postId')::uuid) THEN
    SELECT * INTO p FROM public.hyt_posts WHERE id=(b->>'postId')::uuid AND author_id=m.id AND deleted_at IS NULL AND NOT anonymous;
    IF NOT FOUND THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
    -- A single original post can participate once per event; edits keep a stable snapshot.

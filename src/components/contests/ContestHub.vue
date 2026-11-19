@@ -21,11 +21,14 @@ import {
   treeholeRequest,
   treeholeError,
   type TreeholeUser,
+  type TreeholePost,
+  type TreeholeImage,
 } from "../../services/treehole";
 import {
   prepareTreeholeImage,
   type DraftImage,
 } from "../../services/treeholeDrafts";
+import ContestPostPicker from "./ContestPostPicker.vue";
 import ContestEntryCard from "./ContestEntryCard.vue";
 import ContestAdmin from "./ContestAdmin.vue";
 import ContestHonors from "./ContestHonors.vue";
@@ -70,6 +73,8 @@ const draft = ref({
     title: "",
     body: "",
     postId: "",
+    linked: false,
+    linkedImages: [] as TreeholeImage[],
     share: false,
     agreed: false,
     photos: [] as DraftImage[],
@@ -175,12 +180,28 @@ async function vote(entry: ContestEntry) {
   entry.voted = !entry.voted;
   notice.value = entry.voted ? "投票已确认" : "已撤回投票";
 }
+function selectOriginalPost(post: TreeholePost) {
+  draft.value.postId = post.id;
+  draft.value.linked = true;
+  draft.value.body = post.body;
+  draft.value.title =
+    draft.value.title ||
+    post.title ||
+    Array.from(post.body).slice(0, 40).join("") ||
+    "图片作品";
+  draft.value.share = false;
+  draft.value.photos = [];
+  draft.value.images = [];
+  draft.value.linkedImages = post.images || [];
+}
 function compose(entry?: ContestEntry) {
   draft.value = {
     id: entry?.id || null,
     title: entry?.title || "",
     body: entry?.body || "",
     postId: entry?.postId || "",
+    linked: !!entry?.linked,
+    linkedImages: entry?.linked ? entry.images : [],
     share: false,
     agreed: false,
     photos: [],
@@ -219,6 +240,7 @@ async function submit() {
     body: draft.value.body,
     postId: draft.value.postId || null,
     share: draft.value.share,
+    linkPost: draft.value.linked,
     images: [
       ...draft.value.images,
       ...draft.value.photos.map((p) => p.remote!.id),
@@ -454,22 +476,35 @@ onMounted(() =>
         <form v-if="editing" class="entry-form" @submit.prevent="run(submit)">
           <h3>{{ draft.id ? "编辑作品" : "提交作品" }}</h3>
           <label
-            >作品名称<input
-              v-model="draft.title"
-              required
-              maxlength="80" /></label
-          ><label
+            >作品名称<input v-model="draft.title" required maxlength="80"
+          /></label>
+          <label
             >文字内容<textarea
               v-model="draft.body"
+              :readonly="draft.linked"
               maxlength="3000"
               rows="5"
-            /></label
-          ><label
-            >关联已有帖子 ID<input
-              v-model="draft.postId"
-              placeholder="选填，使用自己非匿名的原帖" /></label
-          ><small>关联后会读取原帖正文和图片，并保留提交时的正文。</small>
+            ></textarea>
+          </label>
+          <ContestPostPicker @choose="selectOriginalPost" />
+          <p v-if="draft.linked" class="quiet">
+            使用原帖正文与配图，可修改作品标题或重新选择帖子。
+          </p>
+          <button
+            v-if="draft.linked"
+            type="button"
+            @click="
+              draft.linked = false;
+              draft.postId = '';
+              draft.linkedImages = [];
+            "
+          >
+            改为直接投稿
+          </button>
           <div class="draft-photos">
+            <figure v-for="image in draft.linkedImages" :key="image.id">
+              <img v-if="image.url" :src="image.url" alt="所选原帖配图" />
+            </figure>
             <figure v-for="(photo, index) in draft.photos" :key="photo.id">
               <img
                 :src="'data:image/jpeg;base64,' + photo.data"
@@ -487,14 +522,17 @@ onMounted(() =>
               移除已附图片 {{ index + 1 }}
             </button>
           </div>
-          <label v-if="draft.images.length + draft.photos.length < 3"
+          <label
+            v-if="
+              !draft.linked && draft.images.length + draft.photos.length < 3
+            "
             >添加图片，最多3张<input
               type="file"
               accept="image/*"
               multiple
               :disabled="busy"
               @change="photos" /></label
-          ><label class="check"
+          ><label v-if="!draft.id && !draft.postId" class="check"
             ><input
               v-model="draft.share"
               type="checkbox"
@@ -650,8 +688,7 @@ onMounted(() =>
         </form>
         <p v-else class="quiet">主题征集尚未开启，候选主题继续保留。</p>
         <article v-for="item in data.themes" :key="item.id" class="theme-row">
-          <strong>{{ item.title }}</strong
-          ><small>{{
+          <strong>{{ item.title }}</strong><small>{{
             item.status === "pending"
               ? "待审核"
               : item.status === "merged"

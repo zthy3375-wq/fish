@@ -103,15 +103,8 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertNotEqual(unsavedValue, savedNotes)
         app.buttons["取消"].tap()
         XCTAssertTrue(app.buttons["放弃修改"].waitForExistence(timeout: 5))
-        let continueEditing = app.buttons["继续编辑"]
-        if continueEditing.waitForExistence(timeout: 2) {
-            continueEditing.tap()
-        } else {
-            // The simulator can present the confirmation as a popover with outside-tap cancellation.
-            savedField.tap()
-            let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["放弃修改"])
-            XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
-        }
+        XCTAssertTrue(app.alerts["修改尚未保存"].buttons["继续编辑"].waitForExistence(timeout: 5))
+        app.alerts["修改尚未保存"].buttons["继续编辑"].tap()
         XCTAssertTrue(app.navigationBars["编辑待办"].waitForExistence(timeout: 5))
         XCTAssertEqual(taskEditorField("task-notes-editor", in: app).value as? String, unsavedValue)
         app.buttons["取消"].tap()

@@ -38,6 +38,15 @@ await db.query("UPDATE hyt_members SET developer_since=now() WHERE id=$1", [
 ]);
 await db.exec("UPDATE hyt_members SET created_at=now()-interval '30 days'");
 const call = (u, a, b) => api.execute(a, b, u.sessionToken, "fixture-ui");
+const original = (
+  await call(author, "posts.create", {
+    requestId: randomUUID(),
+    title: "原创校园故事",
+    body: "这是我的非匿名原帖。",
+    category: "daily",
+    anonymous: false,
+  })
+).post;
 const date = (h) => new Date(Date.now() + h * 3600000).toISOString();
 const id = randomUUID();
 await call(owner, "contests.save", {
@@ -178,6 +187,37 @@ try {
   );
   assert(button("编辑"));
   assert(!dom.window.document.body.textContent.includes("[图片]"));
+  button("编辑").click();
+  await until(() => button("选择我的帖子参赛"));
+  button("选择我的帖子参赛").click();
+  await until(() => dom.window.document.querySelector(".pick-post"));
+  dom.window.document.querySelector(".pick-post").click();
+  await until(() => button("改为直接投稿"));
+  const linkedBody = dom.window.document.querySelector(".entry-form textarea");
+  assert.equal(linkedBody.value, original.body);
+  assert.equal(linkedBody.readOnly, true);
+  button("改为直接投稿").click();
+  await until(() => !linkedBody.readOnly);
+  button("选择我的帖子参赛").click();
+  await until(() => dom.window.document.querySelector(".pick-post"));
+  dom.window.document.querySelector(".pick-post").click();
+  await until(() => linkedBody.readOnly);
+  dom.window.document
+    .querySelector(".entry-form input[required][type=checkbox]")
+    .click();
+  await new Promise((r) => setTimeout(r, 20));
+  dom.window.document
+    .querySelector(".entry-form")
+    .dispatchEvent(
+      new dom.window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+  await until(() => !dom.window.document.querySelector(".entry-form"));
+  const linked = (
+    await db.query("SELECT post_id,linked,body FROM hyt_contest_entries")
+  ).rows[0];
+  assert.equal(linked.post_id, original.id);
+  assert.equal(linked.linked, true);
+  assert.equal(linked.body, original.body);
   await db.query(
     "UPDATE hyt_contests SET starts_at=now()-interval '4 hours',submission_ends=now()-interval '3 hours',voting_starts=now()-interval '2 hours' WHERE id=$1",
     [id],
@@ -202,7 +242,7 @@ try {
       ?.textContent.includes("1 票"),
   );
   console.log(
-    "Vue normal entry: event list → details → text submission → different-account voting confirmed; no vote count exposed; idle adds no API calls.",
+    "Vue normal entry: event list → details → text submission → own-post picker/edit → different-account voting confirmed; no vote count exposed; idle adds no API calls.",
   );
 } finally {
   if (dom) {

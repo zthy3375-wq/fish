@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContestPostPicker from "./ContestPostPicker.vue";
 import { onMounted, ref } from "vue";
 import {
   contestRequest,
@@ -203,7 +204,10 @@ onMounted(() => {
           maxlength="4000"
           rows="5"
         /></label
-      ><label
+      ><ContestPostPicker
+        image-only
+        @choose="form.coverPostId = $event.id"
+      /><label
         >封面原帖 ID<input
           v-model="form.coverPostId"
           placeholder="选填，使用已有帖子首图"
@@ -299,8 +303,7 @@ onMounted(() => {
           :disabled="busy || reason.trim().length < 2"
           @click="run(() => manage(key))"
         >
-          {{ label }}</button
-        ><button
+          {{ label }}</button><button
           :disabled="busy || reason.trim().length < 2"
           @click="run(() => manage('solicitation', true))"
         >

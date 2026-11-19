@@ -538,6 +538,24 @@ test("shared submission creates one community post and later competition edits p
   });
   assert.equal(edit.body, "重新编辑的正文");
   assert.equal(edit.postId, e.postId);
+  const relink = await submit(users[0], c, {
+    entryId: e.id,
+    postId: e.postId,
+    linkPost: true,
+    body: "客户端提供的正文不覆盖原帖",
+  });
+  assert.equal(relink.linked, true);
+  const original = (
+    await pg.query("SELECT body FROM hyt_posts WHERE id=$1", [e.postId])
+  ).rows[0];
+  assert.equal(relink.body, original.body);
+  const detached = await submit(users[0], c, {
+    entryId: e.id,
+    body: "改回直接投稿",
+  });
+  assert.equal(detached.linked, false);
+  assert.equal(detached.postId, null);
+  assert.equal(detached.body, "改回直接投稿");
 });
 test("randomized cursor pagination remains disjoint when submissions arrive between pages", async () => {
   const c = await event({ maxEntries: 4 }),

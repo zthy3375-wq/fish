@@ -96,6 +96,7 @@ export function sanitizeContest(
       images: images.map((x) => id(x)),
       postId: id(input.postId, true),
       share: input.share === true,
+      linkPost: input.linkPost === true,
       agreed: input.agreed === true,
     };
   }

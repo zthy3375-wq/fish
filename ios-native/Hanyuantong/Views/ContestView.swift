@@ -27,6 +27,9 @@ struct ContestView: View {
     @State private var title = ""
     @State private var bodyText = ""
     @State private var postID = ""
+    @State private var linkedSource = false
+    @State private var linkedImages: [TreeholeImage] = []
+    @State private var shareSubmission = false
     @State private var editingID: String?
     @State private var attached: [String] = []
     @State private var photos: [TreeholeDraftPhoto] = []
@@ -118,9 +121,17 @@ struct ContestView: View {
     }
     private func submission(_ event: NativeContest) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            TextField("作品名称", text: $title); TextEditor(text: $bodyText).frame(minHeight: 120)
-            TextField("关联自己的非匿名原帖 ID（选填）", text: $postID)
-            PhotosPicker(selection: $picked, maxSelectionCount: max(1, 3 - photos.count - attached.count), matching: .images) { Label("添加图片 · 最多3张", systemImage: "photo") }.disabled(photos.count + attached.count >= 3).onChange(of: picked) { items in run { for item in items { if let bytes = try await item.loadTransferable(type: Data.self) { photos.append(try TreeholeDraftStore.prepare(bytes)) } }; picked = [] } }
+            TextField("作品名称", text: $title); TextEditor(text: $bodyText).frame(minHeight: 120).disabled(linkedSource)
+            ContestPostPicker(api: api) { post in
+                postID = post.id; linkedSource = true; bodyText = post.body
+                if title.isEmpty { title = post.title?.isEmpty == false ? post.title! : post.body.isEmpty ? "图片作品" : String(post.body.prefix(40)) }
+                photos = []; attached = []; linkedImages = post.images ?? []; shareSubmission = false
+            }
+            if linkedSource { Text("使用原帖正文与配图，可修改作品标题或重新选择帖子。").font(.caption).foregroundStyle(.secondary) }
+            if linkedSource { Button("改为直接投稿") { linkedSource = false; postID = ""; linkedImages = [] } }
+            ForEach(linkedImages) { image in AsyncImage(url: image.url.flatMap(URL.init(string:))) { image in image.resizable().scaledToFit() } placeholder: { ProgressView() }.frame(maxHeight: 100) }
+            if editingID == nil && postID.isEmpty { Toggle("同步生成社区图文帖", isOn: $shareSubmission) }
+            PhotosPicker(selection: $picked, maxSelectionCount: max(1, 3 - photos.count - attached.count), matching: .images) { Label("添加图片 · 最多3张", systemImage: "photo") }.disabled(linkedSource || photos.count + attached.count >= 3).onChange(of: picked) { items in run { for item in items { if let bytes = try await item.loadTransferable(type: Data.self) { photos.append(try TreeholeDraftStore.prepare(bytes)) } }; picked = [] } }
             ForEach(photos) { photo in HStack { Text("已选图片"); Spacer(); Button("移除") { photos.removeAll { $0.id == photo.id } } }.font(.caption) }
             ForEach(attached, id: \.self) { image in Button("移除已附图片") { attached.removeAll { $0 == image } } }
             Toggle("我已阅读规则，拥有作品发布权", isOn: $agreed).font(.caption)
@@ -129,7 +140,7 @@ struct ContestView: View {
                     guard let image = try await api.request("media.upload", ["data":photo.data.base64EncodedString(), "requestId":photo.id]).image, let index = photos.firstIndex(where: { $0.id == photo.id }) else { throw TreeholeError(code: "image_unavailable") }
                     photos[index].remote = image
                 }
-                _ = try await api.request("contests.submit", ["contestId":event.id, "entryId":editingID as Any? ?? NSNull(), "requestId":requestID, "title":title, "body":bodyText, "images":attached + photos.compactMap { $0.remote?.id }, "postId":postID.isEmpty ? NSNull() : postID as Any, "agreed":agreed]); editor = false; try await open(event.id)
+                _ = try await api.request("contests.submit", ["contestId":event.id, "entryId":editingID as Any? ?? NSNull(), "requestId":requestID, "title":title, "body":bodyText, "images":attached + photos.compactMap { $0.remote?.id }, "postId":postID.isEmpty ? NSNull() : postID as Any, "agreed":agreed, "share":shareSubmission, "linkPost":linkedSource]); editor = false; try await open(event.id)
             } }.disabled(!agreed || title.isEmpty).buttonStyle(.borderedProminent)
             Button("收起编辑") { editor = false }
         }.padding(16).background(TreeholeTheme.background, in: RoundedRectangle(cornerRadius: 12))
@@ -190,7 +201,7 @@ struct ContestView: View {
         }
     }
     private func compose(_ entry: NativeContestEntry? = nil) {
-        editingID = entry?.id; title = entry?.title ?? ""; bodyText = entry?.body ?? ""; postID = entry?.postId ?? ""; photos = []; attached = entry?.linked == true ? [] : entry?.images.map(\.id) ?? []; agreed = false; requestID = UUID().uuidString; editor = true
+        editingID = entry?.id; title = entry?.title ?? ""; bodyText = entry?.body ?? ""; postID = entry?.postId ?? ""; photos = []; linkedSource = entry?.linked == true; linkedImages = entry?.linked == true ? entry?.images ?? [] : []; shareSubmission = false; attached = entry?.linked == true ? [] : entry?.images.map(\.id) ?? []; agreed = false; requestID = UUID().uuidString; editor = true
     }
     private func run(_ work: @escaping () async throws -> Void) { guard !busy else { return }; operationTask = Task { await perform(work) } }
     @MainActor private func perform(_ work: () async throws -> Void) async {

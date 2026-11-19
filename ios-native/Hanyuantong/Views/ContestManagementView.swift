@@ -19,6 +19,7 @@ struct ContestManagementView: View {
             TextField("名称", text: $event.title); TextField("类型，可自定义", text: $event.type); TextField("届次", text: $event.edition)
             Text("主题描述").font(.caption); TextEditor(text: $event.description).frame(height: 90)
             Text("投稿规则").font(.caption); TextEditor(text: $event.rules).frame(height: 120)
+            ContestPostPicker(api: api, imageOnly: true) { post in event.coverPostId = post.id }
             TextField("封面原帖 ID（选填）", text: Binding(get: { event.coverPostId ?? "" }, set: { event.coverPostId = $0.isEmpty ? nil : $0 }))
             Menu("设置赛事周期") { ForEach([1,3,7,14,30], id: \.self) { days in Button("\(days) 天") { duration(days) } } }
             DatePicker("投稿开始", selection: date(\NativeContest.startsAt))
