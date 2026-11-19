@@ -49,7 +49,10 @@ elif mode=='worker':
         request('UpdateFunctionCode',{'FunctionName':FUNCTION,'CodeSource':'ZipFile','ZipFile':code});wait(FUNCTION)
         request('UpdateFunctionConfiguration',{'FunctionName':FUNCTION,'Environment':environment,'MemorySize':128,'Timeout':60});wait(FUNCTION)
     else:
-        request('CreateFunction',{'FunctionName':FUNCTION,'Type':'Event','Runtime':'Nodejs20.19','Handler':'index.main','MemorySize':128,'Timeout':60,'Code':{'ZipFile':code},'Environment':environment,'Description':'Theme contest one-off settlement and daily recovery; no frequent idle polling'});wait(FUNCTION)
+        encrypted=BACKUP.read_bytes()
+        original=json.loads(AESGCM(enc_key).decrypt(encrypted[:12],encrypted[12:],None))['config']
+        role=original.get('Role') or 'TCB_QcsRole'
+        request('CreateFunction',{'FunctionName':FUNCTION,'Type':'Event','Role':role,'Runtime':'Nodejs20.19','Handler':'index.main','MemorySize':128,'Timeout':60,'Code':{'ZipFile':code},'Environment':environment,'Description':'Theme contest one-off settlement and daily recovery; no frequent idle polling'});wait(FUNCTION)
     triggers=request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[])
     if not any(t['TriggerName']=='hytc-daily-recovery' for t in triggers):
         request('CreateTrigger',{'FunctionName':FUNCTION,'TriggerName':'hytc-daily-recovery','Type':'timer','Enable':'OPEN','TriggerDesc':json.dumps({'cron':'0 5 4 * * ? *'})})
