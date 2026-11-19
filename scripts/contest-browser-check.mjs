@@ -310,6 +310,11 @@ try {
         fullPage: false,
       });
       await page.getByRole("button", { name: "关闭大图", exact: true }).click();
+      await call(owner, "contests.manage", {
+        contestId: imageEvent,
+        operation: "cancel",
+        reason: "结束本地配图回归",
+      });
       checks.push(
         "390px JPEG submission, expired thumbnail renewal and existing full-screen gallery",
       );
