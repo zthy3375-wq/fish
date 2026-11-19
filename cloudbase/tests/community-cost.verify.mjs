@@ -98,3 +98,14 @@ test('switching server environments never reuses credentials from the previous e
   assert.deepEqual(exchanges, ['fixture-a', 'fixture-b']);
   assert(signers[0].includes('Credential=fixture-a/')); assert(signers[1].includes('Credential=fixture-b/'));
 });
+
+test('migration SQL without bound arguments preserves dollar parameters inside function bodies', async () => {
+  const source="CREATE FUNCTION fixture(v int) RETURNS int LANGUAGE sql AS $$ SELECT $1 $$;";
+  const sent=[];
+  const query=database.createSqlClient({settings:()=>({env:'fixture-env',key:'fixture-key'}),fetcher:async(url,options)=>{
+    if(url.includes('/capi/credential'))return {json:async()=>({code:0,data:{TmpSecretId:'fixture-id',TmpSecretKey:'fixture-secret',Token:'fixture-token'}})};
+    sent.push(JSON.parse(options.body).Sql);return {ok:true,json:async()=>({Response:{Columns:[],Rows:[]}})};
+  }});
+  await query(source);assert.equal(sent[0],source);
+  await query('SELECT $1::text',["literal $2 '"]);assert.equal(sent[1],database.bindSQL('SELECT $1::text',["literal $2 '"]));
+});

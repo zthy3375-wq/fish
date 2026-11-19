@@ -18,7 +18,7 @@ export function createSqlClient({fetcher=fetch,now=Date.now,settings=()=>({env:p
  }
  const credential=current.credential;
  const host='tcb.tencentcloudapi.com',timestamp=Math.floor(now()/1000),date=new Date(timestamp*1000).toISOString().slice(0,10),scope=date+'/tcb/tc3_request';
- const body=JSON.stringify({EnvId:env,Sql:bindSQL(query,parameters)});
+ const body=JSON.stringify({EnvId:env,Sql:parameters.length?bindSQL(query,parameters):query});
  const canonical=['POST','/','','content-type:application/json\nhost:'+host+'\n','content-type;host',sha(body)].join('\n');
  const toSign=['TC3-HMAC-SHA256',timestamp,scope,sha(canonical)].join('\n');
  const signing=hmac(hmac(hmac('TC3'+credential.TmpSecretKey,date),'tcb'),'tc3_request');
