@@ -76,12 +76,14 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["系统提醒"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.firstMatch.tap()
         toggle.tap()
+        XCTAssertEqual(toggle.value as? String, "0", "Tapping the middle of the row must disable announcements")
         XCTAssertFalse(app.staticTexts["欢迎使用邯院通"].exists)
         app.terminate()
         app.launch()
         bell.tap()
         XCTAssertEqual(toggle.value as? String, "0")
-        toggle.tap()
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        XCTAssertEqual(toggle.value as? String, "1", "Tapping the switch itself must toggle exactly once")
         XCTAssertTrue(app.staticTexts["已读"].exists)
     }
 

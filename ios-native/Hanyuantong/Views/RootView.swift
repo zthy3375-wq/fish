@@ -320,7 +320,15 @@ private struct HomeAnnouncementView: View {
     var body: some View {
         List {
             Section {
-                Toggle("应用内提醒", isOn: $enabled)
+                HStack(spacing: 0) {
+                    Button { enabled.toggle() } label: {
+                        Text("应用内提醒")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                    Toggle("应用内提醒", isOn: $enabled).labelsHidden()
+                }
+                .accessibilityRepresentation { Toggle("应用内提醒", isOn: $enabled) }
                 NavigationLink("设置课程提醒与系统权限") { NativeReminderSettingsView(reminders: store.reminders) }
             }
             if enabled {
