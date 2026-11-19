@@ -45,6 +45,17 @@ struct TreeholeComment: Codable, Identifiable, Equatable {
     var replyCount: Int? = nil
     var replies: [TreeholeComment]? = nil
     var images: [TreeholeImage]? = nil
+    var liveReplies: [TreeholeComment] { (replies ?? []).filter { !$0.deleted } }
+
+    func visibleReplyCount(complete: Bool) -> Int {
+        let visible = liveReplies.count
+        return complete ? visible : max(visible, replyCount ?? 0)
+    }
+
+    func replyRecipient(for child: TreeholeComment) -> String? {
+        guard let id = child.replyTo, id != self.id else { return nil }
+        return replies?.first { $0.id == id && !$0.deleted }?.author.name
+    }
     var displayBody: String { body == "[图片]" && !(images ?? []).isEmpty ? "" : body }
 }
 struct TreeholeReport: Codable, Identifiable {

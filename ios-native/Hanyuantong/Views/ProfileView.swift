@@ -4,42 +4,95 @@ struct ProfileView: View {
     @EnvironmentObject var tree: TreeholeStore
     @EnvironmentObject var store: CampusStore
     @EnvironmentObject var learning: LearningStore
-    @EnvironmentObject var quzhi: QuzhiStore
-    @EnvironmentObject var pangguai: PangguaiStore
-    @EnvironmentObject var analytics: AnonymousAnalyticsStore
     @EnvironmentObject var displayPreferences: DisplayPreferencesStore
+    @State private var schoolExpanded = false
     @State private var disconnecting = false
-    @State private var managingPersonalSchedule = false
+
     var body: some View {
         List {
             Section {
                 LocalProfileSummaryView(store: displayPreferences, academicName: store.academicProfile?.name,
                                         academicMajor: store.academicProfile?.major, academicClass: store.academicProfile?.className)
-                    .padding(.vertical, 12)
-                HonorShelfLink(badges:tree.user?.badges,pins:tree.user?.showcase ?? [],personal:true)
+                HonorShelfLink(badges: tree.user?.badges, pins: tree.user?.showcase ?? [], personal: true)
             }
-            Section("邯院通账号") {
-                Button { store.selectedTab = .community } label: { Label("账号与树洞 · 昵称与匿名交流", systemImage: "bubble.left.and.bubble.right") }
+            Section("常用教务") {
+                NavigationLink { AcademicRecordsView() } label: { Label("成绩与学业", systemImage: "chart.bar") }
+                NavigationLink { AcademicRecordsView(initialSelection: 1) } label: { Label("考试安排", systemImage: "calendar.badge.clock") }
+                NavigationLink { SemesterCalendar() } label: { Label("学期校历", systemImage: "calendar") }
+                NavigationLink { NativeWidgetSettingsView(publisher: store.widget) } label: { Label("桌面课表", systemImage: "rectangle.grid.1x2") }
             }
-            Section("教务系统") {
-                if store.isBusy { Button("取消本次查询", role: .cancel) { store.cancelSchool() } }
-                if !store.semesters.isEmpty {
-                    Picker("查询学期", selection: $store.selectedTerm) {
-                        Text("当前学期").tag(Optional<AcademicTerm>.none)
-                        ForEach(store.semesters, id: \.self) { term in Text(term.title).tag(Optional(term)) }
-                    }.disabled(store.isBusy)
-                    Text("选择后点击更新，切换学期会替换当前显示的学校课表。").font(.caption).foregroundStyle(CampusTheme.muted)
+            Section("账号与连接") {
+                HStack(spacing: 12) {
+                    Button { schoolExpanded.toggle() } label: {
+                        HStack {
+                            Image(systemName: "graduationcap").foregroundStyle(CampusTheme.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("学校教务")
+                                Text(store.isConnected ? "已连接" : "未连接").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Image(systemName: schoolExpanded ? "chevron.up" : "chevron.down").font(.caption2).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("school-details")
+                    .accessibilityValue(schoolExpanded ? "已展开" : "已收起")
+                    Button {
+                        if store.isConnected { store.refreshSchool() } else { store.connectSchool() }
+                    } label: {
+                            if store.isBusy { ProgressView() }
+                            else { Text(store.isConnected ? "刷新" : "连接").font(.subheadline.weight(.medium)).frame(minWidth: 44, minHeight: 44) }
+                        }.buttonStyle(.borderless).disabled(store.isBusy)
+                        .accessibilityLabel(store.isConnected ? "刷新教务数据" : "连接邯郸学院")
+                    }
+                    if schoolExpanded {
+                    if store.isBusy { Button("取消本次查询", role: .cancel) { store.cancelSchool() } }
+                    if !store.semesters.isEmpty {
+                        Picker("查询学期", selection: $store.selectedTerm) {
+                            Text("当前学期").tag(Optional<AcademicTerm>.none)
+                            ForEach(store.semesters, id: \.self) { term in Text(term.title).tag(Optional(term)) }
+                        }.disabled(store.isBusy)
+                        Text("选择后点击更新，切换学期会替换当前显示的学校课表。").font(.caption).foregroundStyle(CampusTheme.muted)
+                    }
+                    if let synced = store.lastSynced {
+                        CampusLabeledValue("上次更新", value: CampusTheme.date(synced, format: "M月d日 HH:mm"))
+                    }
+                    if store.isConnected {
+                        Button("断开教务连接", role: .destructive) { disconnecting = true }.disabled(store.isBusy)
+                    } else {
+                        Text("连接后可同步课表、成绩和考试安排。").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
-                if store.isConnected {
-                    Label("教务系统已连接", systemImage: "checkmark.shield")
-                    Button { store.refreshSchool() } label: { HStack { Label("更新课表、成绩与考试", systemImage: "arrow.clockwise"); Spacer(); if store.isBusy { ProgressView() } } }.disabled(store.isBusy)
-                    if let synced = store.lastSynced { CampusLabeledValue("上次更新", value: CampusTheme.date(synced, format: "M月d日 HH:mm")).font(.caption) }
-                    Button("断开教务连接", role: .destructive) { disconnecting = true }.disabled(store.isBusy)
-                } else {
-                    Button { store.connectSchool() } label: { Label("连接邯郸学院教务系统", systemImage: "link") }.disabled(store.isBusy).accessibilityIdentifier("连接邯郸学院")
-                }
-                NavigationLink { AcademicRecordsView() } label: { Label("成绩与考试", systemImage: "graduationcap") }
+                Button {
+                    tree.accountEntryRequested = true
+                    store.selectedTab = .community
+                } label: { Label("邯院通社区账号", systemImage: "person.crop.circle") }
+                NavigationLink { LearningCenterView(store: learning) } label: { Label("学习通", systemImage: "books.vertical") }
+                    .accessibilityIdentifier("open-learning")
             }
+            CommunityGroupSection()
+        }
+        .campusScrollBackground().background(CampusTheme.background)
+        .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink { ProfileSettingsView() } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel("设置与帮助").accessibilityIdentifier("profile-settings")
+            }
+        }
+        .confirmationDialog("断开后会移除本机教务会话及教务缓存，个人课程和待办不受影响。", isPresented: $disconnecting, titleVisibility: .visible) {
+            Button("断开连接", role: .destructive) { store.disconnectSchool() }
+        }
+    }
+}
+
+private struct ProfileSettingsView: View {
+    @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var displayPreferences: DisplayPreferencesStore
+    @EnvironmentObject var analytics: AnonymousAnalyticsStore
+    @EnvironmentObject var quzhi: QuzhiStore
+    @EnvironmentObject var pangguai: PangguaiStore
+    @State private var managingPersonalSchedule = false
+
+    var body: some View {
+        List {
             Section("学校服务") { Link("邯郸学院官网",destination:URL(string:"https://www.hdc.edu.cn/")!); NavigationLink("统一日程") { CampusAgendaView() } }
             Section("学校课表设置") {
                 NavigationLink("学期校历") { SemesterCalendar() }
@@ -72,7 +125,6 @@ struct ProfileView: View {
                 NavigationLink { PangguaiWalletView(store: pangguai) } label: { Label("胖乖生活", systemImage: "washer") }.accessibilityIdentifier("open-pangguai")
                 NavigationLink { ParcelCenterView() } label: { Label("取快递", systemImage: "shippingbox") }
                 NavigationLink { CampusMapView() } label: { Label("校园平面图", systemImage: "map") }
-                NavigationLink { LearningCenterView(store: learning) } label: { Label("学习通", systemImage: "books.vertical") }.accessibilityIdentifier("open-learning")
             }
             Section("关于邯院通") {
                 Text("学习 · 生活 · 校园")
@@ -82,9 +134,10 @@ struct ProfileView: View {
                 if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
                 NavigationLink("帮助与反馈") { NativeHelpView() }
             }
-        }.campusScrollBackground().background(CampusTheme.background).navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
-            .confirmationDialog("断开后会移除本机教务会话及教务缓存，个人课程和待办不受影响。", isPresented: $disconnecting, titleVisibility: .visible) { Button("断开连接", role: .destructive) { store.disconnectSchool() } }
+        }
+        .campusScrollBackground().background(CampusTheme.background)
+        .navigationTitle("设置与帮助").navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
     }
 }
 
@@ -148,7 +201,8 @@ struct PrivacyView: View {
 
 struct AcademicRecordsView: View {
     @EnvironmentObject var store: CampusStore
-    @State private var selection = 0
+    @State private var selection: Int
+    init(initialSelection: Int = 0) { _selection = State(initialValue: initialSelection) }
     var body: some View {
         List {
             Section { Picker("教务记录", selection: $selection) { Text("成绩").tag(0); Text("考试").tag(1) }.pickerStyle(.segmented) }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())

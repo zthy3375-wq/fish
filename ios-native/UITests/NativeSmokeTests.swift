@@ -24,6 +24,7 @@ final class NativeSmokeTests: XCTestCase {
         app.buttons["添加待办"].tap()
         app.buttons["取消"].tap()
         app.tabBars.buttons["我的"].tap()
+        reveal(app.buttons["连接邯郸学院"], in: app)
         XCTAssertTrue(app.buttons["连接邯郸学院"].waitForExistence(timeout: 5))
         screenshot("04-profile", app)
         app.terminate()
@@ -61,6 +62,8 @@ final class NativeSmokeTests: XCTestCase {
         app.launch()
         app.tabBars.buttons["我的"].tap()
         for (identifier, title, shot) in [("open-quzhi", "趣智校园", "06-quzhi"), ("open-pangguai", "胖乖生活", "07-pangguai"), ("open-learning", "学习通", "08-learning")] {
+            let isWallet = identifier != "open-learning"
+            if isWallet { app.buttons["profile-settings"].tap() }
             let entry = app.buttons[identifier]
             for _ in 0..<5 { if entry.isHittable { break }; app.swipeUp() }
             XCTAssertTrue(entry.waitForExistence(timeout: 5))
@@ -68,6 +71,7 @@ final class NativeSmokeTests: XCTestCase {
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
             screenshot(shot, app)
             app.navigationBars.buttons.element(boundBy: 0).tap()
+            if isWallet { app.navigationBars["设置与帮助"].buttons.element(boundBy: 0).tap() }
             XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
         }
     }
@@ -187,13 +191,14 @@ final class NativeSmokeTests: XCTestCase {
     func testSemesterBackupAndDisplayScreens() throws {
         let app = XCUIApplication(); app.launch()
         app.tabBars.buttons["我的"].tap()
+        app.buttons["profile-settings"].tap()
         let semesters = app.buttons["open-personal-schedule"]
         for _ in 0..<6 { if semesters.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(semesters.waitForExistence(timeout: 5)); semesters.tap()
         XCTAssertTrue(app.navigationBars["个人课表管理"].waitForExistence(timeout: 5))
         screenshot("09-personal-semesters", app)
         app.buttons["完成"].tap()
-        XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["设置与帮助"].waitForExistence(timeout: 5))
         semesters.tap(); app.buttons["完成"].tap()
         let display = app.buttons["open-display-preferences"]
         for _ in 0..<6 { if display.isHittable { break }; app.swipeUp() }
@@ -210,7 +215,39 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(app.buttons["exportAndroidTaskBackup"].exists)
         screenshot("12-backup-options", app)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["设置与帮助"].waitForExistence(timeout: 5))
+    }
+    func testProfileAcademicShortcutsAndSchoolDisclosure() {
+        let app = XCUIApplication()
+        app.launch()
+        app.tabBars.buttons["我的"].tap()
+        for (label, title) in [("成绩与学业", "成绩与考试"), ("考试安排", "成绩与考试"),
+                               ("学期校历", "学期校历"), ("桌面课表", "课表小组件")] {
+            let link = app.buttons[label]
+            reveal(link, in: app)
+            link.tap()
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+            if title == "成绩与考试" {
+                XCTAssertTrue(app.segmentedControls.buttons[label == "考试安排" ? "考试" : "成绩"].isSelected)
+            }
+            app.navigationBars.buttons.firstMatch.tap()
+        }
+        let school = app.buttons["school-details"]
+        reveal(school, in: app)
+        school.tap()
+        XCTAssertEqual(school.value as? String, "已展开")
+        school.tap()
+        XCTAssertEqual(school.value as? String, "已收起")
+        let copy = app.buttons["复制群号"]
+        reveal(copy, in: app)
+        copy.tap()
+        XCTAssertTrue(app.staticTexts["群号已复制"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["加入 QQ 交流群"].exists)
+    }
+
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<8 { if element.isHittable { return }; app.swipeUp() }
+        XCTAssertTrue(element.isHittable)
     }
     private func screenshot(_ name: String, _ app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())

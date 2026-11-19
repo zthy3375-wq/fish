@@ -76,6 +76,16 @@ import Combine
     @Published var pendingReactions: Set<String> = []
     @Published var pendingCommentLikes: Set<String> = []
     @Published var loadingThreads: Set<String> = []
+    @Published var accountEntryRequested = false
+
+    func visibleReplyCount(_ comment: TreeholeComment) -> Int {
+        comment.visibleReplyCount(complete: loadedThreads.contains(comment.id) && replyPages[comment.id] == nil)
+    }
+
+    func showsThread(_ comment: TreeholeComment) -> Bool {
+        !comment.deleted || visibleReplyCount(comment) > 0 || replyPages[comment.id] != nil
+    }
+
     private var loadedThreads: Set<String> = []
     private var epoch = 0
     private var discussion = 0
@@ -99,7 +109,7 @@ import Combine
         if current != nil { update(&current!.author) }; for i in comments.indices { update(&comments[i].author) }
         feedNeedsRefresh=true
     }
-    func clear() { messageUnread=nil; MedalJournal.shared.clearCommunityNotices(); pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { accountEntryRequested = false; messageUnread=nil; MedalJournal.shared.clearCommunityNotices(); pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func restoreCachedIdentity() async {
         guard !ready, !busy, user == nil else { return }
         let old=epoch

@@ -10,6 +10,9 @@ final class HonorParityUITests:XCTestCase {
         app.tabBars.buttons["课表"].tap()
         XCTAssertTrue(app.buttons["添加课程"].waitForExistence(timeout:6))
         capture("schedule",app)
+        app.buttons["放大查看"].tap()
+        XCTAssertTrue(app.buttons["显示整周"].waitForExistence(timeout: 5))
+        app.buttons["显示整周"].tap()
         app.tabBars.buttons["社区"].tap()
         capture("community",app)
         app.tabBars.buttons["待办"].tap()
@@ -18,7 +21,12 @@ final class HonorParityUITests:XCTestCase {
         app.tabBars.buttons["我的"].tap()
         let shelf=app.buttons["open-honor-shelf"]
         XCTAssertTrue(shelf.waitForExistence(timeout:6))
-        capture("profile",app); shelf.tap()
+        capture("profile",app)
+        app.buttons["profile-settings"].tap()
+        XCTAssertTrue(app.navigationBars["设置与帮助"].waitForExistence(timeout: 5))
+        capture("settings",app)
+        app.navigationBars.buttons.firstMatch.tap()
+        shelf.tap()
         let hidden=app.buttons["隐藏"]
         XCTAssertTrue(app.navigationBars["荣誉殿堂"].waitForExistence(timeout:6))
         XCTAssertTrue(app.staticTexts["成就收藏馆"].exists)

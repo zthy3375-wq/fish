@@ -78,7 +78,10 @@ struct ScheduleView: View {
         }
     }
     private var weekList: some View {
-        TimetableGrid(days: days, courses: days.map { store.courses(on: $0) })
+        TimetableGrid(days: days, courses: days.map { store.courses(on: $0) }) { date in
+            select(date, checkDay: false)
+            mode = 1
+        }
     }
     private func shift(_ amount: Int) { if let date = CampusTheme.calendar.date(byAdding: .day, value: amount, to: store.selectedDate) { select(date,checkDay:false) } }
     private func select(_ date: Date, checkDay: Bool) {
@@ -98,6 +101,9 @@ struct ScheduleView: View {
 private struct TimetableGrid: View {
     let days: [Date]
     let courses: [[Course]]
+    let openDay: (Date) -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var enlarged = false
     @ScaledMetric(relativeTo: .caption) private var laneWidth: CGFloat = 112
     @ScaledMetric(relativeTo: .caption) private var minuteHeight: CGFloat = 1.4
     private let timeWidth: CGFloat = 54
@@ -115,62 +121,106 @@ private struct TimetableGrid: View {
     private func y(_ minute: Int) -> CGFloat { CGFloat(minute - firstMinute) * minuteHeight }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("按上课时间排列 · 左右滑动查看整周").font(.caption).foregroundStyle(CampusTheme.muted)
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 0) {
-                    VStack(spacing: 0) {
-                        Text("时间").font(.caption).frame(width: timeWidth, height: headerHeight)
-                        ZStack(alignment: .topLeading) {
-                            ForEach(hours, id: \.self) { minute in
-                                Text(String(format: "%02d:%02d", minute / 60, minute % 60))
-                                    .font(.caption2.monospacedDigit()).foregroundStyle(CampusTheme.muted)
-                                    .frame(width: timeWidth, alignment: .center).offset(y: y(minute))
-                            }
-                        }.frame(width: timeWidth, height: height + 20, alignment: .topLeading)
-                    }.accessibilityHidden(true)
-                    ForEach(Array(days.enumerated()), id: \.offset) { index, date in
-                        dayColumn(date, layout: layouts[index])
-                    }
+            HStack {
+                Text(typeSize.isAccessibilitySize || enlarged ? "左右滑动查看整周" : "整周课表").font(.caption).foregroundStyle(CampusTheme.muted)
+                Spacer()
+                if !typeSize.isAccessibilitySize {
+                    Button(enlarged ? "显示整周" : "放大查看") { enlarged.toggle() }
+                        .font(.caption.weight(.medium)).frame(minHeight: 44)
                 }
-            }.background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(CampusTheme.border, lineWidth: 0.7))
+            }
+            if enlarged || typeSize.isAccessibilitySize {
+                ScrollView(.horizontal) { grid(compactDayWidth: nil) }
+            } else {
+                GeometryReader { bounds in
+                    grid(compactDayWidth: max(1, (bounds.size.width - 36) / CGFloat(max(1, days.count))))
+                }.frame(height: headerHeight + height + 20)
+            }
         }
     }
-    private func dayColumn(_ date: Date, layout: TimetableDay) -> some View {
-        VStack(spacing: 0) {
-            Text(CampusTheme.date(date, format: "EE M/d"))
-                .font(.caption.weight(.semibold)).frame(width: dayWidth(layout), height: headerHeight)
+
+    private func grid(compactDayWidth: CGFloat?) -> some View {
+        let axisWidth = compactDayWidth == nil ? timeWidth : 36
+        let week = layouts
+        return HStack(alignment: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                Text("时间").font(.caption).frame(width: axisWidth, height: headerHeight)
+                ZStack(alignment: .topLeading) {
+                    ForEach(hours, id: \.self) { minute in
+                        Text(String(format: "%02d:%02d", minute / 60, minute % 60))
+                            .font(.caption2.monospacedDigit()).foregroundStyle(CampusTheme.muted)
+                            .frame(width: axisWidth, alignment: .center).offset(y: y(minute))
+                    }
+                }.frame(width: axisWidth, height: height + 20, alignment: .topLeading)
+            }.accessibilityHidden(true)
+            ForEach(Array(days.enumerated()), id: \.offset) { index, date in
+                dayColumn(date, layout: week[index], compactDayWidth: compactDayWidth)
+            }
+        }
+        .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(CampusTheme.border, lineWidth: 0.7))
+    }
+
+    private func dayColumn(_ date: Date, layout: TimetableDay, compactDayWidth: CGFloat?) -> some View {
+        let width = compactDayWidth ?? dayWidth(layout)
+        return VStack(spacing: 0) {
+            Text(CampusTheme.date(date, format: compactDayWidth == nil ? "EE M/d" : "EE"))
+                .font(.caption.weight(.semibold)).frame(width: width, height: headerHeight)
                 .background(CampusTheme.calendar.isDateInToday(date) ? CampusTheme.tint : CampusTheme.background)
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(CampusTheme.border).frame(width: 0.5, height: height)
                 ForEach(hours, id: \.self) { minute in
-                    Rectangle().fill(CampusTheme.border.opacity(0.7)).frame(width: dayWidth(layout), height: 0.5).offset(y: y(minute))
+                    Rectangle().fill(CampusTheme.border.opacity(0.7)).frame(width: width, height: 0.5).offset(y: y(minute))
                 }
                 if layout.events.isEmpty {
                     Text("无课").font(.caption).foregroundStyle(CampusTheme.muted)
-                        .frame(width: dayWidth(layout)).padding(.top, 22)
+                        .frame(width: width).padding(.top, 22)
                 }
-                ForEach(layout.events) { event in
-                    NavigationLink { CourseDetailView(course: event.course, occurrenceDate: date) } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(event.course.name).font(.caption.weight(.semibold)).lineLimit(3)
-                            Text(event.course.room).font(.caption2).lineLimit(2)
-                            Text("\(event.course.start)–\(event.course.end)").font(.caption2.monospacedDigit()).lineLimit(1)
-                            if !event.course.period.isEmpty { Text(event.course.period).font(.caption2).lineLimit(1) }
-                        }.padding(6).frame(width: laneWidth - 6, height: max(1, CGFloat(event.end - event.start) * minuteHeight - 3), alignment: .topLeading)
-                            .foregroundStyle(CampusTheme.course(event.course.color))
-                            .background(CampusTheme.course(event.course.color).opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
-                            .clipped().contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                        .accessibilityLabel("\(CampusTheme.date(date))，\(event.course.name)，\(event.course.start)至\(event.course.end)，\(event.course.room)，\(event.course.period)")
-                        .offset(x: CGFloat(event.lane) * laneWidth + 3, y: y(event.start))
+                if compactDayWidth != nil {
+                    ForEach(layout.clusters, id: \.firstID) { cluster in
+                        Group {
+                            if cluster.count == 1 {
+                                NavigationLink { CourseDetailView(course: cluster.first.course, occurrenceDate: date) } label: {
+                                    compactLabel(cluster.first.course.name, cluster: cluster, width: width)
+                                }.accessibilityLabel("\(cluster.first.course.name)，\(cluster.first.course.start)至\(cluster.first.course.end)")
+                            } else {
+                                Button { openDay(date) } label: {
+                                    compactLabel("\(cluster.count) 门重叠", cluster: cluster, width: width)
+                                }.accessibilityLabel("查看当天 \(cluster.count) 门时间重叠的课程")
+                            }
+                        }.buttonStyle(.plain).offset(x: 1, y: y(cluster.first.start))
+                    }
+                } else {
+                    ForEach(layout.events) { event in
+                        NavigationLink { CourseDetailView(course: event.course, occurrenceDate: date) } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(event.course.name).font(.caption.weight(.semibold)).lineLimit(3)
+                                Text(event.course.room).font(.caption2).lineLimit(2)
+                                Text("\(event.course.start)–\(event.course.end)").font(.caption2.monospacedDigit()).lineLimit(1)
+                                if !event.course.period.isEmpty { Text(event.course.period).font(.caption2).lineLimit(1) }
+                            }.padding(6).frame(width: laneWidth - 6, height: max(1, CGFloat(event.end - event.start) * minuteHeight - 3), alignment: .topLeading)
+                                .foregroundStyle(CampusTheme.course(event.course.color))
+                                .background(CampusTheme.course(event.course.color).opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
+                                .clipped().contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel("\(CampusTheme.date(date))，\(event.course.name)，\(event.course.start)至\(event.course.end)，\(event.course.room)，\(event.course.period)")
+                            .offset(x: CGFloat(event.lane) * laneWidth + 3, y: y(event.start))
+                    }
                 }
-            }.frame(width: dayWidth(layout), height: height + 20, alignment: .topLeading)
+            }.frame(width: width, height: height + 20, alignment: .topLeading)
         }
     }
+    private func compactLabel(_ text: String, cluster: TimetableCluster, width: CGFloat) -> some View {
+        let color = CampusTheme.course(cluster.first.course.color)
+        return Text(text).font(.caption2.weight(.medium)).lineLimit(4)
+            .padding(2).frame(width: max(1, width - 2), height: max(1, y(cluster.end) - y(cluster.first.start) - 2), alignment: .topLeading)
+            .foregroundStyle(color).background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+            .clipped().contentShape(Rectangle())
+    }
+
 }
 
-private struct TimetableEvent: Identifiable {
+struct TimetableEvent: Identifiable {
     let course: Course
     let start: Int
     let end: Int
@@ -178,7 +228,14 @@ private struct TimetableEvent: Identifiable {
     var id: UUID { course.id }
 }
 
-private struct TimetableDay {
+struct TimetableCluster {
+    let first: TimetableEvent
+    var count: Int
+    var end: Int
+    var firstID: UUID { first.id }
+}
+
+struct TimetableDay {
     let events: [TimetableEvent]
     let laneCount: Int
     init(_ courses: [Course]) {
@@ -193,6 +250,19 @@ private struct TimetableDay {
         events = output
         laneCount = max(1, laneEnds.count)
     }
+    var clusters: [TimetableCluster] {
+        var result: [TimetableCluster] = []
+        for event in events {
+            if let last = result.indices.last, event.start < result[last].end {
+                result[last].count += 1
+                result[last].end = max(result[last].end, event.end)
+            } else {
+                result.append(TimetableCluster(first: event, count: 1, end: event.end))
+            }
+        }
+        return result
+    }
+
     private static func minutes(_ value: String) -> Int? {
         let parts = value.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2, (0...23).contains(parts[0]), (0...59).contains(parts[1]) else { return nil }

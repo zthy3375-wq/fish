@@ -27,6 +27,37 @@ private final class TreeholeTestProtocol: URLProtocol {
     override func stopLoading() { }
 }
 final class TreeholeTests: XCTestCase {
+    func testLegacyDeletedThreadsHideAuthorsAndKeepLiveDescendants() {
+        func comment(_ id: String, deleted: Bool = false, replyTo: String? = nil) -> TreeholeComment {
+            TreeholeComment(id: id, postId: "post", body: id, createdAt: "", replyTo: replyTo,
+                author: TreeholeAuthor(name: id, anonymous: false, mine: false), deleted: deleted, isOriginalPoster: false)
+        }
+        var root = comment("old root", deleted: true)
+        let removed = comment("old reply", deleted: true, replyTo: root.id)
+        let live = comment("still readable", replyTo: removed.id)
+        root.replies = [removed, live]
+        XCTAssertEqual(root.liveReplies.map(\.id), [live.id])
+        XCTAssertNil(root.replyRecipient(for: live))
+        XCTAssertEqual(root.visibleReplyCount(complete: false), 1)
+        root.replyCount = 6
+        XCTAssertEqual(root.visibleReplyCount(complete: false), 6)
+        XCTAssertEqual(root.visibleReplyCount(complete: true), 1)
+        root.replies = [removed]
+        XCTAssertEqual(root.visibleReplyCount(complete: true), 0)
+    }
+
+    func testCompactWeekGroupsOnlyOverlappingIntervals() {
+        func course(_ start: String, _ end: String) -> Course {
+            Course(name: start, day: 1, start: start, end: end, weeks: [1])
+        }
+        let day = TimetableDay([course("10:00", "10:30"), course("08:40", "09:20"),
+                                course("09:15", "10:00"), course("08:00", "09:00")])
+        XCTAssertEqual(day.clusters.map(\.count), [3, 1])
+        XCTAssertEqual(day.clusters.first?.end, 600)
+        XCTAssertEqual(day.laneCount, 2)
+        XCTAssertTrue(TimetableDay([]).clusters.isEmpty)
+    }
+
     private func service(_ vault: TreeholeMemoryVault) -> TreeholeService {
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [TreeholeTestProtocol.self]
         return TreeholeService(vault: vault, session: URLSession(configuration: config))

@@ -97,7 +97,7 @@ extension CampusDisplayTheme {
     var body: some View {
         Button { editing = true } label: {
             HStack(spacing: 13) {
-                Text(String(store.preferences.name.prefix(1))).font(.title2.weight(.medium))
+                Text(String(name.prefix(1))).font(.title2.weight(.medium))
                     .frame(width: 49, height: 49).foregroundStyle(CampusTheme.primary)
                     .background(CampusTheme.tint, in: RoundedRectangle(cornerRadius: 17)).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 5) {
