@@ -21,6 +21,11 @@ final class HonorParityUITests:XCTestCase {
         app.tabBars.buttons["我的"].tap()
         let shelf=app.buttons["open-honor-shelf"]
         XCTAssertTrue(shelf.waitForExistence(timeout:6))
+        let shortcuts = ["成绩与学业", "考试安排", "学期校历", "桌面课表"].map { app.buttons[$0] }
+        for button in shortcuts { XCTAssertTrue(button.isHittable, button.label) }
+        let bounds = shortcuts.map(\.frame)
+        XCTAssertLessThan((bounds.map(\.midY).max() ?? 0) - (bounds.map(\.midY).min() ?? 0), 8)
+        XCTAssertEqual(bounds.map(\.minX), bounds.map(\.minX).sorted())
         capture("profile",app)
         app.buttons["profile-settings"].tap()
         XCTAssertTrue(app.navigationBars["设置与帮助"].waitForExistence(timeout: 5))
@@ -35,7 +40,7 @@ final class HonorParityUITests:XCTestCase {
         capture("gallery",app)
         XCTAssertTrue(hidden.isHittable)
         hidden.tap()
-        XCTAssertTrue(app.buttons.containing(NSPredicate(format:"label CONTAINS %@", "???")).firstMatch.exists)
+        XCTAssertTrue(app.buttons.containing(NSPredicate(format:"label CONTAINS %@", "隐藏成就")).firstMatch.exists)
         app.terminate(); app.launch(); app.tabBars.buttons["我的"].tap(); app.buttons["open-honor-shelf"].tap()
         XCTAssertTrue(app.buttons.containing(NSPredicate(format:"label CONTAINS %@", "你好，邯院")).firstMatch.waitForExistence(timeout:5))
     }

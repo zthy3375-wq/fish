@@ -9,21 +9,20 @@ struct ProfileView: View {
     @State private var disconnecting = false
 
     var body: some View {
-        List {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
                 LocalProfileSummaryView(store: displayPreferences, academicName: store.academicProfile?.name,
                                         academicMajor: store.academicProfile?.major, academicClass: store.academicProfile?.className)
                 HonorShelfLink(badges: tree.user?.badges, pins: tree.user?.showcase ?? [], personal: true)
-            }
-            Section("常用教务") {
+                Text("常用教务").font(.subheadline.weight(.semibold)).padding(.top, 6)
                 HStack(alignment: .top, spacing: 0) {
                     shortcut("成绩与学业", icon: "chart.bar") { AcademicRecordsView() }
                     shortcut("考试安排", icon: "calendar.badge.clock") { AcademicRecordsView(initialSelection: 1) }
                     shortcut("学期校历", icon: "calendar") { SemesterCalendar() }
                     shortcut("桌面课表", icon: "rectangle.grid.1x2") { NativeWidgetSettingsView(publisher: store.widget) }
-                }.listRowInsets(EdgeInsets(top: 6, leading: 3, bottom: 6, trailing: 3))
-            }
-            Section("账号与连接") {
+                }.padding(5).modifier(ProfilePanel())
+                Text("账号与连接").font(.subheadline.weight(.semibold)).padding(.top, 6)
+                VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 12) {
                     Button { schoolExpanded.toggle() } label: {
                         HStack {
@@ -41,7 +40,7 @@ struct ProfileView: View {
                     } label: {
                             if store.isBusy { ProgressView() }
                             else { Text(store.isConnected ? "刷新" : "连接").font(.subheadline.weight(.medium)).frame(minWidth: 44, minHeight: 44) }
-                        }.buttonStyle(.borderless).disabled(store.isBusy)
+                        }.buttonStyle(.borderedProminent).disabled(store.isBusy)
                         .accessibilityLabel(store.isConnected ? "刷新教务数据" : "连接邯郸学院")
                     }
                     if schoolExpanded {
@@ -62,14 +61,18 @@ struct ProfileView: View {
                         Text("连接后可同步课表、成绩和考试安排。").font(.footnote).foregroundStyle(.secondary)
                     }
                 }
+                Divider()
                 Button {
                     tree.accountEntryRequested = true
                     store.selectedTab = .community
-                } label: { Label("邯院通社区账号", systemImage: "person.crop.circle") }
-                NavigationLink { LearningCenterView(store: learning) } label: { Label("学习通", systemImage: "books.vertical") }
-                    .accessibilityIdentifier("open-learning")
-            }
-            CommunityGroupSection()
+                } label: { profileRow("邯院通社区账号", icon: "bubble.left") }.buttonStyle(CampusPressStyle())
+                Divider()
+                NavigationLink { LearningCenterView(store: learning) } label: { profileRow("学习通", icon: "book") }
+                    .buttonStyle(CampusPressStyle()).accessibilityIdentifier("open-learning")
+                }.padding(.horizontal, 12).modifier(ProfilePanel())
+                VStack(alignment: .leading, spacing: 4) { CommunityGroupSection() }
+                    .padding(12).modifier(ProfilePanel())
+            }.padding(.horizontal, 16).padding(.vertical, 8).frame(maxWidth: 680)
         }
         .campusScrollBackground().background(CampusTheme.background)
         .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
@@ -85,6 +88,14 @@ struct ProfileView: View {
             Button("断开连接", role: .destructive) { store.disconnectSchool() }
         }
     }
+    private func profileRow(_ title: String, icon: String) -> some View {
+        HStack {
+            Image(systemName: icon).foregroundStyle(CampusTheme.primary)
+            Text(title).font(.subheadline.weight(.medium)).foregroundStyle(CampusTheme.text)
+            Spacer()
+            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CampusTheme.muted)
+        }.frame(minHeight: 48).contentShape(Rectangle())
+    }
     private func shortcut<Content: View>(_ title: String, icon: String, @ViewBuilder destination: () -> Content) -> some View {
         NavigationLink(destination: destination()) {
             VStack(spacing: 7) {
@@ -95,6 +106,13 @@ struct ProfileView: View {
         }.buttonStyle(CampusPressStyle()).accessibilityLabel(title)
     }
 
+}
+
+private struct ProfilePanel: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(CampusTheme.border, lineWidth: 1).allowsHitTesting(false))
+    }
 }
 
 private struct ProfileSettingsView: View {

@@ -7,6 +7,10 @@ struct CampusTabChrome: UIViewControllerRepresentable {
     let reduceMotion: Bool
 
     static func configure() {
+        if #unavailable(iOS 16.0) {
+            // iOS 15 hosts SwiftUI List and Form in a UITableView.
+            UITableView.appearance().backgroundColor = UIColor(CampusTheme.background)
+        }
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(CampusTheme.surface)
@@ -59,6 +63,28 @@ struct CampusTabChrome: UIViewControllerRepresentable {
             guard marker.frame != target else { return }
             UIView.animate(withDuration: reduceMotion ? 0 : 0.2, delay: 0,
                            options: [.beginFromCurrentState, .curveEaseOut, .allowUserInteraction]) { marker.frame = target }
+        }
+    }
+}
+
+struct CampusPageReveal: ViewModifier {
+    var active: Bool
+    var reduce: Bool
+    @State private var opacity = 1.0
+
+    func body(content: Content) -> some View {
+        content.opacity(opacity)
+            .onAppear { reveal() }
+            .onChange(of: active) { _ in reveal() }
+    }
+
+    private func reveal() {
+        guard active && !reduce else { opacity = 1; return }
+        var reset = Transaction()
+        reset.disablesAnimations = true
+        withTransaction(reset) { opacity = 0.6 }
+        DispatchQueue.main.async {
+            withAnimation(.timingCurve(0.22, 0.61, 0.36, 1, duration: 0.12)) { opacity = 1 }
         }
     }
 }

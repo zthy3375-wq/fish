@@ -8,11 +8,11 @@ struct RootView: View {
     @AppStorage("medal.reduce") private var localReduce = false
     var body: some View {
         TabView(selection: $store.selectedTab) {
-            CampusNavigation { HomeView().background(tabChrome) }.tabItem { Label("首页", image: "tab-House") }.tag(AppTab.home)
-            CampusNavigation { ScheduleView().background(tabChrome) }.tabItem { Label("课表", image: "tab-CalendarDays") }.tag(AppTab.schedule)
-            CampusNavigation { TreeholeView().background(tabChrome) }.tabItem { Label("社区", image: "tab-MessagesSquare") }.tag(AppTab.community)
-            CampusNavigation { TasksView().background(tabChrome) }.tabItem { Label("待办", image: "tab-ListTodo") }.tag(AppTab.tasks)
-            CampusNavigation { ProfileView().background(tabChrome) }.tabItem { Label("我的", image: "tab-UserRound") }.tag(AppTab.profile)
+            CampusNavigation { HomeView().modifier(reveal(.home)).background(tabChrome) }.tabItem { Label("首页", image: "tab-House") }.tag(AppTab.home)
+            CampusNavigation { ScheduleView().modifier(reveal(.schedule)).background(tabChrome) }.tabItem { Label("课表", image: "tab-CalendarDays") }.tag(AppTab.schedule)
+            CampusNavigation { TreeholeView().modifier(reveal(.community)).background(tabChrome) }.tabItem { Label("社区", image: "tab-MessagesSquare") }.tag(AppTab.community)
+            CampusNavigation { TasksView().modifier(reveal(.tasks)).background(tabChrome) }.tabItem { Label("待办", image: "tab-ListTodo") }.tag(AppTab.tasks)
+            CampusNavigation { ProfileView().modifier(reveal(.profile)).background(tabChrome) }.tabItem { Label("我的", image: "tab-UserRound") }.tag(AppTab.profile)
         }
 
         .overlay(alignment:.top) { MedalOverlay() }
@@ -25,6 +25,9 @@ struct RootView: View {
         .alert("提示", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) {
             Button("知道了", role: .cancel) { store.message = nil }
         } message: { Text(store.message ?? "") }
+    }
+    private func reveal(_ tab: AppTab) -> CampusPageReveal {
+        CampusPageReveal(active: store.selectedTab == tab, reduce: reduce || localReduce)
     }
     private var tabChrome: some View {
         CampusTabChrome(selection: store.selectedTab, reduceMotion: reduce || localReduce).frame(width: 0, height: 0)
@@ -52,27 +55,27 @@ struct HomeView: View {
 
     var body: some View {
         GeometryReader { screen in
-        ScrollView {
-            VStack(spacing: 0) {
-                hero(safeTop: screen.safeAreaInsets.top)
-                VStack(alignment: .leading, spacing: 14) {
-                coursePanel
-                Text("校园生活").font(.headline)
-                VStack(spacing: 10) {
-                    HStack(spacing: 10) {
-                        NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", showerBalance, showerDetail, "drop", CampusTheme.walletPurple) }
-                        NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen) }
-                    }
-                    HStack(spacing: 10) {
-                        NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
-                        NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
-                    }
-                }.buttonStyle(CampusPressStyle())
-                todayTasks
-                upcomingExams
-            }.padding(.horizontal,16).padding(.vertical,12).frame(maxWidth:680)
-            }
-        }.ignoresSafeArea(.container, edges: .top)
+            ScrollView {
+                VStack(spacing: 0) {
+                    hero(safeTop: screen.safeAreaInsets.top)
+                    VStack(alignment: .leading, spacing: 14) {
+                        coursePanel
+                        Text("校园生活").font(.headline)
+                        VStack(spacing: 10) {
+                            HStack(spacing: 10) {
+                                NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", showerBalance, showerDetail, "drop", CampusTheme.walletPurple) }
+                                NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen) }
+                            }
+                            HStack(spacing: 10) {
+                                NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
+                                NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
+                            }
+                        }.buttonStyle(CampusPressStyle())
+                        todayTasks
+                        upcomingExams
+                    }.padding(.horizontal, 16).padding(.vertical, 12).frame(maxWidth: 680)
+                }
+            }.ignoresSafeArea(.container, edges: .top)
         }.background(CampusTheme.background).campusNavigationBarHidden()
             .task(id: scenePhase == .active && store.selectedTab == .home) {
                 guard scenePhase == .active, store.selectedTab == .home else { return }

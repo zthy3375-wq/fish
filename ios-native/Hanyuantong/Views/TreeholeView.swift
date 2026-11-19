@@ -8,9 +8,14 @@ struct TreeholeView: View {
     @State private var screen = "feed"
     @State private var routes: [TreeholeRouteFrame] = []
     @State private var bio = ""
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage("medal.reduce") private var localReduceMotion = false
+    private var reduceMotion: Bool { systemReduceMotion || localReduceMotion }
     @State private var pageOffset: CGFloat = 0
     @State private var selectedPhoto: String?
+    @State private var composeCollapsed = false
+    @State private var feedScrollSample: CGFloat = 0
+
     private var pageAnimation: Animation? { reduceMotion ? nil : .easeOut(duration: 0.24) }
     @State private var auth = "login"
     @State private var username = ""
@@ -99,12 +104,21 @@ struct TreeholeView: View {
             guard screen == "feed" else { return }
             visibleFeedPost = frames.filter { $0.value.maxY > 0 }.min { $0.value.minY < $1.value.minY }?.key
         }
+        .onPreferenceChange(TreeholeFeedScrollY.self) { offset in
+            guard screen == "feed" && tree.user != nil else { return }
+            let y = max(0, offset)
+            guard y < 80 || abs(y - feedScrollSample) > 14 else { return }
+            composeCollapsed = y >= 80 && y > feedScrollSample
+            feedScrollSample = y
+        }
         .onPreferenceChange(TreeholeFeedEndOffset.self) { value in feedEndOffset = value; requestNextFeedPage() }
         .onChange(of: tree.busy) { value in if !value { requestNextFeedPage() } }
         .onChange(of: tree.feedRevision) { _ in feedAnchor = nil; if screen == "feed" { DispatchQueue.main.async { proxy.scrollTo("feed-top", anchor: .top) } } }
         .onChange(of: screen) { next in
             if previousScreen == "feed" { feedAnchor = visibleFeedPost }
             previousScreen = next
+            composeCollapsed = false
+            feedScrollSample = 0
             if next != "detail" { tree.leaveDetail() }
             if !reduceMotion {
                 pageOffset = next == "feed" ? -18 : 24
@@ -142,7 +156,14 @@ struct TreeholeView: View {
         .toolbar { communityToolbar(proxy) }
         .overlay(alignment: .bottomTrailing) {
             if screen == "feed" && tree.user != nil {
-                Button(action: startPost) { Label("发树洞", systemImage: "square.and.pencil").font(.subheadline.weight(.semibold)).padding(.horizontal, 19).padding(.vertical, 16) }
+                Button(action: startPost) {
+                    HStack(spacing: composeCollapsed ? 0 : 8) {
+                        Image(systemName: "square.and.pencil").font(.system(size: 20))
+                        Text("发帖").font(.subheadline.weight(.semibold)).fixedSize()
+                            .frame(maxWidth: composeCollapsed ? 0 : nil).opacity(composeCollapsed ? 0 : 1).clipped()
+                    }.padding(.horizontal, composeCollapsed ? 14 : 16).frame(height: 50)
+                }.buttonStyle(CampusPressStyle())
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: composeCollapsed)
                     .foregroundStyle(TreeholeTheme.onPrimary).background(Color(red: 0.15, green: 0.17, blue: 0.20), in: RoundedRectangle(cornerRadius: 15))
                     .shadow(color: TreeholeTheme.primary.opacity(0.18), radius: 12, y: 5).padding(20).disabled(tree.busy).accessibilityLabel("发帖")
             }
@@ -264,6 +285,9 @@ struct TreeholeView: View {
             if tree.engagementEnabled {
                 TreeholeFeedScopes(tree: tree, select: accountFeed)
             }
+            Color.clear.frame(height: 0).background(GeometryReader { bounds in
+                Color.clear.preference(key: TreeholeFeedScrollY.self, value: -bounds.frame(in: .named("treehole-scroll")).minY)
+            })
             TreeholeDiscoveryBar(tree: tree) { category, interest in selectDiscovery(category, interest: interest) }.id("feed-top")
             if draft.value.hasContent { Button(action: startPost) { HStack { Label("继续编辑草稿", systemImage: "doc.text"); Spacer(); Image(systemName: "chevron.right") }.font(.caption).padding(12).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 10)) } }
             if searchOpen {
@@ -896,6 +920,11 @@ private struct TreeholeViewportHeight: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
+private struct TreeholeFeedScrollY: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 private struct TreeholeFeedEndOffset: PreferenceKey {
     static var defaultValue: CGFloat = .greatestFiniteMagnitude
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
