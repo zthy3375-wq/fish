@@ -11,8 +11,8 @@ KEY=os.environ['CLOUDBASE_API_KEY'].strip()
 BACKUP=Path('artifacts/community-rollback.enc')
 enc_key=hmac.new(KEY.encode(),b'hyt-community-rollback-v1',hashlib.sha256).digest()
 def request(action, data):
-    req=getattr(models,action+'Request')(); req.from_json_string(json.dumps({'Namespace':ENV,**data}))
-    return json.loads(getattr(client,action)(req).to_json_string())
+    # CloudBase namespaces require the documented Stamp, absent from the public SCF SDK model.
+    return json.loads(client.call(action,{'Namespace':ENV,'Stamp':'MINI_QCBASE',**data}))['Response']
 def wait(name):
     for attempt in range(30):
         data=request('GetFunction',{'FunctionName':name})
@@ -60,7 +60,11 @@ elif mode=='rollback':
     request('UpdateFunctionCode',{'FunctionName':'hyt-community','CodeSource':'ZipFile','ZipFile':saved['code']});wait('hyt-community')
     request('UpdateFunctionConfiguration',{'FunctionName':'hyt-community','Environment':c['Environment'],'MemorySize':c['MemorySize'],'Timeout':c['Timeout']});wait('hyt-community')
     # Disable only settlement timers owned by this deployment; preserve all other services.
-    for t in request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[]):
+    try: triggers=request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[])
+    except Exception as e:
+        if 'ResourceNotFound' not in str(e): raise
+        triggers=[]
+    for t in triggers:
         if t['TriggerName'].startswith('hytc-'): request('DeleteTrigger',{'FunctionName':FUNCTION,'TriggerName':t['TriggerName'],'Type':'timer'})
     print('Previous community code/configuration restored; contest timers removed')
 else: raise RuntimeError('Unknown operation')
