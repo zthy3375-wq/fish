@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
 import { Award, ChevronRight, LockKeyhole } from "lucide-vue-next";
 import CollectionBadge from "./CollectionBadge.vue";
 import { archiveSections, collectionKind, definitionCode, displayCollectionName, honorName, honorRarities, type CollectionItem, type CollectionProfile, type HonorArchiveItem } from "../../domain/honorCollection";
@@ -8,7 +8,7 @@ import { clearHonorCollectionCache, getHonorCollection } from "../../services/ho
 import { treeholeError, type TreeholeResult } from "../../services/treehole";
 import { badges, honorDate, type BadgeCode } from "../../domain/communityHonors";
 
-type Card = CollectionItem & { legacy?: BadgeCode; base?: boolean; unreleased?: boolean };
+type Card = CollectionItem & { legacy?: BadgeCode; base?: boolean; icon?: Component; unreleased?: boolean };
 const props = defineProps<{
   viewer: string; member: string; archive?: boolean; reducedMotion?: boolean; initialCode?: string;
   request: (action: string, body?: Record<string, unknown>) => Promise<TreeholeResult>;
@@ -47,8 +47,8 @@ const oldCards = computed<Card[]>(() => {
     const grant = profile.value?.legacyHonors?.find(b => b.code === code);
     const earned = !!grant || profile.value?.identities.includes(code) === true;
     if (!earned && !self.value) return [];
-    const { name, method, description } = badges[code];
-    return [{ id:code, code, name, category:"identity", rarity:"rare", legacy:code,
+    const { name, method, description, icon } = badges[code];
+    return [{ id:code, code, name, category:"identity", rarity:"rare", legacy:code, icon:markRaw(icon),
       awardId:earned ? code : null, at:grant?.at, criteria:method,
       story:earned ? (code === "seed" ? "最初的相遇 · " : "") + description : null,
       archived:false, publicHidden:false }];
@@ -59,7 +59,7 @@ const baseCards = computed<Card[]>(() => {
   return original.flatMap(a => {
     const at = profile.value?.baseAwards?.[a.code];
     if (!at && !self.value) return [];
-    return [{ id:a.code, code:a.code, name:a.name, category:"contribution", displayKind:"achievement", base:true,
+    return [{ id:a.code, code:a.code, name:a.name, category:"contribution", displayKind:"achievement", base:true, icon:markRaw(a.icon),
       rarity:a.tier==="稀有" ? "rare" : a.tier==="史诗" ? "epic" : "common", awardId:at ? a.code : null,
       at, criteria:a.condition, story:at ? a.description : null, archived:false, publicHidden:false }];
   });
@@ -93,7 +93,11 @@ function group(item: Card) {
 const visible = computed(() => panel.value === "honor" ? honors.value : achievements.value.filter(item => filter.value === "all" || filter.value === group(item)));
 const mystery = computed(() => self.value && !!profile.value && panel.value === "achievement" && ["all","hidden"].includes(filter.value)
   ? Math.max(0, 6 - achievements.value.filter(item => item.category === "hidden" && item.awardId).length) : 0);
-const total = computed(() => (panel.value==="honor" ? honors.value : achievements.value).filter(i=>i.awardId).length);
+const earned = computed(() => (panel.value==="honor" ? honors.value : achievements.value).filter(i=>i.awardId));
+const distribution = computed(() => earned.value.reduce<Record<string,number>>((counts, item) => {
+  counts[item.rarity] = (counts[item.rarity] ?? 0) + 1;
+  return counts;
+}, {}));
 const equipped = computed(() => {
   const own = profile.value?.badges;
   if (own?.collection && collectionKind({...own.collection,category:"contribution"})==="honor") return honorName({...own.collection,name:own.collection.title || own.collection.name});
@@ -214,7 +218,7 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
     <header class="hc-heading">
       <div><h2>{{ archive ? "社区荣誉殿堂" : self ? "我的荣誉收藏" : (profile?.nickname ?? "同学") + "的荣誉收藏" }}</h2>
       <p v-if="archive">收藏历届荣誉，阅读获奖者留下的校园故事。</p>
-      <p v-else-if="profile">已获得 {{ total }} 枚<span v-if="panel==='honor' && equipped"> · 佩戴 {{ equipped }}</span></p></div>
+      <p v-else-if="profile">已获得 {{ earned.length }} 枚<span v-if="panel==='honor' && equipped"> · 佩戴 {{ equipped }}</span></p></div>
       <Award :size="27" aria-hidden="true" />
     </header>
 
@@ -242,6 +246,12 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
         <button :aria-pressed="panel==='honor'" @click="panel='honor'">荣誉</button>
         <button :aria-pressed="panel==='achievement'" @click="panel='achievement'">社区成就</button>
       </nav>
+      <details v-if="earned.length" class="hc-distribution">
+        <summary>稀有度分布</summary>
+        <div class="hc-rarity">
+          <span v-for="(label,key) in honorRarities" :key="key"><b>{{ distribution[key] ?? 0 }}</b>{{ label }}</span>
+        </div>
+      </details>
       <section v-if="panel==='honor' && profile" class="hc-identity" aria-label="身份标识">
         <h3>身份标识</h3>
         <div class="hc-existing">
@@ -259,7 +269,7 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
       <ul class="hc-gallery">
         <li v-for="item in visible" :key="item.id">
           <button @click="show(item)">
-            <CollectionBadge :rarity="item.rarity" :category="item.category" :code="item.code" :earned="!!item.awardId" />
+            <CollectionBadge :rarity="item.rarity" :category="item.category" :code="item.code" :icon="item.icon" :earned="!!item.awardId" />
             <strong>{{ item.name }}</strong>
             <small>{{ item.year ? item.year + ' · ' : '' }}{{ honorRarities[item.rarity] }}
               <LockKeyhole v-if="!item.awardId" :size="10" aria-label="待获得" />
@@ -281,7 +291,8 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
 
     <dialog ref="dialog" class="hc-dialog" :class="{ 'hc-unlock': unlocked && !reducedMotion }" aria-labelledby="hc-dialog-name" @cancel.prevent="closeDetail" @close="selected && closeDetail()">
       <div v-if="selected">
-        <CollectionBadge :rarity="selected.rarity" :category="selected.category" :code="selected.code" :earned="archive || !!selected.awardId" />
+        <CollectionBadge :rarity="selected.rarity" :category="selected.category" :code="selected.code"
+          :icon="'icon' in selected ? selected.icon : undefined" :earned="archive || !!selected.awardId" />
         <p v-if="unlocked" class="hc-new">{{ collectionKind(selected)==="achievement" ? "新成就已解锁" : "新荣誉已获得" }}</p>
         <h3 id="hc-dialog-name">{{ honorName({...selected,name:displayCollectionName(selected)}) }}</h3>
         <p v-if="'nickname' in selected">授予 {{ selected.nickname }}</p>
@@ -328,6 +339,7 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
 .hc-tabs {display:flex;gap:4px;overflow-x:auto;padding:3px 0 5px;scrollbar-width:none}
 .hc-tabs button {min-height:44px;flex:none;border-radius:9px;padding:0 9px;color:var(--color-muted);font-size:13px}
 .hc-tabs button[aria-pressed=true] {background:var(--color-tint);color:var(--color-text);font-weight:650}
+.hc-distribution summary {min-height:34px;padding:8px 0;font-size:12px;color:var(--color-muted);cursor:pointer}
 .hc-rarity {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;text-align:center;color:var(--color-muted);font-size:11px}
 .hc-rarity b {display:block;color:var(--color-text);font-size:18px;font-variant-numeric:tabular-nums}
 .hc-existing {display:flex;gap:6px;flex-wrap:wrap}

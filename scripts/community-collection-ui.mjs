@@ -68,6 +68,11 @@ export async function checkCollection({client,db,api,output}) {
     await source.getByText(/佩戴 校园手记/).waitFor();
     await source.getByRole('heading',{name:'身份标识'}).waitFor();
     await source.getByText('种子用户',{exact:true}).waitFor();
+    const distribution = source.getByText('稀有度分布',{exact:true});
+    await distribution.click();
+    assert.equal(await source.locator('.hc-rarity b').count(),5);
+    assert.equal(Number(await source.locator('.hc-rarity b').nth(2).textContent()),2);
+    await distribution.click();
     await shot(source,'collection-390.png');
     await button(source,'社区成就').click();
     const achievement = source.getByRole('button',{name:/开服第一批/});

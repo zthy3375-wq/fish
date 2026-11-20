@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Archive, BookOpen, Bug, Camera, Compass, Crown, Feather, Flag, Gem, GraduationCap,
-  HandHeart, HeartHandshake, Landmark, MapPin, MoonStar, Network, Orbit, Pencil, Smile, Sparkles,
+import { Archive, BookOpen, BookOpenCheck, Bug, Camera, Compass, Crown, Feather, Flag, Gem, GraduationCap,
+  HandHeart, Heart, HeartHandshake, Landmark, MapPin, MoonStar, Network, Orbit, Pencil, Smile, Sparkles,
   Star, Sunrise, Trophy, Waypoints } from "lucide-vue-next";
 import { computed, type Component } from "vue";
 import type { HonorCategory, HonorRarity } from "../../domain/honorCollection";
-const props = defineProps<{ rarity: HonorRarity; category: HonorCategory; code?: string; earned?: boolean; small?: boolean }>();
+const props = defineProps<{ rarity: HonorRarity; category: HonorCategory; code?: string; icon?: Component; earned?: boolean; small?: boolean }>();
 const emblems: Record<string, Component> = {
   "handan-light":Sunrise, "that-person":Star, "community-classic":Trophy, "campus-legend":Crown, "first-hundred":Flag,
   architect:Compass, "landmark-post":BookOpen, "gold-creator":Feather, "bug-hunter":Bug, "early-resident":Landmark,
@@ -12,9 +12,10 @@ const emblems: Record<string, Component> = {
   "person-of-year":Trophy, "creator-of-year":Pencil, "photo-of-year":Camera, "warmth-of-year":HandHeart,
   "graduation-keepsake":GraduationCap, "welcome-guide":Compass, "before-dawn":MoonStar,
   "developer-noticed":Sparkles, "world-lines":Orbit, archivist:Archive, "crossed-paths":Waypoints, "no-island":Network,
+  "first-feature":Star, "hundred-likes":Heart, "full-page":BookOpenCheck,
 };
 const icons = { identity: Landmark, contribution: Feather, legend: Crown, limited: Gem, hidden: HeartHandshake };
-const emblem = computed(() => emblems[props.code?.replace(/-[0-9]{4}$/, "") ?? ""] ?? icons[props.category]);
+const emblem = computed(() => props.icon ?? emblems[props.code?.replace(/-[0-9]{4}$/, "") ?? ""] ?? icons[props.category]);
 </script>
 <template>
   <span class="collection-medal" :class="[rarity, { earned, small }]" aria-hidden="true">
