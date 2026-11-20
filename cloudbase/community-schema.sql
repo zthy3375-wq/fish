@@ -305,6 +305,10 @@ ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS collection_title text;
 ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS collection_use_title boolean NOT NULL DEFAULT false;
 ALTER TABLE public.hyt_members ADD COLUMN IF NOT EXISTS collection_checked_at timestamptz;
 
+CREATE TABLE IF NOT EXISTS public.hyt_collection_accepted_answers (
+ post_id uuid PRIMARY KEY REFERENCES public.hyt_posts(id),
+ comment_id uuid NOT NULL UNIQUE REFERENCES public.hyt_comments(id)
+);
 INSERT INTO public.hyt_collection_definitions(code,name,category,rarity,criteria,story,mode) VALUES
  ('handan-light','邯院之光','legend','legendary','审核重大贡献的具体影响与佐证。','这份贡献让更多同学受益。','review'),
  ('that-person','传说中的那个人','legend','legendary','审核具有代表性的社区故事及当事人授权。','一个被同学们长久记住的名字。','review'),
@@ -360,13 +364,30 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public AS $$
   ELSE 'honor' END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.hyt_collection_mode(code text,stored text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public AS $$
+ SELECT CASE
+  WHEN regexp_replace(code,'-[0-9]{4}$','') IN ('bug-hunter','architect','first-feature','gold-creator','developer-noticed','welcome-guide','graduation-keepsake') THEN 'retired'
+  WHEN code IN ('campus-observer','good-company','answer-guide','campus-photographer','community-classic') THEN 'automatic'
+  ELSE stored END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.hyt_collection_item(
  d public.hyt_collection_definitions,g public.hyt_collection_grants
 ) RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
  SELECT jsonb_build_object('id',d.id,'code',d.code,'name',public.hyt_collection_display_name(d.code,d.name),'category',d.category,'rarity',d.rarity,
  'displayKind',public.hyt_collection_kind(d.code,d.category),
- 'year',d.edition_year,'archived',d.archived_at IS NOT NULL OR coalesce(d.edition_year<extract(year FROM now() AT TIME ZONE 'Asia/Shanghai'),false),'capacity',d.capacity,
- 'criteria',CASE WHEN d.category<>'hidden' THEN d.criteria END,
+ 'year',d.edition_year,'archived',public.hyt_collection_mode(d.code,d.mode)='retired' OR d.archived_at IS NOT NULL OR coalesce(d.edition_year<extract(year FROM now() AT TIME ZONE 'Asia/Shanghai'),false),'capacity',d.capacity,
+ 'criteria',CASE WHEN d.category<>'hidden' THEN CASE d.code
+  WHEN 'campus-observer' THEN '在三个不同日期发布不同内容的公开校园日常帖。'
+  WHEN 'good-company' THEN '同一篇非匿名帖子收到五位不同同学的有效回帖，自己的回复不计。'
+  WHEN 'answer-guide' THEN '在求助帖中获得三位不同求助者的采纳，求助者需注册满七天。'
+  WHEN 'campus-photographer' THEN '在三个不同日期发布含不同图片的公开摄影帖。'
+  WHEN 'community-classic' THEN '一篇非匿名帖子发布满三十天，仍被五位不同同学收藏。'
+  WHEN 'landmark-post' THEN '同一篇非匿名帖子收到十位注册满七天的不同同学的有效赞。'
+  WHEN 'hundred-likes' THEN '同一篇非匿名帖子收到一百位注册满七天的不同同学的有效赞。'
+  WHEN 'full-page' THEN '累计解锁十二项常规自动成就，时长、隐藏和收藏纪念成就不计。'
+  ELSE d.criteria END END,
  'awardId',g.id,'at',g.earned_at,'story',CASE WHEN g.id IS NOT NULL THEN g.story END,
  'publicHidden',coalesce(g.public_hidden,false));
 $$;
@@ -391,21 +412,13 @@ BEGIN
    FROM public.hyt_posts p JOIN public.hyt_reactions r ON r.post_id=p.id AND r.kind='like'
    JOIN public.hyt_members peer ON peer.id=r.member_id AND peer.id<>m.id AND peer.deleted_at IS NULL
    WHERE p.author_id=m.id AND NOT p.anonymous AND p.deleted_at IS NULL
-    AND p.created_at>=m.created_at AND peer.created_at<least(now()-interval '30 days',p.created_at)
+    AND p.created_at>=m.created_at AND peer.created_at<=now()-interval '7 days'
    GROUP BY p.id
   ) posts;
  END IF;
- -- A verified third feature also proves a first one. The date of the original first feature may be unknown.
- INSERT INTO public.hyt_collection_grants(member_id,definition_id,story,seen_at)
- SELECT m.id,first.id,first.story,now()
- FROM public.hyt_collection_definitions first
- JOIN public.hyt_collection_definitions third ON third.code='gold-creator'
- JOIN public.hyt_collection_grants g ON g.definition_id=third.id AND g.member_id=m.id AND g.revoked_at IS NULL
- WHERE first.code='first-feature'
- ON CONFLICT(member_id,definition_id) DO NOTHING;
  WITH missing AS (
    SELECT d.* FROM public.hyt_collection_definitions d
-   WHERE d.mode='automatic' AND d.archived_at IS NULL
+   WHERE public.hyt_collection_mode(d.code,d.mode)='automatic' AND d.archived_at IS NULL
     AND (d.code='early-resident' OR public.hyt_collection_kind(d.code,d.category)='achievement') AND NOT EXISTS
     (SELECT 1 FROM public.hyt_collection_grants g WHERE g.member_id=m.id AND g.definition_id=d.id)
  ), qualifying AS (
@@ -413,13 +426,43 @@ BEGIN
    WHEN 'early-resident' THEN m.created_at<first_day+interval '30 days'
    WHEN 'first-hundred' THEN pioneer
    WHEN 'world-lines' THEN pioneer AND m.created_at+interval '1 year'<=now()
-   WHEN 'developer-noticed' THEN EXISTS (
-     SELECT 1 FROM public.hyt_collection_grants g JOIN public.hyt_collection_definitions reviewed ON reviewed.id=g.definition_id
-     WHERE g.member_id=m.id AND g.revoked_at IS NULL AND g.actor_id IS NOT NULL AND reviewed.category IN ('legend','contribution')
-   ) OR EXISTS (
-     SELECT 1 FROM public.hyt_honor_history h JOIN public.hyt_honors old ON old.member_id=h.target AND old.kind=h.change->>'kind'
-     JOIN public.hyt_members actor ON actor.id=h.actor WHERE h.target=m.id AND actor.developer_since IS NOT NULL AND h.change->>'operation'='grant'
-   )
+   WHEN 'campus-observer' THEN 3<=(
+     SELECT count(DISTINCT day) FROM (
+       SELECT min((p.created_at AT TIME ZONE 'Asia/Shanghai')::date) AS day
+       FROM public.hyt_posts p WHERE p.author_id=m.id AND p.category='daily' AND NOT p.anonymous AND p.deleted_at IS NULL
+         AND length(regexp_replace(lower(p.body),'[[:space:][:punct:]]','','g'))>=2
+       GROUP BY regexp_replace(lower(p.body),'[[:space:][:punct:]]','','g')
+     ) distinct_posts)
+   WHEN 'good-company' THEN EXISTS (
+     SELECT 1 FROM public.hyt_posts p JOIN public.hyt_comments c ON c.post_id=p.id
+     JOIN public.hyt_members peer ON peer.id=c.author_id AND peer.deleted_at IS NULL
+     WHERE p.author_id=m.id AND p.deleted_at IS NULL AND NOT p.anonymous
+       AND c.author_id<>m.id AND c.deleted_at IS NULL
+       AND length(regexp_replace(lower(c.body),'[[:space:][:punct:]]','','g'))>=2
+       AND regexp_replace(lower(c.body),'[[:space:][:punct:]]','','g') !~ '^(.)\1+$'
+     GROUP BY p.id HAVING count(DISTINCT c.author_id)>=5)
+   WHEN 'answer-guide' THEN 3<=(
+     SELECT count(DISTINCT p.author_id)
+     FROM public.hyt_collection_accepted_answers a JOIN public.hyt_comments c ON c.id=a.comment_id AND c.post_id=a.post_id
+     JOIN public.hyt_posts p ON p.id=a.post_id
+     JOIN public.hyt_members asker ON asker.id=p.author_id
+     WHERE c.author_id=m.id AND c.deleted_at IS NULL AND NOT c.anonymous AND p.category='help'
+       AND p.deleted_at IS NULL AND NOT p.anonymous AND asker.id<>m.id AND asker.deleted_at IS NULL
+       AND asker.created_at<=now()-interval '7 days')
+   WHEN 'campus-photographer' THEN 3<=(
+     SELECT count(DISTINCT day) FROM (
+       SELECT min((p.created_at AT TIME ZONE 'Asia/Shanghai')::date) AS day
+       FROM public.hyt_posts p JOIN public.hyt_media i ON i.post_id=p.id
+       WHERE p.author_id=m.id AND p.interest='photo' AND NOT p.anonymous AND p.deleted_at IS NULL
+         AND i.comment_id IS NULL AND i.ready AND i.deleted_at IS NULL
+       GROUP BY i.digest
+     ) distinct_photos)
+   WHEN 'community-classic' THEN EXISTS (
+     SELECT 1 FROM public.hyt_posts p JOIN public.hyt_reactions r ON r.post_id=p.id AND r.kind='save'
+     JOIN public.hyt_members peer ON peer.id=r.member_id AND peer.deleted_at IS NULL
+     WHERE p.author_id=m.id AND NOT p.anonymous AND p.deleted_at IS NULL AND p.created_at<=now()-interval '30 days'
+       AND peer.id<>m.id
+     GROUP BY p.id HAVING count(DISTINCT peer.id)>=5)
    WHEN 'landmark-post' THEN peak_likes>=10
    WHEN 'hundred-likes' THEN peak_likes>=100
    WHEN 'before-dawn' THEN EXISTS (
@@ -461,14 +504,14 @@ BEGIN
  INSERT INTO public.hyt_collection_grants(member_id,definition_id,story)
  SELECT m.id,d.id,d.story FROM public.hyt_collection_definitions d WHERE d.code='full-page'
  AND NOT EXISTS(SELECT 1 FROM public.hyt_collection_grants g WHERE g.member_id=m.id AND g.definition_id=d.id)
- AND 15<=(
+ AND 12<=(
   (SELECT count(*) FROM public.hyt_awards a WHERE a.member_id=m.id AND a.code IN
-   ('arrival','firstpost','hello','liked','sprout','neighbor','popular','collector','month','year'))
+   ('arrival','firstpost','hello','liked','sprout','neighbor','popular','collector'))
   +
   (SELECT count(DISTINCT other.code) FROM public.hyt_collection_grants g
    JOIN public.hyt_collection_definitions other ON other.id=g.definition_id
    WHERE g.member_id=m.id AND g.revoked_at IS NULL AND other.code<>'full-page'
-    AND other.category NOT IN ('hidden','limited') AND public.hyt_collection_kind(other.code,other.category)='achievement')
+    AND other.code IN ('campus-observer','good-company','answer-guide','campus-photographer','community-classic','landmark-post','hundred-likes'))
  )
  ON CONFLICT(member_id,definition_id) DO NOTHING;
 END $$;
@@ -583,6 +626,9 @@ CREATE OR REPLACE FUNCTION public.hyt_post_json(p public.hyt_posts, viewer uuid)
 LANGUAGE sql STABLE SET search_path=pg_catalog,public AS $$
  SELECT jsonb_build_object('id',p.id,'body',CASE WHEN p.body='' THEN coalesce((SELECT '[投票] '||(definition->>'question') FROM public.hyt_polls WHERE post_id=p.id),'') ELSE p.body END,'buddy',public.hyt_buddy_json(p.id,viewer),'poll',public.hyt_poll_json(p.id,viewer),'anonymous',p.anonymous,'author',public.hyt_author_json(p.author_id,p.id,p.anonymous,viewer),
  'createdAt',p.created_at,'locked',p.locked,'title',p.title,'category',p.category,'interest',p.interest,
+ 'acceptedAnswerId',(SELECT an.comment_id FROM public.hyt_collection_accepted_answers an
+  JOIN public.hyt_comments ac ON ac.id=an.comment_id AND ac.deleted_at IS NULL
+  WHERE an.post_id=p.id AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=viewer AND bl.blocked_id=ac.author_id)),
  'responseCounts',(SELECT coalesce(jsonb_object_agg(kind,total),'{}'::jsonb) FROM (SELECT kind,count(*) AS total FROM public.hyt_responses WHERE post_id=p.id GROUP BY kind) responses),
  'myResponse',(SELECT kind FROM public.hyt_responses WHERE post_id=p.id AND member_id=viewer),
  'images',(SELECT coalesce(jsonb_agg(public.hyt_media_json(img) ORDER BY position),'[]'::jsonb) FROM public.hyt_media img WHERE img.post_id=p.id AND img.comment_id IS NULL AND img.ready AND img.deleted_at IS NULL),
@@ -698,13 +744,13 @@ BEGIN
    SELECT public.hyt_collection_item(d,g) AS item
    FROM public.hyt_collection_definitions d LEFT JOIN public.hyt_collection_grants g
      ON g.definition_id=d.id AND g.member_id=wanted AND g.revoked_at IS NULL
-   WHERE (d.mode<>'template' AND d.category<>'hidden' AND own AND d.archived_at IS NULL
+   WHERE (public.hyt_collection_mode(d.code,d.mode) NOT IN ('template','retired') AND d.category<>'hidden' AND own AND d.archived_at IS NULL
           AND (d.edition_year IS NULL OR d.edition_year>=extract(year FROM now() AT TIME ZONE 'Asia/Shanghai')))
      OR (g.id IS NOT NULL AND (own OR d.category<>'hidden' OR g.public_hidden))
    ORDER BY (g.id IS NULL),g.earned_at DESC,d.category,d.name LIMIT 41 OFFSET page
   ) s;
   RETURN jsonb_build_object('status',200,'collection',jsonb_build_object('id',wanted,'nickname',target.nickname,
-    'items',rows,'badges',public.hyt_badges(target),'layoutVersion',2,'showcase',target.showcase,
+    'items',rows,'badges',public.hyt_badges(target),'layoutVersion',3,'showcase',target.showcase,
     'baseAwards',coalesce((SELECT jsonb_object_agg(code,earned_at) FROM public.hyt_awards
       WHERE member_id=wanted AND (own OR code=ANY(target.showcase))),'{}'),
     'legacyHonors',coalesce((SELECT jsonb_agg(jsonb_build_object('code',kind,'at',granted_at) ORDER BY granted_at)
@@ -802,18 +848,18 @@ BEGIN
  IF a='collection.admin' THEN
   RETURN jsonb_build_object('status',200,
    'honorDefinitions',(SELECT coalesce(jsonb_agg(public.hyt_collection_item(c,NULL)||jsonb_build_object(
-    'mode',c.mode,'defaultStory',c.story,'issued',(SELECT count(*) FROM public.hyt_collection_grants WHERE definition_id=c.id))
+    'mode',CASE WHEN public.hyt_collection_mode(c.code,c.mode)='retired' THEN c.mode ELSE public.hyt_collection_mode(c.code,c.mode) END,'defaultStory',c.story,'issued',(SELECT count(*) FROM public.hyt_collection_grants WHERE definition_id=c.id))
     ORDER BY c.archived_at NULLS FIRST,c.category,c.edition_year DESC,c.name,c.id),'[]')
     FROM (SELECT d.* FROM public.hyt_collection_definitions d
-    WHERE b->>'definitionScope' IS NULL OR (
+    WHERE public.hyt_collection_mode(d.code,d.mode)<>'retired' AND (b->>'definitionScope' IS NULL OR (
       public.hyt_collection_kind(d.code,d.category)=b->>'definitionScope' AND d.archived_at IS NULL
       AND (d.edition_year IS NULL OR d.edition_year>=extract(year FROM now() AT TIME ZONE 'Asia/Shanghai'))
-      AND (b->>'definitionScope'='honor' OR d.mode IN ('review','template'))
+      AND (b->>'definitionScope'='honor' OR public.hyt_collection_mode(d.code,d.mode) IN ('review','template'))
       AND (d.mode<>'template' OR NOT EXISTS(
         SELECT 1 FROM public.hyt_collection_definitions edition_def
         WHERE edition_def.code=d.code||'-'||extract(year FROM now() AT TIME ZONE 'Asia/Shanghai')::int
       ))
-    )
+    ))
     ORDER BY d.archived_at NULLS FIRST,d.category,d.edition_year DESC,d.name,d.id
     LIMIT 101 OFFSET coalesce((b->>'definitionOffset')::int,0)) c),
    'honorMembers',(SELECT coalesce(jsonb_agg(to_jsonb(u)),'[]') FROM (
@@ -840,7 +886,7 @@ BEGIN
      UNION ALL
      SELECT 'auto_grant','ok',g.earned_at,g.member_id,public.hyt_collection_display_name(d.code,d.name),g.evidence,g.id
      FROM public.hyt_collection_grants g JOIN public.hyt_collection_definitions d ON d.id=g.definition_id
-     WHERE d.mode='automatic' AND NOT coalesce((b->>'exceptions')::boolean,false)
+     WHERE public.hyt_collection_mode(d.code,d.mode)='automatic' AND g.actor_id IS NULL AND NOT coalesce((b->>'exceptions')::boolean,false)
     ) h LEFT JOIN public.hyt_members u ON u.id=h.member_id
     ORDER BY h.at DESC,h.id DESC LIMIT 21 OFFSET page) k));
  END IF;
@@ -856,6 +902,7 @@ BEGIN
  IF operation='save' THEN
   IF definition IS NULL THEN
    IF b->>'code' IN ('seed','creator','contributor','developer','moderator') THEN outcome:='honor_duplicate';
+   ELSIF public.hyt_collection_mode(b->>'code','review')<>'review' THEN outcome:='honor_locked';
    ELSE
     INSERT INTO public.hyt_collection_definitions(code,name,category,rarity,criteria,story,edition_year,capacity,mode)
      VALUES(b->>'code',b->>'name',b->>'category',b->>'rarity',b->>'criteria',b->>'story',edition,(b->>'capacity')::int,'review')
@@ -864,7 +911,7 @@ BEGIN
    END IF;
   ELSE
    SELECT * INTO d FROM public.hyt_collection_definitions WHERE id=definition FOR UPDATE;
-   IF NOT FOUND OR d.archived_at IS NOT NULL OR d.mode<>'review' OR public.hyt_collection_kind(d.code,d.category)='history'
+   IF NOT FOUND OR d.archived_at IS NOT NULL OR public.hyt_collection_mode(d.code,d.mode)<>'review' OR public.hyt_collection_kind(d.code,d.category)='history'
       OR d.edition_year<extract(year FROM now() AT TIME ZONE 'Asia/Shanghai') THEN outcome:='honor_locked';
    ELSIF (b->>'capacity')::int < (SELECT count(*) FROM public.hyt_collection_grants WHERE definition_id=d.id) THEN outcome:='honor_capacity';
    ELSE
@@ -883,7 +930,7 @@ BEGIN
   PERFORM 1 FROM public.hyt_members WHERE id=wanted AND deleted_at IS NULL FOR NO KEY UPDATE;
   IF NOT FOUND THEN RETURN '{"status":404,"error":"not_found"}'; END IF;
   SELECT * INTO d FROM public.hyt_collection_definitions WHERE id=definition FOR UPDATE;
-  IF NOT FOUND OR d.mode<>'review' OR d.archived_at IS NOT NULL OR public.hyt_collection_kind(d.code,d.category)='history'
+  IF NOT FOUND OR public.hyt_collection_mode(d.code,d.mode)<>'review' OR d.archived_at IS NOT NULL OR public.hyt_collection_kind(d.code,d.category)='history'
       OR (d.edition_year IS NOT NULL AND d.edition_year<>extract(year FROM now() AT TIME ZONE 'Asia/Shanghai')) THEN outcome:='honor_locked';
   ELSIF EXISTS(SELECT 1 FROM public.hyt_collection_grants WHERE member_id=wanted AND definition_id=d.id AND revoked_at IS NULL) THEN
    outcome:='honor_duplicate';
@@ -1523,6 +1570,20 @@ BEGIN
     AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=c.author_id AND NOT c.anonymous)
     AND (b->>'afterTime' IS NULL OR (c.created_at,c.id)>((b->>'afterTime')::timestamptz,(b->>'afterId')::uuid)) ORDER BY c.created_at,c.id LIMIT 51) q;
   RETURN jsonb_build_object('status',200,'post',public.hyt_post_json(p,m.id),'comments',result);
+ END IF;
+ IF a='comments.accept' THEN
+  IF p.author_id<>m.id OR m.banned_until>now() THEN RETURN '{"status":403,"error":"forbidden"}'; END IF;
+  IF p.category<>'help' OR p.anonymous OR p.locked THEN RETURN '{"status":409,"error":"answer_unavailable"}'; END IF;
+  SELECT * INTO c FROM public.hyt_comments rc WHERE rc.id=(b->>'commentId')::uuid AND rc.post_id=p.id
+   AND rc.author_id<>m.id AND NOT rc.anonymous AND rc.reply_to IS NULL AND rc.deleted_at IS NULL
+   AND EXISTS(SELECT 1 FROM public.hyt_members u WHERE u.id=rc.author_id AND u.deleted_at IS NULL)
+   AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE (bl.member_id,bl.blocked_id) IN ((m.id,rc.author_id),(rc.author_id,m.id)));
+  IF NOT FOUND THEN RETURN '{"status":404,"error":"answer_unavailable"}'; END IF;
+  IF (b->>'enabled')::boolean THEN
+   INSERT INTO public.hyt_collection_accepted_answers(post_id,comment_id) VALUES(p.id,c.id)
+   ON CONFLICT(post_id) DO UPDATE SET comment_id=excluded.comment_id;
+  ELSE DELETE FROM public.hyt_collection_accepted_answers WHERE post_id=p.id AND comment_id=c.id; END IF;
+  RETURN jsonb_build_object('status',200,'post',public.hyt_post_json(p,m.id));
  END IF;
  IF a='comments.like' THEN
   SELECT * INTO c FROM public.hyt_comments c WHERE c.id=(b->>'commentId')::uuid AND c.post_id=p.id AND c.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks bl WHERE bl.member_id=m.id AND bl.blocked_id=c.author_id AND NOT c.anonymous);

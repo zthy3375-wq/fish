@@ -4,7 +4,7 @@ import { communityRpcDigest, honorsMigration } from './community-honors-migratio
 
 const env = 'hanyuantong-d8gjzt1jh12370215';
 const key = process.env.CLOUDBASE_API_KEY?.trim();
-const expectedBranch = 'deploy/community-honors-members-20261120';
+const expectedBranch = 'deploy/community-achievements-20261120';
 const endpoint = 'https://' + env + '-1527874185.ap-shanghai.app.tcloudbase.com/hyt-community';
 if (!key || process.env.GITHUB_EVENT_NAME !== 'pull_request' || process.env.GITHUB_HEAD_REF !== expectedBranch) {
   throw Error('Unexpected production deployment context');
@@ -17,7 +17,7 @@ async function config(requireHonors) {
       const live = await response.json();
       if (response.ok && live.schema === 15 && live.contestsEnabled && live.registrationEnabled &&
           live.honorsEnabled && live.imagesEnabled && live.messagesEnabled &&
-          (!requireHonors || (live.honorCollectionEnabled && live.registeredMembersEnabled))) return;
+          (!requireHonors || (live.honorCollectionEnabled && live.registeredMembersEnabled && live.autoAchievementsEnabled))) return;
     } catch { /* Wait for the existing HTTPS gateway or new code to become active. */ }
     await new Promise(resolve => setTimeout(resolve,2500));
   }
@@ -26,10 +26,10 @@ async function config(requireHonors) {
 
 if (process.argv[2] === 'verify') {
   await config(true);
-  for (const action of ['admin.members', 'collection.profile', 'collection.archive', 'contests.list']) {
+  for (const action of ['admin.members', 'collection.profile', 'collection.archive', 'contests.list', 'comments.accept']) {
     const response = await fetch(endpoint + '/v1/' + action, {
       method:'POST', headers:{'Content-Type':'application/json',Accept:'application/json'},
-      body:'{}', signal:AbortSignal.timeout(15000),
+      body:action==='comments.accept' ? JSON.stringify({postId:'00000000-0000-4000-8000-000000000001',commentId:'00000000-0000-4000-8000-000000000002',enabled:true}) : '{}', signal:AbortSignal.timeout(15000),
     });
     const body = await response.json();
     if (response.status !== 401 || body.error !== 'session_expired') throw Error('Unexpected anonymous result for ' + action);

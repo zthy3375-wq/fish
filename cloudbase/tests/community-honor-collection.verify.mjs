@@ -55,7 +55,7 @@ test("identities, wearable honors, and public achievement slots are independent"
   assert.equal(opening.name,"开服第一批");
   assert.equal(opening.displayKind,"achievement");
   assert.equal(early.displayKind,"honor");
-  assert.equal(mine.layoutVersion,2);
+  assert.equal(mine.layoutVersion,3);
   assert(mine.baseAwards.arrival);
   await assert.rejects(call(other,"collection.wear",{awardId:early.awardId}),{code:"invalid_showcase"});
   await assert.rejects(call(member,"collection.wear",{awardId:secret.awardId}),{code:"achievement_not_wearable"});
@@ -106,7 +106,7 @@ test("developer-only issuance, evidence, capacity, audit, edition closure and st
   assert.deepEqual(current.managedLegacyHonors.map(g=>g.code),["seed"]);
   assert.deepEqual(current.honorDefinitions.filter(d=>d.mode==="automatic").map(d=>d.code),["early-resident"]);
   const reviews = await call(owner,"collection.admin",{definitionScope:"achievement"});
-  assert(reviews.honorDefinitions.some(d=>d.code==="bug-hunter"));
+  assert.deepEqual(reviews.honorDefinitions,[]);
   assert(reviews.honorDefinitions.every(d=>d.displayKind==="achievement" && d.mode!=="automatic"));
   await assert.rejects(change({operation:"save",code:"creator",name:"优质创作者",category:"contribution",
     rarity:"rare",criteria:"可信创作记录",story:"保留原授予渠道"}),{code:"honor_duplicate"});
@@ -206,27 +206,65 @@ test("the historical contribution archive reuses existing publicly granted contr
   assert(!Object.hasOwn(legacy,"evidence"));
 });
 
-test("verified featured content and fifteen distinct regular achievements unlock their own milestones", async () => {
-  const definitions = (await call(owner,"collection.admin")).honorDefinitions;
-  const define = code => definitions.find(x=>x.code===code);
-  const give = (code,id=other.user.id) => change({operation:"grant",definitionId:define(code).id,memberId:id,
-    story:"经核实的校园事迹",evidence:"具备审核记录、作品与精选凭据"});
-  await give("first-feature");
-  assert((await open(other)).items.find(x=>x.code==="first-feature").awardId);
-  await give("gold-creator",member.user.id);
-  await sql("UPDATE hyt_members SET collection_checked_at=NULL WHERE id=$1",[member.user.id]);
-  assert((await open(member)).items.find(x=>x.code==="first-feature").awardId);
+test("public activity, help acceptance and twelve ordinary grants qualify without developer review", async () => {
+  const register = name => server.execute("register",{username:name,password:"collection-fixture-password",agreed:true},"",name);
+  const author=await register("milestoneauthor");
+  const authorId=author.user.id;
+  await sql("UPDATE hyt_members SET created_at=now()-interval '40 days' WHERE id=$1",[authorId]);
+  const participants=[];
+  for (const name of ["helperasker1","helperasker2","helperasker3"]) participants.push(await register(name));
+  const peers=participants.map(p=>p.user.id);
+  await sql("UPDATE hyt_members SET created_at=now()-interval '8 days' WHERE id=ANY($1::uuid[])",[peers]);
+  const publication=async(actor,body,category="daily",interest="")=>(await call(actor,"posts.create",
+    {requestId:randomUUID(),body,anonymous:false,category,interest})).post;
+  const first=await publication(author,"校园日常甲");
+  const second=await publication(author,"校园日常乙");
+  const third=await publication(author,"校园日常丙");
+  for (const [id,days] of [[first.id,35],[second.id,10],[third.id,9]]) {
+    await sql("UPDATE hyt_posts SET created_at=now()-$2::int*interval '1 day' WHERE id=$1",[id,days]);
+  }
+  await sql(`INSERT INTO hyt_reactions(post_id,member_id,kind)
+    SELECT $1,id,'save' FROM hyt_members WHERE username LIKE 'fixture%' LIMIT 5`,[first.id]);
+  await sql(`INSERT INTO hyt_comments(post_id,author_id,body,anonymous,request_id)
+    SELECT $1,id,'这是不同同学的回复',false,gen_random_uuid() FROM hyt_members WHERE username LIKE 'fixture%' LIMIT 5`,[first.id]);
 
+  const questions=await Promise.all(participants.map((peer,i)=>publication(peer,"求助帖 "+i,"help")));
+  for (const [i,question] of questions.entries()) {
+    const {comment}=await call(author,"comments.create",{postId:question.id,body:"这是我的建议",anonymous:false,requestId:randomUUID()});
+    const payload={postId:question.id,commentId:comment.id,enabled:true};
+    await assert.rejects(call(author,"comments.accept",payload),{code:"forbidden"});
+    const asker=participants[i];
+    assert.equal((await call(asker,"comments.accept",payload)).post.acceptedAnswerId,comment.id);
+    if(i===0){
+      assert.equal((await call(asker,"comments.accept",{...payload,enabled:false})).post.acceptedAnswerId,null);
+      await call(asker,"comments.accept",payload);
+    }
+  }
   for (const code of ["arrival","firstpost","hello","liked","sprout","neighbor","popular","collector","month","year"])
-    await sql("INSERT INTO hyt_awards(member_id,code) VALUES ($1,$2) ON CONFLICT DO NOTHING",[other.user.id,code]);
-  await give("architect");
+    await sql("INSERT INTO hyt_awards(member_id,code) VALUES ($1,$2) ON CONFLICT DO NOTHING",[authorId,code]);
   await sql(`INSERT INTO hyt_collection_grants(member_id,definition_id,story)
-    SELECT $1,id,story FROM hyt_collection_definitions WHERE code='world-lines'`,[other.user.id]);
-  await sql("UPDATE hyt_members SET collection_checked_at=NULL WHERE id=$1",[other.user.id]);
-  assert.equal((await open(other)).items.find(x=>x.code==="full-page").awardId,null);
-  await give("answer-guide");
-  await sql("UPDATE hyt_members SET collection_checked_at=NULL WHERE id=$1",[other.user.id]);
-  assert((await open(other)).items.find(x=>x.code==="full-page").awardId);
+    SELECT $1,id,story FROM hyt_collection_definitions WHERE code IN ('gold-creator','world-lines')`,[authorId]);
+  const earned=(await open(author)).items.filter(i=>i.awardId).map(i=>i.code);
+  for(const code of ['campus-observer','good-company','answer-guide','community-classic','gold-creator'])assert(earned.includes(code),code);
+  assert(earned.includes('full-page'));
+  assert(!earned.includes('first-feature'));
+  assert.equal((await open(author)).items.some(x=>x.code==='bug-hunter'),false);
+  const photoIds=[];
+  for (const [label,days] of [["甲",8],["乙",7],["丙",6]]) {
+    const photo=await publication(author,"摄影"+label,"entertainment","photo");
+    await sql("UPDATE hyt_posts SET created_at=now()-$2::int*interval '1 day' WHERE id=$1",[photo.id,days]);
+    photoIds.push(photo.id);
+  }
+  for(const [index,postId] of photoIds.entries()){
+    await sql(`INSERT INTO hyt_media(member_id,post_id,object_key,bytes,width,height,request_id,digest,ready)
+      VALUES ($1,$2,$3,25,100,100,gen_random_uuid(),$4,true)`,
+      [authorId,postId,"fixture-photo-"+index,index===2?"a".repeat(64):String.fromCharCode(97+index).repeat(64)]);
+  }
+  await sql("UPDATE hyt_members SET collection_checked_at=NULL WHERE id=$1",[authorId]);
+  assert(!(await open(author)).items.find(x=>x.code==="campus-photographer").awardId);
+  await sql("UPDATE hyt_media SET digest=$2 WHERE post_id=$1",[photoIds[2],"c".repeat(64)]);
+  await sql("UPDATE hyt_members SET collection_checked_at=NULL WHERE id=$1",[authorId]);
+  assert((await open(author)).items.find(x=>x.code==="campus-photographer").awardId);
 });
 
 test("retired names keep their previous grant but new grants and nickname wear are rejected", async () => {

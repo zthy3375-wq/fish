@@ -22,7 +22,7 @@ function privileges(httpRole) {
   if (!/^[A-Za-z0-9_-]{1,120}$/.test(httpRole) || /^(public|postgres)$/i.test(httpRole)) throw Error('Unexpected community HTTP database role');
   return `
 DO $privileges$ DECLARE name text; role text; helper record; BEGIN
- FOREACH name IN ARRAY ARRAY['hyt_collection_definitions','hyt_collection_grants','hyt_collection_audit'] LOOP
+ FOREACH name IN ARRAY ARRAY['hyt_collection_definitions','hyt_collection_grants','hyt_collection_audit','hyt_collection_accepted_answers'] LOOP
   EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',name);
   EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC',name);
   FOREACH role IN ARRAY ARRAY['anon','authenticated','service_role','${httpRole}'] LOOP
@@ -77,11 +77,12 @@ BEGIN
   result := public.hyt_community('collection.admin','{}',developer_session);
   IF (result->>'status') IS DISTINCT FROM '200'
    OR NOT EXISTS(SELECT FROM jsonb_array_elements(result->'honorDefinitions') AS h WHERE h->>'code'='first-hundred')
+   OR NOT EXISTS(SELECT FROM jsonb_array_elements(result->'honorDefinitions') AS h WHERE h->>'code'='answer-guide' AND h->>'mode'='automatic')
   THEN RAISE EXCEPTION 'Developer honors smoke failed'; END IF;
   result := public.hyt_community('collection.profile',jsonb_build_object('memberId',developer_id),sample_session);
   IF (result->>'status') IS DISTINCT FROM '200'
    OR (result #>> '{collection,id}') IS DISTINCT FROM developer_id::text
-   OR (result #>> '{collection,layoutVersion}') IS DISTINCT FROM '2'
+   OR (result #>> '{collection,layoutVersion}') IS DISTINCT FROM '3'
    OR (public.hyt_community('collection.archive','{"section":"legend"}',sample_session)->>'status') IS DISTINCT FROM '200'
   THEN RAISE EXCEPTION 'Honor reads smoke failed'; END IF;
   RAISE SQLSTATE 'ZX018';
@@ -106,6 +107,7 @@ ${current.slice(createStart, createEnd)}
 ${routine(current, 'hyt_hall').statement}
 ${routine(current, 'hyt_member_json').statement}
 ${routine(current, 'hyt_profile_json').statement}
+${routine(current, 'hyt_post_json').statement}
 ${routine(current, 'hyt_collection_api').statement}
 ${routine(current, 'hyt_community').statement}
 ${routine(current, 'hyt_contests').statement}

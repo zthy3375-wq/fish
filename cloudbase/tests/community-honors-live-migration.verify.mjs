@@ -37,8 +37,9 @@ test('deploys only reviewed functions and honor tables over the contest-aware pr
       SELECT hyt_community('collection.profile','{}','existing_member_session') #>> '{collection,layoutVersion}' AS layout,
              hyt_community('profile.get','{"memberId":"00000000-0000-4000-8000-000000000002"}','existing_member_session')
                #> '{profile,collectionShowcase}' AS showcase,
-             has_function_privilege('hyt_http','public.hyt_collection_showcase(public.hyt_members)','EXECUTE') AS direct_access
+             has_function_privilege('hyt_http','public.hyt_collection_showcase(public.hyt_members)','EXECUTE') AS direct_access,
+             has_table_privilege('hyt_http','public.hyt_collection_accepted_answers','SELECT') AS direct_answers
     `);
-    assert.deepEqual(projection,{layout:'2',showcase:[],direct_access:false});
+    assert.deepEqual(projection,{layout:'3',showcase:[],direct_access:false,direct_answers:false});
   } finally { await db.close(); }
 });
