@@ -2,7 +2,7 @@ const chinaYear = new Intl.DateTimeFormat('en', {year:'numeric',timeZone:'Asia/S
 
 export const collectionActions = [
   'collection.profile', 'collection.archive', 'collection.wear', 'collection.visibility',
-  'collection.ack', 'collection.admin', 'collection.change',
+  'collection.ack', 'collection.showcase', 'collection.admin', 'collection.change',
 ];
 
 export function sanitizeHonorCollection(action, body, { text, id, oneOf, boolean, fail }) {
@@ -21,7 +21,14 @@ export function sanitizeHonorCollection(action, body, { text, id, oneOf, boolean
         year: year(body.year), offset: offset(body.offset),
       };
     case 'collection.wear':
-      return { awardId: id(body.awardId, true), useTitle: body.useTitle === true };
+      return { awardId: id(body.awardId, true), useTitle: body.useTitle === true,
+        legacyCode: body.legacyCode == null ? null : oneOf(body.legacyCode, ['seed','creator','contributor']),
+        organized: body.organized === true };
+    case 'collection.showcase': {
+      const original = ['arrival','firstpost','hello','liked','sprout','neighbor','popular','collector','month','year'];
+      if (!Array.isArray(body.items) || body.items.length > 3 || new Set(body.items).size !== body.items.length) fail();
+      return { items: body.items.map(value => original.includes(value) ? value : id(value)) };
+    }
     case 'collection.visibility':
       return { awardId: id(body.awardId), public: boolean(body.public) };
     case 'collection.ack': {

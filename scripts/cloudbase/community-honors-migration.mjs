@@ -33,7 +33,7 @@ DO $privileges$ DECLARE name text; role text; helper record; BEGIN
   END LOOP;
  END LOOP;
  FOR helper IN SELECT oid::regprocedure AS signature FROM pg_proc
-   WHERE pronamespace='public'::regnamespace AND proname IN ('hyt_collection_api','hyt_collection_refresh','hyt_collection_item','hyt_collection_badge') LOOP
+   WHERE pronamespace='public'::regnamespace AND proname LIKE 'hyt_collection_%' LOOP
   EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC',helper.signature);
   FOREACH role IN ARRAY ARRAY['anon','authenticated','service_role','${httpRole}'] LOOP
    IF EXISTS(SELECT FROM pg_roles WHERE rolname=role) THEN
@@ -81,6 +81,7 @@ BEGIN
   result := public.hyt_community('collection.profile',jsonb_build_object('memberId',developer_id),sample_session);
   IF (result->>'status') IS DISTINCT FROM '200'
    OR (result #>> '{collection,id}') IS DISTINCT FROM developer_id::text
+   OR (result #>> '{collection,layoutVersion}') IS DISTINCT FROM '2'
    OR (public.hyt_community('collection.archive','{"section":"legend"}',sample_session)->>'status') IS DISTINCT FROM '200'
   THEN RAISE EXCEPTION 'Honor reads smoke failed'; END IF;
   RAISE SQLSTATE 'ZX018';
@@ -102,6 +103,9 @@ DO $guard$ DECLARE digest text; BEGIN
  IF digest NOT IN ('${oldDigest}','${newDigest}') THEN RAISE EXCEPTION 'Unexpected live community RPC'; END IF;
 END $guard$;
 ${current.slice(createStart, createEnd)}
+${routine(current, 'hyt_hall').statement}
+${routine(current, 'hyt_member_json').statement}
+${routine(current, 'hyt_profile_json').statement}
 ${routine(current, 'hyt_collection_api').statement}
 ${routine(current, 'hyt_community').statement}
 ${routine(current, 'hyt_contests').statement}
