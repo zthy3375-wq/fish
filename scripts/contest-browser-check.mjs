@@ -180,7 +180,7 @@ try {
     page.setDefaultTimeout(20000);
     await page.goto(`http://127.0.0.1:${server.address().port}/#/community`);
     await page
-      .getByRole("button", { name: /主题赛事.*把校园写成一首诗/ })
+      .locator(".contest-entry")
       .waitFor();
     await page.waitForTimeout(400);
     await page
@@ -228,7 +228,8 @@ try {
       "UPDATE hyt_contests SET submission_ends=now()-interval '20 minutes',voting_starts=now()-interval '10 minutes' WHERE id=$1",
       [id],
     );
-    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await page.evaluate(()=>{window.scrollTo(0,0);const el=document.querySelector('.ct');for(const [name,y] of [['touchstart',80],['touchend',210]])el.dispatchEvent(new TouchEvent(name,{bubbles:true,changedTouches:[new Touch({identifier:1,target:el,clientX:150,clientY:y})]}));});
+    await page.locator('.ct[aria-busy="false"]').waitFor();
     await page
       .getByRole("button", { name: "查看作品：早八路上的光", exact: true })
       .click();
@@ -300,7 +301,8 @@ try {
       await page
         .getByRole("button", { name: "返回上一层", exact: true })
         .click();
-      await page.getByRole("button", { name: "刷新", exact: true }).click();
+      await page.evaluate(()=>{window.scrollTo(0,0);const el=document.querySelector('.ct');for(const [name,y] of [['touchstart',80],['touchend',210]])el.dispatchEvent(new TouchEvent(name,{bubbles:true,changedTouches:[new Touch({identifier:1,target:el,clientX:150,clientY:y})]}));});
+    await page.locator('.ct[aria-busy="false"]').waitFor();
       await page.getByRole("button", { name: "我要参赛", exact: true }).click();
       await page.getByLabel("作品名称", { exact: true }).fill("校园平面图测试");
       await page
@@ -363,7 +365,7 @@ try {
       });
       await page.getByRole("button", { name: "发布赛事", exact: true }).click();
       await page
-        .getByRole("heading", { name: "投稿中", exact: true })
+        .getByRole("heading", { name: "未开始", exact: true })
         .waitFor();
       assert.equal(
         await page.evaluate(() => window.scrollY),
@@ -376,12 +378,13 @@ try {
         )
       ).rows[0];
       assert.equal(created.published, true);
-      assert(Math.abs(Number(created.days) - 7) < 0.001);
+      assert(Math.abs(Number(created.days) - (6+8/24)) < 0.001);
       await page.screenshot({
         path: path.join(output, "contest-manage-390.png"),
         animations: "disabled",
         fullPage: true,
       });
+      await db.query("UPDATE hyt_contests SET starts_at=now()-interval '1 hour',submission_ends=now()+interval '5 hours',voting_starts=now()+interval '5 hours',voting_ends=now()+interval '6 hours',award_at=now()+interval '7 hours' WHERE id=$1",[created.id]);
       await call(author, "contests.submit", {
         contestId: created.id,
         requestId: randomUUID(),

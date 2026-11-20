@@ -710,3 +710,101 @@ test('v2: moderation replies carry the committed entry and refreshed metrics for
  const removed=await call(owner,'contests.review',{contestId:c,kind:'entry',targetId:e.id,decision:'remove',reason:'主动核对作品授权',requestId:randomUUID()});assert.equal(removed.entry.status,'removed');assert.equal((await call(owner,'contests.admin',{contestId:c})).metrics.validEntries,0);
  const restored=await call(owner,'contests.review',{contestId:c,kind:'entry',targetId:e.id,decision:'approve',reason:'已核实作品为原创',requestId:randomUUID()});assert.equal(restored.entry.status,'approved');assert.equal((await call(owner,'contests.admin',{contestId:c})).metrics.validEntries,1);
 });
+
+test('v3 recycle bin is developer-only, idempotent and reversible without orphaning history',async()=>{
+ const c=await event();
+ await call(owner,'contests.manage',{contestId:c,operation:'cancel',reason:'清理测试比赛'});
+ await assert.rejects(call(users[0],'contests.manage',{contestId:c,operation:'remove',reason:'越权删除'}),{code:'forbidden'});
+ const req={contestId:c,operation:'remove',reason:'移除空测试赛事',requestId:randomUUID()};
+ const r=await call(owner,'contests.manage',req);
+ assert.equal(r.contest.visibility,'deleted');
+ assert.equal((await call(users[0],'contests.list')).contests.length,0);
+ await assert.rejects(call(users[0],'contests.get',{contestId:c}),{code:'not_found'});
+ assert.equal((await call(owner,'contests.list',{scope:'trash'})).contests[0].id,c);
+ await call(owner,'contests.manage',req);
+ await call(owner,'contests.manage',{...req,requestId:randomUUID()});
+ assert.equal((await pg.query("SELECT count(*)::int AS n FROM hyt_contest_audit WHERE action='remove'")).rows[0].n,1);
+ assert.deepEqual((await pg.query("SELECT snapshot->'associations' AS counts FROM hyt_contest_audit WHERE action='remove'")).rows[0].counts,{entries:0,votes:0,awards:0});
+ await call(owner,'contests.manage',{contestId:c,operation:'restore',reason:'恢复误删赛事',requestId:randomUUID()});
+ assert.equal((await call(users[0],'contests.get',{contestId:c})).contest.visibility,'visible');
+ assert.equal((await call(owner,'contests.list',{scope:'trash'})).contests.length,0);
+ assert.equal((await pg.query('SELECT count(*)::int AS n FROM hyt_contests')).rows[0].n,1);
+});
+
+test('v3 events with entries, votes or awards are hidden and restored with the same award identities',async()=>{
+ const c=await event({minEntries:1}); const e=await submit(users[0],c);
+ await voting(c);await vote(users[1],c,e);await ending(c);
+ await call(owner,'contests.manage',{contestId:c,operation:'announce',reason:'公布真实结果'});
+ const before=(await call(users[0],'contests.profile')).awards;
+ assert(before.some(a=>a.kind==='champion'));
+ const champ=before.find(a=>a.kind==='champion');
+ await call(users[0],'contests.wear',{awardId:champ.id});
+ const r=await call(owner,'contests.manage',{contestId:c,operation:'remove',reason:'下架测试活动',requestId:randomUUID()});
+ assert.equal(r.contest.visibility,'hidden');
+ assert.equal((await call(users[0],'contests.profile')).stats.champions,0);
+ assert.equal((await call(users[0],'contests.profile')).worn,null);
+ assert.equal((await pg.query('SELECT count(*)::int AS n FROM hyt_contest_awards WHERE revoked_at IS NULL')).rows[0].n,before.length);
+ await call(owner,'contests.manage',{contestId:c,operation:'restore',reason:'恢复活动展示',requestId:randomUUID()});
+ const after=await call(users[0],'contests.profile');
+ assert.deepEqual(after.awards.map(a=>a.id).sort(),before.map(a=>a.id).sort());
+ assert.equal(after.stats.champions,1);assert.equal(after.worn,champ.id);
+});
+
+test('v3 preview is read-only and cannot expose drafts or moderation data to ordinary accounts',async()=>{
+ const cfg=config();await call(owner,'contests.save',cfg);
+ await assert.rejects(call(users[0],'contests.get',{contestId:cfg.contestId,preview:true}),{code:'forbidden'});
+ assert.equal((await call(owner,'contests.get',{contestId:cfg.contestId,preview:true})).contest.state,'draft');
+ await assert.rejects(call(owner,'contests.submit',{contestId:cfg.contestId,title:'预览作品',body:'预览不写入',images:[],agreed:true,preview:true,requestId:randomUUID()}),{code:'contest_preview_readonly'});
+ assert.equal((await pg.query('SELECT count(*)::int AS n FROM hyt_contest_entries')).rows[0].n,0);
+ assert.equal((await call(owner,'contests.list',{scope:'public'})).contests.length,0);
+ assert.equal((await call(owner,'contests.list',{scope:'manage'})).contests.length,1);
+});
+
+test('v3 deletion confirmation rejects raced association counts and hidden events never auto-settle',async()=>{
+ const c=await event({minEntries:1});
+ await submit(users[0],c);
+ await assert.rejects(call(owner,'contests.manage',{contestId:c,operation:'remove',reason:'过期清理确认',expectedCounts:{entries:0,votes:0,awards:0},requestId:randomUUID()}),{code:'contest_changed'});
+ assert.equal((await call(users[0],'contests.get',{contestId:c})).contest.visibility,'visible');
+ await call(owner,'contests.manage',{contestId:c,operation:'remove',reason:'核对后下架',expectedCounts:{entries:1,votes:0,awards:0},requestId:randomUUID()});
+ await ending(c);await pg.query('SELECT hyt_contest_tick()');
+ assert.equal((await pg.query('SELECT announced_at FROM hyt_contests WHERE id=$1',[c])).rows[0].announced_at,null);
+ assert.equal((await pg.query('SELECT count(*)::int AS n FROM hyt_contest_awards')).rows[0].n,0);
+ await call(owner,'contests.manage',{contestId:c,operation:'restore',reason:'重新公开比赛',requestId:randomUUID()});
+ await pg.query('SELECT hyt_contest_tick()');await pg.query('SELECT hyt_contest_tick()');
+ assert.equal((await pg.query('SELECT count(*)::int AS n FROM hyt_contest_awards')).rows[0].n,1);
+});
+
+test('v3 independent covers enforce ownership, survive cleanup and support authorized renewal',async()=>{
+ const rgba={width:4,height:4,data:Buffer.alloc(4*4*4,210)},data=Buffer.from(jpeg.encode(rgba,80).data).toString('base64');
+ const image=(await call(owner,'media.upload',{data,requestId:randomUUID()})).image;
+ const c=await event({coverImageId:image.id,coverPosition:72,startsAt:iso(1),submissionEnds:iso(2),votingStarts:iso(2),votingEnds:iso(3),awardAt:iso(4)});
+ const got=(await call(users[0],'contests.get',{contestId:c})).contest;
+ assert.equal(got.cover.id,image.id);assert.equal(got.coverPosition,72);
+ assert.equal((await call(users[0],'contests.image',{contestId:c,cover:true,imageId:image.id})).image.id,image.id);
+ await call(owner,'media.discard',{imageId:image.id});
+ await pg.query("UPDATE hyt_media SET created_at=now()-interval '8 days' WHERE id=$1",[image.id]);
+ assert(!(await pg.query("SELECT hyt_community('media.cleanup','{}','') AS r")).rows[0].r.images.some(i=>i.id===image.id));
+ await assert.rejects(call(users[0],'contests.image',{contestId:c,cover:true,imageId:randomUUID()}),{code:'not_found'});
+ const foreign=(await call(users[0],'media.upload',{data,requestId:randomUUID()})).image;
+ await assert.rejects(call(owner,'contests.save',{...config(c),coverImageId:foreign.id}),{code:'image_unavailable'});
+ await call(owner,'contests.save',config(c));
+ assert.equal((await call(users[0],'contests.get',{contestId:c})).contest.cover.id,image.id);
+});
+
+test('v3 developer participates normally, preview masks moderation state and medals use the existing worn slot',async()=>{
+ const c=await event({minEntries:1});const own=await submit(owner,c),other=await submit(users[0],c);
+ await voting(c);await assert.rejects(vote(owner,c,own),{code:'contest_self_vote'});
+ await vote(owner,c,other);await vote(users[0],c,own);
+ const rows=(await call(owner,'contests.entries',{contestId:c,seed:randomUUID(),preview:true})).entries;
+ assert(rows.every(e=>e.votes===null));
+ await ending(c);await call(owner,'contests.manage',{contestId:c,operation:'announce',reason:'公布同票获奖'});
+ const collection=await call(owner,'contests.profile',{kind:'champion'});
+ assert.equal(collection.stats.medalCounts.champion,1);assert.equal(collection.awards.length,1);
+ await call(owner,'contests.wear',{awardId:collection.awards[0].id});
+ const identity=(await call(owner,'me')).user.badges;
+ assert.equal(identity.official.code,'developer');assert.equal(identity.worn.code,'contest_champion');
+ await call(owner,'honors.wear',{honor:null,showcase:['arrival']});
+ assert.equal((await call(owner,'me')).user.badges.worn.code,'contest_champion');
+ await call(owner,'contests.wear',{awardId:null});
+ assert.equal((await call(owner,'me')).user.badges.worn,null);
+});

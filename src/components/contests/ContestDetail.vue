@@ -9,6 +9,8 @@ import {
   type ContestEntry,
 } from "../../services/contests";
 import { primaryContestAction, contestDate } from "../../domain/contests";
+import ContestProgress from "./ContestProgress.vue";
+import ContestCover from "./ContestCover.vue";
 import ContestEntryCard from "./ContestEntryCard.vue";
 const props = defineProps<{
   contest: Contest;
@@ -23,6 +25,7 @@ const props = defineProps<{
   home?: boolean;
   mineReady?: boolean;
   legacyEligibility?: boolean;
+  readonly?: boolean;
 }>();
 const emit = defineEmits<{
   primary: [];
@@ -39,12 +42,7 @@ const pictures = computed(() =>
 <template>
   <section class="ct-event">
     <div class="ct-hero" :class="{ 'has-cover': contest.cover?.url }">
-      <img
-        v-if="contest.cover?.url"
-        :src="contest.cover.url"
-        alt="赛事封面"
-        class="ct-hero-image"
-      />
+      <ContestCover v-if="contest.cover" :contest="contest" class="ct-hero-image"/>
       <div class="ct-hero-copy">
         <div class="ct-eyebrow">
           <span>{{ home ? "正在邯院发生" : contest.type }}</span
@@ -66,7 +64,7 @@ const pictures = computed(() =>
         </div>
         <button
           class="ct-primary ct-main-action"
-          :disabled="contest.paused"
+          :disabled="contest.paused || readonly"
           @click="emit('primary')"
         >
           {{
@@ -77,6 +75,7 @@ const pictures = computed(() =>
         </button>
       </div>
     </div>
+    <ContestProgress :contest="contest" :now="now"/>
     <details id="contest-rules" class="ct-rules">
       <summary>主题介绍、规则与奖励</summary>
       <h3>完整主题</h3>
@@ -146,12 +145,16 @@ const pictures = computed(() =>
     </div>
     <p v-if="loading" role="status" class="ct-loading">作品加载中…</p>
     <div v-else-if="!entries.length" class="ct-empty">
-      <h3>{{ winners ? "暂无获奖作品" : "第一件作品，也许来自你" }}</h3>
+      <h3>{{ winners ? "暂无正式获奖作品" : phase === "reviewing" ? "作品正在审核" : phase === "draft" || phase === "upcoming" ? "投稿开始后，在这里看见作品" : phase === "ended" || phase === "cancelled" ? "本场没有公开作品" : "还没有作品，来投第一件" }}</h3>
       <p>
         {{
           winners
             ? "作品不足门槛或没有有效票时，保留参赛纪念。"
-            : "分享一份校园生活，让这场比赛热闹起来。"
+            : phase === "draft" || phase === "upcoming"
+              ? "投稿开始：" + contestDate(contest.startsAt) + "（北京时间）"
+              : phase === "reviewing" ? "审核完成后会公布结果。"
+              : phase === "ended" || phase === "cancelled" ? "已撤回或下架的记录仍由后台保留。"
+              : "查看规则后，提交你的校园作品。"
         }}
       </p>
     </div>

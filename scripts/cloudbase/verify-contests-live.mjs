@@ -21,8 +21,8 @@ const admin=(a,b)=>core.execute(a,b,ownerProxy,'deployment-contest');
 const users=[],ids=[];let timer;
 const checks=[];
 try{
- const capability=await fetch(base+'config').then(r=>r.json());assert.equal(capability.contestsEnabled,true);assert.equal(capability.schema,14);
- checks.push('live schema14 and theme contests enabled');
+ const capability=await fetch(base+'config').then(r=>r.json());assert.equal(capability.contestsEnabled,true);assert.equal(capability.schema,15);
+ checks.push('live schema15 and theme contests enabled');
  for(let i=0;i<3;i++){
   const password=randomBytes(24).toString('base64url');
   const result=await core.execute('register',{username:'smoke_event_'+randomBytes(6).toString('hex'),nickname:'赛事部署联调'+i,password,agreed:true},'','deployment-contest');users.push({...result,password});
@@ -67,7 +67,7 @@ try{
  await admin('contests.manage',{contestId:cid,operation:'cancel',reason:'临时部署联调结束，取消并清理'});
  assert.equal((await http('contests.vote',{contestId:cid,entryId:other.entry.id,enabled:false},users[0].sessionToken)).status,409);
  checks.push('violation revocation, synchronized honors and cancelled-event write rejection');
- writeFileSync('artifacts/community-live-verification.json',JSON.stringify({source:process.env.GITHUB_SHA,service:'hyt-community',schema:14,contestsEnabled:true,scheduler:'SCF one-off plus daily recovery',checks,apkPublished:false,updateChannelChanged:false},null,2));
+ writeFileSync('artifacts/community-live-verification.json',JSON.stringify({source:process.env.GITHUB_SHA,service:'hyt-community',schema:15,contestsEnabled:true,scheduler:'SCF one-off plus daily recovery',checks,apkPublished:false,updateChannelChanged:false},null,2));
  console.log('Live contest verification passed: '+checks.join('; '));
 }finally{
  if(timer)await scheduler.remove(timer.name).catch(()=>{});

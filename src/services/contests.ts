@@ -1,4 +1,4 @@
-import { treeholeRequest, type TreeholeImage } from "./treehole";
+import { treeholeRequest, type TreeholeResult, type TreeholeImage } from "./treehole";
 export interface Contest {
   id: string;
   title: string;
@@ -25,6 +25,11 @@ export interface Contest {
   entryCount: number;
   participantCount: number;
   coverPostId: string | null;
+  coverImageId?: string | null;
+  coverPosition?: number;
+  visibility?: "visible" | "hidden" | "deleted";
+  removedAt?: string | null;
+  removalReason?: string | null;
   cover?: TreeholeImage | null;
 }
 export interface ContestAward {
@@ -66,6 +71,8 @@ export interface ContestTheme {
   merged_into?: string | null;
 }
 export interface ContestAudit {
+  actor_id?:string|null;
+  snapshot?:{associations?:{entries:number;votes:number;awards:number}};
   id: string;
   action: string;
   reason: string;
@@ -81,6 +88,7 @@ export interface ContestVote {
   risk: string | null;
 }
 export interface ContestResult {
+  updatedIdentity?:TreeholeResult["updatedIdentity"];
   contests?: Contest[];
   contest?: Contest;
   entries?: ContestEntry[];
@@ -89,7 +97,7 @@ export interface ContestResult {
   receivedAt?: number;
   myEntries?: ContestEntry[];
   votesUsed?: number;
-  stats?: { participations: number; champions: number; podiums: number };
+  stats?: { participations: number; champions: number; podiums: number; medalCounts?: Record<string,number> };
   awards?: ContestAward[];
   worn?: string | null;
   annual?: number[];

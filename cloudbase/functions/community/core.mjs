@@ -192,12 +192,14 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
    }
   }
   if(contestActions.includes(action))await rate('contest:'+tokenHash,120,60);
-  if(scheduler&&((action==='contests.save')||(action==='contests.manage'&&['publish','resume'].includes(b.operation))||(action==='contests.review'&&['entry','vote'].includes(b.kind)))){
+  if(scheduler&&((action==='contests.save')||(action==='contests.manage'&&['publish','resume','restore'].includes(b.operation))||(action==='contests.review'&&['entry','vote'].includes(b.kind)))){
    const plan=await call('contests.schedule',{contestId:b.contestId},tokenHash);
    const contest=plan.contest||(action==='contests.save'&&b.publish?{...b,id:b.contestId,published:true}:null);
    const needed=action==='contests.save'?(b.publish||contest?.published):
-    action==='contests.manage'?['publish','resume'].includes(b.operation):contest?.published;
-   if(needed&&contest){
+    action==='contests.manage'?['publish','resume','restore'].includes(b.operation):contest?.published;
+   const visible=(!contest?.visibility||contest.visibility==='visible');
+   const lifecycleAllowed=action==='contests.manage'&&b.operation==='restore'?!visible:visible;
+   if(needed&&contest&&lifecycleAllowed){
     try{await scheduler.ensure(action==='contests.save'?{...contest,awardAt:b.awardAt,autoPublish:b.autoPublish}:contest)}
     catch{fail('contest_scheduler_unavailable',503)}
    }
@@ -220,6 +222,7 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
    if((action==='notifications.unread'||action==='notifications.list')&&input.withMessages===true)b.withMessages=true;
    r=await call(action,b,tokenHash);
   }
+  if(action==='me'&&!r.config)r.config=config();
   // Cursor pages never include excess records or private credential fields.
   delete r.passwordHash;delete r.recoveryHash;
   if(r.posts){const rows=r.posts;r.posts=rows.slice(0,20);r.next=rows.length>20?{beforeTime:r.posts.at(-1).createdAt,beforeId:r.posts.at(-1).id,beforeRank:r.posts.at(-1).rank,snapshotTime:r.snapshotTime}:null;}
@@ -259,6 +262,6 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- function config(){return {contestsEnabled,registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:contestsEnabled?14:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ function config(){return {contestsEnabled,registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:contestsEnabled?15:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
  return {execute,config};
 }

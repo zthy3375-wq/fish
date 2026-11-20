@@ -8,13 +8,16 @@ import {
   type ContestResult,
   type ContestEntry,
 } from "../../services/contests";
-import { treeholeError } from "../../services/treehole";
+import { contestDate } from "../../domain/contests";
+import { treeholeError,treeholeErrorCode } from "../../services/treehole";
 import ContestDialog from "./ContestDialog.vue";
-const props = defineProps<{ owner: string; contest: Contest }>();
+const props = defineProps<{ owner: string; contest: Contest; backendSchema?:number }>();
 const emit = defineEmits<{
   updated: [contest: Contest];
   edit: [];
   work: [entry: ContestEntry];
+  preview: [];
+  removed: [contest:Contest];
 }>();
 const data = ref<ContestResult>({}),
   error = ref(""),
@@ -94,7 +97,7 @@ async function run(work: () => Promise<void>) {
   try {
     await work();
   } catch (e) {
-    if (alive) error.value = treeholeError(e);
+    if (alive) {error.value = treeholeError(e);if(treeholeErrorCode(e)==="contest_changed"){operation.value=undefined;void load().catch(()=>{});}}
   } finally {
     if (alive) busy.value = false;
   }
@@ -107,6 +110,8 @@ function manage(op: string, title: string, danger = false) {
       contestId: props.contest.id,
       operation: op,
       requestId: crypto.randomUUID(),
+      ...(["remove","restore"].includes(op)?{expectedVersion:props.contest.version}:{}),
+      ...(op==="remove"?{expectedCounts:{entries:data.value.metrics?.entries??0,votes:data.value.metrics?.votes??0,awards:data.value.metrics?.awards??0}}:{}),
     },
     title,
     danger,
@@ -131,10 +136,8 @@ async function confirm() {
   if (!operation.value || reason.value.trim().length < 2) return;
   const op = operation.value;
   await run(async () => {
-    const r = await contestRequest(props.owner, op.action, {
-      ...op.body,
-      reason: reason.value,
-    });
+    op.body.reason ??= reason.value;
+    const r = await contestRequest(props.owner, op.action, op.body);
     if (!alive) return;
     if (r.contest) emit("updated", r.contest);
     if (r.entry)
@@ -142,6 +145,7 @@ async function confirm() {
         e.id === r.entry!.id ? r.entry! : e,
       );
     operation.value = undefined;
+    if(op.body.operation==="remove" && r.contest){emit("removed",r.contest);return;}
     notice.value = "处理已确认";
     try {
       await load();
@@ -164,6 +168,7 @@ onMounted(() => run(() => load()));
 </script>
 <template>
   <section>
+    <p v-if="contest.visibility && contest.visibility!=='visible'" class="ct-notice">{{contest.visibility==='hidden'?'这场赛事已下架':'这场赛事已移入回收站'}}。原始数据仍然保留。</p>
     <p class="ct-subtitle">{{ contest.title }}</p>
     <h2>{{ contest.paused ? "比赛已暂停" : contestLabels[contest.state] }}</h2>
     <p v-if="error" role="alert" class="ct-error">{{ error }}</p>
@@ -199,22 +204,23 @@ onMounted(() => run(() => load()));
       </div>
     </div>
     <button
-      v-if="contest.state === 'draft'"
+      v-if="(!contest.visibility||contest.visibility==='visible') && contest.state === 'draft'"
       class="ct-primary"
       :disabled="busy"
       @click="manage('publish', '发布这场赛事？')"
     >
       发布赛事</button
     ><button
-      v-else-if="contest.state === 'reviewing'"
+      v-else-if="(!contest.visibility||contest.visibility==='visible') && contest.state === 'reviewing'"
       class="ct-primary"
       :disabled="busy"
       @click="manage('announce', '审核并公布结果？')"
     >
       审核并公布结果
     </button>
+    <button v-if="!contest.visibility||contest.visibility==='visible'" class="ct-secondary ct-more" :disabled="busy" @click="emit('preview')">预览普通用户视角</button>
     <div class="ct-pair">
-      <button class="ct-link" :disabled="busy" @click="emit('edit')">
+      <button v-if="(!contest.visibility||contest.visibility==='visible') && !['cancelled','ended'].includes(contest.state)" class="ct-link" :disabled="busy" @click="emit('edit')">
         编辑日程与规则</button
       ><button class="ct-link" :disabled="busy" @click="run(() => load())">
         刷新统计
@@ -367,6 +373,7 @@ onMounted(() => run(() => load()));
     </details>
     <details class="ct-rules">
       <summary>更多赛事操作</summary>
+      <template v-if="!contest.visibility||contest.visibility==='visible'">
       <div class="ct-pair">
         <button
           v-if="contest.state !== 'ended' && contest.state !== 'cancelled'"
@@ -388,7 +395,11 @@ onMounted(() => run(() => load()));
           取消赛事
         </button>
       </div>
-      <button class="ct-link" @click="emit('edit')">延长尚未结束的阶段</button>
+      <button v-if="!['cancelled','ended'].includes(contest.state)" class="ct-link" @click="emit('edit')">延长尚未结束的阶段</button>
+      <button v-if="(backendSchema||13)>=15" class="ct-link ct-danger-text" :disabled="busy||data.metrics?.awards===undefined" @click="manage('remove', (data.metrics?.entries||data.metrics?.votes||data.metrics?.awards)?'下架这场赛事？':'删除这场赛事？',true)">{{(data.metrics?.entries||data.metrics?.votes||data.metrics?.awards)?'下架赛事':'删除赛事'}}</button>
+      <p v-else class="ct-subtitle">清理功能需后台升级后启用，现有数据不会改变。</p>
+      </template>
+      <button v-else class="ct-secondary" :disabled="busy" @click="manage('restore','恢复这场赛事？')">恢复赛事</button>
     </details>
     <details class="ct-rules">
       <summary>资源统计</summary>
@@ -400,6 +411,11 @@ onMounted(() => run(() => load()));
       <small
         >投稿和票记录包含撤回与下架；图片仅统计直接附在赛事作品上的资源。这些是数据规模参考，不是腾讯云账单。</small
       >
+    </details>
+    <details class="ct-rules">
+      <summary>删除与恢复记录</summary>
+      <p v-if="!data.audit?.some(a=>['remove','restore'].includes(a.action))" class="ct-subtitle">当前页没有清理记录，可继续读取较早的管理记录。</p>
+      <article v-for="a in data.audit?.filter(a=>['remove','restore'].includes(a.action))" :key="a.id" class="ct-section"><strong>{{a.action==='restore'?'恢复赛事':'移入回收站'}}</strong><p>{{a.reason}}</p><small>{{contestDate(a.created_at,true)}} · 北京时间</small><p v-if="a.snapshot?.associations">投稿{{a.snapshot.associations.entries}} · 投票{{a.snapshot.associations.votes}} · 奖项{{a.snapshot.associations.awards}}</p></article>
     </details>
     <details class="ct-rules">
       <summary>操作审计</summary>
@@ -421,14 +437,15 @@ onMounted(() => run(() => load()));
       :title="operation?.title || ''"
       :danger="operation?.danger"
       :busy="busy"
-      confirm="确认处理"
+      :confirm="operation?.body.operation==='remove'?'移入回收站':operation?.body.operation==='restore'?'确认恢复':'确认处理'"
       @cancel="operation = undefined"
       @confirm="confirm"
-      ><p>操作会记录在管理审计中。取消或撤销资格后，荣誉和档案会同步更新。</p>
+      ><div v-if="['remove','restore'].includes(String(operation?.body.operation))" class="ct-removal-summary"><strong>{{contest.title}}</strong><p>{{contestLabels[contest.state]}} · {{data.metrics?.entries??'—'}} 条投稿 · {{data.metrics?.votes??'—'}} 条投票 · {{data.metrics?.awards??'—'}} 条奖励</p><p>{{operation?.body.operation==='restore'?'恢复原始记录及公开展示，不会重新颁发奖励。':'从公开列表、档案和榜单隐藏，所有原始数据仍然保留，可在回收站恢复。'}}</p></div><p v-else>操作会记录在管理审计中。取消或撤销资格后，荣誉和档案会同步更新。</p>
       <label class="ct-form"
         >处理原因<textarea
           style="resize: none"
           v-model="reason"
+          :disabled="busy || !!operation?.body.reason"
           rows="3"
           maxlength="300"
           placeholder="填写原因，至少两个字"

@@ -14,6 +14,7 @@ const props = defineProps<{
   now: number;
   votesUsed: number;
   pending?: boolean;
+  readonly?: boolean;
 }>();
 defineEmits<{
   vote: [];
@@ -49,7 +50,7 @@ const phase = computed(() => contestStage(props.contest, props.now));
     <p v-if="entry.status !== 'approved'" class="ct-muted">
       {{ entry.status === "withdrawn" ? "作品已撤回" : "作品已下架" }}
     </p>
-    <p v-if="entry.votes !== null" class="ct-final-votes">
+    <p v-if="phase === 'ended' && entry.votes !== null" class="ct-final-votes">
       最终 {{ entry.votes }} 票
     </p>
     <div
@@ -70,7 +71,7 @@ const phase = computed(() => contestStage(props.contest, props.now));
           :class="{ 'is-voted': entry.voted }"
           :aria-pressed="entry.voted"
           :disabled="
-            pending || (!entry.voted && votesUsed >= contest.votesPerUser)
+            readonly || pending || (!entry.voted && votesUsed >= contest.votesPerUser)
           "
           @click="$emit('vote')"
         >
@@ -82,7 +83,7 @@ const phase = computed(() => contestStage(props.contest, props.now));
     </div>
     <div
       v-if="
-        entry.mine &&
+        !readonly && entry.mine &&
         phase === 'submitting' &&
         !contest.paused &&
         entry.status === 'approved'
@@ -95,7 +96,7 @@ const phase = computed(() => contestStage(props.contest, props.now));
     <footer class="ct-work-links">
       <button v-if="entry.postId" class="ct-link" @click="$emit('post')">
         查看原帖</button
-      ><button v-if="!entry.mine" class="ct-link" @click="$emit('report')">
+      ><button v-if="!readonly && !entry.mine" class="ct-link" @click="$emit('report')">
         <Flag :size="15" />举报作品
       </button>
     </footer>

@@ -41,6 +41,7 @@ async function load(append = false, fresh = false) {
       mode.value === "year"
         ? { year: year.value || currentYear, offset: append ? offset + 20 : 0 }
         : {
+            scope:"archive",
             year: year.value,
             type: type.value.trim(),
             offset: append ? offset + 20 : 0,
@@ -92,9 +93,7 @@ onActivated(() => load());
         {{ label }}
       </button>
     </div>
-    <button class="ct-link" :disabled="busy" @click="load(false, true)">
-      刷新档案
-    </button>
+
     <form class="ct-form" novalidate @submit.prevent="load()">
       <div class="ct-pair">
         <label

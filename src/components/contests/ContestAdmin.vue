@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { contestRequest, type Contest } from "../../services/contests";
-import { treeholeError, type TreeholePost } from "../../services/treehole";
+import { treeholeRequest, treeholeError, type TreeholePost } from "../../services/treehole";
 import {
   contestSchedule,
   contestDate,
   beijingISO,
   beijingInput,
 } from "../../domain/contests";
+import {prepareTreeholeImage} from "../../services/treeholeDrafts";
+import type {DraftImage} from "../../services/treeholeDrafts";
 import ContestPostPicker from "./ContestPostPicker.vue";
 import ContestDialog from "./ContestDialog.vue";
 const props = defineProps<{
@@ -28,6 +30,8 @@ const defaults = {
   rules:
     "原创投稿，尊重隐私，禁止自投。同票并列，下一名次连续排列。满足公布的有效作品门槛且有有效票时颁发前三；有效参赛者保留纪念。",
   coverPostId: null as string | null,
+  coverImageId:null as string|null,
+  coverPosition:50,
   ...contestSchedule(7),
   formats: ["image", "mixed", "text"],
   maxEntries: 1,
@@ -54,6 +58,7 @@ onBeforeUnmount(() => {
 });
 watch(form, () => (dirty.value = true), { deep: true });
 const requestId = ref(crypto.randomUUID());
+const coverPhoto=ref<DraftImage>(),coverState=ref("");
 const fields = {
   startsAt: "投稿开始",
   submissionEnds: "投稿截止",
@@ -78,7 +83,14 @@ function setTime(key: keyof typeof fields, event: Event) {
     error.value = "请检查日程时间";
   }
 }
+async function pickFile(event:Event){
+ const el=event.target as HTMLInputElement;if(!el.files?.[0]||busy.value||pending.value)return;
+ busy.value=true;error.value="";coverState.value="正在压缩…";
+ try{const photo=await prepareTreeholeImage(el.files[0]);if(!alive)return;coverPhoto.value=photo;cover.value='data:image/jpeg;base64,'+photo.data;form.value.coverPostId=null;form.value.coverImageId=null;coverState.value="已准备，发布时上传";}catch(e){if(alive)error.value=treeholeError(e);}finally{el.value="";if(alive)busy.value=false;}
+}
+function clearCover(){form.value.coverPostId=null;form.value.coverImageId=null;coverPhoto.value=undefined;cover.value="";coverState.value="";}
 function pickCover(post: TreeholePost) {
+  coverPhoto.value=undefined;form.value.coverImageId=null;
   form.value.coverPostId = post.id;
   cover.value = post.images?.[0]?.url || "";
 }
@@ -97,7 +109,7 @@ async function save(publish: boolean) {
   error.value = "";
   const f = form.value;
   if (
-    !f.title.trim() ||
+    f.title.trim().length<2 ||
     !f.description.trim() ||
     !f.rules.trim() ||
     !f.formats.length ||
@@ -106,11 +118,11 @@ async function save(publish: boolean) {
     error.value = "请填写名称、介绍、规则，选择投稿类型，并检查时间先后。";
     return;
   }
+  if(!props.contest&&!manualTimes.value&&Date.parse(f.startsAt)<Date.now()&&!pending.value){Object.assign(f,contestSchedule(duration.value||customDays.value));error.value="原定开始时间已过，已更新为下一合理时段，请核对日程后再发布。";return;}
   busy.value = true;
   try {
+    if(coverPhoto.value&&!coverPhoto.value.remote){coverState.value="封面上传中…";const result=await treeholeRequest("media.upload",{data:coverPhoto.value.data,requestId:coverPhoto.value.id});if(!alive)return;if(!result.image)throw Error("image_unavailable");coverPhoto.value.remote=result.image;f.coverImageId=result.image.id;coverState.value="封面已上传";}
     if (!pending.value) {
-      if (!props.contest && !manualTimes.value)
-        Object.assign(f, contestSchedule(duration.value || customDays.value));
       pending.value = {
         ...f,
         formats: [...f.formats],
@@ -187,34 +199,15 @@ defineExpose({ requestBack });
           :disabled="busy || !!pending"
         />
       </label>
-      <div>
-        <span class="ct-subtitle">赛事封面（可选）</span
-        ><img
-          v-if="cover"
-          :src="cover"
-          alt="赛事封面预览"
-          style="
-            width: 100%;
-            aspect-ratio: 16/8;
-            object-fit: cover;
-            border-radius: 12px;
-          "
-        /><ContestPostPicker
-          image-only
-          :disabled="busy || !!pending"
-          @choose="pickCover"
-        /><button
-          v-if="form.coverPostId"
-          type="button"
-          class="ct-link"
-          :disabled="busy || !!pending"
-          @click="
-            form.coverPostId = null;
-            cover = '';
-          "
-        >
-          移除封面
-        </button>
+      <div class="ct-cover-picker">
+        <span class="ct-subtitle">赛事封面（可选）</span>
+        <img v-if="cover" :src="cover" class="ct-cover-preview" :style="{objectPosition:'50% '+form.coverPosition+'%'}" alt="赛事封面裁切预览"/>
+        <label v-if="(backendSchema||13)>=15" class="ct-upload">{{cover?'更换封面':'上传封面'}}<input type="file" accept="image/*" :disabled="busy||!!pending" @change="pickFile"/></label>
+        <label v-if="cover&&(backendSchema||13)>=15">封面裁切位置<input type="range" min="0" max="100" step="1" v-model.number="form.coverPosition" :disabled="busy||!!pending"/></label>
+        <p v-if="coverState" class="ct-subtitle" role="status">{{coverState}}</p>
+        <details v-if="(backendSchema||13)>=15"><summary>从已有帖子选择封面</summary><ContestPostPicker image-only :disabled="busy||!!pending" @choose="pickCover"/></details>
+        <template v-else><ContestPostPicker image-only :disabled="busy||!!pending" @choose="pickCover"/><small class="ct-subtitle">独立封面上传需后台升级后启用。</small></template>
+        <button v-if="cover" type="button" class="ct-link" :disabled="busy||!!pending" @click="clearCover">移除封面</button>
       </div>
       <fieldset class="ct-options" :disabled="busy || !!pending || !!contest">
         <legend>比赛持续时间</legend>
@@ -246,12 +239,12 @@ defineExpose({ requestBack });
       </fieldset>
       <div class="ct-schedule">
         <h3>{{ contest ? "日程" : "日程预览" }} · 北京时间</h3>
-        <p v-for="(name, key) in fields" :key="key">
+        <p v-for="(name, key) in {startsAt:'投稿开始',votingStarts:'投票开始',awardAt:'公布结果'}" :key="key">
           <span>{{ name }}</span
           ><span>{{ contestDate(form[key]) }}</span>
         </p>
         <small v-if="!contest && !manualTimes"
-          >发布时开始，自动安排投稿、投票和结果审核阶段。</small
+          >按校园作息安排，完整日程可在高级设置中调整。</small
         >
       </div>
       <details>
