@@ -526,8 +526,8 @@ onMounted(() => run(() => load()));
         <p v-else>赛事将从公开列表移除，可在回收站恢复。</p>
       </div>
       <p v-else>操作会记录在管理审计中。</p>
-      <label class="ct-form">
-        处理原因<span v-if="cleanup">（选填）</span>
+      <label class="ct-form ct-manage-reason" :class="{ 'is-optional': cleanup }">
+        <span>{{ cleanup ? "处理原因（选填）" : "处理原因" }}</span>
         <textarea
           v-model="reason"
           :disabled="busy || !!operation?.body.reason"

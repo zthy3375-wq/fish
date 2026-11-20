@@ -757,3 +757,12 @@
 .ct-removal-summary p {
   margin-top: 4px;
 }
+
+.ct-manage-reason {
+  gap: 7px;
+}
+.ct-manage-reason.is-optional textarea {
+  min-height: 66px;
+  padding-block: 8px;
+  line-height: 1.45;
+}
