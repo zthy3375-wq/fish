@@ -7,7 +7,7 @@ import {
   watch,
   nextTick,
 } from "vue";
-import { Trophy, ChevronRight, Plus } from "lucide-vue-next";
+import { Trophy, ChevronRight, Plus, ArchiveRestore } from "lucide-vue-next";
 import {
   contestRequest,
   contestStage,
@@ -70,6 +70,7 @@ const votesUsed = ref(0),
   winners = ref(false),
   more = ref(false),
   moreContests = ref(false),
+  adminBusy = ref(false),
   loading = ref(false),
   wallLoading = ref(false),
   mineReady = ref(true),
@@ -528,24 +529,44 @@ async function finishAdmin(id: string, known?: Contest) {
   notice.value = "赛事已保存";
   void nextTick(() => window.scrollTo({ top: 0, behavior: "instant" }));
 }
-async function adminList(append=false,fresh=false) {
-  const r=await call("contests.list",{scope:"manage",offset:append?managed.value.length:0},fresh);
-  managementMore.value=(r.contests?.length||0)>20;
-  managed.value=[...(append?managed.value:[]),...(r.contests||[]).slice(0,20)];
+async function adminList(append = false, fresh = false) {
+  if (adminBusy.value) return;
+  adminBusy.value = true;
+  try {
+    const r = await call("contests.list", { scope: "manage", offset: append ? managed.value.length : 0 }, fresh);
+    if (view.value !== "admin") return;
+    managementMore.value = (r.contests?.length || 0) > 20;
+    managed.value = [...(append ? managed.value : []), ...(r.contests || []).slice(0, 20)];
+  } finally {
+    adminBusy.value = false;
+  }
 }
-function adminHome(){go("admin");void run(()=>adminList());}
+function adminHome() {
+  go("admin");
+  void run(() => adminList());
+}
 async function openPreview(){
   if(!selected.value)return;
   const id=selected.value.id;go("detail");preview.value=true;
   await run(()=>loadEvent(id));
 }
 function endPreview(){preview.value=false;popRoute();}
-async function removed(c:Contest){
-  updateEvent(c);contests.value=contests.value.filter(x=>x.id!==c.id);
-  history.splice(0);view.value="admin";selected.value=undefined;
-  notice.value="已移入回收站，原始记录仍然保留。";
-  void nextTick(()=>window.scrollTo({top:0,behavior:"instant"}));
-  await run(()=>adminList(false,true));
+async function removed(contest: Contest) {
+  managed.value = managed.value.filter((item) => item.id !== contest.id);
+  contests.value = contests.value.filter((item) => item.id !== contest.id);
+  for (const previous of history) {
+    previous.contests = previous.contests?.filter((item: Contest) => item.id !== contest.id);
+    if (previous.selected?.id === contest.id) previous.selected = undefined;
+  }
+  if (history.at(-1)?.view === "admin") popRoute();
+  else view.value = "admin";
+  selected.value = undefined;
+  notice.value = contest.visibility === "hidden" ? "赛事已下架，可在回收站恢复。" : "赛事已移入回收站。";
+  await run(() => adminList(false, true));
+}
+function restored() {
+  if (history.at(-1)?.view === "trash") popRoute();
+  notice.value = "赛事已恢复。";
 }
 function manage() {
   go("manage");
@@ -593,7 +614,11 @@ function requestBack() {
   if (child.value?.requestBack()) return true;
   return popRoute();
 }
-defineExpose({ requestBack, snapshot, refresh:()=>run(()=>view.value==="home"?home(true):view.value==="admin"?adminList(false,true):selected.value?loadEvent(selected.value.id,true):home(true)) });
+function refresh() {
+  return run(() => view.value === "admin" ? adminList(false, true) :
+    view.value === "home" || !selected.value ? home(true) : loadEvent(selected.value.id, true));
+}
+defineExpose({ requestBack, snapshot, refresh });
 onMounted(() => {
   if (props.restore?.owner === props.user.id && !props.compact) {
     restore(props.restore);
@@ -626,9 +651,7 @@ onMounted(() => {
       }}<button
         v-if="!['compose', 'create', 'edit'].includes(view)"
         class="ct-link"
-        @click="
-          run(() => (selected ? loadEvent(selected.id, true) : home(true)))
-        "
+        @click="refresh"
       >
         重试
       </button>
@@ -707,11 +730,14 @@ onMounted(() => {
         v-if="view === 'archive'"
         :owner="user.id"
         @open="open" /></KeepAlive
-    ><template v-if="view === 'admin' && admin"
-      ><h2>赛事管理中心</h2>
-      <button class="ct-primary ct-more" @click="go('create')">
-        <Plus :size="17" />创建赛事</button
-      ><button
+    ><template v-if="view === 'admin' && admin">
+      <div class="ct-manage-actions ct-admin-actions">
+        <button class="ct-primary" @click="go('create')"><Plus :size="17" aria-hidden="true" />创建赛事</button>
+        <button v-if="(backendSchema || 13) >= 15" class="ct-secondary" @click="go('trash')"><ArchiveRestore :size="17" aria-hidden="true" />回收站</button>
+      </div>
+      <p v-if="adminBusy && !managed.length" class="ct-loading" role="status">正在读取赛事…</p>
+      <p v-else-if="!managed.length && !error" class="ct-subtitle">暂无赛事</p>
+      <button
         v-for="c in managed"
         :key="c.id"
         class="ct-row"
@@ -726,11 +752,11 @@ onMounted(() => {
       ><button
         v-if="managementMore"
         class="ct-secondary ct-more"
-        :disabled="loading"
+        :disabled="adminBusy"
         @click="run(() => adminList(true))"
       >
         更多管理赛事</button
-      ><button v-if="(backendSchema||13)>=15" class="ct-link" @click="go('trash')">回收站</button><p v-else class="ct-subtitle">赛事清理与回收站将在后台升级后启用。</p><button class="ct-link" @click="go('themes')">
+      ><p v-if="(backendSchema || 13) < 15" class="ct-subtitle">赛事清理与回收站将在后台升级后启用。</p><button class="ct-link" @click="go('themes')">
         管理主题征集
       </button></template
     ><ContestAdmin
@@ -750,6 +776,7 @@ onMounted(() => {
       :backend-schema="backendSchema"
       @preview="openPreview"
       @removed="removed"
+      @restored="restored"
       @updated="updateEvent"
       @edit="go('edit')"
       @work="openWork"
