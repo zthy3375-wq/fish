@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {ref,computed,onMounted,onUnmounted,onActivated,onDeactivated,watch,nextTick} from 'vue';
-import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ChevronLeft,Bell,BellOff,MessagesSquare,ChevronDown,ChartNoAxesColumnIncreasing,CalendarPlus,Award,Settings} from 'lucide-vue-next';
+import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ChevronLeft,Bell,BellOff,MessagesSquare,ChevronDown,ChartNoAxesColumnIncreasing,CalendarPlus,Award,Settings,Users} from 'lucide-vue-next';
 import TreeholeMessages from './TreeholeMessages.vue';
 import TreeholeAdmin from './TreeholeAdmin.vue';
+import TreeholeMemberDirectory from './TreeholeMemberDirectory.vue';
 const moderationEnabled=ref(false),adminTarget=ref<{postId:string;commentId?:string|null}|null>(null);
 import TreeholeUploadStatus from './TreeholeUploadStatus.vue';
 import {uploadTreeholeImages,type TreeholeUploadProgress} from '../services/treeholeUpload';
@@ -107,8 +108,8 @@ const searchOpen=ref(false),showPassword=ref(false),replyInput=ref<HTMLTextAreaE
 const dialogElement=ref<HTMLElement>(),dialogMotion=ref('th-sheet-motion');
 const user=ref<TreeholeUser|null>(null),busy=ref(false),ready=ref(false),error=ref(''),notice=ref('');
 const registration=ref(false),combinedUnread=ref(false),auth=ref<'login'|'register'|'recover'>('login');
-const username=ref(''),password=ref(''),nickname=ref(''),optionalRecovery=ref(''),recoveryInput=ref(''),recovery=ref('');
-type Screen='honors'|'honorAdmin'|'feed'|'compose'|'detail'|'account'|'moderate'|'inbox'|'profile'|'following'|'messages';
+const username=ref(''),password=ref(''),registrationNickname=ref(''),nickname=ref(''),optionalRecovery=ref(''),recoveryInput=ref(''),recovery=ref('');
+type Screen='memberDirectory'|'honors'|'honorAdmin'|'feed'|'compose'|'detail'|'account'|'moderate'|'inbox'|'profile'|'following'|'messages';
 const screen=ref<Screen>('feed');
 const engagementEnabled=ref(false),unreadCount=ref(0),notifications=ref<TreeholeNotification[]>([]),inboxFilter=ref('all'),inboxLoading=ref(false),inboxError=ref(''),inboxNext=ref<Record<string,string>|null>(null);
 const profile=ref<TreeholeProfile|null>(null),profilePosts=ref<TreeholePost[]>([]),profileNext=ref<Record<string,string>|null>(null),bio=ref('');
@@ -134,7 +135,7 @@ let alive=true,active=true;
 const identity=computed(()=>anonymous.value?'匿名同学':user.value?.nickname||'邯院通昵称');
 const forceCommentAnon=computed(()=>detail.value?.category==='treehole'||!!detail.value?.anonymous&&!!detail.value?.author.mine);
 function date(value:string){return treeholeTimestamp(value);}
-const title=computed(()=>({honors:'荣誉殿堂',honorAdmin:'身份管理',compose:'发帖',detail:'帖子详情',account:({overview:'我的社区',profile:'编辑资料',settings:'社区设置',password:'修改密码与恢复码',delete:'注销账号'})[accountAction.value],moderate:'社区管理',inbox:'互动消息',profile:'同学主页',following:peopleKind.value==='followers'?'我的粉丝':'我关注的人',messages:messageTitle.value,feed:'邯院社区'})[screen.value]);
+const title=computed(()=>({memberDirectory:'注册成员',honors:'荣誉殿堂',honorAdmin:'身份管理',compose:'发帖',detail:'帖子详情',account:({overview:'我的社区',profile:'编辑资料',settings:'社区设置',password:'修改密码与恢复码',delete:'注销账号'})[accountAction.value],moderate:'社区管理',inbox:'互动消息',profile:'同学主页',following:peopleKind.value==='followers'?'我的粉丝':'我关注的人',messages:messageTitle.value,feed:'邯院社区'})[screen.value]);
 const dialogOpen=computed(()=>!!(boardPicker.value||buddyRoster.value||menu.value||confirmAction.value||reportTarget.value||discard.value||gallery.value||replyExpanded.value));
 function publishTabNavigation(){emit('tabNavigation',screen.value==='feed'&&!recovery.value&&!dialogOpen.value);}
 watch([screen,recovery,dialogOpen],publishTabNavigation,{immediate:true});
@@ -387,9 +388,11 @@ async function initialize(){await run(async()=>{
 });}
 function authenticate(){void run(async()=>{
  const mode=auth.value;
- const payload={username:username.value,password:password.value,...(mode==='register'?{agreed:true}:{}),...(mode==='recover'?{recoveryCode:recoveryInput.value}:{})};
+ const publicName=registrationNickname.value.trim().normalize('NFC');
+ if(mode==='register'&&(publicName.length<2||publicName.length>20))throw Error('invalid_nickname');
+ const payload={username:username.value,password:password.value,...(mode==='register'?{agreed:true,nickname:publicName}:{}),...(mode==='recover'?{recoveryCode:recoveryInput.value}:{})};
  const r=await api(mode,payload);
- password.value='';recoveryInput.value='';if(!alive||!r.user)return;
+ password.value='';registrationNickname.value='';recoveryInput.value='';if(!alive||!r.user)return;
  user.value=r.user;nickname.value=r.user.nickname;optionalRecovery.value=mode==='register'?r.recoveryCode||'':'';
  recovery.value=mode==='recover'?r.recoveryCode||'':'';screen.value='feed';posts.value=[];scope.value='all';query.value='';
  await Promise.all([feed(),restoreDraft()]);void refreshUnread();
@@ -631,11 +634,12 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
       <form class="th-card th-auth" @submit.prevent="authenticate">
        <div class="th-form-heading"><h3>{{auth==='login'?'登录邯院通':auth==='register'?'创建邯院通账号':'找回邯院通账号'}}</h3><span>与教务账号独立</span></div>
        <label>登录账号<input v-model="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" placeholder="中文、数字、邮箱或其他账号" required :disabled="busy"/></label>
+       <label v-if="auth==='register'">公开昵称<input v-model="registrationNickname" autocomplete="nickname" maxlength="20" minlength="2" placeholder="2–20 个字符" required :disabled="busy"/></label>
        <label v-if="auth==='recover'">账号恢复码<input v-model="recoveryInput" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="64" placeholder="注册时保存的恢复码" required :disabled="busy"/></label>
        <label>{{auth==='recover'?'新密码':'密码'}}<span class="th-password"><input v-model="password" :type="showPassword?'text':'password'" :autocomplete="auth==='login'?'current-password':'new-password'" minlength="10" maxlength="128" placeholder="至少 10 位" required :disabled="busy"/><button type="button" :aria-label="showPassword?'隐藏密码':'显示密码'" :disabled="busy" @click="showPassword=!showPassword"><EyeOff v-if="showPassword" :size="18"/><Eye v-else :size="18"/></button></span></label>
-       <p v-if="auth==='register'" class="th-muted">点击「创建账号」即同意下方社区规则。公开昵称会自动生成，可随时修改。</p>
+       <p v-if="auth==='register'" class="th-muted">点击「创建账号」即同意下方社区规则。社区会显示你填写的昵称，注册后可修改。</p>
        <button class="th-primary th-wide" type="submit" :disabled="busy||auth==='register'&&!registration">{{auth==='login'?'登录树洞':auth==='register'?'创建账号':'重设密码并登录'}}<ChevronRight :size="17"/></button>
-       <div class="th-auth-links"><button v-if="auth!=='register'&&registration" type="button" :disabled="busy" @click="auth='register';password='';showPassword=false;error=''">注册账号</button><button v-if="auth!=='login'" type="button" :disabled="busy" @click="auth='login';password='';showPassword=false;error=''">返回登录</button><button v-if="auth==='login'" type="button" :disabled="busy" @click="auth='recover';password='';showPassword=false;error=''">忘记密码</button></div>
+       <div class="th-auth-links"><button v-if="auth!=='register'&&registration" type="button" :disabled="busy" @click="auth='register';password='';registrationNickname='';showPassword=false;error=''">注册账号</button><button v-if="auth!=='login'" type="button" :disabled="busy" @click="auth='login';password='';showPassword=false;error=''">返回登录</button><button v-if="auth==='login'" type="button" :disabled="busy" @click="auth='recover';password='';showPassword=false;error=''">忘记密码</button></div>
        <p v-if="!registration" class="th-muted">新账号注册暂未开放，已有账号可以直接登录。</p>
       </form>
       <details class="th-rules"><summary><ShieldCheck :size="15"/>树洞规则与匿名说明</summary><p>尊重同学，勿发布他人隐私、辱骂、骚扰、垃圾广告或违法内容。可举报、删除自己的内容和注销账号。匿名会对其他用户隐藏昵称与账号，后台保留账号关联用于处理举报；不同帖子使用不同匿名代号。同一帖子内的匿名发言可关联。昵称发帖后改为匿名回复时，请留意内容本身是否暴露身份。</p><p>账号服务保存登录账号、昵称、密码加密摘要、帖子、关注关系、私信、互动与举报记录，用于登录及社区服务。私信不公开展示，内容存储在社区服务端；发送方和接收方使用邯院通昵称。教务账号与课表不会上传到社区。可以在账号设置中注销。</p></details>
@@ -668,6 +672,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
        <p v-else-if="posts.length" class="th-feed-end">暂时就这些，过一会儿再来看看吧</p>
 
       </template>
+      <TreeholeMemberDirectory v-else-if="screen==='memberDirectory'&&user.badges?.official?.code==='developer'" :request="api" @expired="clearAccount"/>
       <TreeholeMessages v-else-if="screen==='messages'" ref="messagesView" :initial-member="messageMember" :drafts="messageDrafts" @unread="messageUnread=$event" @expired="clearAccount" @title="messageTitle=$event" @blocked="feedNeedsRefresh=true;refreshSocial()"/>
       <TreeholeInbox v-else-if="screen==='inbox'" :messages-enabled="messagesEnabled" :message-unread="messageUnread" @messages="showMessages()" :items="notifications" :filter="inboxFilter" :loading="inboxLoading||busy" :error="inboxError" :more="!!inboxNext" :unread="unreadCount" @filter="filterInbox" @open="openNotification" @refresh="loadInbox()" @more="loadInbox(true)" @read="markVisibleRead"/>
       <TreeholeFollowing v-else-if="screen==='following'" :followers="peopleKind==='followers'" :people="following" :loading="followingLoading" :error="followingError" :more="!!followingNext" :disabled="busy" :pending="pendingFollows" :retry-more="followingRetryMore" @open="openProfile" @unfollow="setFollow($event,false)" @follow="setFollow($event,true)" @load="loadFollowing" @browse="accountFeed('all')"/>
@@ -738,6 +743,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
          <h2 id="account-admin-title">管理工具</h2>
          <div class="account-rows">
           <button :disabled="busy" @click="moderate"><ShieldCheck/><span>{{moderationEnabled?'管理中心':'处理举报'}}</span><ChevronRight/></button>
+          <button v-if="user.badges?.official?.code==='developer'" :disabled="busy" @click="rememberRoute();screen='memberDirectory'"><Users/><span>注册成员</span><ChevronRight/></button>
           <button v-if="honorsEnabled&&(user.badges?.official?.code==='developer'||user.caps?.some(c=>['recommend','users'].includes(c)))" :disabled="busy" @click="showHonorAdmin"><Award/><span>身份与荣誉管理</span><ChevronRight/></button>
          </div>
         </section>
