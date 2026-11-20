@@ -26,7 +26,7 @@ import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
 const Treehole=defineAsyncComponent(()=>import('./components/Treehole.vue'));
 const communityAccountEntry=ref(false);
-const treeholeRef=ref<{requestBack:()=>boolean;refresh:()=>void}>();
+const treeholeRef=ref<{requestBack:()=>boolean;refresh:()=>void;openContest:(id:string,entryId?:string)=>void}>();
 const treeholeTabNavigation=ref(true);
 const GlobalCollection=defineAsyncComponent(()=>import('./components/honors/GlobalCollection.vue'));
 const QuzhiWallet=defineAsyncComponent(()=>import('./components/QuzhiWallet.vue'));
@@ -753,7 +753,7 @@ onUnmounted(() => {
                 @conflict="showConflicts" @manage="manage()"
             />
           </template>
-          <GlobalCollection ref="globalCollectionRef" v-else-if="page==='profile'&&section==='honors'" @account="communityAccountEntry=true;nav('community')"/>
+          <GlobalCollection @contest="(id,entry)=>{nav('community');nextTick(()=>treeholeRef?.openContest(id,entry));}" ref="globalCollectionRef" v-else-if="page==='profile'&&section==='honors'" @account="communityAccountEntry=true;nav('community')"/>
           <template v-else-if="page === 'profile'">
             <div class="profile-page" :class="{'profile-overview':section==='overview'}">
             <template v-if="section==='overview'">

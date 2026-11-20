@@ -6,6 +6,9 @@ import { randomUUID } from "node:crypto";
 import Hub from "../src/components/contests/ContestHub.vue";
 import Composer from "../src/components/contests/ContestComposer.vue";
 import Management from "../src/components/contests/ContestManagement.vue";
+import ContestHonors from "../src/components/contests/ContestHonors.vue";
+import Cover from "../src/components/contests/ContestCover.vue";
+import WorkDetail from "../src/components/contests/ContestWorkDetail.vue";
 import Admin from "../src/components/contests/ContestAdmin.vue";
 import {
   contestRequest,
@@ -204,7 +207,7 @@ it("assigns custom stages and campus time independently of device timezone", () 
   for (const days of [1, 3, 7, 14, 30, 61]) {
     const s = contestSchedule(days, now);
     expect(Date.parse(s.awardAt) - Date.parse(s.startsAt)).toBe(
-      days * 86400000,
+      (days-1)*86400000+8*3600000,
     );
     expect(s.votingStarts).toBe(s.submissionEnds);
     expect(Date.parse(s.votingEnds)).toBeLessThan(Date.parse(s.awardAt));
@@ -237,7 +240,7 @@ it("isolates archive filters from the current event and restores the home on sys
   vm.requestBack();
   await nextTick();
   expect(root.textContent).toContain(event.title);
-  btn("刷新").click();
+  vm.refresh();
   await ready(
     () =>
       bridge.request.mock.calls
@@ -702,4 +705,63 @@ it("restoring an event after visiting a profile keeps the original random seed a
     .at(-1)!;
   expect(last[1].seed).toBe(originalSeed);
   expect(last[1].afterId).toBe(works[19].id);
+});
+
+it("v3 weekly calendar uses the next unmissed Monday noon and Sunday evening",()=>{
+ const before=contestSchedule(7,Date.parse("2026-11-23T11:59:00+08:00"));
+ expect(beijingInput(before.startsAt)).toBe("2026-11-23T12:00");
+ expect(beijingInput(before.votingStarts)).toBe("2026-11-28T12:00");
+ expect(beijingInput(before.votingEnds)).toBe("2026-11-29T18:00");
+ expect(beijingInput(before.awardAt)).toBe("2026-11-29T20:00");
+ const after=contestSchedule(7,Date.parse("2026-11-23T12:01:00+08:00"));
+ expect(beijingInput(after.startsAt)).toBe("2026-11-30T12:00");
+ expect(beijingInput(contestSchedule(14,Date.parse("2026-11-23T09:00:00+08:00")).awardAt)).toBe("2026-12-06T20:00");
+ expect(beijingInput(contestSchedule(3,Date.parse("2026-12-31T23:59:00+08:00")).startsAt)).toBe("2027-01-01T12:00");
+});
+it("v3 compact idle entry is one concrete label and does not advertise an ended event",async()=>{
+ event.state="ended";await mount(Hub,{user:{id:owner},compact:true});
+ await ready(()=>root.querySelector(".ct-compact-empty"));
+ expect(root.textContent).toContain("校园赛事");expect(root.textContent).not.toContain(event.title);expect(root.textContent).not.toContain("校园里的每一份创作");
+});
+it("v3 developer home retains normal participation and draft preview never writes",async()=>{
+ const developer={id:owner,badges:{official:{code:"developer"}}};
+ await mount(Hub,{user:developer,backendSchema:15});await ready(()=>btn("我要参赛"));
+ btn("赛事管理").click();await ready(()=>root.querySelector(".ct-row"));
+ root.querySelector<HTMLButtonElement>(".ct-row")!.click();await ready(()=>btn("预览普通用户视角"));
+ const mark=bridge.request.mock.calls.length;btn("预览普通用户视角").click();
+ await ready(()=>root.querySelector(".ct-preview-bar"));
+ expect(btn("赛事管理")).toBeUndefined();expect(btn("我要参赛").disabled).toBe(true);
+ expect(bridge.request.mock.calls.slice(mark).every(c=>!["contests.submit","contests.vote","contests.manage"].includes(c[0]))).toBe(true);
+ btn("结束预览").click();await ready(()=>btn("预览普通用户视角"));
+ expect(root.querySelector(".ct-preview-bar")).toBeNull();
+});
+it("v3 deletion uses the counts shown in confirmation and preserves a timed-out request",async()=>{
+ const removed=vi.fn();let attempt=0;
+ bridge.request.mockImplementation(async(action:string,body:any)=>action==="contests.admin"?{metrics:{entries:0,votes:0,awards:0}}:action==="contests.manage"?(++attempt===1?Promise.reject(Error("network_unavailable")):{contest:{...event,visibility:"deleted"}}):{});
+ await mount(Management,{owner,contest:{...event,state:"cancelled"},backendSchema:15,onRemoved:removed});
+ await ready(()=>!btn("删除赛事").disabled);btn("删除赛事").click();await nextTick();type("处理原因","清理取消测试");
+ btn("移入回收站").click();await ready(()=>root.textContent?.includes("连接失败"));
+ btn("移入回收站").click();await ready(()=>removed.mock.calls.length);
+ const calls=bridge.request.mock.calls.filter(c=>c[0]==="contests.manage");expect(calls[0][1]).toEqual(calls[1][1]);
+ expect(calls[0][1].expectedCounts).toEqual({entries:0,votes:0,awards:0});
+});
+it("v3 medal collection reads existing awards, groups true totals and opens the original work",async()=>{
+ const record={id:crypto.randomUUID(),kind:"champion",rank:1,contest_id:event.id,entry_id:work.id,title:event.title,awarded_at:new Date().toISOString()};
+ bridge.request.mockResolvedValue({awards:[record],stats:{champions:3,podiums:4,participations:5,medalCounts:{champion:3}},worn:null});
+ const open=vi.fn();await mount(ContestHonors,{owner,memberId:owner,personal:true,backendSchema:15,onOpen:open});
+ await ready(()=>root.querySelector(".medal-history-row"));expect(root.textContent).toContain("× 3");
+ root.querySelector<HTMLButtonElement>(".medal-history-row")!.click();await nextTick();btn("查看比赛与作品").click();
+ expect(open).toHaveBeenCalledWith(event.id,work.id);expect(bridge.request.mock.calls.every(c=>c[0]==="contests.profile")).toBe(true);
+});
+it("v3 ordinary work view never labels a developer's pre-result tally as final",async()=>{
+ event.state="voting";event.submissionEnds=event.votingStarts=iso(-1);await mount(WorkDetail,{contest:event,entry:{...work,votes:42},now,votesUsed:0});
+ expect(root.querySelector(".ct-final-votes")).toBeNull();expect(btn("投一票")).toBeDefined();
+});
+
+it("v3 renews a linked-post cover through the schema13-compatible media endpoint",async()=>{
+ event.coverPostId=crypto.randomUUID();event.cover={id:crypto.randomUUID(),url:"https://expired.invalid/cover.jpg",width:800,height:450};
+ bridge.request.mockResolvedValue({image:{...event.cover,url:"https://renewed.invalid/cover.jpg"}});
+ await mount(Cover,{contest:event});root.querySelector("img")!.dispatchEvent(new Event("error"));
+ await ready(()=>root.querySelector("img")?.src==="https://renewed.invalid/cover.jpg");
+ expect(bridge.request).toHaveBeenCalledWith("media.url",{postId:event.coverPostId,imageId:event.cover.id});
 });

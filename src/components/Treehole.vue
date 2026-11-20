@@ -5,7 +5,6 @@ import TreeholeMessages from './TreeholeMessages.vue';
 import type {ContestEntry} from '../services/contests';
 import ContestHub from './contests/ContestHub.vue';
 import {resetContestCache} from '../services/contests';
-import ContestHonors from './contests/ContestHonors.vue';
 import TreeholeAdmin from './TreeholeAdmin.vue';
 const moderationEnabled=ref(false),adminTarget=ref<{postId:string;commentId?:string|null}|null>(null);
 import TreeholeUploadStatus from './TreeholeUploadStatus.vue';
@@ -48,10 +47,10 @@ const buddySnapshots=new Map<string,TreeholeBuddy>();
 const buddyValid=computed(()=>!buddyDraft.value||postCategory.value==='buddies'&&!pollDraft.value&&!!body.value.trim()&&buddyDraftValid(buddyDraft.value));
 const buddyRoster=ref<{post:TreeholePost;members:TreeholeBuddyMember[];loading:boolean;error:string}|null>(null);
 const pollSnapshots=new Map<string,TreeholePoll>();
-const contestsEnabled=ref(false),contestId=ref<string>(),contestSchema=ref(13),contestHeading=ref('主题赛事'),contestRestore=ref<Record<string,any>>(),contestView=ref<{requestBack:()=>boolean;snapshot:()=>Record<string,any>}>();
-function showContests(id?:string){rememberRoute();contestRestore.value=undefined;contestId.value=id;screen.value='contests';}
+const contestsEnabled=ref(false),contestId=ref<string>(),contestEntryId=ref<string>(),contestSchema=ref(13),contestHeading=ref('主题赛事'),contestRestore=ref<Record<string,any>>(),contestView=ref<{requestBack:()=>boolean;snapshot:()=>Record<string,any>;refresh:()=>void}>();
+function showContests(id?:string,entryId?:string){rememberRoute();contestRestore.value=undefined;contestId.value=id;contestEntryId.value=entryId;screen.value='contests';}
 const honorsEnabled=ref(false),hallMember=ref(''),awardQueue=ref<string[]>([]),shownAwards=new Set<string>();
-const hallAward=ref('');
+const hallAward=ref(''),hallView=ref<{requestBack:()=>boolean}>();
 function showHall(id:string,code=''){
  if(screen.value!=='honors')rememberRoute();
  hallMember.value=id;hallAward.value=code;screen.value='honors';
@@ -149,7 +148,7 @@ const visibleThreads=computed(()=>comments.value.filter(threadHasVisibleContent)
 const allComments=computed(()=>[...comments.value,...(focusedThread.value?[focusedThread.value]:[])].flatMap(c=>[c,...c.replies||[]]));
 const actionComment=computed(()=>allComments.value.find(c=>c.id===menu.value));
 function navigationBack(){if(!requestBack())emit('exit');}
-function refresh(){if(busy.value||recovery.value||screen.value!=='feed')return;if(!user.value){void initialize();return;}void run(async()=>{await feed();void refreshUnread(true);notice.value='帖子已刷新';});}
+function refresh(){if(screen.value==='contests'){contestView.value?.refresh();return;}if(busy.value||recovery.value||screen.value!=='feed')return;if(!user.value){void initialize();return;}void run(async()=>{await feed();void refreshUnread(true);notice.value='帖子已刷新';});}
 function toggleSearch(){searchOpen.value=!searchOpen.value;if(searchOpen.value)void nextTick(()=>searchInput.value?.focus());}
 function clearSearch(){query.value='';void run(()=>feed());}
 function focusReply(comment?:TreeholeComment){if(busy.value||detail.value?.locked)return;if(comment)reply.value=comment;replyExpanded.value=true;}
@@ -607,6 +606,7 @@ function requestBack(){
  }
  if(screen.value==='messages'&&messagesView.value?.back())return true;
  if(screen.value==='contests'&&contestView.value?.requestBack())return true;
+ if(screen.value==='honors'&&hallView.value?.requestBack())return true;
  if(screen.value!=='feed'){previousRoute();return true;}
  if(searchOpen.value){searchOpen.value=false;return true;}
  if(!user.value&&auth.value!=='login'){auth.value='login';password.value='';return true;}return false;
@@ -614,7 +614,10 @@ function requestBack(){
 function flushDraft(){clearTimeout(draftTimer);saveDraft();if(!document.hidden)void refreshUnread();}
 function bindEvents(){document.addEventListener('visibilitychange',flushDraft);document.addEventListener('keydown',trapKeys,true);window.addEventListener('resize',sizePostInput,{passive:true});window.addEventListener('scroll',trackDetailScroll,{passive:true});window.addEventListener('wheel',manualScroll,{passive:true});}
 function unbindEvents(){document.removeEventListener('visibilitychange',flushDraft);document.removeEventListener('keydown',trapKeys,true);window.removeEventListener('resize',sizePostInput);window.removeEventListener('scroll',trackDetailScroll);window.removeEventListener('wheel',manualScroll);cancelAnimationFrame(scrollFrame);}
-defineExpose({requestBack,refresh});
+const externalContest=ref<{id:string;entryId?:string}>();
+function openExternalContest(id:string,entryId?:string){externalContest.value={id,entryId};}
+watch(()=>[ready.value,user.value?.id,externalContest.value],()=>{if(!ready.value||!user.value||!externalContest.value)return;const target=externalContest.value;externalContest.value=undefined;showContests(target.id,target.entryId);});
+defineExpose({requestBack,refresh,openContest:openExternalContest});
 onMounted(()=>{void initialize();bindEvents();});
 onActivated(()=>{active=true;bindEvents();publishTabNavigation();void refreshUnread();});
 onDeactivated(()=>{active=false;unbindEvents();flushDraft();password.value='';newPassword.value='';});
@@ -656,7 +659,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
      </template>
      <div v-if="user" :key="screen" class="th-screen-panel" :style="edgeOffset?{transform:'translateX('+edgeOffset+'px)',animation:'none',transition:'none'}:undefined" :class="'th-page-'+pageMotion" :data-screen="screen">
       <template v-if="screen==='feed'">
-       <ContestHub v-if="contestsEnabled" :key="user.id" :user="user" compact @open="showContests"/>
+       <ContestHub v-if="contestsEnabled" :key="user.id" :user="user" :backend-schema="contestSchema" compact @open="showContests"/>
        <div class="th-feed-heading">
         <nav v-if="engagementEnabled" class="th-return-links" aria-label="社区内容">
          <button :aria-pressed="scope==='all'" :disabled="busy" @click="accountFeed('all')">广场</button>
@@ -686,9 +689,9 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
       <TreeholeMessages v-else-if="screen==='messages'" ref="messagesView" :initial-member="messageMember" :drafts="messageDrafts" @unread="messageUnread=$event" @expired="clearAccount" @title="messageTitle=$event" @blocked="feedNeedsRefresh=true;refreshSocial()"/>
       <TreeholeInbox v-else-if="screen==='inbox'" :messages-enabled="messagesEnabled" :message-unread="messageUnread" @messages="showMessages()" :items="notifications" :filter="inboxFilter" :loading="inboxLoading||busy" :error="inboxError" :more="!!inboxNext" :unread="unreadCount" @filter="filterInbox" @open="openNotification" @refresh="loadInbox()" @more="loadInbox(true)" @read="markVisibleRead"/>
       <TreeholeFollowing v-else-if="screen==='following'" :followers="peopleKind==='followers'" :people="following" :loading="followingLoading" :error="followingError" :more="!!followingNext" :disabled="busy" :pending="pendingFollows" :retry-more="followingRetryMore" @open="openProfile" @unfollow="setFollow($event,false)" @follow="setFollow($event,true)" @load="loadFollowing" @browse="accountFeed('all')"/>
-      <template v-else-if="screen==='honors'"><HonorHall :key="user.id+hallMember+hallAward" :initial-code="hallAward" :viewer="user.id" :member="hallMember" :enabled="honorsEnabled" :request="api" @updated="applyHonorUpdate"/><ContestHonors v-if="contestsEnabled" :owner="user.id" :member-id="hallMember||user.id" collection :personal="hallMember===user.id" @open="showContests"/></template>
+      <template v-else-if="screen==='honors'"><HonorHall ref="hallView" :key="user.id+hallMember+hallAward" :initial-code="hallAward" :viewer="user.id" :member="hallMember" :enabled="honorsEnabled" :request="api" :contests-enabled="contestsEnabled" :backend-schema="contestSchema" @contest="showContests" @updated="applyHonorUpdate"/></template>
       <HonorAdmin v-else-if="screen==='honorAdmin'&&user.role==='moderator'&&honorsEnabled" :user="user" :request="api" @changed="applyHonorUpdate"/>
-      <template v-else-if="screen==='profile'&&profile"><div class="th-public-profile"><TreeholeAvatar :name="profile.nickname" :url="profile.avatar?.url" :size="64"/><h2 class="honor-byline"><span class="honor-name" :title="profile.nickname">{{profile.nickname}}</span><OfficialBadges v-if="profile.badges" :items="[profile.badges.official,profile.badges.worn]"/></h2><p>{{profile.bio||'还没有填写简介'}}</p><ContestHonors v-if="contestsEnabled" :owner="user.id" :member-id="profile.id" @collection="showHall(profile.id)" @open="showContests"/><HonorShowcase class="public-case" :honor="featuredHonor(profile.badges)" :medals="publicMedals(profile.showcase)" @hall="showHall(profile.id)" @medal="showHall(profile.id,$event)"/><span>{{profile.postCount}} 条公开帖子</span><div v-if="socialEnabled&&profile.id===user.id" class="th-social-stats"><button aria-label="我的关注列表" @click="showFollowing()"><strong>{{social?.followingCount??'—'}}</strong><span>关注</span></button><button aria-label="我的粉丝列表" @click="showFollowing('followers')"><strong>{{social?.followerCount??'—'}}</strong><span>粉丝</span></button></div><button v-if="followingEnabled&&profile.id!==user.id" class="th-follow-person" :class="{selected:profile.following}" :aria-pressed="!!profile.following" :disabled="busy||pendingFollows[profile.id]" @click="setFollow(profile.id,!profile.following)">{{pendingFollows[profile.id]?'处理中…':profile.following?'已关注 · 取消关注':'关注 TA'}}</button><button v-if="messagesEnabled&&profile.id!==user.id" class="th-message-person" :disabled="busy" @click="showMessages(profile.id)"><MessageCircle :size="17"/>发私信</button></div><p class="th-profile-privacy"><ShieldCheck :size="14"/>这里展示公开帖子，匿名发言不会出现在主页</p><TreeholePostCard v-for="post in profilePosts" :key="post.id" :post="post" :buddies-enabled="buddiesEnabled" :buddy-pending="pendingBuddies[post.id]" @buddy-join="buddyAction(post,'join',$event)" @buddy-close="buddyAction(post,'close',$event)" @buddy-members="showBuddyMembers(post)" :polls-enabled="pollsEnabled" :voting="pendingVotes[post.id]" @vote="vote(post,$event)" :responses-enabled="responsesEnabled" :joy-enabled="joyEnabled" :responding="pendingResponses[post.id]" @response="respond(post,$event)" :busy="busy" :reacting="pendingReactions[post.id+':like']" @open="openPost(post)" @discussion="openPost(post,true)" @react="react(post,$event)" @menu="menu=post.id" @image="imageView(post,$event)" @author="openProfile" @category="selectCategory" @interest="selectInterest"/><div v-if="!profilePosts.length" class="th-empty"><p>还没有公开帖子</p></div><button v-if="profileNext" class="th-more" :disabled="busy" @click="moreProfile">更多公开帖子</button></template>
+      <template v-else-if="screen==='profile'&&profile"><div class="th-public-profile"><TreeholeAvatar :name="profile.nickname" :url="profile.avatar?.url" :size="64"/><h2 class="honor-byline"><span class="honor-name" :title="profile.nickname">{{profile.nickname}}</span><OfficialBadges v-if="profile.badges" :items="[profile.badges.official,profile.badges.worn]"/></h2><p>{{profile.bio||'还没有填写简介'}}</p><HonorShowcase class="public-case" :honor="featuredHonor(profile.badges)" :medals="publicMedals(profile.showcase)" @hall="showHall(profile.id)" @medal="showHall(profile.id,$event)"/><span>{{profile.postCount}} 条公开帖子</span><div v-if="socialEnabled&&profile.id===user.id" class="th-social-stats"><button aria-label="我的关注列表" @click="showFollowing()"><strong>{{social?.followingCount??'—'}}</strong><span>关注</span></button><button aria-label="我的粉丝列表" @click="showFollowing('followers')"><strong>{{social?.followerCount??'—'}}</strong><span>粉丝</span></button></div><button v-if="followingEnabled&&profile.id!==user.id" class="th-follow-person" :class="{selected:profile.following}" :aria-pressed="!!profile.following" :disabled="busy||pendingFollows[profile.id]" @click="setFollow(profile.id,!profile.following)">{{pendingFollows[profile.id]?'处理中…':profile.following?'已关注 · 取消关注':'关注 TA'}}</button><button v-if="messagesEnabled&&profile.id!==user.id" class="th-message-person" :disabled="busy" @click="showMessages(profile.id)"><MessageCircle :size="17"/>发私信</button></div><p class="th-profile-privacy"><ShieldCheck :size="14"/>这里展示公开帖子，匿名发言不会出现在主页</p><TreeholePostCard v-for="post in profilePosts" :key="post.id" :post="post" :buddies-enabled="buddiesEnabled" :buddy-pending="pendingBuddies[post.id]" @buddy-join="buddyAction(post,'join',$event)" @buddy-close="buddyAction(post,'close',$event)" @buddy-members="showBuddyMembers(post)" :polls-enabled="pollsEnabled" :voting="pendingVotes[post.id]" @vote="vote(post,$event)" :responses-enabled="responsesEnabled" :joy-enabled="joyEnabled" :responding="pendingResponses[post.id]" @response="respond(post,$event)" :busy="busy" :reacting="pendingReactions[post.id+':like']" @open="openPost(post)" @discussion="openPost(post,true)" @react="react(post,$event)" @menu="menu=post.id" @image="imageView(post,$event)" @author="openProfile" @category="selectCategory" @interest="selectInterest"/><div v-if="!profilePosts.length" class="th-empty"><p>还没有公开帖子</p></div><button v-if="profileNext" class="th-more" :disabled="busy" @click="moreProfile">更多公开帖子</button></template>
       <form v-else-if="screen==='compose'" id="treehole-compose" class="th-compose" @submit.prevent="publish">
        <div class="th-compose-identity"><TreeholeAvatar :name="identity" :url="user.avatar?.url" :anonymous="anonymous" :size="34"/><div><strong>{{identity}}</strong><small>{{anonymous?'匿名身份 · 仅本帖可关联':'公开昵称'}}</small></div><label class="th-anon-pill" :class="{selected:anonymous}"><input v-model="anonymous" type="checkbox" :disabled="busy||postCategory==='treehole'"/><VenetianMask :size="17"/><span>匿名发布</span><i aria-hidden="true"/></label></div>
        <button v-if="discoveryEnabled" type="button" class="th-board-trigger" aria-label="选择分区" aria-haspopup="dialog" :disabled="busy||!!buddyDraft" @click="boardPicker='compose'"><span>发布到</span><strong>{{treeholeDestinationName(postCategory,postInterest)}}</strong><ChevronRight :size="17" aria-hidden="true"/></button>
@@ -735,7 +738,6 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
         </div>
         <p v-if="socialError" class="th-social-error" role="alert">{{socialError}} <button @click="refreshSocial">重试统计</button></p>
         <p v-if="user.bannedUntil&&new Date(user.bannedUntil)>new Date()" class="th-alert">禁言至 {{date(user.bannedUntil)}}</p>
-        <ContestHonors v-if="contestsEnabled" :owner="user.id" :member-id="user.id" personal @collection="showHall(user.id)" @open="showContests"/>
         <HonorShowcase v-if="honorsEnabled" class="self-case" personal :honor="featuredHonor(user.badges)" :medals="publicMedals(user.showcase)" @hall="showHall(user.id)" @medal="showHall(user.id,$event)"/>
         <section class="account-section" aria-labelledby="account-activity-title">
          <h2 id="account-activity-title">我的活动</h2>
@@ -808,7 +810,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
         </form>
        </template>
       </template>
-      <ContestHub v-else-if="screen==='contests'" ref="contestView" :key="user.id" :user="user" :backend-schema="contestSchema" :restore="contestRestore" :initial-id="contestId" @heading="contestHeading=$event" @profile="openProfile" @post="openContestPost" @image="contestImageView"/>
+      <ContestHub v-else-if="screen==='contests'" ref="contestView" :key="user.id" :user="user" :backend-schema="contestSchema" :restore="contestRestore" :initial-id="contestId" :initial-entry-id="contestEntryId" @heading="contestHeading=$event" @profile="openProfile" @post="openContestPost" @image="contestImageView"/>
       <TreeholeAdmin v-else-if="screen==='moderate'&&moderationEnabled" :request="api" :initial-target="adminTarget" @changed="adminChanged" @expired="clearAccount"/>
       <section v-else-if="screen==='moderate'"><div class="th-feed-intro"><h2>举报处理</h2><p>认真对待每一次反馈。</p></div><p v-if="!reports.length" class="th-empty">暂无待处理举报。</p><article v-for="r in reports" :key="r.id" class="th-card"><p class="th-full-body">{{r.body}}</p><p class="th-muted">举报原因：{{r.reason}}</p><div class="th-moderation-actions"><button v-for="(name,key) in {remove:'删除',lock:'锁帖',ban:'禁言 7 天',dismiss:'忽略'}" :key="key" :disabled="busy" @click="resolveReport(r,key)">{{name}}</button></div></article></section>
      </div>

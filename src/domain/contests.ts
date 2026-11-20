@@ -4,16 +4,23 @@ import {
   type ContestEntry,
 } from "../services/contests";
 export const contestDay = 86400000;
-export function contestSchedule(days: number, start = Date.now()) {
-  if (!Number.isFinite(days) || days < 1 || days > 365)
-    throw Error("invalid_duration");
-  const end = start + days * contestDay;
+/** Campus calendar days in Asia/Shanghai. Never derives deadlines from the current minute. */
+export function contestSchedule(days: number, now = Date.now()) {
+  if (!Number.isInteger(days) || days < 1 || days > 365 || !Number.isFinite(now)) throw Error("invalid_duration");
+  const local = new Date(now + 8 * 3600000);
+  let start = Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate(),4);
+  if (days === 7 || days === 14) {
+    start += ((8-local.getUTCDay())%7)*contestDay;
+    if (start < now) start += 7*contestDay;
+  } else if (start < now) start += contestDay;
+  const award = start + (days-1)*contestDay + 8*3600000;
+  const submission = days===1 ? start+4*3600000 : start+(days===7||days===14?days-2:Math.max(1,Math.floor(days*.7)))*contestDay;
   return {
-    startsAt: new Date(start).toISOString(),
-    submissionEnds: new Date(start + (days * contestDay * 5) / 7).toISOString(),
-    votingStarts: new Date(start + (days * contestDay * 5) / 7).toISOString(),
-    votingEnds: new Date(start + (days * contestDay * 6) / 7).toISOString(),
-    awardAt: new Date(end).toISOString(),
+    startsAt:new Date(start).toISOString(),
+    submissionEnds:new Date(submission).toISOString(),
+    votingStarts:new Date(submission).toISOString(),
+    votingEnds:new Date(award-2*3600000).toISOString(),
+    awardAt:new Date(award).toISOString(),
   };
 }
 export function beijingInput(iso: string) {
@@ -25,9 +32,10 @@ export function beijingISO(input: string) {
   if (Number.isNaN(d.getTime())) throw Error("invalid_date");
   return d.toISOString();
 }
-export function contestDate(iso: string) {
+export function contestDate(iso: string, withYear=false) {
   return new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
+    year:withYear?"numeric":undefined,
     month: "numeric",
     day: "numeric",
     hour: "2-digit",

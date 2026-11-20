@@ -28,15 +28,18 @@ export function sanitizeContest(
     if (!Number.isInteger(v) || v < min || v > max) fail();
     return v;
   };
+  if (input.preview === true && !["contests.get", "contests.entries", "contests.image"].includes(action)) fail("contest_preview_readonly", 403);
+  const view = { ...(input.preview===true?{preview:true}:{}), ...(input.view==null?{}:{view:oneOf(input.view,["public","manage"])}) };
   const page = () => ({ offset: integer(input.offset ?? 0, 0, 100000) });
   if (action === "contests.list")
     return {
       ...page(),
       type: text(input.type ?? "", 0, 40),
+      scope: oneOf(input.scope ?? "all",["all","public","archive","manage","trash"]),
       year: integer(input.year ?? 0, 0, 9999),
     };
   if (action === "contests.profile")
-    return { memberId: id(input.memberId, true), ...page() };
+    return { memberId: id(input.memberId, true), kind: input.kind == null ? null : oneOf(input.kind,["champion","silver","bronze","excellent","participation"]), ...page() };
   if (action === "contests.wear") return { awardId: id(input.awardId, true) };
   if (action === "contests.year")
     return { year: integer(input.year, 2020, 9999), ...page() };
@@ -51,14 +54,15 @@ export function sanitizeContest(
   const globalAction=(action==="contests.review"&&["theme","merge"].includes(input.kind))||(action==="contests.manage"&&input.operation==="solicitation");
   const out = {
     ...operationMeta,
+    ...view,
     contestId: id(
       globalAction ? null : input.contestId,
       globalAction,
     ),
   };
-  if (action === "contests.get") return out;
+  if (action === "contests.get") return {...out,entryId:id(input.entryId,true)};
   if (action === "contests.image")
-    return { ...out, entryId: id(input.entryId), imageId: id(input.imageId) };
+    return { ...out, cover:input.cover===true, entryId: id(input.entryId,input.cover===true), imageId: id(input.imageId) };
   if (action === "contests.entries")
     return {
       ...out,
@@ -115,6 +119,8 @@ export function sanitizeContest(
       description: text(input.description, 1, 2000),
       rules: text(input.rules, 1, 4000),
       coverPostId: id(input.coverPostId, true),
+      ...(Object.hasOwn(input,"coverImageId")?{coverImageId:id(input.coverImageId,true)}:{}),
+      ...(input.coverPosition!=null?{coverPosition:integer(input.coverPosition,0,100)}:{}),
       startsAt: time(input.startsAt),
       submissionEnds: time(input.submissionEnds),
       votingStarts: time(input.votingStarts),
@@ -137,6 +143,8 @@ export function sanitizeContest(
     return {
       ...out,
       operation: oneOf(input.operation, [
+        "remove",
+        "restore",
         "publish",
         "pause",
         "resume",
@@ -144,6 +152,7 @@ export function sanitizeContest(
         "announce",
         "solicitation",
       ]),
+      ...(input.expectedCounts == null ? {} : {expectedCounts:{entries:integer(input.expectedCounts.entries,0,2147483647),votes:integer(input.expectedCounts.votes,0,2147483647),awards:integer(input.expectedCounts.awards,0,2147483647)}}),
       reason: text(input.reason, 2, 300),
       enabled: input.enabled === true,
     };

@@ -7,9 +7,14 @@ import {treeholeRequest,treeholeError,treeholeErrorCode} from '../../services/tr
 import {honorDate,type HonorHall} from '../../domain/communityHonors';
 import {pendingAwards,markPresented} from '../../services/achievementDelivery';
 import AchievementNotice from './AchievementNotice.vue';
+import HonorSections from "./HonorSections.vue";
+import ContestHonors from '../contests/ContestHonors.vue';
 import OfficialBadges from './OfficialBadges.vue';
 
-const emit=defineEmits<{account:[]}>();
+const emit=defineEmits<{account:[];contest:[id:string,entryId?:string]}>();
+const contestCollection=ref<{requestBack:()=>boolean}>();
+const area=ref('achievements'),contestContext=ref<{owner:string;schema:number}>(),contestLoading=ref(false),contestError=ref('');
+async function changeArea(next:string){area.value=next;if(next!=='medals'||contestContext.value||contestLoading.value)return;contestLoading.value=true;contestError.value='';try{const r=await treeholeRequest('me');if(!active)return;const config=r.config||await treeholeRequest('config');if(!active)return;if(r.user&&config.contestsEnabled)contestContext.value={owner:r.user.id,schema:config.schema??13};else contestError.value=r.user?'校园赛事开放后，奖牌会收藏在这里。':'登录社区账号后查看赛事奖牌。';}catch(e){if(active)contestError.value=treeholeError(e);}finally{if(active)contestLoading.value=false;}}
 const category=ref<Group>('全部'),selected=shallowRef<Collectible>(),detail=ref<HTMLDialogElement>();
 const hall=ref<HonorHall>(),loading=ref(false),failure=ref(''),fromCache=ref(false),signedIn=ref(false);
 const pending=ref<string[]>([]);
@@ -56,12 +61,12 @@ async function load(force=false){
  finally{if(active)loading.value=false;}
 }
 async function show(a:Collectible){
- selected.value=a;
+ area.value='achievements';selected.value=a;
  if(earned.value[a.code])viewHidden(a.code);
  await nextTick();
  if(active&&detail.value&&!detail.value.open)detail.value.showModal();
 }
-function closeDetail(){if(!detail.value?.open)return false;detail.value.close();return true;}
+function closeDetail(){if(contestCollection.value?.requestBack())return true;if(!detail.value?.open)return false;detail.value.close();return true;}
 function openMedal(code:string){
  const medal=byCode.get(code);if(medal)void show(medal);
 }
@@ -75,7 +80,7 @@ async function pin(a:Collectible){
  const old=hall.value,items=pinned(a)?old.showcase.filter(k=>k!==a.code):[...old.showcase,a.code];
  if(items.length>3)return;
  loading.value=true;failure.value='';
- try{const r=await treeholeRequest('honors.wear',{honor:old.badges.worn?.code??null,showcase:items});if(active&&r.hall){hall.value=r.hall;fromCache.value=false;}}
+ try{const r=await treeholeRequest('honors.wear',{honor:old.honors.some(h=>h.code===old.badges.worn?.code)?old.badges.worn!.code:null,showcase:items});if(active&&r.hall){hall.value=r.hall;fromCache.value=false;}}
  catch(e){if(active){failure.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'){hall.value=undefined;signedIn.value=false;}}}
  finally{if(active)loading.value=false;}
 }
@@ -84,8 +89,10 @@ onUnmounted(()=>{active=false;window.removeEventListener('online',networkChanged
 </script>
 <template>
 <div class="collection">
+ <HonorSections :model-value="area" @update:model-value="changeArea"/>
+ <section v-if="area==='medals'" class="collection-account"><ContestHonors ref="contestCollection" v-if="contestContext" :owner="contestContext.owner" :member-id="contestContext.owner" :backend-schema="contestContext.schema" personal collection @open="(id,entry)=>emit('contest',id,entry)"/><p v-else-if="contestLoading" role="status">正在读取赛事收藏…</p><template v-else><p>{{contestError}}</p><button class="account-more" @click="signedIn?changeArea('medals'):emit('account')">{{signedIn?'重试':'前往社区账号'}}</button></template></section>
  <AchievementNotice :codes="localQueue.length?[]:pending" can-open @open="openMedal" v-bind="feedback" @shown="hall && markPresented(hall.id,$event)" @seen="seen"/>
- <section class="cabinet">
+ <section v-if="area==='achievements'" class="cabinet">
   <header><div><h2>成就收藏馆</h2><p>你的每一段校园经历，都值得被记住</p></div><Trophy :size="23" aria-hidden="true"/></header>
   <div class="progress-heading"><div><strong>{{count}}</strong><span> / {{catalog.length}}</span><small>{{hall?'已解锁成就':'本机已确认成就'}}</small></div><b>{{percent}}% 完成</b></div>
   <progress :max="catalog.length" :value="count" aria-label="成就收藏进度"/>
@@ -98,12 +105,12 @@ onUnmounted(()=>{active=false;window.removeEventListener('online',networkChanged
   </div>
  </section>
  <p v-if="storageIssue" class="collection-status" role="alert">{{storageIssue}}</p>
- <section class="collection-account"><header><div><h3>{{hall?.nickname||'社区身份与荣誉'}}</h3><p>{{hall?(fromCache?'上次同步的账号收藏':'已同步邯院通账号'):loading?'正在读取社区收藏…':signedIn?'社区收藏暂未同步':'登录社区后可同步身份与社区成就'}}</p></div><button v-if="signedIn" class="refresh" aria-label="刷新社区收藏" :disabled="loading" @click="load(true)"><RefreshCw :size="17"/></button></header>
+ <section v-if="area==='identity'" class="collection-account"><header><div><h3>{{hall?.nickname||'社区身份与荣誉'}}</h3><p>{{hall?(fromCache?'上次同步的账号收藏':'已同步邯院通账号'):loading?'正在读取社区收藏…':signedIn?'社区收藏暂未同步':'登录社区后可同步身份与社区成就'}}</p></div><button v-if="signedIn" class="refresh" aria-label="刷新社区收藏" :disabled="loading" @click="load(true)"><RefreshCw :size="17"/></button></header>
  <OfficialBadges full v-if="hall" :items="[hall.badges.official,...hall.honors]"/>
  <p v-if="failure" role="alert">{{failure}}</p>
  <button class="account-more" @click="emit('account')">{{signedIn?'社区主页与荣誉管理':'前往社区账号'}}<ChevronRight :size="16"/></button>
  </section>
- <details class="collection-account"><summary>收藏与解锁提醒</summary><p>本机、教务与学习通收藏仅自己可见。社区收藏随邯院通账号同步，可选三枚展示给其他同学。</p>
+ <details v-if="area==='achievements'" class="collection-account"><summary>收藏与解锁提醒</summary><p>本机、教务与学习通收藏仅自己可见。社区收藏随邯院通账号同步，可选三枚展示给其他同学。</p>
  <label><input type="checkbox" v-model="feedback.haptics"/>轻微震动</label><label><input type="checkbox" v-model="feedback.sound"/>解锁提示音</label><label><input type="checkbox" :checked="!feedback.motion" @change="feedback.motion=!($event.target as HTMLInputElement).checked"/>减少动态效果</label>
  </details>
  <dialog ref="detail" class="collect-detail" :class="{quiet:!feedback.motion}" aria-labelledby="medal-title" @click.self="detail?.close()">
@@ -122,5 +129,7 @@ onUnmounted(()=>{active=false;window.removeEventListener('online',networkChanged
 </div>
 </template>
 <style scoped>
+
+
 .collection{display:grid;gap:12px;max-width:660px;margin:auto;padding-bottom:14px;color:var(--color-text)}.cabinet,.collection-account{border:1px solid var(--color-divider,#e6e4e9);background:var(--color-surface,#fff);border-radius:20px;padding:18px}.collection header,.progress-heading,.account-more{display:flex;align-items:center;justify-content:space-between;gap:8px}.collection h2,.collection h3,.collect-detail h2{margin:0;font-weight:720;letter-spacing:-.035em}.collection header>svg{color:#b29560}.collection p{font-size:13px;color:var(--color-muted);line-height:1.55;margin:5px 0}.progress-heading{align-items:flex-end;margin:18px 0 12px}.progress-heading strong{font-size:37px;line-height:1;letter-spacing:-2px;font-variant-numeric:tabular-nums}.progress-heading span{color:var(--color-muted);font-size:16px}.progress-heading small,.cabinet-grid small{display:block;color:var(--color-muted);font-size:11px;margin-top:4px}.progress-heading b{align-self:center;background:#e4f3e9;color:#326a4c;border-radius:20px;padding:4px 9px;font-size:12px}.cabinet progress{width:100%;height:7px;appearance:none;border:0;border-radius:8px;overflow:hidden;background:#ece9ef}.cabinet progress::-webkit-progress-bar{background:#ece9ef}.cabinet progress::-webkit-progress-value{background:#ac92d9;border-radius:8px}.cabinet nav{display:flex;flex-wrap:wrap;gap:6px;margin:13px 0 15px}.cabinet nav button{border:1px solid var(--color-divider);color:var(--color-muted);background:var(--color-surface);border-radius:99px;padding:6px 12px;min-height:34px;font-size:13px}.cabinet nav button[aria-pressed=true]{color:var(--color-surface);background:var(--color-text);border-color:var(--color-text)}.cabinet-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.cabinet-grid button{min-width:0;position:relative;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:95px;padding:8px 2px;border-radius:14px;background:var(--color-surface-muted,#f4f3f5);border:1px solid transparent;color:var(--color-muted)}.cabinet-grid button.unlocked{background:color-mix(in srgb,var(--medal) 8%,var(--color-surface));color:var(--color-text)}.medallion,.hero-medal{display:grid;place-items:center}.medallion{width:37px;height:37px;margin-bottom:5px;color:#9897a1}.unlocked .medallion{color:var(--medal)}.cabinet-grid strong{font-weight:620;font-size:clamp(10px,2.85vw,13px);line-height:1.4;overflow-wrap:anywhere}.cabinet-grid small{margin-top:2px;font-size:10px}.cabinet-grid .pin{position:absolute;right:6px;top:5px;color:var(--medal)}.collection-account summary{font-weight:650;cursor:pointer}.collection-account label{display:flex;gap:8px;align-items:center;min-height:40px;font-size:14px}.collection-account label input{width:17px;height:17px;accent-color:#795aab}.account-more{margin-top:10px;font-size:13px;font-weight:620;color:var(--color-primary);padding:6px 0}.refresh,.detail-close{display:grid;place-items:center;min-width:40px;min-height:40px}.collect-detail{position:fixed;width:min(88vw,360px);max-height:78dvh;overflow:auto;box-sizing:border-box;padding:24px;border-radius:24px;border:1px solid var(--color-divider);background:var(--color-surface,#fff);color:var(--color-text);box-shadow:0 20px 80px #28203322}.collect-detail::backdrop{background:#24212c59}.detail-close{position:absolute;right:8px;top:8px}.hero-medal{height:72px;width:72px;background:color-mix(in srgb,var(--medal) 12%,var(--color-surface));color:var(--medal);border-radius:22px;margin:3px 0 16px}.hero-medal.locked{filter:grayscale(1)}.eyebrow{font-size:12px;color:var(--color-muted)}.details-meta{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;border-top:1px solid var(--color-divider);margin-top:14px;padding-top:14px;font-size:13px}.details-meta span{color:var(--color-muted)}.details-meta strong{font-weight:550}.wear{display:flex;gap:8px;align-items:center;justify-content:center;background:#f1eaf9;color:#684990;border-radius:12px;padding:11px;width:100%;margin-top:17px}.wear:disabled{opacity:.55}@media(max-width:340px){.cabinet{padding:13px}.cabinet-grid{gap:4px}}@media(prefers-reduced-motion:no-preference){.collect-detail[open]:not(.quiet){animation:medal-in .2s ease-out}@keyframes medal-in{from{opacity:0;transform:translateY(8px) scale(.98)}}}
 </style>

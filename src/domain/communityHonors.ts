@@ -1,5 +1,10 @@
 import {Award,BookHeart,Crown,Feather,Heart,HeartHandshake,LockKeyhole,MapPin,MessageCircle,PenLine,ShieldCheck,Sparkles,Sprout,Star,Sunrise,UsersRound} from 'lucide-vue-next';
 export const badges={
+ contest_champion:{short:'冠军',dark:'#d3b477',name:'赛事冠军',icon:Crown,color:'#916b29',tint:'#f3e9ce',description:'校园主题赛事的冠军奖章。',method:'对应有效获奖作品，可在荣誉殿堂的赛事奖牌中查看。'},
+ contest_silver:{short:'亚军',dark:'#b9c3cf',name:'赛事亚军',icon:Award,color:'#65717f',tint:'#e9edf1',description:'校园主题赛事的亚军奖章。',method:'对应有效获奖作品，可在荣誉殿堂的赛事奖牌中查看。'},
+ contest_bronze:{short:'季军',dark:'#cda58b',name:'赛事季军',icon:Award,color:'#956b50',tint:'#f1e3d9',description:'校园主题赛事的季军奖章。',method:'对应有效获奖作品，可在荣誉殿堂的赛事奖牌中查看。'},
+ contest_excellent:{short:'优秀作品',dark:'#c0a2ee',name:'赛事优秀作品',icon:Star,color:'#7042ae',tint:'#f1e9fc',description:'校园主题赛事的优秀作品奖章。',method:'对应有效获奖作品，可在荣誉殿堂的赛事奖牌中查看。'},
+ contest_participation:{short:'参赛纪念',dark:'#bcb4c8',name:'赛事参与纪念',icon:Feather,color:'#696477',tint:'#f7f6fa',description:'一段认真参与的校园创作经历。',method:'有效参赛纪念，与正式名次奖章分别收藏。'},
  developer:{short:'开发者',dark:'#e3b75c',name:'开发者',icon:Crown,color:'#97600a',tint:'#fff0ce',description:'邯院通的创建者。',method:'通过原始所有者授权记录和稳定账号 ID 核验，全平台唯一。'},
  moderator:{short:'管理员',dark:'#87b9f0',name:'管理员',icon:ShieldCheck,color:'#2762a6',tint:'#e8f2ff',description:'维护社区秩序，处理违规内容和举报。',method:'由开发者任命，权限按职责授予。'},
  seed:{short:'种子',dark:'#83c6a0',name:'种子用户',icon:Sprout,color:'#277449',tint:'#e3f4e8',description:'在社区刚萌芽时参与测试和建设的同学。',method:'由开发者授予，永久保留。'},

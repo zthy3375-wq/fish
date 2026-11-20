@@ -1,0 +1,11 @@
+<script setup lang="ts">
+import {computed} from 'vue';
+import {Star,Feather} from 'lucide-vue-next';
+import {awardLabels} from '../../services/contests';
+const props=withDefaults(defineProps<{kind:string;size?:number}>(),{size:54});
+const rank=computed(()=>({champion:'1',silver:'2',bronze:'3'}[props.kind]));
+</script>
+<template><span class="contest-medal" :class="'medal-'+kind" :style="{width:size+'px',height:size+'px'}" role="img" :aria-label="awardLabels[kind]||'赛事纪念'"><span class="medal-face"><b v-if="rank">{{rank}}</b><Star v-else-if="kind==='excellent'" :size="size*.37" :stroke-width="1.5"/><Feather v-else :size="size*.4" :stroke-width="1.5"/></span></span></template>
+<style scoped>
+.contest-medal{--metal:var(--medal-gold);--metal-paper:var(--medal-gold-paper);display:inline-grid;place-items:center;position:relative;flex:none;margin-bottom:6px;color:var(--metal)}.medal-silver{--metal:var(--medal-silver);--metal-paper:var(--medal-silver-paper)}.medal-bronze{--metal:var(--medal-bronze);--metal-paper:var(--medal-bronze-paper)}.medal-excellent{--metal:var(--color-primary);--metal-paper:var(--color-tint)}.medal-participation{--metal:var(--color-muted);--metal-paper:var(--color-background)}.medal-face{width:100%;height:100%;border-radius:50%;border:1px solid color-mix(in srgb,var(--metal) 65%,var(--metal-paper));background:linear-gradient(140deg,var(--color-surface),var(--metal-paper) 45%,color-mix(in srgb,var(--metal) 20%,var(--metal-paper)));box-shadow:inset 0 0 0 3px var(--metal-paper),inset 0 0 0 4px color-mix(in srgb,var(--metal) 40%,var(--metal-paper)),0 2px 3px #30261910;display:grid;place-items:center;position:relative;z-index:1}.medal-face b{font-family:Georgia,'Times New Roman',serif;font-size:1.7em;font-weight:600;line-height:1;text-shadow:0 1px 0 var(--color-surface)}.contest-medal:not(.medal-participation)::after{content:'';position:absolute;bottom:-7px;width:49%;height:35%;background:color-mix(in srgb,var(--metal) 55%,var(--metal-paper));clip-path:polygon(4% 0,44% 0,45% 100%,23% 74%,0 94%,9% 0,91% 0,100% 94%,77% 74%,55% 100%,56% 0,96% 0)}.medal-participation .medal-face{border-radius:12px;border-color:var(--color-border);background:var(--metal-paper);box-shadow:none}.medal-excellent .medal-face{background:var(--metal-paper)}
+</style>

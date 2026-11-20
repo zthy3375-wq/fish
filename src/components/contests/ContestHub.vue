@@ -26,12 +26,14 @@ import ContestArchive from "./ContestArchive.vue";
 import ContestAdmin from "./ContestAdmin.vue";
 import ContestManagement from "./ContestManagement.vue";
 import ContestThemes from "./ContestThemes.vue";
+import ContestRecycleBin from "./ContestRecycleBin.vue";
 import ContestDialog from "./ContestDialog.vue";
 import "./contests.css";
 const props = defineProps<{
   user: TreeholeUser;
   compact?: boolean;
   initialId?: string;
+  initialEntryId?: string;
   backendSchema?: number;
   restore?: Record<string, any>;
 }>();
@@ -43,6 +45,7 @@ const emit = defineEmits<{
   heading: [title: string];
 }>();
 type Page =
+  | "trash"
   | "home"
   | "detail"
   | "entry"
@@ -55,6 +58,9 @@ type Page =
   | "themes";
 const view = ref<Page>("home"),
   contests = ref<Contest[]>([]),
+  managed = ref<Contest[]>([]),
+  managementMore = ref(false),
+  preview = ref(false),
   selected = ref<Contest>(),
   entries = ref<ContestEntry[]>([]),
   mine = ref<ContestEntry[]>([]),
@@ -82,6 +88,7 @@ let live = true,
   epoch = 0,
   offset = 0,
   lastId = "";
+let requestedEntry:ContestEntry|undefined;
 const head = computed(
   () =>
     contests.value.find(
@@ -91,10 +98,12 @@ const head = computed(
         ),
     ) || contests.value.find((c) => c.state === "ended"),
 );
+const current = computed(()=>contests.value.find(c=>!["ended","cancelled","draft"].includes(contestStage(c,now.value+offset))));
 const history: Record<string, any>[] = [];
 const title = computed(
   () =>
     ({
+      trash: "赛事回收站",
       home: "主题赛事",
       detail: "主题赛事",
       entry: "作品详情",
@@ -124,6 +133,7 @@ function routeSnapshot() {
   return {
     owner: props.user.id,
     seed,
+    preview: preview.value,
     view: view.value,
     selected: selected.value,
     entries: entries.value,
@@ -144,6 +154,7 @@ function snapshot() {
 }
 function restore(s: Record<string, any>) {
   view.value = s.view;
+  preview.value = !!s.preview;
   selected.value = s.selected;
   entries.value = s.entries || [];
   mine.value = s.mine || [];
@@ -202,7 +213,7 @@ async function run(work: () => Promise<void>) {
 async function list(fresh = false, append = false) {
   const r = await call(
     "contests.list",
-    { offset: append ? contests.value.length : 0, type: "", year: 0 },
+    { scope:"public", offset: append ? contests.value.length : 0, type: "", year: 0 },
     fresh,
   );
   moreContests.value = (r.contests?.length || 0) > 20;
@@ -225,6 +236,8 @@ async function wall(append = false, fresh = false) {
       "contests.entries",
       {
         contestId: cid,
+        view:"public",
+        ...(preview.value?{preview:true}:{}),
         seed,
         winnersOnly: mode,
         offset: 0,
@@ -234,7 +247,7 @@ async function wall(append = false, fresh = false) {
     );
     if (selected.value?.id !== cid || winners.value !== mode) return;
     more.value = (r.entries?.length || 0) > 20;
-    const rows = (r.entries || []).slice(0, 20);
+    const rows = (r.entries || []).slice(0, 20).filter(e=>!preview.value||e.status==="approved");
     entries.value = [
       ...new Map(
         [...(append ? entries.value : []), ...rows].map((e) => [e.id, e]),
@@ -253,9 +266,10 @@ async function loadEvent(id: string, fresh = false) {
     mine.value = [];
   }
   try {
-    const r = await call("contests.get", { contestId: id }, fresh);
+    const r = await call("contests.get", { contestId: id,view:"public",...(preview.value?{preview:true}:{}),...(props.initialEntryId?{entryId:props.initialEntryId}:{}) }, fresh);
     if (!r.contest) throw Error("invalid_response");
     selected.value = r.contest;
+    requestedEntry=r.entry;
     votesUsed.value = r.votesUsed || 0;
     mineReady.value =
       r.myEntries !== undefined ||
@@ -311,7 +325,7 @@ function compose(work?: ContestEntry) {
   go("compose");
 }
 async function primary() {
-  if (!selected.value) return;
+  if (!selected.value || preview.value) return;
   const phase = contestStage(selected.value, now.value + offset);
   if (phase === "submitting") {
     if (!mineReady.value) {
@@ -357,6 +371,7 @@ function applyEntry(work: ContestEntry) {
   }
 }
 function updateEvent(contest: Contest) {
+  managed.value=managed.value.map(c=>c.id===contest.id?contest:c);
   selected.value = contest;
   contests.value = contests.value.map((c) =>
     c.id === contest.id ? contest : c,
@@ -396,7 +411,7 @@ function submitted(work: ContestEntry) {
   editing.value = undefined;
 }
 async function vote() {
-  if (pendingVote.value || !entry.value || !selected.value) return;
+  if (preview.value || pendingVote.value || !entry.value || !selected.value) return;
   const before = entry.value,
     cid = selected.value.id,
     enabled = !before.voted,
@@ -430,7 +445,7 @@ const confirmation = ref<{
 const reportReason = ref(""),
   confirmBusy = ref(false);
 async function confirm() {
-  if (!confirmation.value || !selected.value || confirmBusy.value) return;
+  if (preview.value || !confirmation.value || !selected.value || confirmBusy.value) return;
   const op = confirmation.value;
   confirmBusy.value = true;
   try {
@@ -475,11 +490,31 @@ async function finishAdmin(id: string, known?: Contest) {
     : await call("contests.get", { contestId: id }, true);
   if (!r.contest) throw Error("invalid_response");
   selected.value = r.contest;
+  managed.value=[r.contest,...managed.value.filter(c=>c.id!==id)];
   contests.value = [r.contest, ...contests.value.filter((c) => c.id !== id)];
   if (history.at(-1)?.view === "manage") history.pop();
   view.value = "manage";
   notice.value = "赛事已保存";
   void nextTick(() => window.scrollTo({ top: 0, behavior: "instant" }));
+}
+async function adminList(append=false,fresh=false) {
+  const r=await call("contests.list",{scope:"manage",offset:append?managed.value.length:0},fresh);
+  managementMore.value=(r.contests?.length||0)>20;
+  managed.value=[...(append?managed.value:[]),...(r.contests||[]).slice(0,20)];
+}
+function adminHome(){go("admin");void run(()=>adminList());}
+async function openPreview(){
+  if(!selected.value)return;
+  const id=selected.value.id;go("detail");preview.value=true;
+  await run(()=>loadEvent(id));
+}
+function endPreview(){preview.value=false;popRoute();}
+async function removed(c:Contest){
+  updateEvent(c);contests.value=contests.value.filter(x=>x.id!==c.id);
+  history.splice(0);view.value="admin";selected.value=undefined;
+  notice.value="已移入回收站，原始记录仍然保留。";
+  void nextTick(()=>window.scrollTo({top:0,behavior:"instant"}));
+  await run(()=>adminList(false,true));
 }
 function manage() {
   go("manage");
@@ -527,7 +562,7 @@ function requestBack() {
   if (child.value?.requestBack()) return true;
   return popRoute();
 }
-defineExpose({ requestBack, snapshot });
+defineExpose({ requestBack, snapshot, refresh:()=>run(()=>view.value==="home"?home(true):view.value==="admin"?adminList(false,true):selected.value?loadEvent(selected.value.id,true):home(true)) });
 onMounted(() => {
   if (props.restore?.owner === props.user.id && !props.compact) {
     restore(props.restore);
@@ -539,37 +574,22 @@ onMounted(() => {
       await list();
       return;
     }
-    await home();
-    if (props.initialId) {
-      if (selected.value?.id !== props.initialId) open(props.initialId);
-      else go("detail");
-    }
+    if(props.initialId){
+      await list();go("detail");await loadEvent(props.initialId);
+      if(props.initialEntryId){const found=requestedEntry||entries.value.find(e=>e.id===props.initialEntryId);if(found)openWork(found);else notice.value="已打开获奖比赛，可在作品墙中查看完整记录。";}
+    } else await home();
   });
 });
 </script>
 <template>
-  <button
-    v-if="compact"
-    class="contest-entry ct-compact"
-    @click="emit('open', head?.id)"
-  >
-    <Trophy :size="23" /><span
-      ><small
-        >主题赛事{{
-          head ? " · " + contestLabels[contestStage(head, now + offset)] : ""
-        }}</small
-      ><strong>{{ head?.title || "校园里的每一份创作" }}</strong
-      ><small>{{
-        head
-          ? contestRemaining(head, now + offset) +
-            " · " +
-            head.entryCount +
-            "件作品"
-          : "参与比赛，收藏属于你的荣誉"
-      }}</small></span
-    ><ChevronRight :size="17" />
+  <button v-if="compact" class="contest-entry ct-compact" :class="{'ct-compact-empty':!current}" @click="emit('open',current?.id)" :aria-label="current?'校园赛事：'+current.title:'校园赛事，查看赛事'">
+    <Trophy :size="18" aria-hidden="true"/>
+    <span v-if="current" class="ct-entry-copy"><strong>{{current.title}}</strong><small>{{current.paused?'已暂停':contestLabels[contestStage(current,now+offset)]}}<span v-if="contestRemaining(current,now+offset)"> · {{contestRemaining(current,now+offset)}}</span></small></span>
+    <strong v-else class="ct-entry-label">校园赛事</strong>
+    <span class="ct-entry-action">{{current?'参与':'查看赛事'}}<ChevronRight :size="15"/></span>
   </button>
   <section v-else class="ct" :aria-busy="loading">
+    <div v-if="preview" class="ct-preview-bar" role="status"><span>普通用户视角 · 只读预览</span><button class="ct-link" @click="endPreview">结束预览</button></div>
     <p v-if="error" class="ct-error" role="alert">
       {{ error
       }}<button
@@ -584,22 +604,10 @@ onMounted(() => {
     </p>
     <p v-if="notice" class="ct-notice" role="status">{{ notice }}</p>
     <template v-if="view === 'home' || view === 'detail'"
-      ><div class="ct-toolbar">
-        <button v-if="admin" class="ct-link" @click="go('admin')">
+      ><div v-if="admin && !preview" class="ct-toolbar">
+        <button v-if="admin && !preview" class="ct-link" @click="adminHome">
           赛事管理</button
-        ><button
-          class="ct-link"
-          :disabled="loading"
-          @click="
-            run(() =>
-              view === 'home'
-                ? home(true)
-                : loadEvent(selected?.id || lastId, true),
-            )
-          "
         >
-          刷新
-        </button>
       </div>
       <ContestDetail
         v-if="selected"
@@ -613,7 +621,8 @@ onMounted(() => {
         :more="more"
         :loading="wallLoading"
         :winners="winners"
-        :admin="admin"
+        :admin="false"
+        :readonly="preview"
         :home="view === 'home'"
         @primary="primary"
         @entry="openWork"
@@ -625,17 +634,10 @@ onMounted(() => {
         @manage="manage" />
       <p v-else-if="loading" class="ct-loading" role="status">正在打开比赛…</p>
       <div v-else class="ct-empty">
-        <h3>下一场精彩，很快相遇</h3>
+        <h3>暂时没有正在进行的赛事</h3>
         <p>
-          {{
-            admin
-              ? "创建一场比赛，邀请同学们留下作品。"
-              : "新赛事发布后，会出现在这里。先看看历届故事吧。"
-          }}
+          新比赛发布后会出现在这里，历届作品仍可随时回看。
         </p>
-        <button v-if="admin" class="ct-primary" @click="go('create')">
-          创建赛事
-        </button>
       </div>
       <footer class="ct-footer-links">
         <button @click="go('archive')">
@@ -650,6 +652,7 @@ onMounted(() => {
       :now="now + offset"
       :votes-used="votesUsed"
       :pending="pendingVote"
+      :readonly="preview"
       @vote="vote"
       @edit="compose(entry)"
       @withdraw="confirmation = { kind: 'withdraw', entry }"
@@ -678,7 +681,7 @@ onMounted(() => {
       <button class="ct-primary ct-more" @click="go('create')">
         <Plus :size="17" />创建赛事</button
       ><button
-        v-for="c in contests"
+        v-for="c in managed"
         :key="c.id"
         class="ct-row"
         @click="openManage(c.id)"
@@ -690,13 +693,13 @@ onMounted(() => {
           ></span
         ><ChevronRight :size="17" /></button
       ><button
-        v-if="moreContests"
+        v-if="managementMore"
         class="ct-secondary ct-more"
         :disabled="loading"
-        @click="run(() => list(false, true))"
+        @click="run(() => adminList(true))"
       >
         更多管理赛事</button
-      ><button class="ct-link" @click="go('themes')">
+      ><button v-if="(backendSchema||13)>=15" class="ct-link" @click="go('trash')">回收站</button><p v-else class="ct-subtitle">赛事清理与回收站将在后台升级后启用。</p><button class="ct-link" @click="go('themes')">
         管理主题征集
       </button></template
     ><ContestAdmin
@@ -707,15 +710,19 @@ onMounted(() => {
       :backend-schema="backendSchema"
       @saved="(id, c) => run(() => finishAdmin(id, c))"
       @close="popRoute"
-    /><ContestManagement
+    /><KeepAlive><ContestManagement
       v-if="view === 'manage' && selected && admin"
       ref="child"
+      :key="selected.id"
       :owner="user.id"
       :contest="selected"
+      :backend-schema="backendSchema"
+      @preview="openPreview"
+      @removed="removed"
       @updated="updateEvent"
       @edit="go('edit')"
       @work="openWork"
-    /><ContestThemes
+    /></KeepAlive><ContestRecycleBin v-if="view==='trash' && admin" :owner="user.id" @open="openManage"/><ContestThemes
       v-if="view === 'themes'"
       ref="child"
       :owner="user.id"
@@ -752,32 +759,6 @@ onMounted(() => {
   </section>
 </template>
 <style scoped>
-.ct-compact {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  padding: 15px 14px;
-  background: var(--color-tint);
-  border-radius: 14px;
-  color: var(--color-primary);
-  margin: 8px 0 14px;
-}
-.ct-compact span {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-.ct-compact strong {
-  font-size: 15px;
-  overflow-wrap: anywhere;
-  line-height: 1.45;
-  color: var(--color-text);
-}
-.ct-compact small {
-  font-size: 11px;
-  color: var(--color-muted);
-}
+.contest-entry.ct-compact{width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:12px;margin:4px 0 10px;border:1px solid var(--color-border);border-radius:12px;background:var(--color-surface);color:var(--color-muted);min-height:76px;box-sizing:border-box}
+.ct-entry-copy{display:grid;gap:4px;flex:1;min-width:0}.ct-entry-copy strong{font-size:14px;line-height:1.4;color:var(--color-text);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}.ct-entry-copy small{font-size:11px;line-height:1.5}.ct-entry-action{display:flex;align-items:center;gap:3px;font-size:12px;flex:none;background:var(--color-background);border-radius:8px;min-height:36px;padding:0 10px;color:var(--color-text)}.contest-entry.ct-compact.ct-compact-empty{min-height:48px;padding:2px 12px}.ct-entry-label{flex:1;font-size:13px;color:var(--color-text)}.ct-compact-empty .ct-entry-action{background:transparent;color:var(--color-muted)}.ct-compact:hover{background:var(--color-background)}
 </style>

@@ -30,14 +30,16 @@ class TreeholePlugin : Plugin() {
                 val hall = result.optJSONObject("hall")
                 if (hall?.has("progress") == true) {
                     runCatching { hallVault.save(JSObject().put("hall", hall).put("cachedAt", System.currentTimeMillis()).toString()) }
-                } else if (action in setOf("posts.create","comments.create","posts.delete","comments.delete","reactions.set","honors.change") || (result.optJSONArray("unlocks")?.length() ?: 0) > 0) {
+                } else if (action in setOf("posts.create","comments.create","posts.delete","comments.delete","reactions.set","honors.change","contests.wear","contests.manage","contests.review") || (result.optJSONArray("unlocks")?.length() ?: 0) > 0) {
                     runCatching { hallVault.restore()?.let { hallVault.save(JSObject(it).put("dirty", true).toString()) } }
                 }
                 // Reuse authenticated self projections for the offline personal exhibit.
                 // Token replacement and logout clear this vault before another account can read it.
-                if (action in setOf("me", "login", "register", "recover", "profile.update") && result.has("user")) {
+                val updatedIdentity = result.optJSONObject("updatedIdentity")
+                val selfProjection = updatedIdentity ?: if (action in setOf("me", "login", "register", "recover", "profile.update")) result.optJSONObject("user") else null
+                if (selfProjection != null) {
                     runCatching {
-                        val user = result.getJSONObject("user")
+                        val user = selfProjection
                         val id = user.getString("id")
                         val owner = JSObject().put("id", id)
                             .put("badges", user.optJSONObject("badges") ?: JSObject())
