@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
-import { Award, ChevronRight, LockKeyhole } from "lucide-vue-next";
+import { Award, Check, ChevronRight, Clock3, LockKeyhole } from "lucide-vue-next";
 import CollectionBadge from "./CollectionBadge.vue";
 import { archiveSections, collectionKind, definitionCode, displayCollectionName, honorName, honorRarities, isRetiredAchievement, type CollectionItem, type CollectionProfile, type HonorArchiveItem } from "../../domain/honorCollection";
 import { catalog } from "../../domain/globalAchievements";
+import { communityHiddenCount } from "../../domain/communityAchievementCards";
 import { clearHonorCollectionCache, getHonorCollection } from "../../services/honorCollectionCache";
 import { treeholeError, type TreeholeResult } from "../../services/treehole";
 import { badges, honorDate, legacyWearableHonors, type BadgeCode } from "../../domain/communityHonors";
@@ -24,6 +25,8 @@ const years = ref<number[]>([]);
 const panel = ref<"honor" | "achievement">("honor");
 const filter = ref("all");
 const filters = { all:"全部", daily:"日常", milestone:"里程碑", season:"季节纪念", hidden:"隐藏", archive:"已停发" };
+const statusFilters = { all:"全部状态", earned:"已解锁", locked:"未解锁" } as const;
+const statusFilter = ref<keyof typeof statusFilters>("all");
 const loading = ref(false);
 const changing = ref(false);
 const more = ref(false);
@@ -88,12 +91,25 @@ function group(item: Card) {
   if (item.category === "hidden") return "hidden";
   return "milestone";
 }
+function cardState(item: Card) {
+  if (item.awardId) return "earned";
+  return item.unreleased ? "pending" : "locked";
+}
+function stateLabel(item: Card) {
+  const state = cardState(item);
+  if (state === "pending") return "待开放";
+  if (collectionKind(item) === "achievement") return statusFilters[state];
+  return state === "earned" ? "已获得" : "未获得";
+}
+const stateIcons = { earned:Check, locked:LockKeyhole, pending:Clock3 };
 const visible = computed(() => panel.value === "honor" ? honors.value : achievements.value.filter(item =>
-  filter.value === "all" ? group(item)!=="archive" : filter.value===group(item)));
+  (filter.value === "all" ? group(item)!=="archive" : filter.value===group(item))
+    && (statusFilter.value === "all" || cardState(item) === statusFilter.value)));
 const visibleFilters = computed(()=>Object.entries(filters).filter(([key])=>
   !["archive","season"].includes(key)||achievements.value.some(item=>group(item)===key)));
-const mystery = computed(() => self.value && !!profile.value && panel.value === "achievement" && ["all","hidden"].includes(filter.value)
-  ? Math.max(0, 5 - achievements.value.filter(item => group(item)==="hidden" && item.awardId).length) : 0);
+const mystery = computed(() => self.value && !!profile.value && panel.value === "achievement"
+  && statusFilter.value!=="earned" && ["all","hidden"].includes(filter.value)
+  ? Math.max(0, communityHiddenCount - achievements.value.filter(item => group(item)==="hidden" && item.awardId).length) : 0);
 const earned = computed(() => (panel.value==="honor" ? honors.value : achievements.value).filter(i=>i.awardId));
 const distribution = computed(() => earned.value.reduce<Record<string,number>>((counts, item) => {
   counts[item.rarity] = (counts[item.rarity] ?? 0) + 1;
@@ -111,6 +127,7 @@ async function openInitial() {
   if (!item) return;
   panel.value = collectionKind(item)==="achievement" ? "achievement" : "honor";
   filter.value = "all";
+  statusFilter.value = "all";
   await show(item);
 }
 watch(()=>props.initialCode, (next, old)=>{ if (next && next!==old && profile.value) void openInitial(); });
@@ -219,7 +236,7 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
     <header class="hc-heading">
       <div><h2>{{ archive ? "社区荣誉殿堂" : self ? "我的荣誉收藏" : (profile?.nickname ?? "同学") + "的荣誉收藏" }}</h2>
       <p v-if="archive">收藏历届荣誉，阅读获奖者留下的校园故事。</p>
-      <p v-else-if="profile">已获得 {{ earned.length }} 枚<span v-if="panel==='honor' && equipped"> · 佩戴 {{ equipped }}</span></p></div>
+      <p v-else-if="profile">{{ panel==='achievement' ? "已解锁" : "已获得" }} {{ earned.length }} 枚<span v-if="panel==='honor' && equipped"> · 佩戴 {{ equipped }}</span></p></div>
       <Award :size="27" aria-hidden="true" />
     </header>
 
@@ -267,23 +284,28 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
       <nav v-if="panel==='achievement'" class="hc-tabs" aria-label="社区成就类型">
         <button v-for="[key,label] in visibleFilters" :key="key" :aria-pressed="filter===key" @click="filter=key">{{ label }}</button>
       </nav>
+      <div v-if="panel==='achievement' && self" class="hc-status-filters" aria-label="成就解锁状态" role="group">
+        <button v-for="(label,key) in statusFilters" :key="key" :aria-pressed="statusFilter===key" @click="statusFilter=key">{{ label }}</button>
+      </div>
       <ul class="hc-gallery">
         <li v-for="item in visible" :key="item.id">
-          <button @click="show(item)">
+          <button class="hc-card" :data-state="cardState(item)" @click="show(item)">
             <CollectionBadge :rarity="item.rarity" :category="item.category" :code="item.code" :icon="item.icon" :earned="!!item.awardId" />
             <strong>{{ item.name }}</strong>
-            <small>{{ item.year ? item.year + ' · ' : '' }}{{ honorRarities[item.rarity] }}
-              <LockKeyhole v-if="!item.awardId" :size="10" aria-label="待获得" />
-            </small>
+            <small>{{ item.year ? item.year + ' · ' : '' }}{{ honorRarities[item.rarity] }}</small>
+            <span class="hc-state" :data-state="cardState(item)"><component :is="stateIcons[cardState(item)]" :size="13" aria-hidden="true" />{{ stateLabel(item) }}</span>
           </button>
         </li>
         <li v-for="i in mystery" :key="'hidden-'+i" class="hc-mystery">
-          <div><CollectionBadge rarity="common" category="hidden" />
-            <strong>隐藏成就</strong><small><LockKeyhole :size="10" aria-hidden="true" /> 尚未发现</small>
+          <div class="hc-card" data-state="locked"><CollectionBadge rarity="common" category="hidden" />
+            <strong>隐藏成就</strong>
+            <span class="hc-state" data-state="locked"><LockKeyhole :size="13" aria-hidden="true" />尚未发现</span>
           </div>
         </li>
       </ul>
-      <p v-if="!loading && !error && !visible.length && !mystery" class="hc-empty">这里还没有可展示的藏品。</p>
+      <p v-if="!loading && !error && !visible.length && !mystery" class="hc-empty">
+        {{ panel==='achievement' && statusFilter!=='all' ? `这个分类暂无${statusFilters[statusFilter]}成就。` : "这里还没有可展示的藏品。" }}
+      </p>
     </template>
 
     <p v-if="loading" role="status" class="hc-empty">正在读取荣誉记录…</p>
@@ -296,6 +318,9 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
           :icon="'icon' in selected ? selected.icon : undefined" :earned="archive || !!selected.awardId" />
         <p v-if="unlocked" class="hc-new">{{ collectionKind(selected)==="achievement" ? "新成就已解锁" : "新荣誉已获得" }}</p>
         <h3 id="hc-dialog-name">{{ honorName({...selected,name:displayCollectionName(selected)}) }}</h3>
+        <span v-if="!archive && !unlocked" class="hc-state" :data-state="cardState(selected)">
+          <component :is="stateIcons[cardState(selected)]" :size="13" aria-hidden="true" />{{ stateLabel(selected) }}
+        </span>
         <p v-if="'nickname' in selected">授予 {{ selected.nickname }}</p>
         <p>{{ selected.story || selected.criteria }}</p>
         <small>{{ honorRarities[selected.rarity] }}<template v-if="selected.at"> · {{ honorDate(selected.at) }}</template><template v-if="selected.archived"> · 已绝版</template></small>
@@ -322,7 +347,31 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
 </template>
 
 <style>
-.hc {display:grid;gap:13px;padding:12px 0 24px;min-width:0}
+.hc {
+  --hc-earned-card:#f6efff;
+  --hc-earned-border:#b295d5;
+  --hc-earned-label:#593680;
+  --hc-earned-ink:#fff;
+  --hc-locked-card:#f4f4f7;
+  --hc-locked-border:#c9c7d0;
+  --hc-locked-label:#e5e4ea;
+  --hc-locked-ink:#504b5c;
+  --hc-pending-label:#f6ecd5;
+  --hc-pending-ink:#6d4c0e;
+  display:grid;gap:13px;padding:12px 0 24px;min-width:0;
+}
+[data-theme="dark"] .hc {
+  --hc-earned-card:#30233f;
+  --hc-earned-border:#9c78c1;
+  --hc-earned-label:#d6baf7;
+  --hc-earned-ink:#2f1947;
+  --hc-locked-card:#242630;
+  --hc-locked-border:#6f7183;
+  --hc-locked-label:#393b4a;
+  --hc-locked-ink:#e0dde7;
+  --hc-pending-label:#45351b;
+  --hc-pending-ink:#ffe1a0;
+}
 .hc-heading {
   display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:18px;border-radius:16px;border:1px solid var(--color-divider);
@@ -348,10 +397,39 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
 .hc-existing span {color:var(--color-text);background:var(--color-tint);padding:5px 8px;border-radius:6px;font-size:12px}
 .hc-gallery,.hc-archive {list-style:none;padding:0;margin:0}
 .hc-gallery {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
-.hc-gallery button,.hc-mystery>div {
-  display:grid;justify-items:center;align-content:start;gap:6px;width:100%;height:100%;
-  min-height:123px;padding:10px 4px;color:var(--color-text);
-  border:1px solid var(--color-divider);border-radius:11px;background:var(--color-raised,var(--color-surface));
+.hc-status-filters {
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:3px;
+  border:1px solid var(--color-divider);border-radius:11px;background:var(--hc-locked-card);
+}
+.hc-status-filters button {
+  min-height:40px;padding:4px;border-radius:7px;color:var(--color-muted);font-size:12px;
+}
+.hc-status-filters button[aria-pressed=true] {
+  background:var(--hc-earned-label);color:var(--hc-earned-ink);font-weight:700;
+}
+.hc-card {
+  display:flex;flex-direction:column;align-items:center;gap:5px;width:100%;height:100%;
+  min-height:139px;padding:9px 4px;color:var(--color-text);text-align:center;
+  border:1px dashed var(--hc-locked-border);border-radius:11px;background:var(--hc-locked-card);
+}
+.hc-card[data-state="earned"] {
+  border:1px solid var(--hc-earned-border);background:var(--hc-earned-card);
+}
+.hc-card .collection-medal {width:55px;height:61px}
+.hc-card[data-state="earned"] .collection-medal.common {
+  --rim:#8e6db3;--light:#f8f2ff;--shade:#d8c3ed;--ink:#4d316b;
+}
+.hc-state {
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;width:max-content;max-width:100%;
+  min-height:21px;padding:2px 6px;border-radius:5px;white-space:nowrap;font-size:11px;font-weight:650;
+  color:var(--hc-locked-ink);background:var(--hc-locked-label);
+}
+.hc-card .hc-state {margin-top:auto}
+.hc-state[data-state="earned"] {color:var(--hc-earned-ink);background:var(--hc-earned-label)}
+.hc-state[data-state="pending"] {color:var(--hc-pending-ink);background:var(--hc-pending-label)}
+.hc-state svg {flex:none}
+.hc-card:not([data-state="earned"]) strong {
+  color:var(--hc-locked-ink);
 }
 .hc-sections {border-bottom:1px solid var(--color-divider)}
 .hc-sections button {min-width:88px}
@@ -360,7 +438,6 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
 .hc-identity h3:last-child {margin-top:5px}
 .hc-existing span {display:inline-flex;align-items:center;gap:5px}
 .hc-existing span:not(.active) {background:transparent;color:var(--color-muted);border:1px solid var(--color-divider)}
-.hc-mystery {opacity:.75}
 .hc-gallery strong {font-size:12px;line-height:1.35;overflow-wrap:anywhere}
 .hc-gallery small {display:flex;align-items:center;gap:2px;color:var(--color-muted);font-size:10px}
 .hc-archive {display:grid;gap:7px}

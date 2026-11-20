@@ -3,7 +3,7 @@ import { Angry, BedDouble, History, Coffee, Compass, Inbox, ScrollText, BookOpen
 import { awards } from './communityHonors';
 
 export type Source = 'device' | 'school' | 'learning' | 'community';
-export const groups = ['全部','初识','学习','生活','社区','时光','隐藏'] as const;
+export const groups = ['全部','初识','学习','生活','社区','时光','隐藏','已停发'] as const;
 export type Group = typeof groups[number];
 export type Tier = '普通' | '稀有' | '史诗' | '传奇';
 export interface Collectible {

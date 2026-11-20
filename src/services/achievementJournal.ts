@@ -2,11 +2,12 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { computed, ref, shallowReactive, watch } from 'vue';
 import { byCode, lifeCodes, type Source } from '../domain/globalAchievements';
 import type { HonorHall } from '../domain/communityHonors';
+import type { CollectionProfile } from '../domain/honorCollection';
 
 import type {ShowcaseOwner} from '../domain/honorShowcase';
 export interface Stamp {at:string; historical:boolean}
 interface Journal { stamps:Record<string,Stamp>; pins:string[]; seenHidden?:string }
-interface CacheReply {signedIn:boolean; owner?:ShowcaseOwner; hall?:HonorHall; cachedAt?:number; dirty?:boolean}
+interface CacheReply {signedIn:boolean; owner?:ShowcaseOwner; hall?:HonorHall; collection?:CollectionProfile; cachedAt?:number; dirty?:boolean}
 interface Bridge {
   journalRead(input:{scope:string}):Promise<{value?:string}>;
   journalWrite(input:{scope:string;value:string}):Promise<void>;

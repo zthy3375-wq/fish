@@ -37,7 +37,9 @@ async function client(width){
  const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block'});
  const state={token:null,dropNextPost:false,failNextReaction:false,releaseReaction:null,breakNextImage:false,delayImage:false,publicResponses:[],actions:[],requests:[],holdNextPage:false,releasePage:null,failNextPage:false,holdNextDetail:false,releaseDetail:null,failNextDetail:false};
  await context.exposeBinding('__treeholeNative',async(_,options)=>{
-  const {action,body}=options;if(action==='buddies.join'&&state.failBuddy){state.failBuddy=false;return {error:'network_unavailable'};}if(action==='polls.vote'&&state.failVote){state.failVote=false;return {error:'network_unavailable'};}if(action==='media.upload'&&body?.purpose==='comment'&&state.failCommentUpload){state.failCommentUpload=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.failFollow){state.failFollow=false;return {error:'network_unavailable'};}if(action==='follows.list'&&state.failFollowList){state.failFollowList=false;return {error:'network_unavailable'};}if(action==='posts.list'&&!body?.beforeId&&state.failNextFeed){state.failNextFeed=false;return {error:'network_unavailable'};}if(action==='notifications.unread'&&state.expireUnread){state.expireUnread=false;return {error:'session_expired'};}if(action==='media.upload'&&state.failAvatarUpload){state.failAvatarUpload=false;return {error:'network_unavailable'};}if(action==='responses.set'&&state.failResponse){state.failResponse=false;return {error:'network_unavailable'};}state.actions.push(action);state.requests.push({action,body});if(action==='posts.get'&&state.failNextDetail){state.failNextDetail=false;return {error:'network_unavailable'};}if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
+  const {action,body}=options;
+  if(action==='cachedHall')return {result:{signedIn:!!state.token,owner:state.owner,hall:state.hall,collection:state.collection,cachedAt:state.hallCachedAt}};
+if(action==='buddies.join'&&state.failBuddy){state.failBuddy=false;return {error:'network_unavailable'};}if(action==='polls.vote'&&state.failVote){state.failVote=false;return {error:'network_unavailable'};}if(action==='media.upload'&&body?.purpose==='comment'&&state.failCommentUpload){state.failCommentUpload=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.failFollow){state.failFollow=false;return {error:'network_unavailable'};}if(action==='follows.list'&&state.failFollowList){state.failFollowList=false;return {error:'network_unavailable'};}if(action==='posts.list'&&!body?.beforeId&&state.failNextFeed){state.failNextFeed=false;return {error:'network_unavailable'};}if(action==='notifications.unread'&&state.expireUnread){state.expireUnread=false;return {error:'session_expired'};}if(action==='media.upload'&&state.failAvatarUpload){state.failAvatarUpload=false;return {error:'network_unavailable'};}if(action==='responses.set'&&state.failResponse){state.failResponse=false;return {error:'network_unavailable'};}state.actions.push(action);state.requests.push({action,body});if(action==='posts.get'&&state.failNextDetail){state.failNextDetail=false;return {error:'network_unavailable'};}if(action==='posts.list'&&body?.beforeId&&state.failNextPage){state.failNextPage=false;return {error:'network_unavailable'};}if(action==='reactions.set'&&state.failNextReaction){state.failNextReaction=false;await new Promise(resolve=>state.releaseReaction=resolve);return {error:'network_unavailable'};}const headers={'Content-Type':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
   const result=await fetch(endpoint+'/v1/'+action,{method:action==='config'?'GET':'POST',headers,...(action==='config'?{}:{body:JSON.stringify(action==='me'&&(state.legacyConfig||state.preBoardsConfig)?{}:body)})});
   const json=await result.json();if(action==='buddies.join'&&state.holdBuddy){state.holdBuddy=false;await new Promise(resolve=>state.releaseBuddy=resolve);}if(action==='buddies.join'&&state.dropBuddy){state.dropBuddy=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.holdFollow){state.holdFollow=false;await new Promise(resolve=>state.releaseFollow=resolve);}if(action==='avatar.set'&&state.holdAvatarSet){state.holdAvatarSet=false;await new Promise(resolve=>state.releaseAvatarSet=resolve);}if(action==='config'&&(state.legacyConfig||state.preBoardsConfig))delete json.boardsEnabled;if(action==='config'&&state.legacyConfig){delete json.moderationEnabled;delete json.responseKinds;delete json.messagesEnabled;delete json.socialEnabled;delete json.avatarsEnabled;delete json.responsesEnabled;delete json.discoveryEnabled;delete json.followingEnabled;delete json.buddiesEnabled;delete json.pollsEnabled;delete json.commentImagesEnabled;}if(action==='posts.get'&&state.holdNextDetail){state.holdNextDetail=false;await new Promise(resolve=>state.releaseDetail=resolve);}if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
@@ -46,7 +48,13 @@ async function client(width){
    if(json.config)json.config.honorCollectionEnabled=false;
   }
   if(json.sessionToken){state.token=json.sessionToken;delete json.sessionToken;}
-  if(action==='logout'||action==='account.delete')state.token=null;
+  if(['me','login','register','recover','profile.update'].includes(action)&&json.user?.id){
+   if(state.owner?.id!==json.user.id){state.hall=undefined;state.collection=undefined;}
+   state.owner={id:json.user.id,badges:json.user.badges,showcase:json.user.showcase};
+  }
+  if(action==='honors.hall'&&json.hall?.progress){state.hall=json.hall;state.hallCachedAt=Date.now();}
+  if(action==='collection.profile'&&json.collection?.id===(state.owner?.id??state.hall?.id)&&!body?.offset)state.collection=json.collection;
+  if(action==='logout'||action==='account.delete'){state.token=null;state.owner=undefined;state.hall=undefined;state.collection=undefined;}
   if(action.startsWith('posts.')||action.startsWith('comments.'))state.publicResponses.push(json);
   if(action==='media.url'&&state.breakNextImage){state.breakNextImage=false;json.image.url=mediaOrigin+'/fixtures/expired-image';}
   else if(action==='media.url'&&state.delayImage)await new Promise(r=>setTimeout(r,180));
@@ -56,9 +64,15 @@ async function client(width){
   return {result:json};
  });
  await context.addInitScript(()=>{
-  const methods={Treehole:['request'],Preferences:['get','set','remove'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+  const methods={Treehole:['request','cachedHall','journalRead','journalWrite'],Preferences:['get','set','remove'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
   window.androidBridge={};window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
-   if(plugin==='Treehole'){const value=await window.__treeholeNative(args);if(value.error)throw Error(value.error);return value.result;}
+   if(plugin==='Treehole'){
+    if(method==='journalRead')return {value:localStorage.getItem('test-achievements:'+args.scope)};
+    if(method==='journalWrite'){localStorage.setItem('test-achievements:'+args.scope,args.value);return {};}
+    const value=await window.__treeholeNative(method==='cachedHall'?{action:'cachedHall'}:args);
+    if(value.error)throw Error(value.error);
+    return value.result;
+   }
    if(plugin==='Preferences'){if(method==='get')return {value:localStorage.getItem(args.key)};if(method==='set')localStorage.setItem(args.key,args.value);if(method==='remove')localStorage.removeItem(args.key);}
    if(plugin==='LocalNotifications'&&method==='getPending')return {notifications:[]};return {};
   }};

@@ -666,7 +666,6 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
      </template>
      <div v-if="user" :key="screen" class="th-screen-panel" :style="edgeOffset?{transform:'translateX('+edgeOffset+'px)',animation:'none',transition:'none'}:undefined" :class="'th-page-'+pageMotion" :data-screen="screen">
       <template v-if="screen==='feed'">
-       <button v-if="collectionEnabled" class="th-honor-archive" @click="showHonorArchive"><Award :size="19" aria-hidden="true"/><span>荣誉殿堂</span><ChevronRight :size="16" aria-hidden="true"/></button>
        <div class="th-feed-heading">
         <nav v-if="engagementEnabled" class="th-return-links" aria-label="社区内容">
          <button :aria-pressed="scope==='all'" :disabled="busy" @click="accountFeed('all')">广场</button>
@@ -767,6 +766,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
           <button v-if="buddiesEnabled" :disabled="busy" @click="accountFeed('joined')"><CalendarPlus/>我报名的</button>
          </div>
          <div class="account-rows">
+          <button v-if="collectionEnabled" :disabled="busy" @click="showHonorArchive"><Award/><span>荣誉档案</span><ChevronRight/></button>
           <button v-if="engagementEnabled" :disabled="busy" @click="showInbox"><Bell/><span>互动消息</span><b v-if="unreadCount">{{unreadCount}}</b><ChevronRight/></button>
           <button v-if="followingEnabled&&!socialEnabled" :disabled="busy" @click="showFollowing()"><AtSign/><span>我关注的人</span><ChevronRight/></button>
          </div>

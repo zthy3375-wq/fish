@@ -417,6 +417,3 @@ to{transform:scaleX(1);opacity:1}
 .th-board-trigger{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;padding:0 4px;border-block:1px solid var(--color-divider);margin-bottom:10px;text-align:left;color:var(--color-muted);font-size:13px}
 .th-board-trigger strong{margin-left:auto;color:var(--color-text);font-weight:650}
 .th-board-trigger:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px;border-radius:8px}
-
-.th-honor-archive{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:7px 11px;margin:3px 0 8px;border:1px solid var(--color-divider);border-radius:10px;color:var(--color-text);background:var(--color-raised,var(--color-surface));font-size:13px;text-align:left}
-.th-honor-archive span{flex:1}.th-honor-archive svg:first-child{color:#a27a39}

@@ -44,7 +44,9 @@ export async function checkCollection({client,db,api,output}) {
     const source = reader.page;
     await source.locator('.th-nav .th-self:not([disabled])').waitFor();
     await source.waitForFunction(() => !document.querySelector('.unlock-toast'), undefined, {timeout:15000});
-    await button(source,'荣誉殿堂').click();
+    assert.equal(await button(source,'荣誉殿堂').count(),0);
+    await source.locator('.th-nav .th-self:not([disabled])').click();
+    await button(source,'荣誉档案').click();
     await source.locator('.hc-archive').getByText('邯院之光',{exact:true}).waitFor();
     for (const width of [360,390,430]) {
       await source.setViewportSize({width,height:844});
@@ -75,6 +77,40 @@ export async function checkCollection({client,db,api,output}) {
     await distribution.click();
     await shot(source,'collection-390.png');
     await button(source,'社区成就').click();
+    const cards = source.locator('.hc-gallery');
+    const ordinaryEarned = cards.getByRole('button',{name:/破壳而出/});
+    const ordinaryLocked = cards.getByRole('button',{name:/开始发芽/});
+    await ordinaryEarned.getByText('已解锁',{exact:true}).waitFor();
+    await ordinaryLocked.getByText('未解锁',{exact:true}).waitFor();
+    assert.equal(await ordinaryEarned.getAttribute('data-state'),'earned');
+    assert.equal(await ordinaryLocked.getAttribute('data-state'),'locked');
+    for (const theme of ['light','dark']) {
+      await source.evaluate(value=>{document.documentElement.dataset.theme=value;},theme);
+      const background = item => item.evaluate(el=>getComputedStyle(el).backgroundColor);
+      assert.notEqual(await background(ordinaryEarned),await background(ordinaryLocked));
+      assert.equal(await ordinaryEarned.evaluate(el=>getComputedStyle(el).borderTopStyle),'solid');
+      assert.equal(await ordinaryLocked.evaluate(el=>getComputedStyle(el).borderTopStyle),'dashed');
+    }
+    await source.evaluate(()=>{document.documentElement.dataset.theme='light';});
+    for (const width of [320,360,390,430]) {
+      await source.setViewportSize({width,height:844});
+      assert(await cards.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+    }
+    await source.setViewportSize({width:390,height:844});
+    await shot(source,'achievement-states-390.png');
+    const statePicker=source.getByRole('group',{name:'成就解锁状态'});
+    await button(statePicker,'已解锁').click();
+    assert.equal(await cards.locator('.hc-card:not([data-state="earned"])').count(),0);
+    await button(statePicker,'未解锁').click();
+    await ordinaryLocked.waitFor();
+    assert.equal(await cards.locator('.hc-card:not([data-state="locked"])').count(),0);
+    await button(source,'日常').click();
+    assert.equal(await cards.locator('.hc-mystery').count(),0);
+    await ordinaryLocked.click();
+    await source.getByRole('dialog').getByText('未解锁',{exact:true}).waitFor();
+    await button(source.getByRole('dialog'),'完成').click();
+    await button(source,'全部').click();
+    await button(statePicker,'全部状态').click();
     const achievement = source.getByRole('button',{name:/开服第一批/});
     await achievement.click();
     const medal = source.getByRole('dialog');
@@ -144,6 +180,33 @@ export async function checkCollection({client,db,api,output}) {
     await button(admin,'撤销采纳').click();
     await button(admin,'采纳').waitFor();
     assert.equal((await call(reader.state,'posts.get',{postId:question.id})).post.acceptedAnswerId,null);
+    await back(source);
+    await back(source);
+    await source.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'我的',exact:true}).click();
+    await source.locator('.collection-entry .case-all').click();
+    await source.getByRole('heading',{name:'成就收藏馆'}).waitFor();
+    const total=source.getByRole('progressbar',{name:'成就收藏进度'});
+    await source.locator('.cabinet-grid [data-code="first-hundred"].unlocked').waitFor();
+    assert.equal(await total.getAttribute('max'),'46');
+    assert.equal(await source.locator('.cabinet-grid [data-code="arrival"]').count(),1);
+    const groups=source.getByRole('navigation',{name:'成就分类'});
+    await button(groups,'社区').click();
+    await source.locator('.cabinet-grid [data-code="hundred-likes"]').waitFor();
+    await button(groups,'隐藏').click();
+    assert.equal(await source.locator('.cabinet-grid button').count(),13);
+    await source.locator('.cabinet-grid [data-code="world-lines"].unlocked').waitFor();
+    assert.equal(await source.locator('.cabinet-grid').getByText('凌晨四点的邯院',{exact:true}).count(),0);
+    await source.locator('.cabinet-grid [data-code^="community-mystery-"]').first().click();
+    const hidden=source.getByRole('dialog');
+    await hidden.getByRole('heading',{name:'隐藏成就',exact:true}).waitFor();
+    assert.equal(await hidden.getByText('获取条件',{exact:true}).count(),0);
+    await source.keyboard.press('Escape');
+    await shot(source,'global-hidden-achievements-390.png');
+    assert(reader.state.collection?.items.some(item=>item.code==='world-lines'&&item.awardId));
+    await reader.context.setOffline(true);
+    await button(source,'返回上一页').click();
+    await source.locator('.collection-entry .case-all').click();
+    await source.locator('.cabinet-grid [data-code="world-lines"].unlocked').waitFor();
     assert.deepEqual([...owner.errors,...reader.errors],[]);
     console.log('PASS honor archive and collection at 360/390/430px, unlock, wear and title, edition archive, permissions and anomaly log');
   } finally {
