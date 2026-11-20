@@ -148,8 +148,24 @@ let browser;const checks=[];
 try{
  browser=await chromium.launch({args:['--no-sandbox'],executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined});
  const context=await browser.newContext({viewport:{width:Number(process.env.CONTEST_QA_WIDTH)||390,height:Number(process.env.CONTEST_QA_HEIGHT)||844},serviceWorkers:'block'});
- let activeMember=owner;const actions=[];let coverRetry=false,coverReplyDropped=false;
- await context.exposeBinding('__contestNative',async(_,o)=>{actions.push({action:o.action,body:o.body});const r=o.action==='config'?api.config():await call(activeMember,o.action,o.body);delete r.sessionToken;if(coverRetry&&o.action==='media.upload'&&!coverReplyDropped){coverReplyDropped=true;throw Error('network_unavailable');}return r;});
+ let activeMember = owner;
+ const actions = [];
+ let coverRetry = false, coverReplyDropped = false, dropDeleteReply = false;
+ await context.exposeBinding("__contestNative", async (_, request) => {
+   const { action, body } = request;
+   actions.push({ action, body });
+   const result = action === "config" ? api.config() : await call(activeMember, action, body);
+   delete result.sessionToken;
+   if (coverRetry && action === "media.upload" && !coverReplyDropped) {
+     coverReplyDropped = true;
+     throw Error("network_unavailable");
+   }
+   if (dropDeleteReply && action === "contests.manage" && body.operation === "remove") {
+     dropDeleteReply = false;
+     throw Error("network_unavailable");
+   }
+   return result;
+ });
  await context.addInitScript(()=>{
  const methods={Treehole:['request','cachedHall','journalRead','journalWrite'],Preferences:['get','set','remove'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
  window.androidBridge={};window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{if(plugin==='Treehole'){if(method==='cachedHall'){const r=await window.__contestNative({action:'honors.hall'});return {signedIn:true,hall:r.hall,cachedAt:Date.now()};}if(method==='journalRead')return {};if(method==='journalWrite')return {};return window.__contestNative(args);}if(plugin==='Preferences'){if(method==='get')return {value:localStorage.getItem(args.key)};if(method==='set')localStorage.setItem(args.key,args.value);if(method==='remove')localStorage.removeItem(args.key)}if(plugin==='LocalNotifications'&&method==='getPending')return {notifications:[]};return {};}};
@@ -173,9 +189,49 @@ try{
  if(!baseline){const mark=actions.length;await page.getByRole('button',{name:'预览普通用户视角',exact:true}).click();await page.getByText('普通用户视角 · 只读预览',{exact:true}).waitFor();await shot('03-developer-preview');assert(!await page.getByRole('button',{name:'赛事管理',exact:true}).count());assert(!actions.slice(mark).some(x=>['contests.submit','contests.vote','contests.manage'].includes(x.action)));await page.getByRole('button',{name:'结束预览',exact:true}).click();await page.getByRole('button',{name:'发布赛事',exact:true}).waitFor();}
  else await shot('03-developer-preview');
  await start();await page.locator('.contest-entry').click();await page.getByRole('button',{name:'赛事管理',exact:true}).click();await page.getByRole('button',{name:/信息/}).click();
- await page.getByText('更多赛事操作',{exact:true}).click();
- if(!baseline){await page.getByRole('button',{name:'删除赛事',exact:true}).click();await page.locator('dialog[open]').waitFor();await shot('07-delete-confirm');await page.getByLabel('处理原因',{exact:true}).fill('移除验收测试数据');await page.getByRole('button',{name:'移入回收站',exact:true}).click();await page.getByRole('button',{name:'回收站',exact:true}).click();await page.getByRole('button',{name:/信息/}).waitFor();await shot('07-recycle-bin');await page.getByRole('button',{name:/信息/}).click();await page.getByRole('button',{name:'恢复赛事',exact:true}).click();await page.getByLabel('处理原因',{exact:true}).fill('恢复误删的测试比赛');await page.getByRole('button',{name:'确认恢复',exact:true}).click();await page.getByRole('button',{name:'预览普通用户视角',exact:true}).waitFor();checks.push('developer delete, trash, restore and preview all use confirmed real SQL');}
- else {await shot('07-delete-confirm');await shot('07-recycle-bin');}
+ if (!baseline) {
+   const deleteButton = page.getByRole("button", { name: "删除赛事", exact: true });
+   await deleteButton.waitFor();
+   const actionBox = await deleteButton.boundingBox();
+   assert(actionBox.y + actionBox.height <= page.viewportSize().height, "Delete is visible without scrolling");
+   await deleteButton.click();
+   const dialog = page.getByRole("dialog");
+   const confirmDelete = dialog.getByRole("button", { name: "移入回收站", exact: true });
+   await dialog.waitFor();
+   await shot("07-delete-confirm");
+   assert.equal(await dialog.getByLabel(/处理原因/).inputValue(), "");
+   await db.query("UPDATE hyt_contests SET version=version+1 WHERE id=$1", [empty]);
+   await confirmDelete.click();
+   await dialog.getByRole("status").filter({ hasText: "赛事有新变化" }).waitFor();
+   assert.equal((await db.query("SELECT visibility FROM hyt_contests WHERE id=$1", [empty])).rows[0].visibility, "visible");
+   dropDeleteReply = true;
+   await confirmDelete.click();
+   await dialog.getByRole("alert").filter({ hasText: "连接失败" }).waitFor();
+   assert.equal((await db.query("SELECT visibility FROM hyt_contests WHERE id=$1", [empty])).rows[0].visibility, "deleted");
+   await confirmDelete.click();
+   await page.getByRole("status").filter({ hasText: "赛事已移入回收站。" }).waitFor();
+   const removals = actions.filter(({action, body}) => action === "contests.manage" && body.operation === "remove");
+   assert.equal(removals.length, 3);
+   assert.notEqual(removals[0].body.requestId, removals[1].body.requestId);
+   assert.deepEqual(removals[1].body, removals[2].body);
+   const audit = await db.query("SELECT count(*)::int AS total FROM hyt_contest_audit WHERE contest_id=$1 AND action='remove'", [empty]);
+   assert.equal(audit.rows[0].total, 1);
+   await page.getByRole("button", { name: "回收站", exact: true }).click();
+   await page.getByRole("button", { name: /信息/ }).waitFor();
+   await shot("07-recycle-bin");
+   await page.getByRole("button", { name: /信息/ }).click();
+   await page.getByRole("button", { name: "恢复赛事", exact: true }).click();
+   await page.getByRole("button", { name: "确认恢复", exact: true }).click();
+   await page.getByRole("status").filter({ hasText: "赛事已恢复。" }).waitFor();
+   await page.getByText("回收站是空的", { exact: true }).waitFor();
+   const restored = await db.query("SELECT id,visibility,cancelled FROM hyt_contests WHERE id=$1", [empty]);
+   assert.deepEqual(restored.rows[0], { id: empty, visibility: "visible", cancelled: true });
+   checks.push("cancelled contest: visible delete, blank reason, refresh stale version, lost-receipt retry, recycle bin and restore");
+ } else {
+   await page.getByText("更多赛事操作", { exact: true }).click();
+   await shot("07-delete-confirm");
+   await shot("07-recycle-bin");
+ }
  if (!baseline) {
    await db.query("UPDATE hyt_contests SET max_entries=2 WHERE id=$1", [id]);
    activeMember = author;

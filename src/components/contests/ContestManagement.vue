@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import {
   contestRequest,
   contestLabels,
@@ -17,11 +17,13 @@ const emit = defineEmits<{
   edit: [];
   work: [entry: ContestEntry];
   preview: [];
-  removed: [contest:Contest];
+  removed: [contest: Contest];
+  restored: [contest: Contest];
 }>();
 const data = ref<ContestResult>({}),
   error = ref(""),
   notice = ref(""),
+  dialogNotice = ref(""),
   busy = ref(false),
   offset = ref(0),
   more = ref(false);
@@ -34,6 +36,25 @@ const operation = ref<{
   danger: boolean;
 }>();
 const reason = ref("");
+const counts = computed(() => {
+  const metrics = data.value.metrics;
+  if (!metrics) return;
+  const { entries, votes, awards } = metrics;
+  if ([entries, votes, awards].every((count) => Number.isSafeInteger(count) && count >= 0))
+    return { entries, votes, awards };
+});
+const hasRecords = computed(() => !!(counts.value &&
+  (counts.value.entries || counts.value.votes || counts.value.awards)));
+const visible = computed(() => !props.contest.visibility || props.contest.visibility === "visible");
+const cleanupOp = computed(() => operation.value?.body.operation);
+const cleanup = computed(() => cleanupOp.value === "remove" || cleanupOp.value === "restore");
+const confirmationReason = computed(() => {
+  const typed = reason.value.trim();
+  if (typed.length >= 2) return typed;
+  if (typed || !cleanup.value) return "";
+  if (cleanupOp.value === "restore") return "从赛事回收站恢复";
+  return hasRecords.value ? "下架赛事并保留历史记录" : "移入赛事回收站";
+});
 const works = ref<ContestEntry[]>([]),
   worksLoaded = ref(false),
   moreWorks = ref(false),
@@ -97,12 +118,14 @@ async function run(work: () => Promise<void>) {
   try {
     await work();
   } catch (e) {
-    if (alive) {error.value = treeholeError(e);if(treeholeErrorCode(e)==="contest_changed"){operation.value=undefined;void load().catch(()=>{});}}
+    if (alive) error.value = treeholeError(e);
   } finally {
     if (alive) busy.value = false;
   }
 }
-function manage(op: string, title: string, danger = false) {
+function manage(op: string, title: string, danger = false, version = props.contest.version) {
+  error.value = "";
+  dialogNotice.value = "";
   reason.value = "";
   operation.value = {
     action: "contests.manage",
@@ -110,14 +133,45 @@ function manage(op: string, title: string, danger = false) {
       contestId: props.contest.id,
       operation: op,
       requestId: crypto.randomUUID(),
-      ...(["remove","restore"].includes(op)?{expectedVersion:props.contest.version}:{}),
-      ...(op==="remove"?{expectedCounts:{entries:data.value.metrics?.entries??0,votes:data.value.metrics?.votes??0,awards:data.value.metrics?.awards??0}}:{}),
+      ...(["remove", "restore"].includes(op) ? { expectedVersion: version } : {}),
+      ...(op === "remove" ? { expectedCounts: counts.value } : {}),
     },
     title,
     danger,
   };
 }
+async function openCleanup(op: "remove" | "restore", version?: number) {
+  if (!counts.value) await load();
+  if (!alive) return;
+  if (!counts.value) throw Error("contest_metrics_unavailable");
+  const title = op === "restore" ? "恢复这场赛事？" : hasRecords.value ? "下架这场赛事？" : "删除这场赛事？";
+  manage(op, title, op === "remove", version);
+}
+async function refreshCleanup(op: "remove" | "restore") {
+  const typed = reason.value;
+  operation.value = undefined;
+  const result = await contestRequest(props.owner, "contests.get", { contestId: props.contest.id }, true);
+  if (!alive) return;
+  if (!result.contest) throw Error("invalid_response");
+  const contest = result.contest;
+  emit("updated", contest);
+  const stillVisible = !contest.visibility || contest.visibility === "visible";
+  if (op === "remove" && !stillVisible) {
+    emit("removed", contest);
+    return;
+  }
+  if (op === "restore" && stillVisible) {
+    emit("restored", contest);
+    return;
+  }
+  await load();
+  await openCleanup(op, contest.version);
+  reason.value = typed;
+  dialogNotice.value = "赛事有新变化。请核对最新记录，再确认操作。";
+}
 function review(kind: string, id: string, decision: string, title: string) {
+  error.value = "";
+  dialogNotice.value = "";
   reason.value = "";
   operation.value = {
     action: "contests.review",
@@ -133,19 +187,34 @@ function review(kind: string, id: string, decision: string, title: string) {
   };
 }
 async function confirm() {
-  if (!operation.value || reason.value.trim().length < 2) return;
+  if (!operation.value || !confirmationReason.value) return;
   const op = operation.value;
+  const kind = cleanupOp.value;
   await run(async () => {
-    op.body.reason ??= reason.value;
-    const r = await contestRequest(props.owner, op.action, op.body);
+    op.body.reason ??= confirmationReason.value;
+    let r: ContestResult;
+    try {
+      r = await contestRequest(props.owner, op.action, op.body);
+    } catch (e) {
+      if ((kind === "remove" || kind === "restore") &&
+          ["contest_changed", "contest_conflict"].includes(treeholeErrorCode(e))) {
+        await refreshCleanup(kind);
+        return;
+      }
+      throw e;
+    }
     if (!alive) return;
+    if (cleanup.value && (!r.contest || r.contest.id !== props.contest.id ||
+        (kind === "remove" ? !["hidden", "deleted"].includes(r.contest.visibility ?? "") :
+          r.contest.visibility !== "visible"))) throw Error("invalid_response");
     if (r.contest) emit("updated", r.contest);
     if (r.entry)
       works.value = works.value.map((e) =>
         e.id === r.entry!.id ? r.entry! : e,
       );
     operation.value = undefined;
-    if(op.body.operation==="remove" && r.contest){emit("removed",r.contest);return;}
+    if (kind === "remove" && r.contest) { emit("removed", r.contest); return; }
+    if (kind === "restore" && r.contest) { emit("restored", r.contest); return; }
     notice.value = "处理已确认";
     try {
       await load();
@@ -168,10 +237,21 @@ onMounted(() => run(() => load()));
 </script>
 <template>
   <section>
-    <p v-if="contest.visibility && contest.visibility!=='visible'" class="ct-notice">{{contest.visibility==='hidden'?'这场赛事已下架':'这场赛事已移入回收站'}}。原始数据仍然保留。</p>
-    <p class="ct-subtitle">{{ contest.title }}</p>
-    <h2>{{ contest.paused ? "比赛已暂停" : contestLabels[contest.state] }}</h2>
-    <p v-if="error" role="alert" class="ct-error">{{ error }}</p>
+    <header class="ct-manage-heading">
+      <h2>{{ contest.title }}</h2>
+      <h3>{{ contest.paused ? "比赛已暂停" : contestLabels[contest.state] }}<span v-if="!visible"> · 在回收站</span></h3>
+      <div class="ct-manage-actions">
+        <button v-if="visible" class="ct-secondary" :disabled="busy" @click="emit('preview')">预览普通用户视角</button>
+        <button
+          v-if="(backendSchema || 13) >= 15 && visible"
+          class="ct-secondary ct-cleanup-action"
+          :disabled="busy"
+          @click="run(() => openCleanup('remove'))"
+        >{{ hasRecords ? "下架赛事" : "删除赛事" }}</button>
+        <button v-else-if="!visible" class="ct-primary" :disabled="busy" @click="run(() => openCleanup('restore'))">恢复赛事</button>
+      </div>
+    </header>
+    <p v-if="error && !operation" role="alert" class="ct-error">{{ error }}</p>
     <p v-if="notice" role="status" class="ct-notice">{{ notice }}</p>
     <div class="ct-stats">
       <div>
@@ -218,7 +298,6 @@ onMounted(() => run(() => load()));
     >
       审核并公布结果
     </button>
-    <button v-if="!contest.visibility||contest.visibility==='visible'" class="ct-secondary ct-more" :disabled="busy" @click="emit('preview')">预览普通用户视角</button>
     <div class="ct-pair">
       <button v-if="(!contest.visibility||contest.visibility==='visible') && !['cancelled','ended'].includes(contest.state)" class="ct-link" :disabled="busy" @click="emit('edit')">
         编辑日程与规则</button
@@ -371,7 +450,7 @@ onMounted(() => run(() => load()));
         </button>
       </article>
     </details>
-    <details class="ct-rules">
+    <details v-if="visible" class="ct-rules">
       <summary>更多赛事操作</summary>
       <template v-if="!contest.visibility||contest.visibility==='visible'">
       <div class="ct-pair">
@@ -395,11 +474,8 @@ onMounted(() => run(() => load()));
           取消赛事
         </button>
       </div>
-      <button v-if="!['cancelled','ended'].includes(contest.state)" class="ct-link" @click="emit('edit')">延长尚未结束的阶段</button>
-      <button v-if="(backendSchema||13)>=15" class="ct-link ct-danger-text" :disabled="busy||data.metrics?.awards===undefined" @click="manage('remove', (data.metrics?.entries||data.metrics?.votes||data.metrics?.awards)?'下架这场赛事？':'删除这场赛事？',true)">{{(data.metrics?.entries||data.metrics?.votes||data.metrics?.awards)?'下架赛事':'删除赛事'}}</button>
-      <p v-else class="ct-subtitle">清理功能需后台升级后启用，现有数据不会改变。</p>
+      <p v-if="(backendSchema || 13) < 15" class="ct-subtitle">赛事清理需后台升级后启用。</p>
       </template>
-      <button v-else class="ct-secondary" :disabled="busy" @click="manage('restore','恢复这场赛事？')">恢复赛事</button>
     </details>
     <details class="ct-rules">
       <summary>资源统计</summary>
@@ -437,21 +513,31 @@ onMounted(() => run(() => load()));
       :title="operation?.title || ''"
       :danger="operation?.danger"
       :busy="busy"
+      :confirm-disabled="!confirmationReason"
       :confirm="operation?.body.operation==='remove'?'移入回收站':operation?.body.operation==='restore'?'确认恢复':'确认处理'"
       @cancel="operation = undefined"
       @confirm="confirm"
-      ><div v-if="['remove','restore'].includes(String(operation?.body.operation))" class="ct-removal-summary"><strong>{{contest.title}}</strong><p>{{contestLabels[contest.state]}} · {{data.metrics?.entries??'—'}} 条投稿 · {{data.metrics?.votes??'—'}} 条投票 · {{data.metrics?.awards??'—'}} 条奖励</p><p>{{operation?.body.operation==='restore'?'恢复原始记录及公开展示，不会重新颁发奖励。':'从公开列表、档案和榜单隐藏，所有原始数据仍然保留，可在回收站恢复。'}}</p></div><p v-else>操作会记录在管理审计中。取消或撤销资格后，荣誉和档案会同步更新。</p>
-      <label class="ct-form"
-        >处理原因<textarea
-          style="resize: none"
+    >
+      <div v-if="cleanup" class="ct-removal-summary">
+        <strong>{{ contest.title }}</strong>
+        <p>投稿 {{ counts?.entries ?? "—" }} · 投票 {{ counts?.votes ?? "—" }} · 奖项 {{ counts?.awards ?? "—" }}</p>
+        <p v-if="cleanupOp === 'restore'">恢复原赛事及相关记录。</p>
+        <p v-else>赛事将从公开列表移除，可在回收站恢复。</p>
+      </div>
+      <p v-else>操作会记录在管理审计中。</p>
+      <label class="ct-form ct-manage-reason" :class="{ 'is-optional': cleanup }">
+        <span>{{ cleanup ? "处理原因（选填）" : "处理原因" }}</span>
+        <textarea
           v-model="reason"
           :disabled="busy || !!operation?.body.reason"
-          rows="3"
+          :rows="cleanup ? 2 : 3"
           maxlength="300"
-          placeholder="填写原因，至少两个字"
+          :placeholder="cleanup ? '留空时自动记录操作' : '填写原因，至少两个字'"
         />
       </label>
-      <p v-if="error" role="alert">{{ error }}</p></ContestDialog
+      <p v-if="!confirmationReason" class="ct-subtitle">{{ cleanup ? "可留空，或输入至少两个字。" : "填写至少两个字后即可确认。" }}</p>
+      <p v-if="dialogNotice" role="status" class="ct-notice">{{ dialogNotice }}</p>
+      <p v-if="error" role="alert" class="ct-error">{{ error }}</p></ContestDialog
     >
   </section>
 </template>

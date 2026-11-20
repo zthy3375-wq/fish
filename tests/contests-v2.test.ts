@@ -740,7 +740,7 @@ it("v3 deletion uses the counts shown in confirmation and preserves a timed-out 
  const removed=vi.fn();let attempt=0;
  bridge.request.mockImplementation(async(action:string,body:any)=>action==="contests.admin"?{metrics:{entries:0,votes:0,awards:0}}:action==="contests.manage"?(++attempt===1?Promise.reject(Error("network_unavailable")):{contest:{...event,visibility:"deleted"}}):{});
  await mount(Management,{owner,contest:{...event,state:"cancelled"},backendSchema:15,onRemoved:removed});
- await ready(()=>!btn("删除赛事").disabled);btn("删除赛事").click();await nextTick();type("处理原因","清理取消测试");
+ await ready(()=>!btn("删除赛事").disabled);btn("删除赛事").click();await ready(()=>root.querySelector("dialog[open]"));type("处理原因","清理取消测试");await nextTick();
  btn("移入回收站").click();await ready(()=>root.textContent?.includes("连接失败"));
  btn("移入回收站").click();await ready(()=>removed.mock.calls.length);
  const calls=bridge.request.mock.calls.filter(c=>c[0]==="contests.manage");expect(calls[0][1]).toEqual(calls[1][1]);
@@ -863,4 +863,44 @@ it("counts accepted entries beyond the first legacy page of withdrawn work", asy
   expect(root.querySelector("#contest-own-works")?.textContent).toContain("2 / 2 件");
   const reads = bridge.request.mock.calls.filter(([a, b]) => a === "contests.entries" && b.mine);
   expect(reads.map(([, b]) => b.afterId)).toEqual([undefined, withdrawn[19].id]);
+});
+
+it("confirms removal of a cancelled empty contest without a typed reason", async () => {
+  const cancelled = { ...event, state: "cancelled" };
+  const removed = vi.fn();
+  bridge.request.mockImplementation(async (action: string) => {
+    if (action === "contests.admin") return { metrics: { entries: 0, votes: 0, awards: 0 } };
+    if (action === "contests.manage") return { contest: { ...cancelled, visibility: "deleted" } };
+    return {};
+  });
+  await mount(Management, { owner, contest: cancelled, backendSchema: 15, onRemoved: removed });
+  await ready(() => btn("删除赛事") && !btn("删除赛事").disabled);
+  btn("删除赛事").click();
+  await ready(() => btn("移入回收站"));
+  btn("移入回收站").click();
+  await nextTick();
+  expect(bridge.request.mock.calls).toEqual(expect.arrayContaining([
+    ["contests.manage", expect.objectContaining({ operation: "remove", reason: expect.any(String) })],
+  ]));
+  await ready(() => removed.mock.calls.length);
+});
+
+it("retries reading cleanup counts when opening the page failed", async () => {
+  const cancelled = { ...event, state: "cancelled" };
+  let reads = 0;
+  bridge.request.mockImplementation(async (action: string) => {
+    if (action === "contests.admin") {
+      if (++reads === 1) throw Error("network_unavailable");
+      return { metrics: { entries: 1, votes: 0, awards: 0 } };
+    }
+    return {};
+  });
+  await mount(Management, { owner, contest: cancelled, backendSchema: 15 });
+  await ready(() => root.querySelector(".ct-error"));
+  expect(btn("删除赛事").disabled).toBe(false);
+  btn("删除赛事").click();
+  await ready(() => root.querySelector("dialog[open]"));
+  expect(root.querySelector("dialog h2")?.textContent).toBe("下架这场赛事？");
+  expect(root.querySelector("dialog .ct-removal-summary")?.textContent).toContain("投稿 1");
+  expect(bridge.request.mock.calls.map(([a]) => a)).toEqual(["contests.admin", "contests.admin"]);
 });

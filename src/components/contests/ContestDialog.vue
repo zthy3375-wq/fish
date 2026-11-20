@@ -5,6 +5,7 @@ const props = defineProps<{
   title: string;
   confirm?: string;
   busy?: boolean;
+  confirmDisabled?: boolean;
   danger?: boolean;
 }>();
 const emit = defineEmits<{ confirm: []; cancel: [] }>();
@@ -42,7 +43,7 @@ onBeforeUnmount(() => element.value?.close());
       ><button
         class="ct-primary"
         :class="{ 'ct-danger': danger }"
-        :disabled="busy"
+        :disabled="busy || confirmDisabled"
         @click="emit('confirm')"
       >
         {{ busy ? "处理中…" : confirm || "确认" }}
