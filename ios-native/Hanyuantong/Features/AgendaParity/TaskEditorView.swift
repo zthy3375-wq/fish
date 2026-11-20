@@ -72,7 +72,7 @@ struct TaskEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: save).disabled(!titleValid || saving) }
             }
-            .confirmationDialog("修改尚未保存", isPresented: $discard, titleVisibility: .visible) {
+            .alert("修改尚未保存", isPresented: $discard) {
                 Button("放弃修改", role: .destructive) { dismiss() }
                 Button("继续编辑", role: .cancel) { }
             }

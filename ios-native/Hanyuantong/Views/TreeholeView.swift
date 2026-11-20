@@ -29,6 +29,8 @@ struct TreeholeView: View {
     @State private var replyExpanded = false
     @State private var detailTab = "body"
     @State private var scrollIntentUntil = Date.distantPast
+    @State private var contestPage = "events"
+    @State private var contestTarget: String?
     @State private var feedAnchor: String?
     @State private var visibleFeedPost: String?
     @State private var previousScreen = "feed"
@@ -80,6 +82,7 @@ struct TreeholeView: View {
                 if tree.user == nil && tree.ready { authentication }
                 if let user = tree.user {
                     switch screen {
+                    case "contests": ContestView(api: tree.api, user: user, initialId: contestTarget, initialPage: contestPage, onMember: showProfile, onPost: { id in Task { if let post = try? await tree.api.request("posts.get", ["postId": id]).post { open(post) } } })
                     case "compose": composer
                     case "detail": if let post = tree.current { discussion(post) }
                     case "account": account(user)
@@ -244,6 +247,7 @@ struct TreeholeView: View {
     }
     private var feed: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if tree.contestsEnabled { ContestEntryLink(api: tree.api) { contestTarget = nil; contestPage = "events"; screen = "contests" }.padding(.vertical, 10) }
             if tree.engagementEnabled {
                 TreeholeFeedScopes(tree: tree, select: accountFeed)
             }
@@ -643,6 +647,7 @@ struct TreeholeView: View {
                 Text("@" + user.username).font(.caption).foregroundStyle(.secondary)
                 Text("用自己的昵称，留下校园里的回声。").font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity).padding(.vertical, 18)
+            if tree.contestsEnabled { Button("赛事荣誉") { contestTarget = nil; contestPage = "honors"; screen = "contests" } }
             if tree.avatarsEnabled { TreeholeAvatarEditor(tree: tree) }
             HStack(spacing: 0) {
                 Button { accountFeed("mine") } label: { VStack(spacing: 10) { Image(systemName: "bubble.left").font(.title3); Text("我的帖子").font(.subheadline) }.frame(maxWidth: .infinity).padding(.vertical, 8) }
@@ -746,6 +751,7 @@ struct TreeholeView: View {
     }
     @ViewBuilder private var publicProfile: some View {
         if let profile = tree.publicProfile {
+            if tree.contestsEnabled { ContestProfileHonors(api: tree.api, memberId: profile.id) { id in contestTarget = id; screen = "contests" } }
             VStack(spacing: 12) {
                 TreeholeAvatar(name: profile.nickname, avatar: profile.avatar, size: 64)
                 Text(profile.nickname).font(.title2.bold())

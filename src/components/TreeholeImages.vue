@@ -2,13 +2,14 @@
 import {computed,ref,watch} from 'vue';
 import {ImageOff} from 'lucide-vue-next';
 import {treeholeRequest,type TreeholeImage} from '../services/treehole';
-const props=defineProps<{images:TreeholeImage[];postId:string;full?:boolean}>();
+const props=defineProps<{images:TreeholeImage[];postId:string;full?:boolean;contestId?:string;entryId?:string}>();
 defineEmits<{open:[index:number]}>();
 const renewed=ref<Record<string,string|null>>({}),attempted=new Set<string>(),page=ref(0);
 watch(()=>props.postId,()=>{renewed.value={};attempted.clear();page.value=0;});
+watch(()=>props.images.map(image=>image.id+'|'+(image.url||'')).join('\n'),()=>{renewed.value={};attempted.clear();});
 const ratio=computed(()=>{const i=props.images[0];return i?.width>0&&i?.height>0?i.width/i.height:1;});
 const singleStyle=computed(()=>props.full?{'aspect-ratio':String(ratio.value)}:{'aspect-ratio':String(Math.max(.75,Math.min(1.8,ratio.value))),'max-width':ratio.value<.85?'240px':ratio.value<1.15?'300px':'100%'});
-async function retry(image:TreeholeImage){if(attempted.has(image.id)){renewed.value[image.id]=null;return;}attempted.add(image.id);try{renewed.value[image.id]=(await treeholeRequest('media.url',{postId:props.postId,imageId:image.id})).image?.url||null;}catch{renewed.value[image.id]=null;}}
+async function retry(image:TreeholeImage){if(attempted.has(image.id)){renewed.value[image.id]=null;return;}attempted.add(image.id);try{renewed.value[image.id]=(await treeholeRequest(props.contestId&&props.entryId?'contests.image':'media.url',{...(props.contestId&&props.entryId?{contestId:props.contestId,entryId:props.entryId}:{postId:props.postId}),imageId:image.id})).image?.url||null;}catch{renewed.value[image.id]=null;}}
 function url(image:TreeholeImage){return image.id in renewed.value?renewed.value[image.id]:image.url;}
 function scrolled(event:Event){const el=event.target as HTMLElement;page.value=Math.min(props.images.length-1,Math.round(el.scrollLeft/el.clientWidth));}
 </script>
