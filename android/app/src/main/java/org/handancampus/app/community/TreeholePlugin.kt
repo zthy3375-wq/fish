@@ -30,7 +30,7 @@ class TreeholePlugin : Plugin() {
                 val hall = result.optJSONObject("hall")
                 if (hall?.has("progress") == true) {
                     runCatching { hallVault.save(JSObject().put("hall", hall).put("cachedAt", System.currentTimeMillis()).toString()) }
-                } else if (action in setOf("posts.create","comments.create","posts.delete","comments.delete","reactions.set","honors.change") || (result.optJSONArray("unlocks")?.length() ?: 0) > 0) {
+                } else if (action in setOf("posts.create","comments.create","posts.delete","comments.delete","reactions.set","honors.change","collection.wear","collection.visibility","collection.change") || (result.optJSONArray("unlocks")?.length() ?: 0) > 0) {
                     runCatching { hallVault.restore()?.let { hallVault.save(JSObject(it).put("dirty", true).toString()) } }
                 }
                 // Reuse authenticated self projections for the offline personal exhibit.

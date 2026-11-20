@@ -41,6 +41,10 @@ async function client(width){
   if(state.token)headers.Authorization='Bearer '+state.token;
   const result=await fetch(endpoint+'/v1/'+action,{method:action==='config'?'GET':'POST',headers,...(action==='config'?{}:{body:JSON.stringify(action==='me'&&(state.legacyConfig||state.preBoardsConfig)?{}:body)})});
   const json=await result.json();if(action==='buddies.join'&&state.holdBuddy){state.holdBuddy=false;await new Promise(resolve=>state.releaseBuddy=resolve);}if(action==='buddies.join'&&state.dropBuddy){state.dropBuddy=false;return {error:'network_unavailable'};}if(action==='follows.set'&&state.holdFollow){state.holdFollow=false;await new Promise(resolve=>state.releaseFollow=resolve);}if(action==='avatar.set'&&state.holdAvatarSet){state.holdAvatarSet=false;await new Promise(resolve=>state.releaseAvatarSet=resolve);}if(action==='config'&&(state.legacyConfig||state.preBoardsConfig))delete json.boardsEnabled;if(action==='config'&&state.legacyConfig){delete json.moderationEnabled;delete json.responseKinds;delete json.messagesEnabled;delete json.socialEnabled;delete json.avatarsEnabled;delete json.responsesEnabled;delete json.discoveryEnabled;delete json.followingEnabled;delete json.buddiesEnabled;delete json.pollsEnabled;delete json.commentImagesEnabled;}if(action==='posts.get'&&state.holdNextDetail){state.holdNextDetail=false;await new Promise(resolve=>state.releaseDetail=resolve);}if(action==='posts.list'&&body?.beforeId&&state.holdNextPage){state.holdNextPage=false;await new Promise(resolve=>state.releasePage=resolve);}if(!result.ok)return {error:json.error};
+  if(process.env.HYT_HONORS_ONLY){
+   if(action==='config')json.honorCollectionEnabled=false;
+   if(json.config)json.config.honorCollectionEnabled=false;
+  }
   if(json.sessionToken){state.token=json.sessionToken;delete json.sessionToken;}
   if(action==='logout'||action==='account.delete')state.token=null;
   if(action.startsWith('posts.')||action.startsWith('comments.'))state.publicResponses.push(json);
@@ -62,6 +66,16 @@ async function client(width){
  const page=await context.newPage();page.setDefaultTimeout(15000);const errors=[];page.on('pageerror',e=>errors.push(e.message));active=page;
  await page.goto(url);await page.getByRole('heading',{name:'说说校园里的那些事'}).waitFor();
  return {page,context,state,errors};
+}
+
+if(process.env.HYT_COLLECTION_UI){
+ try{
+  const {checkCollection}=await import('./community-collection-ui.mjs');
+  await checkCollection({client,db,api,output:process.env.HYT_HONOR_SHOTS||'/tmp/hyt-community-collection'});
+ }finally{
+  await browser.close();await new Promise(resolve=>server.close(resolve));await new Promise(resolve=>backend.close(resolve));await db.close();
+ }
+ process.exit(0);
 }
 
 if(process.env.HYT_HONORS_ONLY){

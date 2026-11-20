@@ -28,7 +28,7 @@ function replyLabel(child:TreeholeComment){
     <header>
      <div class="honor-byline">
       <strong class="honor-name" :title="comment.author.name">{{comment.author.name}}</strong>
-      <OfficialBadges v-if="!comment.author.anonymous&&comment.author.badges&&(comment.author.badges.official||comment.author.badges.worn)" :items="[comment.author.badges.official,comment.author.badges.worn]"/>
+      <OfficialBadges v-if="!comment.author.anonymous&&comment.author.badges&&(comment.author.badges.official||comment.author.badges.worn||comment.author.badges.collection)" :collection="comment.author.badges.collection" :items="[comment.author.badges.official,comment.author.badges.worn]"/>
      </div>
      <button class="th-comment-like" :aria-label="comment.liked?'取消评论点赞':'点赞评论'" :aria-pressed="!!comment.liked" :disabled="busy||pendingLikes?.[comment.id]" @click="$emit('like',comment)">
       <ThumbsUp :size="17" :fill="comment.liked?'currentColor':'none'"/>{{comment.likeCount||''}}
@@ -47,7 +47,7 @@ function replyLabel(child:TreeholeComment){
      <div class="th-nested-byline">
       <div class="honor-byline">
        <strong class="honor-name" :title="child.author.name">{{child.author.name}}</strong>
-       <OfficialBadges v-if="!child.author.anonymous&&child.author.badges&&(child.author.badges.official||child.author.badges.worn)" :items="[child.author.badges.official,child.author.badges.worn]"/>
+       <OfficialBadges v-if="!child.author.anonymous&&child.author.badges&&(child.author.badges.official||child.author.badges.worn||child.author.badges.collection)" :collection="child.author.badges.collection" :items="[child.author.badges.official,child.author.badges.worn]"/>
       </div>
       <span class="th-reply-quote">{{replyLabel(child)}}</span>
      </div>

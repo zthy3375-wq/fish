@@ -27,6 +27,9 @@ import {featuredHonor,publicMedals} from '../domain/honorShowcase';
 import HonorShowcase from './honors/HonorShowcase.vue';
 import HonorHall from './honors/HonorHall.vue';
 import HonorAdmin from './honors/HonorAdmin.vue';
+import CommunityCollection from './honors/CommunityCollection.vue';
+import CollectionAdmin from './honors/CollectionAdmin.vue';
+import {clearHonorCollectionCache} from '../services/honorCollectionCache';
 import AchievementNotice from './honors/AchievementNotice.vue';
 
 
@@ -45,12 +48,13 @@ const buddyValid=computed(()=>!buddyDraft.value||postCategory.value==='buddies'&
 const buddyRoster=ref<{post:TreeholePost;members:TreeholeBuddyMember[];loading:boolean;error:string}|null>(null);
 const pollSnapshots=new Map<string,TreeholePoll>();
 const honorsEnabled=ref(false),hallMember=ref(''),awardQueue=ref<string[]>([]),shownAwards=new Set<string>();
-const hallAward=ref('');
+const hallAward=ref(''),collectionEnabled=ref(false),showLegacyHonors=ref(false),manageCollection=ref(true);
 function showHall(id:string,code=''){
  if(screen.value!=='honors')rememberRoute();
- hallMember.value=id;hallAward.value=code;screen.value='honors';
+ hallMember.value=id;hallAward.value=code;showLegacyHonors.value=!!code;screen.value='honors';
 }
-function showHonorAdmin(){rememberRoute();screen.value='honorAdmin';}
+function showHonorAdmin(){rememberRoute();manageCollection.value=true;screen.value='honorAdmin';}
+function showHonorArchive(){rememberRoute();screen.value='honorArchive';}
 function applyHonorUpdate(r:TreeholeResult){
  const change=r.updatedIdentity||(r.user?.badges?{id:r.user.id,badges:r.user.badges,showcase:r.user.showcase||[]}:null);
  feedNeedsRefresh=true;if(!change)return;
@@ -108,7 +112,7 @@ const dialogElement=ref<HTMLElement>(),dialogMotion=ref('th-sheet-motion');
 const user=ref<TreeholeUser|null>(null),busy=ref(false),ready=ref(false),error=ref(''),notice=ref('');
 const registration=ref(false),combinedUnread=ref(false),auth=ref<'login'|'register'|'recover'>('login');
 const username=ref(''),password=ref(''),nickname=ref(''),optionalRecovery=ref(''),recoveryInput=ref(''),recovery=ref('');
-type Screen='honors'|'honorAdmin'|'feed'|'compose'|'detail'|'account'|'moderate'|'inbox'|'profile'|'following'|'messages';
+type Screen='honors'|'honorArchive'|'honorAdmin'|'feed'|'compose'|'detail'|'account'|'moderate'|'inbox'|'profile'|'following'|'messages';
 const screen=ref<Screen>('feed');
 const engagementEnabled=ref(false),unreadCount=ref(0),notifications=ref<TreeholeNotification[]>([]),inboxFilter=ref('all'),inboxLoading=ref(false),inboxError=ref(''),inboxNext=ref<Record<string,string>|null>(null);
 const profile=ref<TreeholeProfile|null>(null),profilePosts=ref<TreeholePost[]>([]),profileNext=ref<Record<string,string>|null>(null),bio=ref('');
@@ -134,7 +138,7 @@ let alive=true,active=true;
 const identity=computed(()=>anonymous.value?'匿名同学':user.value?.nickname||'邯院通昵称');
 const forceCommentAnon=computed(()=>detail.value?.category==='treehole'||!!detail.value?.anonymous&&!!detail.value?.author.mine);
 function date(value:string){return treeholeTimestamp(value);}
-const title=computed(()=>({honors:'荣誉殿堂',honorAdmin:'身份管理',compose:'发帖',detail:'帖子详情',account:({overview:'我的社区',profile:'编辑资料',settings:'社区设置',password:'修改密码与恢复码',delete:'注销账号'})[accountAction.value],moderate:'社区管理',inbox:'互动消息',profile:'同学主页',following:peopleKind.value==='followers'?'我的粉丝':'我关注的人',messages:messageTitle.value,feed:'邯院社区'})[screen.value]);
+const title=computed(()=>({honors:'荣誉收藏',honorArchive:'荣誉殿堂',honorAdmin:'身份管理',compose:'发帖',detail:'帖子详情',account:({overview:'我的社区',profile:'编辑资料',settings:'社区设置',password:'修改密码与恢复码',delete:'注销账号'})[accountAction.value],moderate:'社区管理',inbox:'互动消息',profile:'同学主页',following:peopleKind.value==='followers'?'我的粉丝':'我关注的人',messages:messageTitle.value,feed:'邯院社区'})[screen.value]);
 const dialogOpen=computed(()=>!!(boardPicker.value||buddyRoster.value||menu.value||confirmAction.value||reportTarget.value||discard.value||gallery.value||replyExpanded.value));
 function publishTabNavigation(){emit('tabNavigation',screen.value==='feed'&&!recovery.value&&!dialogOpen.value);}
 watch([screen,recovery,dialogOpen],publishTabNavigation,{immediate:true});
@@ -238,6 +242,7 @@ watch(screen,async(next,prior)=>{
   document.querySelector(focusedThread.value?'.th-focus-context':'.th-discussion-title')?.scrollIntoView({block:'start',behavior:'instant'});
  }else window.scrollTo({top:0,behavior:'instant'});
 });
+watch(()=>user.value?.id,()=>clearHonorCollectionCache());
 watch(notice,()=>{clearTimeout(noticeTimer);if(notice.value)noticeTimer=setTimeout(()=>{notice.value='';},2600);});
 watch(dialogOpen,async(open)=>{if(open){dialogMotion.value=gallery.value?'th-gallery-motion':'th-sheet-motion';previousFocus=document.activeElement as HTMLElement;previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';await nextTick();if(replyExpanded.value)replyInput.value?.focus();else dialogElement.value?.querySelector<HTMLElement>('button,input,textarea')?.focus();}else{document.body.style.overflow=previousOverflow;await nextTick();previousFocus?.focus({preventScroll:true});}});
 watch([buddyRoster,menu,reportTarget,confirmAction,discard,gallery],async()=>{if(dialogOpen.value){await nextTick();if(replyExpanded.value)replyInput.value?.focus();else dialogElement.value?.querySelector<HTMLElement>('button,input,textarea')?.focus();}});
@@ -365,7 +370,7 @@ async function toggleWatch(post:TreeholePost){
  catch(e){actionError(e,epoch);}finally{if(epoch===accountEpoch)watchPending.value=false;}
 }
 function applyConfig(config:TreeholeResult){
- honorsEnabled.value=config.honorsEnabled===true;
+ honorsEnabled.value=config.honorsEnabled===true;collectionEnabled.value=config.honorCollectionEnabled===true;
  registration.value=config.registrationEnabled===true&&config.simpleRegistration===true;
  combinedUnread.value=config.combinedUnread===true;
  imagesEnabled.value=!!config.imagesEnabled;engagementEnabled.value=!!config.engagementEnabled;avatarsEnabled.value=!!config.avatarsEnabled;responsesEnabled.value=!!config.responsesEnabled;joyEnabled.value=config.responseKinds?.includes('joy')===true;discoveryEnabled.value=!!config.discoveryEnabled;boardsEnabled.value=discoveryEnabled.value&&config.boardsEnabled===true;followingEnabled.value=!!config.followingEnabled;socialEnabled.value=!!config.socialEnabled;messagesEnabled.value=!!config.messagesEnabled;pollsEnabled.value=!!config.pollsEnabled;buddiesEnabled.value=!!config.buddiesEnabled;commentImagesEnabled.value=!!config.commentImagesEnabled;moderationEnabled.value=!!config.moderationEnabled;
@@ -578,7 +583,7 @@ function resolveReport(r:TreeholeReport,decision:string){confirmAction.value={ti
 }};}
 async function leaveEditor(){if(screen.value==='compose')await clearDraft();discard.value=false;body.value='';commentBody.value='';commentImages.value=[];reply.value=null;returnFeed();}
 function requestBack(){
- const badge=document.querySelector<HTMLDialogElement>('.hyt-badge-detail[open]');if(badge){badge.close();return true;}
+ const badge=document.querySelector<HTMLDialogElement>('.hyt-badge-detail[open],.hc-dialog[open]');if(badge){badge.close();return true;}
  if(busy.value||recovery.value)return true;
  if(boardPicker.value){boardPicker.value=null;return true;}
  if(buddyRoster.value){buddyRoster.value=null;return true;}
@@ -642,6 +647,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
      </template>
      <div v-if="user" :key="screen" class="th-screen-panel" :style="edgeOffset?{transform:'translateX('+edgeOffset+'px)',animation:'none',transition:'none'}:undefined" :class="'th-page-'+pageMotion" :data-screen="screen">
       <template v-if="screen==='feed'">
+       <button v-if="collectionEnabled" class="th-honor-archive" @click="showHonorArchive"><Award :size="19" aria-hidden="true"/><span>荣誉殿堂</span><ChevronRight :size="16" aria-hidden="true"/></button>
        <div class="th-feed-heading">
         <nav v-if="engagementEnabled" class="th-return-links" aria-label="社区内容">
          <button :aria-pressed="scope==='all'" :disabled="busy" @click="accountFeed('all')">广场</button>
@@ -671,9 +677,24 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
       <TreeholeMessages v-else-if="screen==='messages'" ref="messagesView" :initial-member="messageMember" :drafts="messageDrafts" @unread="messageUnread=$event" @expired="clearAccount" @title="messageTitle=$event" @blocked="feedNeedsRefresh=true;refreshSocial()"/>
       <TreeholeInbox v-else-if="screen==='inbox'" :messages-enabled="messagesEnabled" :message-unread="messageUnread" @messages="showMessages()" :items="notifications" :filter="inboxFilter" :loading="inboxLoading||busy" :error="inboxError" :more="!!inboxNext" :unread="unreadCount" @filter="filterInbox" @open="openNotification" @refresh="loadInbox()" @more="loadInbox(true)" @read="markVisibleRead"/>
       <TreeholeFollowing v-else-if="screen==='following'" :followers="peopleKind==='followers'" :people="following" :loading="followingLoading" :error="followingError" :more="!!followingNext" :disabled="busy" :pending="pendingFollows" :retry-more="followingRetryMore" @open="openProfile" @unfollow="setFollow($event,false)" @follow="setFollow($event,true)" @load="loadFollowing" @browse="accountFeed('all')"/>
-      <HonorHall v-else-if="screen==='honors'" :key="user.id+hallMember+hallAward" :initial-code="hallAward" :viewer="user.id" :member="hallMember" :enabled="honorsEnabled" :request="api" @updated="applyHonorUpdate"/>
-      <HonorAdmin v-else-if="screen==='honorAdmin'&&user.role==='moderator'&&honorsEnabled" :user="user" :request="api" @changed="applyHonorUpdate"/>
-      <template v-else-if="screen==='profile'&&profile"><div class="th-public-profile"><TreeholeAvatar :name="profile.nickname" :url="profile.avatar?.url" :size="64"/><h2 class="honor-byline"><span class="honor-name" :title="profile.nickname">{{profile.nickname}}</span><OfficialBadges v-if="profile.badges" :items="[profile.badges.official,profile.badges.worn]"/></h2><p>{{profile.bio||'还没有填写简介'}}</p><HonorShowcase class="public-case" :honor="featuredHonor(profile.badges)" :medals="publicMedals(profile.showcase)" @hall="showHall(profile.id)" @medal="showHall(profile.id,$event)"/><span>{{profile.postCount}} 条公开帖子</span><div v-if="socialEnabled&&profile.id===user.id" class="th-social-stats"><button aria-label="我的关注列表" @click="showFollowing()"><strong>{{social?.followingCount??'—'}}</strong><span>关注</span></button><button aria-label="我的粉丝列表" @click="showFollowing('followers')"><strong>{{social?.followerCount??'—'}}</strong><span>粉丝</span></button></div><button v-if="followingEnabled&&profile.id!==user.id" class="th-follow-person" :class="{selected:profile.following}" :aria-pressed="!!profile.following" :disabled="busy||pendingFollows[profile.id]" @click="setFollow(profile.id,!profile.following)">{{pendingFollows[profile.id]?'处理中…':profile.following?'已关注 · 取消关注':'关注 TA'}}</button><button v-if="messagesEnabled&&profile.id!==user.id" class="th-message-person" :disabled="busy" @click="showMessages(profile.id)"><MessageCircle :size="17"/>发私信</button></div><p class="th-profile-privacy"><ShieldCheck :size="14"/>这里展示公开帖子，匿名发言不会出现在主页</p><TreeholePostCard v-for="post in profilePosts" :key="post.id" :post="post" :buddies-enabled="buddiesEnabled" :buddy-pending="pendingBuddies[post.id]" @buddy-join="buddyAction(post,'join',$event)" @buddy-close="buddyAction(post,'close',$event)" @buddy-members="showBuddyMembers(post)" :polls-enabled="pollsEnabled" :voting="pendingVotes[post.id]" @vote="vote(post,$event)" :responses-enabled="responsesEnabled" :joy-enabled="joyEnabled" :responding="pendingResponses[post.id]" @response="respond(post,$event)" :busy="busy" :reacting="pendingReactions[post.id+':like']" @open="openPost(post)" @discussion="openPost(post,true)" @react="react(post,$event)" @menu="menu=post.id" @image="imageView(post,$event)" @author="openProfile" @category="selectCategory" @interest="selectInterest"/><div v-if="!profilePosts.length" class="th-empty"><p>还没有公开帖子</p></div><button v-if="profileNext" class="th-more" :disabled="busy" @click="moreProfile">更多公开帖子</button></template>
+      <template v-else-if="screen==='honors'">
+       <nav v-if="collectionEnabled" class="hc-tabs" aria-label="个人荣誉页面">
+        <button :aria-pressed="!showLegacyHonors" @click="showLegacyHonors=false">荣誉收藏</button>
+        <button :aria-pressed="showLegacyHonors" @click="showLegacyHonors=true">社区成就</button>
+       </nav>
+       <CommunityCollection v-if="collectionEnabled&&!showLegacyHonors" :key="user.id+hallMember" :viewer="user.id" :member="hallMember" :reduced-motion="!honorFeedback.motion" :request="api" @updated="applyHonorUpdate"/>
+       <HonorHall v-else :key="user.id+hallMember+hallAward" :initial-code="hallAward" :viewer="user.id" :member="hallMember" :enabled="honorsEnabled" :request="api" @updated="applyHonorUpdate"/>
+      </template>
+      <CommunityCollection v-else-if="screen==='honorArchive'&&collectionEnabled" :viewer="user.id" :member="user.id" archive :reduced-motion="!honorFeedback.motion" :request="api" @person="showHall"/>
+      <template v-else-if="screen==='honorAdmin'&&honorsEnabled">
+       <nav v-if="collectionEnabled&&user.badges?.official?.code==='developer'" class="hc-tabs" aria-label="管理范围">
+        <button :aria-pressed="manageCollection" @click="manageCollection=true">荣誉管理</button>
+        <button :aria-pressed="!manageCollection" @click="manageCollection=false">身份与权限</button>
+       </nav>
+       <CollectionAdmin v-if="collectionEnabled&&manageCollection&&user.badges?.official?.code==='developer'" :request="api" @changed="applyHonorUpdate"/>
+       <HonorAdmin v-else-if="user.role==='moderator'" :user="user" :request="api" @changed="applyHonorUpdate"/>
+      </template>
+      <template v-else-if="screen==='profile'&&profile"><div class="th-public-profile"><TreeholeAvatar :name="profile.nickname" :url="profile.avatar?.url" :size="64"/><h2 class="honor-byline"><span class="honor-name" :title="profile.nickname">{{profile.nickname}}</span><OfficialBadges v-if="profile.badges" :collection="profile.badges.collection" :items="[profile.badges.official,profile.badges.worn]"/></h2><p>{{profile.bio||'还没有填写简介'}}</p><HonorShowcase class="public-case" :honor="featuredHonor(profile.badges)" :medals="publicMedals(profile.showcase)" @hall="showHall(profile.id)" @medal="showHall(profile.id,$event)"/><span>{{profile.postCount}} 条公开帖子</span><div v-if="socialEnabled&&profile.id===user.id" class="th-social-stats"><button aria-label="我的关注列表" @click="showFollowing()"><strong>{{social?.followingCount??'—'}}</strong><span>关注</span></button><button aria-label="我的粉丝列表" @click="showFollowing('followers')"><strong>{{social?.followerCount??'—'}}</strong><span>粉丝</span></button></div><button v-if="followingEnabled&&profile.id!==user.id" class="th-follow-person" :class="{selected:profile.following}" :aria-pressed="!!profile.following" :disabled="busy||pendingFollows[profile.id]" @click="setFollow(profile.id,!profile.following)">{{pendingFollows[profile.id]?'处理中…':profile.following?'已关注 · 取消关注':'关注 TA'}}</button><button v-if="messagesEnabled&&profile.id!==user.id" class="th-message-person" :disabled="busy" @click="showMessages(profile.id)"><MessageCircle :size="17"/>发私信</button></div><p class="th-profile-privacy"><ShieldCheck :size="14"/>这里展示公开帖子，匿名发言不会出现在主页</p><TreeholePostCard v-for="post in profilePosts" :key="post.id" :post="post" :buddies-enabled="buddiesEnabled" :buddy-pending="pendingBuddies[post.id]" @buddy-join="buddyAction(post,'join',$event)" @buddy-close="buddyAction(post,'close',$event)" @buddy-members="showBuddyMembers(post)" :polls-enabled="pollsEnabled" :voting="pendingVotes[post.id]" @vote="vote(post,$event)" :responses-enabled="responsesEnabled" :joy-enabled="joyEnabled" :responding="pendingResponses[post.id]" @response="respond(post,$event)" :busy="busy" :reacting="pendingReactions[post.id+':like']" @open="openPost(post)" @discussion="openPost(post,true)" @react="react(post,$event)" @menu="menu=post.id" @image="imageView(post,$event)" @author="openProfile" @category="selectCategory" @interest="selectInterest"/><div v-if="!profilePosts.length" class="th-empty"><p>还没有公开帖子</p></div><button v-if="profileNext" class="th-more" :disabled="busy" @click="moreProfile">更多公开帖子</button></template>
       <form v-else-if="screen==='compose'" id="treehole-compose" class="th-compose" @submit.prevent="publish">
        <div class="th-compose-identity"><TreeholeAvatar :name="identity" :url="user.avatar?.url" :anonymous="anonymous" :size="34"/><div><strong>{{identity}}</strong><small>{{anonymous?'匿名身份 · 仅本帖可关联':'公开昵称'}}</small></div><label class="th-anon-pill" :class="{selected:anonymous}"><input v-model="anonymous" type="checkbox" :disabled="busy||postCategory==='treehole'"/><VenetianMask :size="17"/><span>匿名发布</span><i aria-hidden="true"/></label></div>
        <button v-if="discoveryEnabled" type="button" class="th-board-trigger" aria-label="选择分区" aria-haspopup="dialog" :disabled="busy||!!buddyDraft" @click="boardPicker='compose'"><span>发布到</span><strong>{{treeholeDestinationName(postCategory,postInterest)}}</strong><ChevronRight :size="17" aria-hidden="true"/></button>
@@ -708,7 +729,7 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
         <section class="account-identity th-profile" aria-label="社区个人资料">
          <TreeholeAvatar :name="user.nickname" :url="user.avatar?.url" :size="54"/>
          <div class="account-identity-text">
-          <h2 class="honor-byline"><span class="honor-name" :title="user.nickname">{{user.nickname}}</span><OfficialBadges v-if="user.badges" :items="[user.badges.official,user.badges.worn]"/></h2>
+          <h2 class="honor-byline"><span class="honor-name" :title="user.nickname">{{user.nickname}}</span><OfficialBadges v-if="user.badges" :collection="user.badges.collection" :items="[user.badges.official,user.badges.worn]"/></h2>
           <p>@{{user.username}}</p>
          </div>
          <button class="account-edit" :disabled="busy" @click="openAccountPanel('profile')">编辑资料</button>

@@ -15,7 +15,7 @@ export function visibleBadges(items:(Badge|null|undefined)[],full=false):Badge[]
   const honors=unique.filter(b=>b.code!=='developer'&&b.code!=='moderator');
   return [...(official?[official]:[]),...(full?honors:honors.slice(0,1))];
 }
-export type Identity={official?:Badge|null;worn?:Badge|null};
+export type Identity={official?:Badge|null;worn?:Badge|null;collection?:import("./honorCollection").CollectionBadge|null};
 export const awards=[
  {code:'arrival',name:'初来乍到',icon:Sunrise,condition:'首次注册邯院通社区账号',description:'欢迎来到邯院的这一角。',metric:'registered',goal:1,tier:'普通'},
  {code:'firstpost',name:'第一声',icon:PenLine,condition:'发布第一篇有效帖子',description:'你在邯院通留下了第一篇帖子。',metric:'posts',goal:1,tier:'普通'},

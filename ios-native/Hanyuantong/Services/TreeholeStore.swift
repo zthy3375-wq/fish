@@ -13,6 +13,8 @@ import Combine
     @Published var busy = false
     @Published var ready = false
     @Published var registration = false
+    @Published var honorCollectionEnabled = false
+    private var honorCollections: [String: (Date, CampusCollectionProfile)] = [:]
     @Published var requiresInvite = false
     @Published var message: String?
     @Published var recovery: String?
@@ -85,10 +87,11 @@ import Combine
             message = (error as? TreeholeError)?.errorDescription ?? "连接失败，请检查网络后重试"
         } }
     }
-    func clear() { pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
+    func clear() { honorCollections = [:]; pendingBuddies = []; buddySnapshots = [:]; pendingVotes = []; pollSnapshots = [:]; followingRevision += 1; following = []; followingNext = nil; followingLoading = false; followingError = nil; pendingFollows = []; followStates = [:]; followingRetryMore = false; pendingResponses = []; responseSnapshots = [:]; leaveDetail(); epoch += 1; inboxRevision += 1; notifications = []; unreadCount = 0; inboxNext = nil; inboxLoading = false; inboxError = nil; publicProfile = nil; profilePosts = []; profileNext = nil; watchPending = false; feedRevision += 1; feedLoadingMore = false; feedPageError = nil; loadedFeedIdentity = nil; lastAutomaticCursor = ""; feedNeedsRefresh = false; pendingReactions = []; pendingCommentLikes = []; loadingThreads = []; loadedThreads = []; user = nil; posts = []; current = nil; comments = []; reports = []; recovery = nil; scope = "all"; query = ""; category = "all"; interest = ""; sort = "latest"; expandedReplies = []; replyPages = [:]; feedNext = nil; commentNext = nil }
     func enter() {
         perform {
             let config = try await self.api.request("config")
+            self.honorCollectionEnabled = config.honorCollectionEnabled == true
             self.registration = config.registrationEnabled == true; self.requiresInvite = config.requiresInvite == true; self.imagesEnabled = config.imagesEnabled == true
             self.engagementEnabled = config.engagementEnabled == true; self.pollsEnabled = config.pollsEnabled == true; self.buddiesEnabled = config.buddiesEnabled == true; self.commentImagesEnabled = config.commentImagesEnabled == true
             self.followingEnabled = config.followingEnabled == true; self.discoveryEnabled = config.discoveryEnabled == true; self.avatarsEnabled = config.avatarsEnabled == true; self.responsesEnabled = config.responsesEnabled == true
@@ -97,6 +100,32 @@ import Combine
             self.ready = true
             await self.refreshUnread()
         }
+    }
+    func loadHonorCollection(member: String, offset: Int = 0, fresh: Bool = false) async throws -> CampusCollectionProfile {
+        let generation = epoch
+        if offset == 0, !fresh, let (savedAt, profile) = honorCollections[member], now().timeIntervalSince(savedAt) < 120 { return profile }
+        let result = try await api.request("collection.profile", ["memberId": member, "offset": offset])
+        guard generation == epoch, let profile = result.collection, profile.id == member else { throw TreeholeError(code: "session_expired") }
+        if offset == 0 {
+            if honorCollections.count >= 16, let first = honorCollections.keys.first { honorCollections.removeValue(forKey: first) }
+            honorCollections[member] = (now(), profile)
+        }
+        return profile
+    }
+    func clearHonorCollectionCache() { honorCollections = [:] }
+    func applyCollectionIdentity(_ update: CampusIdentityUpdate) {
+        honorCollections.removeValue(forKey: update.id)
+        if user?.id == update.id { user?.badges = update.badges }
+        if publicProfile?.id == update.id { publicProfile?.badges = update.badges }
+        func updateAuthor(_ post: TreeholePost) -> TreeholePost {
+            var value = post
+            if !value.author.anonymous && value.author.id == update.id { value.author.badges = update.badges }
+            return value
+        }
+        posts = posts.map(updateAuthor)
+        profilePosts = profilePosts.map(updateAuthor)
+        current = current.map(updateAuthor)
+        feedNeedsRefresh = true
     }
     private var feedIdentity: [String: String] { ["scope": scope, "query": query, "sort": sort].merging(TreeholeCategories.filters(category, interest: interest, enabled: discoveryEnabled)) { _, new in new } }
     func selectDiscovery(_ selected: String, interest selectedInterest: String = "") async throws {

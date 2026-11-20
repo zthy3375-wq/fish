@@ -1,3 +1,4 @@
+import {collectionActions,sanitizeHonorCollection} from './honor-collection.mjs';
 import {cleanImage,MAX_IMAGE_BYTES} from './media.mjs';
 import {randomBytes,createHash,createHmac,scrypt,timingSafeEqual} from 'node:crypto';
 import {promisify} from 'node:util';
@@ -34,7 +35,7 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['honors.hall','honors.wear','honors.manage','honors.change','honors.ack','register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','admin.context','admin.content','admin.history','admin.action','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
+export const clientActions=new Set([...collectionActions,'honors.hall','honors.wear','honors.manage','honors.change','honors.ack','register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.reports','admin.resolve','admin.context','admin.content','admin.history','admin.action','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
 const awardCodes=['arrival','firstpost','hello','liked','sprout','neighbor','popular','collector','month','year'];
 const honorKinds=['seed','creator','contributor'];
 const permissions=['content','reports','users','recommend'];
@@ -46,6 +47,7 @@ function selection(values,choices,limit){
 function sanitize(action,b){
  if(!b||typeof b!=='object'||Array.isArray(b))fail();
  if(['register','login','recover'].includes(action))return {username:username(b.username)};
+ if(action.startsWith('collection.'))return sanitizeHonorCollection(action,b,{text,id,oneOf,boolean,fail});
  if(action==='honors.hall')return {memberId:id(b.memberId,true)};
  if(action==='honors.ack')return {codes:selection(b.codes,awardCodes,awardCodes.length)};
  if(action==='honors.wear')return {honor:b.honor===null?null:oneOf(b.honor,honorKinds),showcase:selection(b.showcase,awardCodes,3)};
@@ -244,6 +246,6 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ function config(){return {registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,honorCollectionEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
  return {execute,config};
 }
