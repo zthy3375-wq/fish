@@ -38,7 +38,7 @@ try{
   await p.getByRole('button',{name:'返回上一页'}).click();
   await p.locator('.collection-entry .case-all').click();
   await p.locator('[data-code=welcome].unlocked').waitFor();
-  assert.equal(await p.locator('.cabinet-grid button').count(),32);
+  assert.equal(await p.locator('.cabinet-grid button').count(),46);
   await p.locator('[data-code=life].unlocked').waitFor();
   await p.waitForFunction(()=>!document.querySelector('.unlock-toast'),undefined,{timeout:30000});
   await p.screenshot({path:output+'/global-'+width+'.png'});

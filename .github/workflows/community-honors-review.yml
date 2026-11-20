@@ -6,6 +6,8 @@ on:
       - 'src/domain/communityHonors.ts'
       - 'cloudbase/tests/community-honors.verify.mjs'
       - 'scripts/community-honors-ui.mjs'
+      - 'scripts/community-collection-ui.mjs'
+      - 'cloudbase/tests/community-honor-collection.verify.mjs'
       - '.github/workflows/community-honors-review.yml'
   workflow_dispatch:
 permissions:
@@ -40,10 +42,19 @@ jobs:
           HYT_UI_DIST="$RUNNER_TEMP/hyt-before/dist" HYT_HONORS_ONLY=before node scripts/treehole-browser-check.mjs
       - name: Collect revised profile, badge, cabinet and notification
         run: npm run build && HYT_HONORS_ONLY=after node scripts/treehole-browser-check.mjs
+      - name: Verify community collection, archive and management
+        env:
+          BASELINE: ${{ github.event.pull_request.base.sha || 'af322d2d40ffb6b4e8f48c22f66f61a915fe4d1e' }}
+        run: |
+          git show "$BASELINE:cloudbase/community-schema.sql" > "$RUNNER_TEMP/community-prior.sql"
+          HYT_COLLECTION_PREVIOUS_SCHEMA="$RUNNER_TEMP/community-prior.sql" node --test cloudbase/tests/community-honor-collection.verify.mjs
+          HYT_COLLECTION_UI=1 node scripts/treehole-browser-check.mjs
       - run: node scripts/global-collection-ui.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: community-honors-mobile
-          path: /tmp/hyt-honors-ui/
+          path: |
+            /tmp/hyt-honors-ui/
+            /tmp/hyt-community-collection/
           if-no-files-found: warn

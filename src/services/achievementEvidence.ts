@@ -26,7 +26,7 @@ export function observeLearning(c:LearningCache,historical:boolean){
 }
 export function observeTasks(c:TaskSnapshot,previous:TaskSnapshot){
   const previousTasks=new Map(previous.tasks.map(t=>[t.id,t]));
-  const complete=(t:TaskSnapshot['tasks'][number])=>!t.source&&t.completed&&t.completedAt&&(t.steps?.length??0)>=2&&t.steps!.every(s=>s.completed);
+  const complete=(t:TaskSnapshot['tasks'][number])=>!t.source&&t.completed&&t.completedAt&&(t.steps?.filter(s=>s.completed).length??0)>=2;
   const task=c.tasks.find(t=>{const old=previousTasks.get(t.id);return old&&!complete(old)&&complete(t);});
   if(task?.completedAt)void record('tasks','device',task.completedAt);
 }

@@ -449,6 +449,8 @@ function checkSchoolView(){
  if(!loading.value&&!error.value)schoolView(academicCache.value,page.value==='schedule'?'schedule':page.value==='academic'?section.value:'',!navigator.onLine);
 }
 watch([page,section,loading,academicCache],checkSchoolView,{flush:'post'});
+onMounted(()=>window.addEventListener('offline',checkSchoolView));
+onUnmounted(()=>window.removeEventListener('offline',checkSchoolView));
 const versionTaps=tapSequence(7);
 watch(modal,()=>versionTaps.reset());
 function tapVersion(){if(versionTaps.tap())void discover('goldfish');}

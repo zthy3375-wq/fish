@@ -29,8 +29,13 @@ class TreeholePlugin : Plugin() {
                 // Only the server's private hall includes progress. Public profile reads never enter this cache.
                 val hall = result.optJSONObject("hall")
                 if (hall?.has("progress") == true) {
-                    runCatching { hallVault.save(JSObject().put("hall", hall).put("cachedAt", System.currentTimeMillis()).toString()) }
-                } else if (action in setOf("posts.create","comments.create","posts.delete","comments.delete","reactions.set","honors.change") || (result.optJSONArray("unlocks")?.length() ?: 0) > 0) {
+                    runCatching {
+                        val cached = hallVault.restore()?.let { JSObject(it) } ?: JSObject()
+                        val snapshot = if (cachedOwner(cached) == hall.optString("id")) cached else JSObject()
+                        snapshot.remove("dirty")
+                        hallVault.save(snapshot.put("hall", hall).put("cachedAt", System.currentTimeMillis()).toString())
+                    }
+                } else if (action in setOf("posts.create","comments.create","posts.delete","comments.delete","reactions.set","honors.change","collection.wear","collection.visibility","collection.showcase","collection.change") || (result.optJSONArray("unlocks")?.length() ?: 0) > 0) {
                     runCatching { hallVault.restore()?.let { hallVault.save(JSObject(it).put("dirty", true).toString()) } }
                 }
                 // Reuse authenticated self projections for the offline personal exhibit.
@@ -43,10 +48,33 @@ class TreeholePlugin : Plugin() {
                             .put("badges", user.optJSONObject("badges") ?: JSObject())
                             .put("showcase", user.optJSONArray("showcase") ?: org.json.JSONArray())
                         val cached = hallVault.restore()?.let { JSObject(it) } ?: JSObject()
-                        val oldOwner = cached.optJSONObject("owner") ?: cached.optJSONObject("hall")
-                        val snapshot = if (oldOwner == null || oldOwner.optString("id") == id) cached else JSObject()
+                        val oldOwner = cachedOwner(cached)
+                        val snapshot = if (oldOwner == null || oldOwner == id) cached else JSObject()
                         if (snapshot.optJSONObject("owner")?.toString() != owner.toString()) {
                             hallVault.save(snapshot.put("owner", owner).toString())
+                        }
+                    }
+                }
+                if (action == "collection.profile" && body.optInt("offset") == 0) {
+                    runCatching {
+                        val collection = result.getJSONObject("collection")
+                        val cached = hallVault.restore()?.let { JSObject(it) } ?: JSObject()
+                        val id = collection.getString("id")
+                        val owner = cachedOwner(cached)
+                        if (body.optString("memberId").isBlank() || id == owner) {
+                            val snapshot = if (owner == null || owner == id) cached else JSObject()
+                            hallVault.save(snapshot.put("collection", collection).toString())
+                        }
+                    }
+                }
+                if (action == "collection.showcase") {
+                    runCatching {
+                        val update = result.getJSONObject("updatedIdentity")
+                        val cached = hallVault.restore()?.let { JSObject(it) } ?: JSObject()
+                        val collection = cached.optJSONObject("collection")
+                        if (collection != null && collection.optString("id") == update.optString("id")) {
+                            collection.put("showcase", update.getJSONArray("showcase"))
+                            hallVault.save(cached.toString())
                         }
                     }
                 }
@@ -56,6 +84,9 @@ class TreeholePlugin : Plugin() {
             catch (_: Exception) { call.reject("network_unavailable", "network_unavailable") }
         }
     }
+    private fun cachedOwner(snapshot: JSObject): String? =
+        (snapshot.optJSONObject("owner") ?: snapshot.optJSONObject("hall")
+            ?: snapshot.optJSONObject("collection"))?.optString("id")?.takeIf { it.isNotBlank() }
     @PluginMethod fun cachedHall(call: PluginCall) {
         executor.execute {
             val signedIn = vault.restore() != null

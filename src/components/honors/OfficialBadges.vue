@@ -1,16 +1,28 @@
 <script setup lang="ts">
 import BadgeDetail from './BadgeDetail.vue';
 import {computed,ref} from 'vue';
+import {Gem} from 'lucide-vue-next';
+import {collectionKind,honorName,honorRarities,type CollectionBadge} from '../../domain/honorCollection';
 import {badges,visibleBadges,type Badge} from '../../domain/communityHonors';
-const props=defineProps<{items:(Badge|null|undefined)[]; full?:boolean; passive?:boolean}>();
-const marks=computed(()=>visibleBadges(props.items,props.full));
+const props=defineProps<{items:(Badge|null|undefined)[]; full?:boolean; passive?:boolean; collection?:CollectionBadge|null}>();
+const wornCollection=computed(()=>props.collection&&collectionKind({...props.collection,category:'contribution'})==='honor'?props.collection:null);
+const marks=computed(()=>visibleBadges(
+  props.full ? props.items : props.items.filter((badge,index) =>
+    badge?.code==='developer'||badge?.code==='moderator'||(!wornCollection.value&&index!==0)),
+  props.full,
+));
 const detail=ref<InstanceType<typeof BadgeDetail>>();
 </script>
 <template>
- <span v-if="marks.length" class="hyt-badges">
+ <span v-if="marks.length || wornCollection" class="hyt-badges">
   <component v-for="b in marks" :key="b.code" :is="passive?'span':'button'" :type="passive?undefined:'button'" class="hyt-badge" :aria-label="badges[b.code].name" :title="badges[b.code].name" :style="{'--ink':badges[b.code].color,'--night':badges[b.code].dark}" @click="!passive&&($event.stopPropagation(),detail?.show(b))">
    <component :is="badges[b.code].icon" :size="13" :stroke-width="1.8" aria-hidden="true"/>{{badges[b.code].short}}
   </component>
+  <span v-if="wornCollection" class="hyt-collection-chip" :class="wornCollection.rarity"
+   :aria-label="honorRarities[wornCollection.rarity]+'荣誉 '+wornCollection.name"
+   :title="honorName({...wornCollection,name:wornCollection.title || wornCollection.name})+' · '+honorRarities[wornCollection.rarity]">
+   <Gem :size="13" aria-hidden="true"/><span>{{honorName({...wornCollection,name:wornCollection.title || wornCollection.name})}}</span>
+  </span>
   <BadgeDetail v-if="!passive" ref="detail"/>
  </span>
 </template>
@@ -23,4 +35,13 @@ const detail=ref<InstanceType<typeof BadgeDetail>>();
 [data-theme=dark] .hyt-badges .hyt-badge{color:var(--night)}
 .hyt-badge-detail{width:min(85vw,330px);border:1px solid var(--color-divider);border-radius:20px;padding:24px;color:var(--color-text);background:var(--color-surface)}
 .hyt-badge-detail::backdrop{background:#201c284f}.hyt-badge-detail p{line-height:1.65}.hyt-badge-detail small{color:var(--color-muted)}.hyt-badge-detail button{margin-top:16px;width:100%;border:0;border-radius:12px;background:var(--color-tint);color:var(--color-text);padding:12px}
+.hyt-collection-chip{display:inline-flex;gap:2px;align-items:center;min-width:0;max-width:67px;font-size:10px;font-weight:650;color:#586175;white-space:nowrap}
+.hyt-collection-chip>span{overflow:hidden;text-overflow:ellipsis}
+.hyt-collection-chip svg{flex:none}.hyt-collection-chip.rare{color:#7851a0}.hyt-collection-chip.epic{color:#8a580d}.hyt-collection-chip.legendary{color:#96592f;text-shadow:0 0 4px #d5a46d60}
+.hyt-collection-chip.legendary:hover svg{animation:honor-chip-glow .45s ease-out}
+@keyframes honor-chip-glow{from{filter:brightness(1.65)}to{filter:none}}
+[data-theme=dark] .hyt-collection-chip{color:#b9cae2}
+[data-theme=dark] .hyt-collection-chip.rare{color:#cbb2ef}
+[data-theme=dark] .hyt-collection-chip.epic,[data-theme=dark] .hyt-collection-chip.legendary{color:#f4c67b}
+@media(prefers-reduced-motion:reduce){.hyt-collection-chip.legendary:hover svg{animation:none}}
 </style>

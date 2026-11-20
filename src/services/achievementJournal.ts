@@ -2,11 +2,12 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { computed, ref, shallowReactive, watch } from 'vue';
 import { byCode, lifeCodes, type Source } from '../domain/globalAchievements';
 import type { HonorHall } from '../domain/communityHonors';
+import type { CollectionProfile } from '../domain/honorCollection';
 
 import type {ShowcaseOwner} from '../domain/honorShowcase';
 export interface Stamp {at:string; historical:boolean}
 interface Journal { stamps:Record<string,Stamp>; pins:string[]; seenHidden?:string }
-interface CacheReply {signedIn:boolean; owner?:ShowcaseOwner; hall?:HonorHall; cachedAt?:number; dirty?:boolean}
+interface CacheReply {signedIn:boolean; owner?:ShowcaseOwner; hall?:HonorHall; collection?:CollectionProfile; cachedAt?:number; dirty?:boolean}
 interface Bridge {
   journalRead(input:{scope:string}):Promise<{value?:string}>;
   journalWrite(input:{scope:string;value:string}):Promise<void>;
@@ -43,7 +44,12 @@ export async function book(scope:string){
     }
     valid.pins=[...new Set(parsed.pins.filter(code=>valid.stamps[code]))].slice(0,3);
     if(scope==='device'&&parsed.seenHidden&&valid.stamps[parsed.seenHidden]&&byCode.get(parsed.seenHidden)?.hidden)valid.seenHidden=parsed.seenHidden;
-    books.set(scope,valid);return valid;
+    books.set(scope,valid);
+    if(scope==='device'&&!valid.stamps.life&&lifeCodes.every(code=>valid.stamps[code])){
+      const at=lifeCodes.map(code=>valid.stamps[code].at).reduce((a,b)=>Date.parse(a)>Date.parse(b)?a:b);
+      void record('life','device',at,true);
+    }
+    return valid;
   })().finally(()=>inflight.delete(scope));
   inflight.set(scope,read);return read;
 }
@@ -70,16 +76,24 @@ export function record(code:string,scope='device',at=new Date().toISOString(),hi
   const a=byCode.get(code);
   if(!a||a.source==='community'||!scope||scope!==scopes.value[a.source]||!Number.isFinite(Date.parse(at)))return Promise.resolve();
   if(books.get(scope)?.stamps[code])return Promise.resolve();
+  let earnedLife=false;
   return change(scope,current=>{
     if(current.stamps[code])return null;
     if(code==='life'&&!lifeCodes.every(k=>current.stamps[k]))return null;
-    return {...current,stamps:{...current.stamps,[code]:{at,historical}}};
+    const stamps={...current.stamps,[code]:{at,historical}};
+    if(lifeCodes.includes(code)&&!stamps.life&&lifeCodes.every(key=>stamps[key])){
+      stamps.life={at,historical};
+      earnedLife=true;
+    }
+    return {...current,stamps};
   },()=>{
     if(!historical){
-      const enqueue=()=>{if(Object.values(scopes.value).includes(scope))queue.value.push({code,scope});};
+      const enqueue=()=>{if(Object.values(scopes.value).includes(scope)){
+        queue.value.push({code,scope});
+        if(earnedLife)queue.value.push({code:'life',scope});
+      }};
       if(afterCue)void afterCue.then(enqueue);else enqueue();
     }
-    if(lifeCodes.includes(code)&&lifeCodes.every(k=>books.get(scope)?.stamps[k]))void record('life',scope,at);
   });
 }
 export const localStamps=computed(()=>Object.assign({},...Object.values(scopes.value).map(s=>books.get(s)?.stamps||{})) as Record<string,Stamp>);

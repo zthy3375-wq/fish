@@ -4,10 +4,13 @@ import {ChevronRight,BookOpen} from 'lucide-vue-next';
 import {badges,type Badge} from '../../domain/communityHonors';
 import type {Collectible} from '../../domain/globalAchievements';
 import BadgeDetail from './BadgeDetail.vue';
-const props=defineProps<{medals:Collectible[]; honor?:Badge; latest?:Collectible; fresh?:boolean; personal?:boolean; compact?:boolean; first?:boolean; pinned?:boolean}>();
+import CollectionBadge from './CollectionBadge.vue';
+import { honorName, type CollectionItem } from '../../domain/honorCollection';
+const props=defineProps<{medals:Collectible[]; collectionMedals?:CollectionItem[]; honor?:Badge; latest?:Collectible; fresh?:boolean; personal?:boolean; compact?:boolean; first?:boolean; pinned?:boolean}>();
 const emit=defineEmits<{hall:[];medal:[code:string]}>();
 const detail=ref<InstanceType<typeof BadgeDetail>>();
 const latestOnShelf=computed(()=>props.medals.some(a=>a.code===props.latest?.code));
+const collectionMedals=computed(()=>(props.collectionMedals??[]).slice(0,Math.max(0,3-props.medals.length)));
 const firstPage=computed(()=>props.first&&!props.honor);
 </script>
 <template>
@@ -20,14 +23,18 @@ const firstPage=computed(()=>props.first&&!props.honor);
    <span class="case-seal"><component :is="badges[honor.code].icon" :size="23" :stroke-width="1.65"/></span>
    <span><strong>{{badges[honor.code].name}}</strong><small>{{badges[honor.code].description}}</small></span>
   </button>
-  <div v-if="medals.length" class="case-rail" :class="{'private-shelf':personal&&pinned}">
+  <div v-if="medals.length || collectionMedals.length" class="case-rail" :class="{'private-shelf':personal&&pinned}">
    <button v-for="a in medals" :key="a.code" type="button" :aria-label="'查看成就「'+a.name+'」'" @click="emit('medal',a.code)" :style="{'--enamel':a.color}">
     <span class="case-medal"><i v-if="compact&&fresh&&a.code===latest?.code" class="fresh-dot" aria-label="新收藏"/><component :is="a.icon" :size="21" :stroke-width="1.65" aria-hidden="true"/></span>
     <span class="case-label">{{a.name}}<small v-if="firstPage">你的邯院收藏，从这里开始</small></span>
    </button>
+   <button v-for="item in collectionMedals" :key="item.id" type="button" :aria-label="'查看成就「'+honorName(item)+'」'" @click="emit('medal',item.awardId||item.code)">
+    <CollectionBadge :rarity="item.rarity" :category="item.category" :code="item.code" earned small />
+    <span class="case-label">{{honorName(item)}}</span>
+   </button>
   </div>
   <button v-if="personal&&latest&&!firstPage&&(!compact||!latestOnShelf)" class="case-latest" @click="emit('medal',latest.code)"><span v-if="fresh" class="fresh-dot"/>{{fresh?'新收藏':'最近获得'}} · {{latest.name}}<ChevronRight :size="12"/></button>
-  <p v-else-if="!medals.length&&!honor" class="case-empty"><BookOpen :size="18"/>{{personal?'校园纪念章会陈列在这里':'这位同学还没有展示藏品'}}</p>
+  <p v-else-if="!medals.length&&!collectionMedals.length&&!honor" class="case-empty"><BookOpen :size="18"/>{{personal?'校园纪念章会陈列在这里':'这位同学还没有展示藏品'}}</p>
   <BadgeDetail ref="detail"/>
  </section>
 </template>

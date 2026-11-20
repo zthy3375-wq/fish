@@ -28,10 +28,10 @@ if(!/^[a-zA-Z0-9_-]{1,120}$/.test(dbRole||'')||['anon','authenticated','public']
 const schema=readFileSync('cloudbase/community-schema.sql','utf8');
 cli(['db','execute','--sql','BEGIN;\n'+preservationBegin+schema+`\nDO $$ DECLARE obj record; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN
- ('hyt_honors','hyt_awards','hyt_honor_history','hyt_recommendations','hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
+ ('hyt_collection_definitions','hyt_collection_grants','hyt_collection_audit','hyt_honors','hyt_awards','hyt_honor_history','hyt_recommendations','hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members') LOOP
  EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,'${dbRole}'); END LOOP;
  FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN
- ('hyt_credit','hyt_badges','hyt_progress','hyt_award_check','hyt_award_pending','hyt_hall','hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
+ ('hyt_collection_display_name','hyt_collection_kind','hyt_collection_showcase','hyt_collection_api','hyt_collection_badge','hyt_collection_item','hyt_collection_refresh','hyt_credit','hyt_badges','hyt_progress','hyt_award_check','hyt_award_pending','hyt_hall','hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json') LOOP
  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\n${preservationEnd}\nCOMMIT;`,'--json']);
 console.log('Community schema installed; every pre-existing community row preserved; direct-client access denied');
 await cloudMedia({env:envId,key}).ensureBucket();
@@ -191,11 +191,11 @@ try{
  if((await http('members.block',{memberId:reader.user.id},other.sessionToken)).status!==200)throw Error('Live private block failed');
  if((await http('messages.send',{conversationId:third.body.conversation.id,body:'[屏蔽后不得发送]',requestId:randomUUID()},reader.sessionToken)).status!==404)throw Error('Live private block send guard failed');
  if((await http('messages.unread',{},other.sessionToken)).body.messageUnreadCount!==0||(await http('messages.inbox',{},other.sessionToken)).body.conversations?.length!==0)throw Error('Live private blocked visibility failed');
- for(const table of ['hyt_dm_threads','hyt_dm_messages','hyt_dm_reads']){
-  const rows=await sql("SELECT has_table_privilege($1,$2,'SELECT') AS allowed",[dbRole,table]);if(![false,'false','f'].includes(rows[0]?.allowed))throw Error('Direct message table access was not denied');
+ for(const table of ['hyt_collection_definitions','hyt_collection_grants','hyt_collection_audit','hyt_dm_threads','hyt_dm_messages','hyt_dm_reads']){
+  const rows=await sql("SELECT has_table_privilege($1,$2,'SELECT') AS allowed",[dbRole,table]);if(![false,'false','f'].includes(rows[0]?.allowed))throw Error('Private community table access was not denied');
  }
- for(const fn of ['hyt_dm_visible(uuid)','hyt_dm_json(hyt_dm_threads,uuid)','hyt_dm_message_json(hyt_dm_messages,uuid)']){
-  const rows=await sql("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed",[dbRole,fn]);if(![false,'false','f'].includes(rows[0]?.allowed))throw Error('Direct message helper access was not denied');
+ for(const fn of ['hyt_collection_display_name(text,text)','hyt_collection_kind(text,text)','hyt_collection_showcase(hyt_members)','hyt_collection_api(text,jsonb,hyt_members)','hyt_collection_refresh(hyt_members)','hyt_collection_badge(hyt_members)','hyt_collection_item(hyt_collection_definitions,hyt_collection_grants)','hyt_dm_visible(uuid)','hyt_dm_json(hyt_dm_threads,uuid)','hyt_dm_message_json(hyt_dm_messages,uuid)']){
+  const rows=await sql("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed",[dbRole,fn]);if(![false,'false','f'].includes(rows[0]?.allowed))throw Error('Private community helper access was not denied');
  }
  console.log('Live test.15 joy checks passed: capability, independent counts, retry, cancel and generic notification');
  console.log('Live test.14 checks passed: owned follower counts/list, follow-back, canonical private conversation, send/reply/retry/conflict, participant-only history, unread boundaries, history/incremental pages, block and direct-client permission denial');

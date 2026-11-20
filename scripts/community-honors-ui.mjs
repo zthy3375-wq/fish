@@ -69,7 +69,7 @@ export async function checkHonors({client,db,api,baseline,output}){
    assert.equal(await page.locator('.hon-page').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);
    await page.getByRole('button',{name:'稀有',exact:true}).click();assert.equal(await page.locator('.hon-grid button').count(),4);
    await page.getByRole('button',{name:'已解锁',exact:true}).click();assert.equal(await page.locator('.hon-grid button').count(),2);
-   await page.getByText('特别收藏 · 待开放',{exact:true}).click();await page.getByText('邯院传说',{exact:true}).waitFor();
+   assert.equal(await page.getByText('特别收藏 · 待开放',{exact:true}).count(),0);
    if(width===360){
     await page.locator('.hon-page').getByRole('button',{name:'开发者',exact:true}).click();
     await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'完成',exact:true}).click();

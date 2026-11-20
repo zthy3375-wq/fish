@@ -6,8 +6,8 @@ import TreeholeImages from './TreeholeImages.vue';
 import TreeholeAvatar from './TreeholeAvatar.vue';
 import {treeholeTimestamp} from '../domain/treeholePresentation';
 import type {TreeholeComment} from '../services/treehole';
-const props=defineProps<{comment:TreeholeComment;busy:boolean;locked:boolean;expanded?:boolean;more?:boolean;loading?:boolean;pendingLikes?:Record<string,boolean>}>();
-defineEmits<{image:[comment:TreeholeComment,index:number];reply:[comment:TreeholeComment];like:[comment:TreeholeComment];menu:[comment:TreeholeComment];expand:[];collapse:[]}>();
+const props=defineProps<{comment:TreeholeComment;busy:boolean;locked:boolean;expanded?:boolean;more?:boolean;loading?:boolean;pendingLikes?:Record<string,boolean>;accepted?:boolean;canAccept?:boolean}>();
+defineEmits<{image:[comment:TreeholeComment,index:number];reply:[comment:TreeholeComment];like:[comment:TreeholeComment];menu:[comment:TreeholeComment];accept:[comment:TreeholeComment];expand:[];collapse:[]}>();
 const liveReplies=computed(()=>props.comment.replies?.filter(reply=>!reply.deleted)??[]);
 const shown=computed(()=>props.expanded?liveReplies.value:liveReplies.value.slice(0,2));
 function replyName(child:TreeholeComment){
@@ -28,7 +28,7 @@ function replyLabel(child:TreeholeComment){
     <header>
      <div class="honor-byline">
       <strong class="honor-name" :title="comment.author.name">{{comment.author.name}}</strong>
-      <OfficialBadges v-if="!comment.author.anonymous&&comment.author.badges&&(comment.author.badges.official||comment.author.badges.worn)" :items="[comment.author.badges.official,comment.author.badges.worn]"/>
+      <OfficialBadges v-if="!comment.author.anonymous&&comment.author.badges&&(comment.author.badges.official||comment.author.badges.worn||comment.author.badges.collection)" :collection="comment.author.badges.collection" :items="[comment.author.badges.official,comment.author.badges.worn]"/>
      </div>
      <button class="th-comment-like" :aria-label="comment.liked?'取消评论点赞':'点赞评论'" :aria-pressed="!!comment.liked" :disabled="busy||pendingLikes?.[comment.id]" @click="$emit('like',comment)">
       <ThumbsUp :size="17" :fill="comment.liked?'currentColor':'none'"/>{{comment.likeCount||''}}
@@ -40,6 +40,9 @@ function replyLabel(child:TreeholeComment){
     <div class="th-comment-meta">
      <small>{{treeholeTimestamp(comment.createdAt)}}<span v-if="comment.isOriginalPoster"> · 楼主</span></small>
      <button v-if="!locked" class="th-reply" :disabled="busy" @click="$emit('reply',comment)">回复</button>
+     <button v-if="canAccept&&!comment.deleted&&!comment.author.mine&&!comment.author.anonymous"
+       class="th-reply" type="button" :aria-pressed="!!accepted" :disabled="busy" @click="$emit('accept',comment)">{{accepted?'撤销采纳':'采纳'}}</button>
+     <span v-if="accepted" class="muted">已采纳</span>
     </div>
    </template>
    <div v-if="liveReplies.length||(comment.replyCount||0)>0" class="th-replies">
@@ -47,7 +50,7 @@ function replyLabel(child:TreeholeComment){
      <div class="th-nested-byline">
       <div class="honor-byline">
        <strong class="honor-name" :title="child.author.name">{{child.author.name}}</strong>
-       <OfficialBadges v-if="!child.author.anonymous&&child.author.badges&&(child.author.badges.official||child.author.badges.worn)" :items="[child.author.badges.official,child.author.badges.worn]"/>
+       <OfficialBadges v-if="!child.author.anonymous&&child.author.badges&&(child.author.badges.official||child.author.badges.worn||child.author.badges.collection)" :collection="child.author.badges.collection" :items="[child.author.badges.official,child.author.badges.worn]"/>
       </div>
       <span class="th-reply-quote">{{replyLabel(child)}}</span>
      </div>

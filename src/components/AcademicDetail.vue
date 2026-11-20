@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {discover} from '../services/hiddenDiscovery';
 import {weekJourney} from '../domain/discoveryGestures';
+import {parseZhengfangWeeks} from '../services/academic-adapters/zhengfang-timetable';
 import WeekCalibration from "./WeekCalibration.vue";
 import { computed, ref, watch } from "vue";
 import { ChevronLeft, ChevronRight, Info } from 'lucide-vue-next';
@@ -66,7 +67,11 @@ function manualWeek(next:number){
 }
 function openDay(n:number){
   view.value='day';day.value=n;
-  if(props.reliable&&!academicBusy.value&&props.data.courses.length&&!props.practice?.length&&!coursesForDay(props.data.courses,n,week.value).length)void discover('freeday');
+  const practiceThisWeek = props.practice?.some(item=>{
+    try {return parseZhengfangWeeks(item.weeks,props.semester.weekCount).includes(week.value);}
+    catch {return true;}
+  });
+  if(props.reliable&&!academicBusy.value&&props.data.courses.length&&!practiceThisWeek&&!coursesForDay(props.data.courses,n,week.value).length)void discover('freeday');
 }
 const selectedCourses = computed(() =>
   coursesForDay(props.data.courses, day.value, week.value),

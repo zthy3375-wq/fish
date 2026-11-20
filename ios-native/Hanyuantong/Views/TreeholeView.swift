@@ -3,6 +3,8 @@ import PhotosUI
 
 struct TreeholeView: View {
     @EnvironmentObject var tree: TreeholeStore
+    @State private var honorRoute: CampusHonorRoute?
+    @State private var showHonorManagement = false
     @State private var buddyRosterPost: TreeholePost?
     private var buddyValid: Bool { guard let buddy = draft.value.buddy else { return true }; return tree.buddiesEnabled && buddy.valid && draft.value.category == "buddies" && draft.value.poll == nil && !bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     @State private var screen = "feed"
@@ -196,6 +198,8 @@ struct TreeholeView: View {
         .sheet(isPresented: $replyExpanded, onDismiss: { replyFocused = false }) {
             if let post = tree.current { ScrollView { replyEditor(post) }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible).interactiveDismissDisabled(tree.busy) }
         }
+        .sheet(isPresented: $showHonorManagement) { CampusHonorManagementView(tree: tree) }
+        .sheet(item: $honorRoute) { route in CampusHonorCollectionView(tree: tree, route: route) }
         .sheet(item: $buddyRosterPost) { post in TreeholeBuddyRoster(post: post).environmentObject(tree) }
         .sheet(item: $reportTarget) { target in reportSheet(target) }
         .confirmationDialog(confirmation?.title ?? "确认操作", isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), titleVisibility: .visible) {
@@ -244,6 +248,11 @@ struct TreeholeView: View {
     }
     private var feed: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if tree.honorCollectionEnabled {
+                Button { honorRoute = CampusHonorRoute(memberId: nil) } label: {
+                    HStack { Label("荣誉殿堂", systemImage: "seal"); Spacer(); Image(systemName: "chevron.right") }.font(.subheadline).frame(minHeight: 44)
+                }.buttonStyle(.plain)
+            }
             if tree.engagementEnabled {
                 TreeholeFeedScopes(tree: tree, select: accountFeed)
             }
@@ -498,7 +507,8 @@ struct TreeholeView: View {
                 HStack(alignment: .top, spacing: 4) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 5) {
-                            Text(comment.author.name).font(.system(size: 14, weight: .semibold))
+                            Text(comment.author.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                            if !comment.author.anonymous { CampusHonorByline(badges: comment.author.badges) }
                             if comment.isOriginalPoster { Text("楼主").font(.system(size: 10)).foregroundStyle(TreeholeTheme.primary).padding(.horizontal, 4).padding(.vertical, 2).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 4)) }
                         }
                         Text(TreeholePresentation.date(comment.createdAt) + (floor > 0 ? " · \(floor) 楼" : "")).font(.caption2).foregroundStyle(.secondary)
@@ -515,6 +525,7 @@ struct TreeholeView: View {
                         ForEach(Array((comment.replies ?? []).prefix(tree.expandedReplies.contains(comment.id) ? Int.max : 2))) { child in
                             VStack(alignment: .leading, spacing: 2) {
                                 Button { replyTo = child; replyExpanded = true } label: {
+                                    if !child.author.anonymous { CampusHonorByline(badges: child.author.badges) }
                                     (Text(child.author.name + (child.isOriginalPoster ? " [楼主]" : "")).foregroundColor(Color(red: 0.23, green: 0.40, blue: 0.54)) + Text(child.replyTo != comment.id && child.replyTo != nil ? " 回复 " + replyName(child.replyTo!) : "").foregroundColor(.secondary) + Text(child.displayBody.isEmpty ? "" : "：" + child.displayBody)).font(.system(size: 14)).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
                                 }.buttonStyle(.plain).disabled(child.deleted || post.locked)
                                 commentImages(child, post: post)
@@ -605,7 +616,10 @@ struct TreeholeView: View {
         HStack(spacing: 10) {
             TreeholeAvatar(name: author.name, anonymous: author.anonymous, avatar: author.avatar, size: full ? 42 : 36)
             VStack(alignment: .leading, spacing: 5) {
-                Text(author.name).font(full ? .body.weight(.semibold) : .subheadline.weight(.semibold))
+                HStack(spacing: 5) {
+                    Text(author.name).font(full ? .body.weight(.semibold) : .subheadline.weight(.semibold)).lineLimit(1)
+                    if !author.anonymous { CampusHonorByline(badges: author.badges) }
+                }
                 HStack(spacing: 5) { Text(TreeholePresentation.date(date)); if author.mine { Text("我").foregroundStyle(TreeholeTheme.primary).padding(.horizontal, 4).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 3)) } }.font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -640,6 +654,7 @@ struct TreeholeView: View {
             VStack(spacing: 12) {
                 TreeholeAvatar(name: user.nickname, avatar: user.avatar, size: 66)
                 Text(user.nickname).font(.title2.bold())
+                CampusHonorByline(badges: user.badges)
                 Text("@" + user.username).font(.caption).foregroundStyle(.secondary)
                 Text("用自己的昵称，留下校园里的回声。").font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity).padding(.vertical, 18)
@@ -655,11 +670,15 @@ struct TreeholeView: View {
             VStack(spacing: 0) {
                 if tree.buddiesEnabled { settingsRow("我报名的", symbol: "person.2") { accountFeed("joined") } }
                 if tree.followingEnabled { settingsRow("我关注的人", symbol: "person.2", action: showFollowing) }
+                if tree.honorCollectionEnabled { settingsRow("荣誉收藏", symbol: "seal") { honorRoute = CampusHonorRoute(memberId: user.id) } }
                 settingsRow("修改昵称", symbol: "person.crop.circle") { accountPage = "profile" }
                 Divider()
                 settingsRow("账号安全", symbol: "lock.shield") { password = ""; newPassword = ""; accountPage = "password" }
                 Divider()
                 settingsRow("恢复已屏蔽的内容", symbol: "eye.slash") { confirmation = TreeholeConfirmation(title: "恢复所有已屏蔽的内容？") { _ = try await tree.api.request("blocks.clear"); tree.feedNeedsRefresh = true; tree.message = "已恢复屏蔽的内容" } }
+                if tree.honorCollectionEnabled && user.badges?.official?.code == "developer" {
+                    Divider(); settingsRow("社区荣誉管理", symbol: "seal") { showHonorManagement = true }
+                }
                 if user.role == "moderator" { Divider(); settingsRow("处理举报", symbol: "flag") { tree.perform { tree.reports = try await tree.api.request("admin.reports").reports ?? []; screen = "moderate" } } }
             }.campusCard()
             Button { confirmation = TreeholeConfirmation(title: "退出邯院通账号？") { _ = try await tree.api.request("logout"); draft.clear(); tree.clear(); screen = "feed" } } label: { Label("退出邯院通账号", systemImage: "rectangle.portrait.and.arrow.right").font(.subheadline).frame(maxWidth: .infinity).padding(.vertical, 6) }.campusCard()
@@ -749,6 +768,10 @@ struct TreeholeView: View {
             VStack(spacing: 12) {
                 TreeholeAvatar(name: profile.nickname, avatar: profile.avatar, size: 64)
                 Text(profile.nickname).font(.title2.bold())
+                CampusHonorByline(badges: profile.badges)
+                if tree.honorCollectionEnabled {
+                    Button("荣誉收藏") { honorRoute = CampusHonorRoute(memberId: profile.id) }.buttonStyle(.bordered)
+                }
                 Text(profile.bio.isEmpty ? "还没有填写简介" : profile.bio).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Text("\(profile.postCount) 条公开帖子").font(.caption).foregroundStyle(.secondary)
                 if tree.followingEnabled, profile.id != tree.user?.id {
