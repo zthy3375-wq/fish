@@ -47,6 +47,49 @@ if mode=='backup':
     BACKUP.write_bytes(nonce+AESGCM(enc_key).encrypt(nonce,json.dumps(saved).encode(),None))
     private=Path('/tmp/hyt-existing-environment.json');private.write_text(json.dumps({v['Key']:v['Value'] for v in config.get('Environment',{}).get('Variables',[])}));private.chmod(0o600)
     print('Encrypted deployed code/configuration backup saved')
+elif mode in ('prepare-honors','publish-honors-code','restore-honors-code'):
+    if os.environ.get('GITHUB_HEAD_REF')!='deploy/community-honors-members-20261120' or os.environ.get('GITHUB_EVENT_NAME')!='pull_request':
+        raise RuntimeError('Unexpected community honors deployment context')
+    marker=Path('/tmp/hyt-community-honors-code-started')
+    staged=Path('/tmp/hyt-community-honors-code.zip')
+    if mode=='restore-honors-code' and not marker.exists():
+        print('Community function code was unchanged')
+        sys.exit(0)
+    data=BACKUP.read_bytes()
+    backup=json.loads(AESGCM(enc_key).decrypt(data[:12],data[12:],None))
+    if mode=='prepare-honors':
+        live=base64.b64decode(backup['code'])
+        root=Path('cloudbase/functions/community')
+        core=(root/'core.mjs').read_bytes()
+        baseline=Path('/tmp/hyt-honors-live-before-core.mjs').read_bytes()
+        helper=(root/'honor-collection.mjs').read_bytes()
+        output=io.BytesIO()
+        with ZipFile(io.BytesIO(live)) as previous, ZipFile(output,'w',ZIP_DEFLATED) as candidate:
+            matches=[n for n in previous.namelist() if n=='core.mjs' or n.endswith('/core.mjs')]
+            if len(matches)!=1: raise RuntimeError('Could not locate the deployed community entry module')
+            core_path=matches[0]
+            old_core=previous.read(core_path)
+            if old_core not in (baseline,core):
+                print('Unexpected deployed community source revision:',hashlib.sha256(old_core).hexdigest())
+                raise RuntimeError('Community function source differs from the reviewed baseline')
+            prefix=core_path.removesuffix('core.mjs')
+            helper_path=prefix+'honor-collection.mjs'
+            for name in ['server.mjs','database.mjs','contests.mjs','scf_bootstrap']:
+                if previous.read(prefix+name)!=(root/name).read_bytes():
+                    raise RuntimeError('Baseline gateway component differs: '+name)
+            for item in previous.infolist():
+                if item.filename==helper_path: continue
+                candidate.writestr(item,core if item.filename==core_path else previous.read(item))
+            candidate.writestr(helper_path,helper)
+        staged.write_bytes(output.getvalue())
+        staged.chmod(0o600)
+        print('Deployment preserves existing function dependencies, configuration and trigger settings')
+    else:
+        content=base64.b64encode(staged.read_bytes()).decode() if mode=='publish-honors-code' else backup['code']
+        if mode=='publish-honors-code': marker.touch(mode=0o600)
+        request('UpdateFunctionCode',{'FunctionName':'hyt-community','CodeSource':'ZipFile','ZipFile':content})
+        wait('hyt-community')
+        print('Community function code is active' if mode=='publish-honors-code' else 'Previous community function code restored')
 elif mode=='worker':
     archive=io.BytesIO(); root=Path('cloudbase/functions/community')
     with ZipFile(archive,'w',ZIP_DEFLATED) as z:
