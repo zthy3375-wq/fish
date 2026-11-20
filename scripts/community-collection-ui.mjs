@@ -39,6 +39,7 @@ export async function checkCollection({client,db,api,output}) {
       }
     }
     await change({operation:'title',memberId:collector,title:'校园手记'});
+    await db.query("INSERT INTO hyt_honors(member_id,kind) VALUES($1,'seed')",[collector]);
     await reader.page.reload();
     const source = reader.page;
     await source.locator('.th-nav .th-self:not([disabled])').waitFor();
@@ -66,6 +67,11 @@ export async function checkCollection({client,db,api,output}) {
     await button(firstUnlock,'完成').click();
     await source.getByText(/佩戴 校园手记/).waitFor();
     await shot(source,'collection-390.png');
+    const {post} = await call(reader.state,'posts.create',{requestId:randomUUID(),body:'荣誉佩戴测试帖子',anonymous:false});
+    assert.equal(post.author.badges.official.code,'seed');
+    assert.equal(post.author.badges.collection.title,'校园手记');
+    const anonymous = await call(reader.state,'posts.create',{requestId:randomUUID(),body:'匿名发言权限测试',anonymous:true});
+    assert(!anonymous.post.author.badges);
     await back(source);
     await source.getByRole('button',{name:/年度/}).first().click();
     await source.getByLabel('年份').selectOption({label:String(year)});

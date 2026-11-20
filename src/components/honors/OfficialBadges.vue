@@ -5,7 +5,7 @@ import {Gem} from 'lucide-vue-next';
 import {honorRarities,type CollectionBadge} from '../../domain/honorCollection';
 import {badges,visibleBadges,type Badge} from '../../domain/communityHonors';
 const props=defineProps<{items:(Badge|null|undefined)[]; full?:boolean; passive?:boolean; collection?:CollectionBadge|null}>();
-const marks=computed(()=>visibleBadges(props.collection&&!props.full?props.items.filter(i=>i?.code==='developer'||i?.code==='moderator'):props.items,props.full));
+const marks=computed(()=>visibleBadges(props.collection&&!props.full?props.items.slice(0,1):props.items,props.full));
 const detail=ref<InstanceType<typeof BadgeDetail>>();
 </script>
 <template>

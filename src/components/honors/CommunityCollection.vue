@@ -32,7 +32,7 @@ const received = new Set<string>();
 let alive = true, revision = 0;
 onBeforeUnmount(() => { alive = false; revision++; });
 const visible = computed(() => items.value.filter(i => category.value === "all" || i.category === category.value));
-const identities = computed(() => [...(profile.value?.badges.official ? [profile.value.badges.official.code] : []), ...(profile.value?.identities ?? [])]);
+const identities = computed(() => [...new Set([...(profile.value?.badges.official ? [profile.value.badges.official.code] : []), ...(profile.value?.identities ?? [])])]);
 const oldCount = computed(() => identities.value.length);
 const count = computed(() => (profile.value?.total ?? 0) + oldCount.value);
 
@@ -169,7 +169,7 @@ onMounted(() => load());
 
     <dialog ref="dialog" class="hc-dialog" :class="{ 'hc-unlock': unlocked && !reducedMotion }" aria-labelledby="hc-dialog-name" @cancel.prevent="closeDetail" @close="selected && closeDetail()">
       <div v-if="selected">
-        <CollectionBadge :rarity="selected.rarity" :category="selected.category" :code="selected.code" :earned="!!selected.awardId" />
+        <CollectionBadge :rarity="selected.rarity" :category="selected.category" :code="selected.code" :earned="archive || !!selected.awardId" />
         <p v-if="unlocked" class="hc-new">新荣誉已获得</p>
         <h3 id="hc-dialog-name">{{ honorName(selected) }}</h3>
         <p v-if="'nickname' in selected">授予 {{ selected.nickname }}</p>

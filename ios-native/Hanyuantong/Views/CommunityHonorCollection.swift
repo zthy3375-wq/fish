@@ -29,6 +29,8 @@ struct CampusHonorItem: Codable, Identifiable, Equatable {
     let publicHidden: Bool
     let memberId: String?
     let nickname: String?
+    var archiveId: String { awardId ?? id }
+    var earned: Bool { awardId != nil || memberId != nil }
     var caption: String { year.map { String($0) + " · " + name } ?? name }
 }
 
@@ -42,6 +44,10 @@ struct CampusCollectionProfile: Codable {
     let total: Int
     let rarities: [String: Int]
     let unseen: [String]
+    var legacyCount: Int {
+        if let code = badges.official?.code { return Set(identities + [code]).count }
+        return identities.count
+    }
 }
 
 struct CampusIdentityUpdate: Codable {
@@ -113,10 +119,10 @@ private struct CampusMedal: View {
         ZStack {
             CampusMedalShape().fill(gradient)
             CampusMedalShape().fill(tint.opacity(0.17)).padding(4)
-            Image(systemName: item.awardId == nil ? "lock" : symbol)
+            Image(systemName: item.earned ? symbol : "lock")
                 .font(.system(size: size * 0.39, weight: .medium)).foregroundStyle(.primary)
         }.frame(width: size, height: size * 1.1)
-            .saturation(item.awardId == nil ? 0.1 : 1).opacity(item.awardId == nil ? 0.62 : 1)
+            .saturation(item.earned ? 1 : 0.1).opacity(item.earned ? 1 : 0.62)
             .accessibilityHidden(true)
     }
 }
@@ -182,9 +188,9 @@ struct CampusHonorCollectionView: View {
             Text(isArchive ? "社区荣誉殿堂" : isOwn ? "我的荣誉收藏" : (profile?.nickname ?? "同学") + "的荣誉收藏").font(.title3.weight(.semibold))
             if isArchive { Text("收藏历届荣誉，阅读获奖者留下的校园故事。").font(.footnote).foregroundStyle(Color(red: 0.91, green: 0.82, blue: 0.73)) }
             if let profile, !isArchive {
-                Text("已收藏 \(profile.total + profile.identities.count + (profile.badges.official == nil ? 0 : 1)) 枚").font(.footnote).foregroundStyle(.secondary)
+                Text("已收藏 \(profile.total + profile.legacyCount) 枚").font(.footnote).foregroundStyle(.secondary)
                 CampusHonorByline(badges: profile.badges)
-                Text(profile.identities.compactMap { campusIdentityNames[$0] }.joined(separator: " · ")).font(.footnote)
+                Text(profile.identities.filter { $0 != profile.badges.official?.code }.compactMap { campusIdentityNames[$0] }.joined(separator: " · ")).font(.footnote)
             }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(isArchive ? 22 : 14)
          .foregroundStyle(isArchive ? Color(red: 1, green: 0.95, blue: 0.84) : .primary)
@@ -214,7 +220,7 @@ struct CampusHonorCollectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let profile {
                 HStack { ForEach(campusHonorRarities) { pair in
-                    VStack { Text(String((profile.rarities[pair.id] ?? 0) + (pair.id == "common" ? profile.identities.count + (profile.badges.official == nil ? 0 : 1) : 0))).fontWeight(.semibold); Text(pair.label).font(.caption2) }.frame(maxWidth: .infinity)
+                    VStack { Text(String((profile.rarities[pair.id] ?? 0) + (pair.id == "common" ? profile.legacyCount : 0))).fontWeight(.semibold); Text(pair.label).font(.caption2) }.frame(maxWidth: .infinity)
                 } }
             }
             Picker("荣誉分类", selection: $category) {
@@ -240,7 +246,7 @@ struct CampusHonorCollectionView: View {
     }
     private var archiveRows: some View {
         LazyVStack(spacing: 6) {
-            ForEach(shown, id: \.awardId) { item in
+            ForEach(shown, id: \.archiveId) { item in
                 Button { show(item) } label: {
                     HStack {
                         CampusMedal(item: item, size: 39)

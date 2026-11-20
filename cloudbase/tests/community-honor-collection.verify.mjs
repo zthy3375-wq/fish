@@ -57,6 +57,7 @@ test("one wearer with an explicit title, hidden opt-in and private acknowledgeme
   const r = await call(member,"collection.wear",{awardId:secret.awardId,useTitle:true});
   assert.equal(r.updatedIdentity.badges.collection.title,"校园守夜人");
   assert.equal(r.updatedIdentity.badges.worn,null);
+  assert.equal(r.updatedIdentity.badges.official.code,"seed");
   assert((await open(other,member.user.id)).items.some(i=>i.awardId===secret.awardId));
   await call(other,"collection.ack",{awardIds:[secret.awardId]});
   assert((await open(member)).unseen.includes(secret.awardId));
@@ -144,4 +145,15 @@ test("popular creations require distinct established supporters on eligible publ
   await sql("UPDATE hyt_members SET collection_checked_at=NULL WHERE id=$1",[other.user.id]);
   assert((await open(other)).items.find(x=>x.code==="landmark-post").awardId);
   assert((await call(owner,"collection.admin")).honorAudit.some(row=>row.operation==="auto_grant"));
+});
+
+test("the historical contribution archive reuses existing publicly granted contributor records", async () => {
+  await sql("INSERT INTO hyt_honors(member_id,kind) VALUES($1,'contributor')",[member.user.id]);
+  const {honorArchive} = await call(other,"collection.archive",{section:"contribution"});
+  const legacy = honorArchive.find(item=>item.code==="legacy-contributor");
+  assert.equal(legacy.memberId,member.user.id);
+  assert.equal(legacy.name,"社区贡献者");
+  assert(legacy.at);
+  assert.equal(legacy.awardId,undefined);
+  assert(!Object.hasOwn(legacy,"evidence"));
 });

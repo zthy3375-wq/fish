@@ -426,7 +426,11 @@ $$;
 CREATE OR REPLACE FUNCTION public.hyt_badges(m public.hyt_members) RETURNS jsonb LANGUAGE sql STABLE AS $$
  SELECT jsonb_build_object('official',CASE WHEN m.developer_since IS NOT NULL THEN jsonb_build_object('code','developer','at',m.developer_since)
  WHEN m.role='moderator' THEN jsonb_build_object('code','moderator','at',coalesce(m.moderator_since,
- (SELECT min(created_at) FROM public.hyt_moderation WHERE moderator_id=m.id AND action='grant_moderator'))) END,
+ (SELECT min(created_at) FROM public.hyt_moderation WHERE moderator_id=m.id AND action='grant_moderator')))
+ WHEN m.worn_collection IS NOT NULL THEN (
+  SELECT jsonb_build_object('code',kind,'at',granted_at) FROM public.hyt_honors
+  WHERE member_id=m.id ORDER BY CASE kind WHEN 'creator' THEN 1 WHEN 'contributor' THEN 2 ELSE 3 END LIMIT 1
+ ) END,
  'worn',(SELECT jsonb_build_object('code',kind,'at',granted_at) FROM public.hyt_honors WHERE member_id=m.id AND kind=m.worn_honor))
  || coalesce((SELECT jsonb_build_object('collection',badge) FROM public.hyt_collection_badge(m) badge WHERE badge IS NOT NULL),'{}');
 $$;
@@ -643,18 +647,28 @@ BEGIN
       WHERE g.member_id=m.id AND g.revoked_at IS NULL AND g.seen_at IS NULL) ELSE '[]'::jsonb END));
  END IF;
  IF a='collection.archive' THEN
-  SELECT coalesce(jsonb_agg(s.item),'[]') INTO rows FROM (
-   SELECT public.hyt_collection_item(d,g)||jsonb_build_object('memberId',u.id,'nickname',u.nickname) AS item
-   FROM public.hyt_collection_grants g JOIN public.hyt_collection_definitions d ON d.id=g.definition_id
-   JOIN public.hyt_members u ON u.id=g.member_id AND u.deleted_at IS NULL
-   WHERE g.revoked_at IS NULL AND d.category<>'hidden'
-    AND CASE b->>'section' WHEN 'legend' THEN d.category='legend'
-     WHEN 'annual' THEN d.category='limited' AND d.edition_year IS NOT NULL
-     WHEN 'retired' THEN d.archived_at IS NOT NULL OR d.edition_year<extract(year FROM now() AT TIME ZONE 'Asia/Shanghai')
-     ELSE d.category='contribution' END
-    AND (edition IS NULL OR d.edition_year=edition)
+  SELECT coalesce(jsonb_agg(s.item ORDER BY s.year DESC NULLS LAST,s.at DESC,s.row_id DESC),'[]') INTO rows
+  FROM (
+   SELECT archive.item||jsonb_build_object('memberId',u.id,'nickname',u.nickname) AS item,archive.year,archive.at,archive.row_id
+   FROM (
+    SELECT public.hyt_collection_item(d,g) AS item,g.member_id,d.edition_year AS year,g.earned_at AS at,g.id::text AS row_id
+    FROM public.hyt_collection_grants g JOIN public.hyt_collection_definitions d ON d.id=g.definition_id
+    WHERE g.revoked_at IS NULL AND d.category<>'hidden'
+     AND CASE b->>'section' WHEN 'legend' THEN d.category='legend'
+      WHEN 'annual' THEN d.category='limited' AND d.edition_year IS NOT NULL
+      WHEN 'retired' THEN d.archived_at IS NOT NULL OR d.edition_year<extract(year FROM now() AT TIME ZONE 'Asia/Shanghai')
+      ELSE d.category='contribution' END
+    UNION ALL
+    SELECT jsonb_build_object('id','legacy:contributor:'||h.member_id,'code','legacy-contributor','name','社区贡献者',
+           'category','contribution','rarity','common','archived',false,'publicHidden',false,'at',h.granted_at,
+           'story','曾获授社区贡献者，保留原有身份与授予日期。'),
+           h.member_id,NULL::int,h.granted_at,'legacy:contributor:'||h.member_id
+    FROM public.hyt_honors h WHERE h.kind='contributor' AND b->>'section'='contribution'
+   ) archive
+   JOIN public.hyt_members u ON u.id=archive.member_id AND u.deleted_at IS NULL
+   WHERE (edition IS NULL OR archive.year=edition)
     AND NOT EXISTS(SELECT 1 FROM public.hyt_blocks WHERE (member_id,blocked_id) IN ((u.id,m.id),(m.id,u.id)))
-   ORDER BY d.edition_year DESC NULLS LAST,g.earned_at DESC,g.id DESC LIMIT 21 OFFSET page
+   ORDER BY archive.year DESC NULLS LAST,archive.at DESC,archive.row_id DESC LIMIT 21 OFFSET page
   ) s;
   RETURN jsonb_build_object('status',200,'honorArchive',rows,
    'honorYears',(SELECT coalesce(jsonb_agg(year ORDER BY year DESC),'[]') FROM (SELECT DISTINCT edition_year AS year
