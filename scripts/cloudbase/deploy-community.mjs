@@ -1,7 +1,7 @@
 // Deliberate private-test activation only; never publishes an APK or update manifest.
 import {spawnSync} from 'node:child_process';
 import {readFileSync,writeFileSync,chmodSync,unlinkSync} from 'node:fs';
-import {createHmac,randomBytes,randomUUID} from 'node:crypto';
+import {createHash,createHmac,randomBytes,randomUUID} from 'node:crypto';
 import {preservationBegin,preservationEnd} from './community-preservation.mjs';
 import {sql} from '../../cloudbase/functions/community/database.mjs';
 import {cloudMedia} from '../../cloudbase/functions/community/media.mjs';
@@ -11,7 +11,13 @@ const envId='hanyuantong-d8gjzt1jh12370215',region='ap-shanghai';
 const base=`https://${envId}-1527874185.${region}.app.tcloudbase.com/hyt-community`;
 const activation=JSON.parse(readFileSync('cloudbase/community-test-deploy.json','utf8'));
 if(activation.mode!=='private-treehole-test'||activation.service!=='hyt-community'||activation.registration!=='open')throw Error('Invalid private-test activation');
-if(process.env.GITHUB_HEAD_REF!=='deploy/community-contests-cost-20261119'&&process.env.GITHUB_REF&&!['refs/heads/deploy/community-contests-cost-20261119','refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test12-20261116','refs/heads/deploy/community-test15-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
+const upgrade=process.env.HYT_CONTEST_SCHEMA15_UPGRADE==='1';
+if(upgrade){
+ if(process.env.GITHUB_HEAD_REF!=='deploy/community-contests-v3-20261120'||process.env.GITHUB_EVENT_NAME!=='pull_request'||process.env.COMMUNITY_CONTESTS!=='enabled'||!process.env.HYT_EXISTING_ENV_FILE)throw Error('Unexpected schema15 deployment context');
+ const response=await fetch(base+'/v1/config',{signal:AbortSignal.timeout(20000)});
+ const live=await response.json();
+ if(!response.ok||live.schema!==13||live.contestsEnabled!==true)throw Error('Expected active schema13 before migration');
+}else if(process.env.GITHUB_HEAD_REF!=='deploy/community-contests-cost-20261119'&&process.env.GITHUB_REF&&!['refs/heads/deploy/community-contests-cost-20261119','refs/heads/feature/treehole-accounts-20261114','refs/heads/deploy/community-test12-20261116','refs/heads/deploy/community-test15-20261116'].includes(process.env.GITHUB_REF))throw Error('Unexpected deployment branch');
 const key=process.env.CLOUDBASE_API_KEY?.trim();if(!key)throw Error('CloudBase deployment key unavailable');
 const response=await fetch(`https://${envId}.${region}.tcb-api.tencentcloudapi.com/capi/credential`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({env:envId}),signal:AbortSignal.timeout(25000)});
 const envelope=await response.json();if(envelope.code!==0)throw Error('CloudBase credential exchange failed');const credentials=envelope.data;
@@ -26,18 +32,34 @@ const identity=await identityResponse.json(),dbRole=identity[0]?.role;
 if(!/^[a-zA-Z0-9_-]{1,120}$/.test(dbRole||'')||['anon','authenticated','public'].includes(dbRole))throw Error('Unable to verify database role');
 // One transaction, only hyt_ community objects. Existing analytics/academic rows are untouched.
 const contestsEnabled=process.env.COMMUNITY_CONTESTS==='enabled';
-const expectedSchema=contestsEnabled?13:12;
+const expectedSchema=contestsEnabled?(upgrade?15:13):12;
 const schema=readFileSync('cloudbase/community-schema.sql','utf8');
 process.env.CLOUDBASE_ENV_ID=envId;process.env.CLOUDBASE_APIKEY=key;
+const rpcHash=source=>{
+ const body=source.match(/CREATE OR REPLACE FUNCTION public\.hyt_community\([^]*?AS \$fn\$([^]*?)\$fn\$;/)?.[1];
+ if(!body)throw Error('Cannot identify the community RPC revision');
+ return createHash('md5').update(body).digest('hex');
+};
+const previousHash=upgrade?rpcHash(readFileSync('/tmp/hyt-schema13.sql','utf8')):null;
+const currentHash=upgrade?rpcHash(schema):null;
+const requireRpc=(...hashes)=>hashes[0]?`DO $$ DECLARE revision text; BEGIN
+ SELECT md5(prosrc) INTO STRICT revision FROM pg_proc WHERE oid='public.hyt_community(text,jsonb,text)'::regprocedure;
+ IF revision NOT IN (${hashes.map(hash=>"'"+hash+"'").join(',')}) THEN
+  RAISE EXCEPTION 'Unexpected community RPC revision';
+ END IF;
+END $$;\n`:'';
+const contestSmoke=upgrade?readFileSync('scripts/cloudbase/verify-contests-v15.sql','utf8'):'';
 // Send the full migration in the request body, which avoids process argument size limits.
-await sql('BEGIN;\n'+preservationBegin+schema+`\nDO $$ DECLARE obj record; BEGIN
+await sql('BEGIN;\n'+requireRpc(previousHash,currentHash)+preservationBegin+schema+`\nDO $$ DECLARE obj record; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND (tablename LIKE 'hyt_contest%' OR tablename IN
  ('hyt_honors','hyt_awards','hyt_honor_history','hyt_recommendations','hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members')) LOOP
  EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,'${dbRole}'); END LOOP;
  FOR obj IN SELECT oid::regprocedure AS signature FROM pg_proc WHERE pronamespace='public'::regnamespace AND (proname LIKE 'hyt_contest%' OR proname IN
  ('hyt_credit','hyt_badges','hyt_progress','hyt_award_check','hyt_award_pending','hyt_hall','hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json')) LOOP
- EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\n${preservationEnd}\nCOMMIT;`);
+ EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\n${contestSmoke}\n${preservationEnd}\n${requireRpc(currentHash)}COMMIT;`);
 console.log('Community schema installed; every pre-existing community row preserved; direct-client access denied');
+if(upgrade)console.log('Live database: developer-only contest removal, recycle bin and restoration verified; test records rolled back');
+if(!upgrade){
 await cloudMedia({env:envId,key}).ensureBucket();
 cli(['db','execute','--sql',`BEGIN;
 DROP POLICY IF EXISTS hyt_community_private_objects ON storage.objects;
@@ -45,10 +67,11 @@ CREATE POLICY hyt_community_private_objects ON storage.objects AS RESTRICTIVE FO
 DROP POLICY IF EXISTS hyt_community_private_bucket ON storage.buckets;
 CREATE POLICY hyt_community_private_bucket ON storage.buckets AS RESTRICTIVE FOR ALL TO anon,authenticated USING(id<>'hyt-community') WITH CHECK(id<>'hyt-community');
 COMMIT;`,'--json']);
+}
 
 const config={envId,functionRoot:'cloudbase/functions',functions:[{name:'hyt-community',type:'HTTP',runtime:'Nodejs20.19',timeout:30,memorySize:512,installDependency:false,public:true,gatewayPath:'/hyt-community',envVariables:{...(process.env.HYT_EXISTING_ENV_FILE?JSON.parse(readFileSync(process.env.HYT_EXISTING_ENV_FILE,'utf8')):{}),CLOUDBASE_ENV_ID:envId,CLOUDBASE_APIKEY:key,COMMUNITY_REGISTRATION:'open',COMMUNITY_BOARDS:'enabled',COMMUNITY_CONTESTS:contestsEnabled?'enabled':'disabled',COMMUNITY_CONTESTS_SCHEDULER:process.env.COMMUNITY_CONTESTS_SCHEDULER||'disabled',COMMUNITY_RATE_SALT:rateSalt}}]};
 writeFileSync('cloudbaserc.json',JSON.stringify(config),{mode:0o600});chmodSync('cloudbase/functions/community/scf_bootstrap',0o755);
-try{cli(['fn','deploy','hyt-community','--httpFn','--dir','cloudbase/functions/community','--force','--json']);}finally{unlinkSync('cloudbaserc.json');}
+try{if(upgrade)writeFileSync('/tmp/hyt-community-v15-code-deployment-started','1',{mode:0o600});cli(['fn','deploy','hyt-community','--httpFn','--dir','cloudbase/functions/community','--force','--json']);}finally{unlinkSync('cloudbaserc.json');}
 let configuration;
 for(let attempt=0;attempt<12;attempt++){
  try{configuration=await fetch(base+'/v1/config',{signal:AbortSignal.timeout(10000)}).then(async r=>({ok:r.ok,value:await r.json()}));}catch{configuration=null;}
@@ -57,6 +80,19 @@ for(let attempt=0;attempt<12;attempt++){
 }
 if(!configuration?.ok||!configuration.value.registrationEnabled||configuration.value.requiresInvite!==false||!configuration.value.simpleRegistration||!configuration.value.imagesEnabled||configuration.value.schema!==expectedSchema||configuration.value.contestsEnabled!==contestsEnabled||configuration.value.moderationEnabled!==true||configuration.value.boardsEnabled!==true||configuration.value.responseKinds?.join(',')!=='useful,joy,hug'||configuration.value.engagementEnabled!==true||configuration.value.avatarsEnabled!==true||configuration.value.responsesEnabled!==true||configuration.value.discoveryEnabled!==true||configuration.value.followingEnabled!==true||configuration.value.pollsEnabled!==true||configuration.value.commentImagesEnabled!==true||configuration.value.buddiesEnabled!==true||configuration.value.messagesEnabled!==true||configuration.value.socialEnabled!==true)throw Error('Open registration did not activate');
 // Legacy community HTTP suite passed on the identical server source in run 44558575763.
+if(upgrade){
+ const health=await fetch(base+'/health',{signal:AbortSignal.timeout(15000)});
+ const status=await health.json();
+ if(!health.ok||status.service!=='hyt-community'||status.schema!==15)throw Error('Unexpected deployed community health');
+ const anonymousRequests=[['posts.list',{}],['contests.list',{scope:'trash'}],['contests.manage',{operation:'restore',contestId:'00000000-0000-4000-8000-000000000001',reason:'deployment authentication check'}]];
+ for(const [action,body] of anonymousRequests){
+  const response=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://localhost'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
+  if(response.status!==401||response.headers.get('access-control-allow-origin')!=='https://localhost')throw Error('Unexpected mobile authentication boundary for '+action);
+ }
+ writeFileSync('artifacts/community-v15-verification.json',JSON.stringify({source:process.env.HYT_DEPLOYMENT_SHA,schema:15,contestsEnabled:true,existingRowsPreserved:true,rolledBackContestSmoke:{developerRemoval:true,memberDenied:true,recycleBin:true,restoreSameContest:true},scheduledWorkerReused:true,anonymousReadsAndManagementDenied:true},null,2));
+ console.log('Live health, schema15, contest capability, mobile origin and authentication verified');
+ process.exit(0);
+}
 if(process.env.COMMUNITY_DEPLOY_VERIFY==='contests-only'){console.log('Live capabilities verified; continuing with focused contest verification');process.exit(0);}
 const http=async(action,body={},token='')=>{const r=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});return {status:r.status,body:await r.json()};};
 if((await http('posts.list')).status!==401)throw Error('Anonymous read access unexpectedly enabled');
