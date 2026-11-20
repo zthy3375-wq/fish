@@ -529,6 +529,27 @@ BEGIN
    WHERE m.created_at+v.age<=now() AND NOT EXISTS(SELECT 1 FROM public.hyt_awards x WHERE x.member_id=m.id AND x.code=v.code)
    ON CONFLICT DO NOTHING;
  END IF;
+ IF a='admin.members' THEN
+  IF m.developer_since IS NULL OR m.role<>'moderator' OR m.banned_until>now() THEN
+   RETURN '{"status":403,"error":"forbidden"}'::jsonb;
+  END IF;
+  WITH page AS (
+   SELECT u.id,u.username,u.nickname,u.created_at
+   FROM public.hyt_members u
+   WHERE u.deleted_at IS NULL
+     AND (coalesce(b->>'query','')='' OR strpos(lower(u.username),lower(b->>'query'))>0 OR strpos(lower(u.nickname),lower(b->>'query'))>0)
+     AND (b->>'beforeTime' IS NULL OR (u.created_at,u.id)<((b->>'beforeTime')::timestamptz,(b->>'beforeId')::uuid))
+   ORDER BY u.created_at DESC,u.id DESC LIMIT 31
+  ), visible AS (SELECT * FROM page ORDER BY created_at DESC,id DESC LIMIT 30)
+  SELECT jsonb_build_object('status',200,
+   'registeredMemberCount',CASE WHEN b->>'beforeTime' IS NULL THEN (SELECT count(*) FROM public.hyt_members WHERE deleted_at IS NULL) END,
+   'registeredMembers',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',v.id,'username',v.username,'nickname',v.nickname)
+     ORDER BY v.created_at DESC,v.id DESC),'[]') FROM visible v),
+   'next',CASE WHEN (SELECT count(*) FROM page)>30 THEN (SELECT jsonb_build_object('beforeTime',v.created_at,'beforeId',v.id)
+      FROM visible v ORDER BY v.created_at ASC,v.id ASC LIMIT 1) END)
+  INTO result;
+  RETURN result;
+ END IF;
  IF a LIKE 'honors.%' THEN
   IF a='honors.hall' THEN
    target=coalesce((b->>'memberId')::uuid,m.id);
