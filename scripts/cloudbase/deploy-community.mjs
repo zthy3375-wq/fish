@@ -121,13 +121,22 @@ if(upgrade){
  const health=await fetch(base+'/health',{signal:AbortSignal.timeout(15000)});
  const status=await health.json();
  if(!health.ok||status.service!=='hyt-community'||status.schema!==15)throw Error('Unexpected deployed community health');
- const anonymousRequests=[['posts.list',{}],['contests.list',{scope:'trash'}],['contests.manage',{operation:'restore',contestId:'00000000-0000-4000-8000-000000000001',reason:'deployment authentication check'}]];
- for(const [action,body] of anonymousRequests){
-  const response=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://localhost'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
-  if(response.status!==401||response.headers.get('access-control-allow-origin')!=='https://localhost')throw Error('Unexpected mobile authentication boundary for '+action);
+ // The Android client uses HttpURLConnection, which sends no browser Origin.
+ const nativeRequests=[
+  ['posts.list',{}],
+  ['contests.list',{scope:'trash'}],
+  ['contests.manage',{operation:'restore',contestId:'00000000-0000-4000-8000-000000000001',reason:'deployment authentication check'}],
+  ['me',{entry:true},randomBytes(32).toString('base64url')],
+ ];
+ for(const [action,body,token] of nativeRequests){
+  const headers={'Content-Type':'application/json',Accept:'application/json'};
+  if(token)headers.Authorization='Bearer '+token;
+  const response=await fetch(base+'/v1/'+action,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
+  const result=await response.json().catch(()=>null);
+  if(response.status!==401||result?.error!=='session_expired')throw Error('Unexpected native authentication response for '+action+' (HTTP '+response.status+')');
  }
- writeFileSync('artifacts/community-v15-verification.json',JSON.stringify({source:process.env.HYT_DEPLOYMENT_SHA,schema:15,contestsEnabled:true,existingRowsPreserved:true,rolledBackContestSmoke:{memberRemovalDenied:true,memberRestoreDenied:true,memberRecycleBinDenied:true},scheduledWorkerReused:true,anonymousReadsAndManagementDenied:true},null,2));
- console.log('Live health, schema15, contest capability, mobile origin and authentication verified');
+ writeFileSync('artifacts/community-v15-verification.json',JSON.stringify({source:process.env.HYT_DEPLOYMENT_SHA,schema:15,contestsEnabled:true,existingRowsPreserved:true,rolledBackContestSmoke:{memberRemovalDenied:true,memberRestoreDenied:true,memberRecycleBinDenied:true},scheduledWorkerReused:true,anonymousReadsAndManagementDenied:true,invalidSessionRejectedThroughDatabase:true},null,2));
+ console.log('Live health and schema15 verified; native anonymous and invalid-session checks passed');
  process.exit(0);
 }
 if(process.env.COMMUNITY_DEPLOY_VERIFY==='contests-only'){console.log('Live capabilities verified; continuing with focused contest verification');process.exit(0);}
