@@ -93,6 +93,9 @@ await call(author, "contests.submit", {
 });
 await call(author,'posts.create',{title:'教学楼窗外的晚霞',body:'晚课前抬头看了一眼，今天的天空很漂亮。',category:'daily',anonymous:false,images:[],requestId:randomUUID()});
 await call(voter,'posts.create',{title:'图书馆的一个下午',body:'找到一个安静的位置，读完了想读的那几页。',category:'daily',anonymous:false,images:[],requestId:randomUUID()});
+// Returning fixture accounts have already seen registration/post/time achievements.
+// Acknowledge through the real API so consecutive screenshots do not restart a notice queue.
+for(const u of [owner,author,voter]){const r=await call(u,'honors.hall',{timeAwards:true});if(r.unlocks?.length)await call(u,'honors.ack',{codes:r.unlocks});}
 const root = path.resolve(process.env.CONTEST_DIST || "dist");
 const server = createServer(async (req, res) => {
   try {

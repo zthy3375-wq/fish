@@ -71,6 +71,7 @@ export async function checkHonors({client,db,api,baseline,output}){
    await page.getByRole('button',{name:'已解锁',exact:true}).click();assert.equal(await page.locator('.hon-grid button').count(),2);
    await page.getByText('特别收藏 · 待开放',{exact:true}).click();await page.getByText('邯院传说',{exact:true}).waitFor();
    if(width===360){
+    await page.getByRole('button',{name:'身份与荣誉',exact:true}).click();
     await page.locator('.hon-page').getByRole('button',{name:'开发者',exact:true}).click();
     await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'完成',exact:true}).click();
     await page.getByRole('button',{name:'返回社区',exact:true}).click();
