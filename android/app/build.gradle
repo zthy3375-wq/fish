@@ -5,8 +5,8 @@ android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.contestsv3' : 'org.handancampus.app')
-        manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·赛事3.0' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·赛事3.0' : '@string/title_activity_main']
+        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.contestsv31' : 'org.handancampus.app')
+        manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·赛事3.1' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·赛事3.1' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 184

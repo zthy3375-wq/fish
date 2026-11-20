@@ -99,6 +99,14 @@ const head = computed(
     ) || contests.value.find((c) => c.state === "ended"),
 );
 const current = computed(()=>contests.value.find(c=>!["ended","cancelled","draft"].includes(contestStage(c,now.value+offset))));
+const compactAction = computed(() => {
+  const contest = current.value;
+  if (!contest || contest.paused) return "查看赛事";
+  const phase = contestStage(contest, now.value + offset);
+  if (phase === "submitting") return "去投稿";
+  if (phase === "voting") return "去投票";
+  return phase === "upcoming" ? "查看预告" : "查看赛事";
+});
 const history: Record<string, any>[] = [];
 const title = computed(
   () =>
@@ -257,6 +265,26 @@ async function wall(append = false, fresh = false) {
     wallLoading.value = false;
   }
 }
+async function loadLegacyOwnWorks(contest: Contest, fresh: boolean) {
+  const activeWorks: ContestEntry[] = [];
+  let afterId: string | undefined;
+  do {
+    const result = await call(
+      "contests.entries",
+      { contestId: contest.id, seed, mine: true, afterId },
+      fresh,
+    );
+    const page = result.entries || [];
+    const rows = page.slice(0, 20);
+    activeWorks.push(...rows.filter((work) => work.status === "approved"));
+    afterId = page.length > 20 ? rows[19]?.id : undefined;
+  } while (afterId && activeWorks.length < contest.maxEntries);
+
+  if (selected.value?.id === contest.id) {
+    mine.value = activeWorks;
+    mineReady.value = true;
+  }
+}
 async function loadEvent(id: string, fresh = false) {
   lastId = id;
   loading.value = true;
@@ -272,26 +300,16 @@ async function loadEvent(id: string, fresh = false) {
     requestedEntry=r.entry;
     votesUsed.value = r.votesUsed || 0;
     mineReady.value =
+      preview.value ||
       r.myEntries !== undefined ||
       contestStage(r.contest, now.value + offset) !== "submitting";
-    mine.value = r.myEntries || [];
+    mine.value = preview.value ? [] : r.myEntries || [];
     winners.value = false;
     await Promise.all([
       wall(false, fresh),
       mineReady.value
         ? Promise.resolve()
-        : call(
-            "contests.entries",
-            { contestId: id, seed, mine: true },
-            fresh,
-          ).then((r) => {
-            if (selected.value?.id === id) {
-              mine.value = (r.entries || []).filter(
-                (e) => e.status === "approved",
-              );
-              mineReady.value = true;
-            }
-          }),
+        : loadLegacyOwnWorks(r.contest, fresh),
     ]);
   } finally {
     loading.value = false;
@@ -332,8 +350,9 @@ async function primary() {
       await run(() => loadEvent(selected.value!.id, true));
       return;
     }
-    const own = mine.value.find((e) => e.status === "approved");
-    if (own) openWork(own);
+    const own = mine.value.filter((work) => work.status === "approved");
+    if (own.length > 1) scrollToSection("contest-own-works");
+    else if (own.length === 1) openWork(own[0]);
     else compose();
   } else if (phase === "upcoming" || phase === "draft") {
     const rules = document.getElementById(
@@ -347,12 +366,21 @@ async function primary() {
           : "smooth",
       });
     }
-  } else
-    document.getElementById("contest-wall")?.scrollIntoView({
-      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-    });
+  } else scrollToSection("contest-wall");
+}
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({
+    behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth",
+  });
+}
+function composeAnother() {
+  const contest = selected.value;
+  if (!contest || preview.value || contest.paused || !mineReady.value) return;
+  if (contestStage(contest, now.value + offset) !== "submitting") return;
+  const used = mine.value.filter((work) => work.status === "approved").length;
+  if (used < contest.maxEntries) compose();
 }
 function applyEntry(work: ContestEntry) {
   for (const previous of history) {
@@ -364,7 +392,7 @@ function applyEntry(work: ContestEntry) {
       previous.votesUsed = votesUsed.value;
     }
   }
-  entry.value = work;
+  if (entry.value?.id === work.id) entry.value = work;
   entries.value = entries.value.map((e) => (e.id === work.id ? work : e));
   if (work.mine) {
     mine.value = [work, ...mine.value.filter((e) => e.id !== work.id)];
@@ -393,6 +421,7 @@ function syncOwnWork() {
 function submitted(work: ContestEntry) {
   const was = mine.value.some((e) => e.id === work.id);
   applyEntry(work);
+  entry.value = work;
   if (!entries.value.some((e) => e.id === work.id)) entries.value.unshift(work);
   if (selected.value && !was) {
     updateEvent({
@@ -428,9 +457,11 @@ async function vote() {
     if (selected.value?.id === cid) {
       votesUsed.value = committed.votesUsed;
       applyEntry(committed.entry);
-      notice.value = committed.entry.voted
-        ? "这一票，已送达"
-        : "已撤回，可以重新选择";
+      if (view.value === "entry" && entry.value?.id === before.id) {
+        notice.value = committed.entry.voted
+          ? "这一票，已送达"
+          : "已撤回，可以重新选择";
+      }
     }
   } catch (e) {
     showError(e);
@@ -466,7 +497,7 @@ async function confirm() {
       });
       syncOwnWork();
       confirmation.value = undefined;
-      view.value = history.pop()?.view || "detail";
+      popRoute();
       notice.value = "作品已撤回，截止前可以重新投稿。";
     } else {
       if (reportReason.value.trim().length < 2) return;
@@ -584,9 +615,9 @@ onMounted(() => {
 <template>
   <button v-if="compact" class="contest-entry ct-compact" :class="{'ct-compact-empty':!current}" @click="emit('open',current?.id)" :aria-label="current?'校园赛事：'+current.title:'校园赛事，查看赛事'">
     <Trophy :size="18" aria-hidden="true"/>
-    <span v-if="current" class="ct-entry-copy"><strong>{{current.title}}</strong><small>{{current.paused?'已暂停':contestLabels[contestStage(current,now+offset)]}}<span v-if="contestRemaining(current,now+offset)"> · {{contestRemaining(current,now+offset)}}</span></small></span>
+    <span v-if="current" class="ct-entry-copy"><strong>{{current.title}}</strong><small>{{current.paused?'已暂停':contestLabels[contestStage(current,now+offset)]}}<span v-if="!current.paused && contestRemaining(current,now+offset)"> · {{contestRemaining(current,now+offset)}}</span></small></span>
     <strong v-else class="ct-entry-label">校园赛事</strong>
-    <span class="ct-entry-action">{{current?'参与':'查看赛事'}}<ChevronRight :size="15"/></span>
+    <span class="ct-entry-action">{{ compactAction }}<ChevronRight :size="15"/></span>
   </button>
   <section v-else class="ct" :aria-busy="loading">
     <div v-if="preview" class="ct-preview-bar" role="status"><span>普通用户视角 · 只读预览</span><button class="ct-link" @click="endPreview">结束预览</button></div>
@@ -623,8 +654,8 @@ onMounted(() => {
         :winners="winners"
         :admin="false"
         :readonly="preview"
-        :home="view === 'home'"
         @primary="primary"
+        @compose="composeAnother"
         @entry="openWork"
         @more="run(() => wall(true))"
         @filter="

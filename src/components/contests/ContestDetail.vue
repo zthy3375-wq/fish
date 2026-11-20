@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Clock, Users, ChevronRight, Trophy } from "lucide-vue-next";
+import { Users, ChevronRight, Plus, Trophy } from "lucide-vue-next";
 import {
   contestStage,
-  contestRemaining,
   contestLabels,
   type Contest,
   type ContestEntry,
@@ -22,19 +21,28 @@ const props = defineProps<{
   more?: boolean;
   winners?: boolean;
   admin?: boolean;
-  home?: boolean;
   mineReady?: boolean;
   legacyEligibility?: boolean;
   readonly?: boolean;
 }>();
 const emit = defineEmits<{
   primary: [];
+  compose: [];
   entry: [entry: ContestEntry];
   more: [];
   filter: [winners: boolean];
   manage: [];
 }>();
 const phase = computed(() => contestStage(props.contest, props.now));
+const ownWorks = computed(() => props.mine.filter((work) => work.status === "approved"));
+const canSubmitMore = computed(() =>
+  props.mineReady !== false &&
+  !props.readonly &&
+  !props.contest.paused &&
+  phase.value === "submitting" &&
+  ownWorks.value.length > 0 &&
+  ownWorks.value.length < props.contest.maxEntries,
+);
 const pictures = computed(() =>
   props.contest.formats.some((x) => ["image", "mixed"].includes(x)),
 );
@@ -45,7 +53,7 @@ const pictures = computed(() =>
       <ContestCover v-if="contest.cover" :contest="contest" class="ct-hero-image"/>
       <div class="ct-hero-copy">
         <div class="ct-eyebrow">
-          <span>{{ home ? "正在邯院发生" : contest.type }}</span
+          <span>{{ contest.type }}</span
           ><span class="ct-status">{{
             contest.paused ? "已暂停" : contestLabels[phase]
           }}</span>
@@ -53,14 +61,10 @@ const pictures = computed(() =>
         <h1>{{ contest.title }}</h1>
         <p>{{ contest.description }}</p>
         <div class="ct-meta">
-          <span
-            ><Clock :size="14" />{{
-              contestRemaining(contest, now) || contestLabels[phase]
-            }}</span
-          ><span
-            ><Users :size="14" />{{ contest.participantCount }}人 ·
-            {{ contest.entryCount }}件</span
-          >
+          <span>
+            <Users :size="14" aria-hidden="true" />
+            {{ contest.participantCount }}人 · {{ contest.entryCount }}件
+          </span>
         </div>
         <button
           class="ct-primary ct-main-action"
@@ -72,6 +76,9 @@ const pictures = computed(() =>
               ? "确认我的参赛状态"
               : primaryContestAction(contest, mine, now)
           }}<ChevronRight :size="17" />
+        </button>
+        <button v-if="canSubmitMore" class="ct-link ct-submit-more" @click="emit('compose')">
+          <Plus :size="16" aria-hidden="true" />继续投稿
         </button>
       </div>
     </div>
@@ -122,6 +129,25 @@ const pictures = computed(() =>
         <p>获奖与每一次认真参与，都留在这里。</p>
       </div>
     </div>
+    <section
+      v-if="!readonly && contest.maxEntries > 1 && ownWorks.length"
+      id="contest-own-works"
+      class="ct-own-works"
+      aria-labelledby="contest-own-works-title"
+    >
+      <div class="ct-wall-heading">
+        <h2 id="contest-own-works-title">我的作品</h2>
+        <span>{{ ownWorks.length }} / {{ contest.maxEntries }} 件</span>
+      </div>
+      <ul>
+        <li v-for="work in ownWorks" :key="work.id">
+          <button class="ct-row" @click="emit('entry', work)">
+            <span class="ct-row-copy">{{ work.title }}</span>
+            <ChevronRight :size="17" aria-hidden="true" />
+          </button>
+        </li>
+      </ul>
+    </section>
     <div class="ct-wall-heading" id="contest-wall">
       <h2>{{ phase === "ended" ? "作品与获奖记录" : "参赛作品" }}</h2>
       <span v-if="phase === 'voting'"
