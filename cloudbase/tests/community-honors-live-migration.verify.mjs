@@ -32,6 +32,14 @@ test('deploys only reviewed functions and honor tables over the contest-aware pr
              (hyt_community('me','{}','existing_member_session') #>> '{user,badges,worn,code}') AS badge,
              (hyt_community('admin.members','{}','existing_member_session')->>'status') AS directory_status
     `)).rows;
-    assert.deepEqual(state,{sessions:1,grants:0,definitions:26,revision:communityRpcDigest(current),badge:'seed',directory_status:'403'});
+    assert.deepEqual(state,{sessions:1,grants:0,definitions:29,revision:communityRpcDigest(current),badge:'seed',directory_status:'403'});
+    const { rows:[projection] } = await db.query(`
+      SELECT hyt_community('collection.profile','{}','existing_member_session') #>> '{collection,layoutVersion}' AS layout,
+             hyt_community('profile.get','{"memberId":"00000000-0000-4000-8000-000000000002"}','existing_member_session')
+               #> '{profile,collectionShowcase}' AS showcase,
+             has_function_privilege('hyt_http','public.hyt_collection_showcase(public.hyt_members)','EXECUTE') AS direct_access,
+             has_table_privilege('hyt_http','public.hyt_collection_accepted_answers','SELECT') AS direct_answers
+    `);
+    assert.deepEqual(projection,{layout:'3',showcase:[],direct_access:false,direct_answers:false});
   } finally { await db.close(); }
 });

@@ -1,4 +1,4 @@
-name: Activate community honors and member directory
+name: Activate community achievements
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -10,11 +10,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   activation:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'deploy/community-honors-members-20261120' && github.base_ref == 'deploy/community-contests-v3-20261120'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'deploy/community-achievements-20261120' && github.base_ref == 'deploy/community-honors-members-20261120'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      LIVE_BASE: 5db51ed0e2f799fb2c65d4db9794849750cccac4
+      LIVE_BASE: d4f996fc3350ccb9002cc2a46c7ab89f1f930e6d
       HYT_COLLECTION_PREVIOUS_SCHEMA: /tmp/hyt-honors-live-before.sql
     steps:
       - uses: actions/checkout@v4

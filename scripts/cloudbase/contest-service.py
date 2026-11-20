@@ -48,7 +48,7 @@ if mode=='backup':
     private=Path('/tmp/hyt-existing-environment.json');private.write_text(json.dumps({v['Key']:v['Value'] for v in config.get('Environment',{}).get('Variables',[])}));private.chmod(0o600)
     print('Encrypted deployed code/configuration backup saved')
 elif mode in ('prepare-honors','publish-honors-code','restore-honors-code'):
-    if os.environ.get('GITHUB_HEAD_REF')!='deploy/community-honors-members-20261120' or os.environ.get('GITHUB_EVENT_NAME')!='pull_request':
+    if os.environ.get('GITHUB_HEAD_REF')!='deploy/community-achievements-20261120' or os.environ.get('GITHUB_EVENT_NAME')!='pull_request':
         raise RuntimeError('Unexpected community honors deployment context')
     marker=Path('/tmp/hyt-community-honors-code-started')
     staged=Path('/tmp/hyt-community-honors-code.zip')

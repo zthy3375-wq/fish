@@ -36,7 +36,7 @@ export async function verifyPassword(value,stored){
  const key=await deriveBounded(value,valid?parts[1]:'00000000000000000000000000000000');
  return valid&&timingSafeEqual(Buffer.from(key),Buffer.from(parts[2],'hex'));
 }
-export const clientActions=new Set(['honors.hall','honors.wear','honors.manage','honors.change','honors.ack','register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.members','admin.reports','admin.resolve','admin.context','admin.content','admin.history','admin.action','media.upload','media.discard','media.url','comments.replies','comments.like','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
+export const clientActions=new Set(['honors.hall','honors.wear','honors.manage','honors.change','honors.ack','register','login','recover','me','logout','profile.update','password.change','account.delete','posts.list','posts.get','posts.create','posts.delete','comments.create','comments.delete','reactions.set','reports.create','blocks.set','blocks.clear','admin.members','admin.reports','admin.resolve','admin.context','admin.content','admin.history','admin.action','media.upload','media.discard','media.url','comments.replies','comments.like','comments.accept','comments.context','threads.watch','notifications.list','notifications.unread','notifications.read','profile.get','avatar.set','responses.set','follows.set','follows.list','polls.vote','buddies.join','buddies.close','buddies.members','follows.stats','followers.list','members.block','messages.open','messages.inbox','messages.unread','messages.list','messages.send','messages.read']);
 for (const action of [...contestActions, ...collectionActions]) clientActions.add(action);
 const awardCodes=['arrival','firstpost','hello','liked','sprout','neighbor','popular','collector','month','year'];
 const honorKinds=['seed','creator','contributor'];
@@ -140,7 +140,7 @@ function sanitize(action,b){
  if(action==='media.url')out.imageId=id(b.imageId);
  if(action==='comments.replies')out.rootId=id(b.rootId);
  if(['posts.get','comments.replies'].includes(action)&&(b.afterTime!=null||b.afterId!=null)){out.afterTime=time(b.afterTime);out.afterId=id(b.afterId);}
- if(action==='comments.like')Object.assign(out,{commentId:id(b.commentId),enabled:boolean(b.enabled)});
+ if(action==='comments.like'||action==='comments.accept')Object.assign(out,{commentId:id(b.commentId),enabled:boolean(b.enabled)});
  if(action==='comments.create'){const images=b.images??[];if(!Array.isArray(images)||images.length>3||new Set(images).size!==images.length)fail();images.forEach(x=>id(x));Object.assign(out,{images,body:text(b.body,images.length?0:1,1000),anonymous:boolean(b.anonymous),requestId:id(b.requestId),replyTo:id(b.replyTo,true)});}
  if(['comments.delete','reports.create','blocks.set'].includes(action))out.commentId=id(b.commentId,action!=='comments.delete');
  if(action==='reports.create')out.reason=text(b.reason,2,300);
@@ -266,6 +266,6 @@ export function createCommunity({db,storage=null,registrationEnabled=false,board
   if(recoveryCode)r.recoveryCode=recoveryCode;
   return r;
  }
- function config(){return {contestsEnabled,registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:contestsEnabled?15:12,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,honorCollectionEnabled:true,registeredMembersEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
+ function config(){return {contestsEnabled,registrationEnabled,requiresInvite:false,simpleRegistration:true,combinedUnread:true,imagesEnabled:!!storage,categories,sections,interests,schema:contestsEnabled?15:12,autoAchievementsEnabled:true,legacyTimeProjection:true,timeAwards:true,honorsEnabled:true,honorCollectionEnabled:true,registeredMembersEnabled:true,moderationEnabled:true,boardsEnabled,responseKinds:['useful','joy','hug'],messagesEnabled:true,socialEnabled:true,buddiesEnabled:true,pollsEnabled:true,commentImagesEnabled:!!storage,followingEnabled:true,discoveryEnabled:true,engagementEnabled:true,avatarsEnabled:!!storage,responsesEnabled:true};}
  return {execute,config};
 }
