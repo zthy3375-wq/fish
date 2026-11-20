@@ -60,7 +60,7 @@ jobs:
           path: artifacts/
           retention-days: 14
   upgrade-v15:
-    if: github.event.action == 'opened' && github.event.pull_request.head.ref == 'deploy/community-contests-v3-20261120' && github.event.pull_request.base.ref == 'refine/theme-contests-v3-20261120' && github.event.pull_request.head.repo.full_name == github.repository
+    if: (github.event.action == 'opened' || github.event.action == 'synchronize') && github.event.pull_request.head.ref == 'deploy/community-contests-v3-20261120' && github.event.pull_request.base.ref == 'refine/theme-contests-v3-20261120' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:

@@ -3,7 +3,7 @@ import {spawnSync} from 'node:child_process';
 import {readFileSync,writeFileSync,chmodSync,unlinkSync} from 'node:fs';
 import {createHash,createHmac,randomBytes,randomUUID} from 'node:crypto';
 import {preservationBegin,preservationEnd} from './community-preservation.mjs';
-import {sql} from '../../cloudbase/functions/community/database.mjs';
+import {createSqlClient,sql} from '../../cloudbase/functions/community/database.mjs';
 import {cloudMedia} from '../../cloudbase/functions/community/media.mjs';
 import jpeg from '../../cloudbase/functions/community/node_modules/jpeg-js/index.js';
 import {createCommunity} from '../../cloudbase/functions/community/core.mjs';
@@ -48,9 +48,46 @@ const requireRpc=(...hashes)=>hashes[0]?`DO $$ DECLARE revision text; BEGIN
   RAISE EXCEPTION 'Unexpected community RPC revision';
  END IF;
 END $$;\n`:'';
+const diagnostics=[
+ [/Unexpected community RPC revision/,'unexpected_rpc_revision'],
+ [/Existing community rows changed during migration/,'existing_row_changed'],
+ [/lock timeout|deadlock detected|could not obtain lock/i,'database_lock_timeout'],
+ [/statement timeout|canceling statement/i,'database_statement_timeout'],
+ [/permission denied|must be owner|insufficient privilege/i,'database_permission'],
+ [/syntax error|unterminated dollar/i,'database_syntax_error'],
+ [/SAVEPOINT|savepoint/i,'database_savepoint_error'],
+ [/Ordinary member must not remove|Developer removal failed|Deleted contest|Contest restoration failed/,'contest_smoke_failed'],
+ [/cannot change return type|cannot change name of input parameter/i,'incompatible_function_signature'],
+ [/violates check constraint|violates foreign key constraint|unique constraint|not-null constraint/i,'database_constraint'],
+ [/already exists/i,'database_object_exists'],
+ [/does not exist/i,'database_object_missing'],
+ [/transaction/i,'database_transaction_error'],
+];
+const migrationSql=upgrade?createSqlClient({fetcher:async (url,options)=>{
+ const response=await fetch(url,options);
+ if(options?.headers?.['X-TC-Action']==='ExecutePGSql'){
+  const data=await response.clone().json().catch(()=>null);
+  const error=data?.Response?.Error;
+  if(error){
+   const message=String(error.Message||'');
+   const label=diagnostics.find(([pattern])=>pattern.test(message))?.[1]||'unclassified';
+   const sqlstate=message.match(/\bSQLSTATE[ :]+([0-9A-Z]{5})\b/i)?.[1];
+   const relation=message.match(/\b(?:table|relation|function|constraint|column) (?:public\.)?"(hyt_[a-z0-9_]+)"(?: |$)/i)?.[1];
+   const position=message.match(/\bPOSITION[ :]+(\d+)\b/i)?.[1];
+   const near=message.match(/syntax error at or near "([A-Z][A-Z_ ]{2,24})"/)?.[1];
+   console.error('Database migration diagnostic',JSON.stringify({label,sqlstate,relation,position,near}));
+  }
+ }
+ return response;
+}}):sql;
+if(upgrade){
+ const [row]=await migrationSql("SELECT md5(prosrc) AS digest FROM pg_proc WHERE oid='public.hyt_community(text,jsonb,text)'::regprocedure");
+ if(!row||![previousHash,currentHash].includes(row.digest))throw Error('Live community RPC differs from reviewed schema13 and schema15');
+ console.log('Verified live database RPC baseline:',row.digest===currentHash?'schema15 (retry)':'schema13');
+}
 const contestSmoke=upgrade?readFileSync('scripts/cloudbase/verify-contests-v15.sql','utf8'):'';
 // Send the full migration in the request body, which avoids process argument size limits.
-await sql('BEGIN;\n'+requireRpc(previousHash,currentHash)+preservationBegin+schema+`\nDO $$ DECLARE obj record; BEGIN
+await migrationSql('BEGIN;\n'+requireRpc(previousHash,currentHash)+preservationBegin+schema+`\nDO $$ DECLARE obj record; BEGIN
  FOR obj IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND (tablename LIKE 'hyt_contest%' OR tablename IN
  ('hyt_honors','hyt_awards','hyt_honor_history','hyt_recommendations','hyt_dm_threads','hyt_dm_messages','hyt_dm_reads','hyt_members','hyt_sessions','hyt_posts','hyt_comments','hyt_thread_aliases','hyt_reactions','hyt_blocks','hyt_hidden_threads','hyt_reports','hyt_moderation','hyt_community_rate','hyt_media','hyt_comment_likes','hyt_thread_watches','hyt_thread_visits','hyt_notifications','hyt_responses','hyt_follows','hyt_polls','hyt_poll_votes','hyt_buddies','hyt_buddy_members')) LOOP
  EXECUTE format('REVOKE ALL ON public.%I FROM %I',obj.tablename,'${dbRole}'); END LOOP;
