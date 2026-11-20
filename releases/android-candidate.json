@@ -1,14 +1,14 @@
 {
-  "sha256": "a5272bd52a283abf0d138720ad9ef6c024692d0aa214997da6bab7181a4e0b76",
-  "sizeBytes": 12430367,
-  "versionCode": 150,
-  "versionName": "1.2.4",
+  "sha256": "27ed714887ddf028b26dfe95c4bc4627f288199ad882cb8a0d64e7d8d42ae93e",
+  "sizeBytes": 12779147,
+  "versionCode": 191,
+  "versionName": "1.3.1",
   "minSdk": 23,
-  "minSupportedVersionCode": 150,
-  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.2.4-a5272bd52a28.apk",
+  "minSupportedVersionCode": 191,
+  "sourceUrl": "https://hanyuantong-updates.dewydahlia.chatgpt.site/android/Hanyuantong-v1.3.1-27ed714887dd.apk",
   "notes": [
     "修复了一些问题"
   ],
   "ready": true,
-  "buildKey": "2366ffdd425f60f5dc82a40aefb82515"
+  "buildKey": "d801e76cdc850226434f4d9711f91502"
 }
