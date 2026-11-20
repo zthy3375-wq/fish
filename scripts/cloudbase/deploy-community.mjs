@@ -56,7 +56,7 @@ const diagnostics=[
  [/permission denied|must be owner|insufficient privilege/i,'database_permission'],
  [/syntax error|unterminated dollar/i,'database_syntax_error'],
  [/SAVEPOINT|savepoint/i,'database_savepoint_error'],
- [/Ordinary member must not remove|Developer removal failed|Deleted contest|Contest restoration failed/,'contest_smoke_failed'],
+ [/Ordinary member must not use contest cleanup|Unauthorized contest action changed/,'contest_smoke_failed'],
  [/cannot change return type|cannot change name of input parameter/i,'incompatible_function_signature'],
  [/violates check constraint|violates foreign key constraint|unique constraint|not-null constraint/i,'database_constraint'],
  [/already exists/i,'database_object_exists'],
@@ -95,7 +95,7 @@ await migrationSql('BEGIN;\n'+requireRpc(previousHash,currentHash)+preservationB
  ('hyt_credit','hyt_badges','hyt_progress','hyt_award_check','hyt_award_pending','hyt_hall','hyt_dm_visible','hyt_dm_json','hyt_dm_message_json','hyt_community','hyt_member_json','hyt_author_json','hyt_post_json','hyt_comment_json','hyt_media_json','hyt_visible_notifications','hyt_notification_json','hyt_notify_comment','hyt_avatar_json','hyt_profile_json','hyt_poll_json','hyt_comment_image_visible','hyt_buddy_json')) LOOP
  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I',obj.signature,'${dbRole}'); END LOOP; END $$;\n${contestSmoke}\n${preservationEnd}\n${requireRpc(currentHash)}COMMIT;`);
 console.log('Community schema installed; every pre-existing community row preserved; direct-client access denied');
-if(upgrade)console.log('Live database: developer-only contest removal, recycle bin and restoration verified; test records rolled back');
+if(upgrade)console.log('Live database: ordinary member denied removal, recycle bin and restoration; test records rolled back');
 if(!upgrade){
 await cloudMedia({env:envId,key}).ensureBucket();
 cli(['db','execute','--sql',`BEGIN;
@@ -126,7 +126,7 @@ if(upgrade){
   const response=await fetch(base+'/v1/'+action,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://localhost'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
   if(response.status!==401||response.headers.get('access-control-allow-origin')!=='https://localhost')throw Error('Unexpected mobile authentication boundary for '+action);
  }
- writeFileSync('artifacts/community-v15-verification.json',JSON.stringify({source:process.env.HYT_DEPLOYMENT_SHA,schema:15,contestsEnabled:true,existingRowsPreserved:true,rolledBackContestSmoke:{developerRemoval:true,memberDenied:true,recycleBin:true,restoreSameContest:true},scheduledWorkerReused:true,anonymousReadsAndManagementDenied:true},null,2));
+ writeFileSync('artifacts/community-v15-verification.json',JSON.stringify({source:process.env.HYT_DEPLOYMENT_SHA,schema:15,contestsEnabled:true,existingRowsPreserved:true,rolledBackContestSmoke:{memberRemovalDenied:true,memberRestoreDenied:true,memberRecycleBinDenied:true},scheduledWorkerReused:true,anonymousReadsAndManagementDenied:true},null,2));
  console.log('Live health, schema15, contest capability, mobile origin and authentication verified');
  process.exit(0);
 }
