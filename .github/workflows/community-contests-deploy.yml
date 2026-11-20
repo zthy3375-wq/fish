@@ -59,3 +59,55 @@ jobs:
           name: community-deployment-evidence
           path: artifacts/
           retention-days: 14
+  upgrade-v15:
+    if: (github.event.action == 'opened' || github.event.action == 'synchronize') && github.event.pull_request.head.ref == 'deploy/community-contests-v3-20261120' && github.event.pull_request.base.ref == 'refine/theme-contests-v3-20261120' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      HYT_CONTEST_SCHEMA15_UPGRADE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify released baseline and reviewed candidate
+        run: |
+          git show 30dcbc36452aca105615003919f0acd4ae50eeb4:cloudbase/community-schema.sql > /tmp/hyt-schema13.sql
+          git diff --exit-code 18086a7735362c65c5915aef28e8e8647b771a60 HEAD -- cloudbase src android ios-native package-lock.json
+      - run: npm ci
+      - run: npm run check:community
+      - name: Install deployment tools
+        run: |
+          npm install --global @cloudbase/cli@3.9.1 --ignore-scripts
+          python -m pip install tencentcloud-sdk-python cryptography
+      - name: Verify existing scheduler and back up current service
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+        run: python scripts/cloudbase/contest-service.py backup
+      - name: Apply guarded SQL migration, deploy service and verify HTTPS
+        id: upgrade
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+          HYT_DEPLOYMENT_SHA: ${{ github.event.pull_request.head.sha }}
+          COMMUNITY_CONTESTS: enabled
+          COMMUNITY_CONTESTS_SCHEDULER: scf
+          HYT_EXISTING_ENV_FILE: /tmp/hyt-existing-environment.json
+          CI: 'true'
+          TCB_SITE: domestic
+        run: node scripts/cloudbase/deploy-community.mjs
+      - name: Restore backed-up community function if activation fails
+        if: failure() && steps.upgrade.outcome == 'failure'
+        env:
+          CLOUDBASE_API_KEY: ${{ secrets.CLOUDBASE_API_KEY }}
+        run: python scripts/cloudbase/contest-service.py rollback
+      - name: Save encrypted rollback and deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: community-v15-deployment-evidence
+          path: artifacts/
+          retention-days: 14

@@ -34,6 +34,11 @@ credential=Credential(creds['TmpSecretId'],creds['TmpSecretKey'],creds['Token'])
 client=scf_client.ScfClient(credential,'ap-shanghai')
 mode=sys.argv[1]
 if mode=='backup':
+    if os.environ.get('HYT_CONTEST_SCHEMA15_UPGRADE')=='1':
+        wait(FUNCTION)
+        triggers=request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[])
+        if not any(t['TriggerName']=='hytc-daily-recovery' and (t.get('BindStatus')=='on' or t.get('Enable')==1) for t in triggers):
+            raise RuntimeError('Expected an active daily contest recovery trigger')
     config=request('GetFunction',{'FunctionName':'hyt-community'})
     location=request('GetFunctionAddress',{'FunctionName':'hyt-community'})
     with urllib.request.urlopen(location['Url'],timeout=60) as response: code=response.read()
@@ -67,10 +72,17 @@ elif mode=='worker':
         request('CreateTrigger',{'FunctionName':FUNCTION,'TriggerName':'hytc-daily-recovery','Type':'timer','Enable':'OPEN','TriggerDesc':'0 5 4 * * ? *'})
     print('Settlement worker active; daily recovery installed')
 elif mode=='rollback':
+    community_only=os.environ.get('HYT_CONTEST_SCHEMA15_UPGRADE')=='1'
+    if community_only and not Path('/tmp/hyt-community-v15-code-deployment-started').exists():
+        print('Community code deployment did not start')
+        sys.exit(0)
     if not BACKUP.exists(): raise RuntimeError('No deployment backup')
     data=BACKUP.read_bytes();saved=json.loads(AESGCM(enc_key).decrypt(data[:12],data[12:],None));c=saved['config']
     request('UpdateFunctionCode',{'FunctionName':'hyt-community','CodeSource':'ZipFile','ZipFile':saved['code']});wait('hyt-community')
     request('UpdateFunctionConfiguration',{'FunctionName':'hyt-community','Environment':c['Environment'],'MemorySize':c['MemorySize'],'Timeout':c['Timeout']});wait('hyt-community')
+    if community_only:
+        print('Previous community code/configuration restored')
+        sys.exit(0)
     # Disable only settlement timers owned by this deployment; preserve all other services.
     try: triggers=request('ListTriggers',{'FunctionName':FUNCTION,'Limit':100}).get('Triggers',[])
     except Exception as e:
