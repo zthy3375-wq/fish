@@ -239,8 +239,7 @@ onMounted(() => run(() => load()));
   <section>
     <header class="ct-manage-heading">
       <h2>{{ contest.title }}</h2>
-      <h3 v-if="contest.paused">比赛已暂停</h3>
-      <p v-else>{{ contestLabels[contest.state] }}<span v-if="!visible"> · 在回收站</span></p>
+      <h3>{{ contest.paused ? "比赛已暂停" : contestLabels[contest.state] }}<span v-if="!visible"> · 在回收站</span></h3>
       <div class="ct-manage-actions">
         <button v-if="visible" class="ct-secondary" :disabled="busy" @click="emit('preview')">预览普通用户视角</button>
         <button

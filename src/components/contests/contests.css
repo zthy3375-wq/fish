@@ -728,7 +728,6 @@
   border-radius: var(--ct-radius);
   background: var(--color-raised, var(--color-card, #fff));
 }
-.ct-manage-heading > p,
 .ct-manage-heading > h3 {
   margin-top: 6px;
   color: var(--color-muted);
