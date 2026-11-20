@@ -838,3 +838,29 @@ it("a late vote response updates the original work without replacing the work op
   btn("查看作品：" + work.title).click();
   await ready(() => btn("已投票 · 撤回"));
 });
+
+it("counts accepted entries beyond the first legacy page of withdrawn work", async () => {
+  event.maxEntries = 2;
+  const withdrawn = Array.from({ length: 20 }, () => ({
+    ...work,
+    id: randomUUID(),
+    mine: true,
+    status: "withdrawn",
+  }));
+  const first = { ...work, mine: true, title: "保留的第一篇" };
+  const second = { ...first, id: randomUUID(), title: "保留的第二篇" };
+  bridge.request.mockImplementation(async (action: string, body: any) => {
+    if (action === "contests.list") return { contests: [event] };
+    if (action === "contests.get") return { contest: event };
+    if (action === "contests.entries" && body.mine) {
+      return { entries: body.afterId ? [first, second] : [...withdrawn, first] };
+    }
+    return { entries: [] };
+  });
+  await mount(Hub, { user: { id: owner }, backendSchema: 13 });
+  await ready(() => btn(second.title));
+  expect(btn("继续投稿")).toBeUndefined();
+  expect(root.querySelector("#contest-own-works")?.textContent).toContain("2 / 2 件");
+  const reads = bridge.request.mock.calls.filter(([a, b]) => a === "contests.entries" && b.mine);
+  expect(reads.map(([, b]) => b.afterId)).toEqual([undefined, withdrawn[19].id]);
+});

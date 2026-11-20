@@ -265,6 +265,26 @@ async function wall(append = false, fresh = false) {
     wallLoading.value = false;
   }
 }
+async function loadLegacyOwnWorks(contest: Contest, fresh: boolean) {
+  const activeWorks: ContestEntry[] = [];
+  let afterId: string | undefined;
+  do {
+    const result = await call(
+      "contests.entries",
+      { contestId: contest.id, seed, mine: true, afterId },
+      fresh,
+    );
+    const page = result.entries || [];
+    const rows = page.slice(0, 20);
+    activeWorks.push(...rows.filter((work) => work.status === "approved"));
+    afterId = page.length > 20 ? rows[19]?.id : undefined;
+  } while (afterId && activeWorks.length < contest.maxEntries);
+
+  if (selected.value?.id === contest.id) {
+    mine.value = activeWorks;
+    mineReady.value = true;
+  }
+}
 async function loadEvent(id: string, fresh = false) {
   lastId = id;
   loading.value = true;
@@ -280,26 +300,16 @@ async function loadEvent(id: string, fresh = false) {
     requestedEntry=r.entry;
     votesUsed.value = r.votesUsed || 0;
     mineReady.value =
+      preview.value ||
       r.myEntries !== undefined ||
       contestStage(r.contest, now.value + offset) !== "submitting";
-    mine.value = r.myEntries || [];
+    mine.value = preview.value ? [] : r.myEntries || [];
     winners.value = false;
     await Promise.all([
       wall(false, fresh),
       mineReady.value
         ? Promise.resolve()
-        : call(
-            "contests.entries",
-            { contestId: id, seed, mine: true },
-            fresh,
-          ).then((r) => {
-            if (selected.value?.id === id) {
-              mine.value = (r.entries || []).filter(
-                (e) => e.status === "approved",
-              );
-              mineReady.value = true;
-            }
-          }),
+        : loadLegacyOwnWorks(r.contest, fresh),
     ]);
   } finally {
     loading.value = false;
