@@ -7,6 +7,7 @@ import Hub from "../src/components/contests/ContestHub.vue";
 import Composer from "../src/components/contests/ContestComposer.vue";
 import Management from "../src/components/contests/ContestManagement.vue";
 import ContestHonors from "../src/components/contests/ContestHonors.vue";
+import Cover from "../src/components/contests/ContestCover.vue";
 import WorkDetail from "../src/components/contests/ContestWorkDetail.vue";
 import Admin from "../src/components/contests/ContestAdmin.vue";
 import {
@@ -755,4 +756,12 @@ it("v3 medal collection reads existing awards, groups true totals and opens the 
 it("v3 ordinary work view never labels a developer's pre-result tally as final",async()=>{
  event.state="voting";event.submissionEnds=event.votingStarts=iso(-1);await mount(WorkDetail,{contest:event,entry:{...work,votes:42},now,votesUsed:0});
  expect(root.querySelector(".ct-final-votes")).toBeNull();expect(btn("投一票")).toBeDefined();
+});
+
+it("v3 renews a linked-post cover through the schema13-compatible media endpoint",async()=>{
+ event.coverPostId=crypto.randomUUID();event.cover={id:crypto.randomUUID(),url:"https://expired.invalid/cover.jpg",width:800,height:450};
+ bridge.request.mockResolvedValue({image:{...event.cover,url:"https://renewed.invalid/cover.jpg"}});
+ await mount(Cover,{contest:event});root.querySelector("img")!.dispatchEvent(new Event("error"));
+ await ready(()=>root.querySelector("img")?.src==="https://renewed.invalid/cover.jpg");
+ expect(bridge.request).toHaveBeenCalledWith("media.url",{postId:event.coverPostId,imageId:event.cover.id});
 });
