@@ -2,7 +2,7 @@
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
 import { Award, ChevronRight, LockKeyhole } from "lucide-vue-next";
 import CollectionBadge from "./CollectionBadge.vue";
-import { archiveSections, collectionKind, definitionCode, displayCollectionName, honorName, honorRarities, type CollectionItem, type CollectionProfile, type HonorArchiveItem } from "../../domain/honorCollection";
+import { archiveSections, collectionKind, definitionCode, displayCollectionName, honorName, honorRarities, isRetiredAchievement, type CollectionItem, type CollectionProfile, type HonorArchiveItem } from "../../domain/honorCollection";
 import { catalog } from "../../domain/globalAchievements";
 import { clearHonorCollectionCache, getHonorCollection } from "../../services/honorCollectionCache";
 import { treeholeError, type TreeholeResult } from "../../services/treehole";
@@ -23,7 +23,7 @@ const year = ref<number | null>(null);
 const years = ref<number[]>([]);
 const panel = ref<"honor" | "achievement">("honor");
 const filter = ref("all");
-const filters = { all:"全部", daily:"日常", milestone:"里程碑", season:"季节纪念", hidden:"隐藏" };
+const filters = { all:"全部", daily:"日常", milestone:"里程碑", season:"季节纪念", hidden:"隐藏", archive:"已停发" };
 const loading = ref(false);
 const changing = ref(false);
 const more = ref(false);
@@ -68,14 +68,12 @@ const pending: Array<Pick<Card, "code" | "name" | "category" | "rarity" | "crite
   {code:"creator-of-year",name:"年度最佳创作者",category:"limited",rarity:"epic",criteria:"按年份评选年度最佳创作者。"},
   {code:"photo-of-year",name:"年度摄影师",category:"limited",rarity:"epic",criteria:"按年份评选年度摄影作品。"},
   {code:"warmth-of-year",name:"年度最温暖的人",category:"limited",rarity:"epic",criteria:"按年份选出值得纪念的互助事迹。"},
-  {code:"graduation-keepsake",name:"毕业季青春纪念章",category:"limited",rarity:"rare",criteria:"按年份核实毕业季参与记录。"},
-  {code:"welcome-guide",name:"带新同学认路",category:"limited",rarity:"rare",criteria:"按年份核实参与迎新和互助的记录。"},
-  {code:"first-feature",name:"第一次上墙",category:"contribution",rarity:"rare",criteria:"第一篇原创作品入选官方精选。"},
   {code:"hundred-likes",name:"一百个赞",category:"contribution",rarity:"legendary",criteria:"同一篇公开帖子收到 100 位不同同学的有效赞。"},
-  {code:"full-page",name:"写满这一页",category:"contribution",rarity:"epic",criteria:"累计解锁 15 项不同的常规社区成就。"},
+  {code:"full-page",name:"写满这一页",category:"contribution",rarity:"epic",criteria:"累计解锁 12 项常规自动成就。"},
 ];
 const catalogCards = computed<Card[]>(() => {
-  const definitions = items.value.map(item => ({ ...item, name:displayCollectionName(item) }));
+  const definitions = items.value.filter(item=>item.awardId||!isRetiredAchievement(item.code))
+    .map(item=>({...item,name:displayCollectionName(item),archived:item.archived||isRetiredAchievement(item.code)}));
   if (!self.value || !profile.value) return definitions;
   const known = new Set(definitions.map(item => definitionCode(item.code)));
   const templates = pending.filter(item => !known.has(item.code) && (item.category === "limited" || !organized.value));
@@ -84,14 +82,18 @@ const catalogCards = computed<Card[]>(() => {
 const honors = computed(() => [...oldCards.value, ...catalogCards.value.filter(i => collectionKind(i) === "honor")]);
 const achievements = computed(() => [...baseCards.value, ...catalogCards.value.filter(i => collectionKind(i) === "achievement")]);
 function group(item: Card) {
+  if (isRetiredAchievement(item.code)) return "archive";
   if (item.base) return "daily";
   if (item.category === "limited") return "season";
   if (item.category === "hidden") return "hidden";
   return "milestone";
 }
-const visible = computed(() => panel.value === "honor" ? honors.value : achievements.value.filter(item => filter.value === "all" || filter.value === group(item)));
+const visible = computed(() => panel.value === "honor" ? honors.value : achievements.value.filter(item =>
+  filter.value === "all" ? group(item)!=="archive" : filter.value===group(item)));
+const visibleFilters = computed(()=>Object.entries(filters).filter(([key])=>
+  !["archive","season"].includes(key)||achievements.value.some(item=>group(item)===key)));
 const mystery = computed(() => self.value && !!profile.value && panel.value === "achievement" && ["all","hidden"].includes(filter.value)
-  ? Math.max(0, 6 - achievements.value.filter(item => item.category === "hidden" && item.awardId).length) : 0);
+  ? Math.max(0, 5 - achievements.value.filter(item => group(item)==="hidden" && item.awardId).length) : 0);
 const earned = computed(() => (panel.value==="honor" ? honors.value : achievements.value).filter(i=>i.awardId));
 const distribution = computed(() => earned.value.reduce<Record<string,number>>((counts, item) => {
   counts[item.rarity] = (counts[item.rarity] ?? 0) + 1;
@@ -263,7 +265,7 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
         <h3>可佩戴荣誉</h3>
       </section>
       <nav v-if="panel==='achievement'" class="hc-tabs" aria-label="社区成就类型">
-        <button v-for="(label,key) in filters" :key="key" :aria-pressed="filter===key" @click="filter=key">{{ label }}</button>
+        <button v-for="[key,label] in visibleFilters" :key="key" :aria-pressed="filter===key" @click="filter=key">{{ label }}</button>
       </nav>
       <ul class="hc-gallery">
         <li v-for="item in visible" :key="item.id">

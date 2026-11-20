@@ -6,8 +6,8 @@ import TreeholeImages from './TreeholeImages.vue';
 import TreeholeAvatar from './TreeholeAvatar.vue';
 import {treeholeTimestamp} from '../domain/treeholePresentation';
 import type {TreeholeComment} from '../services/treehole';
-const props=defineProps<{comment:TreeholeComment;busy:boolean;locked:boolean;expanded?:boolean;more?:boolean;loading?:boolean;pendingLikes?:Record<string,boolean>}>();
-defineEmits<{image:[comment:TreeholeComment,index:number];reply:[comment:TreeholeComment];like:[comment:TreeholeComment];menu:[comment:TreeholeComment];expand:[];collapse:[]}>();
+const props=defineProps<{comment:TreeholeComment;busy:boolean;locked:boolean;expanded?:boolean;more?:boolean;loading?:boolean;pendingLikes?:Record<string,boolean>;accepted?:boolean;canAccept?:boolean}>();
+defineEmits<{image:[comment:TreeholeComment,index:number];reply:[comment:TreeholeComment];like:[comment:TreeholeComment];menu:[comment:TreeholeComment];accept:[comment:TreeholeComment];expand:[];collapse:[]}>();
 const liveReplies=computed(()=>props.comment.replies?.filter(reply=>!reply.deleted)??[]);
 const shown=computed(()=>props.expanded?liveReplies.value:liveReplies.value.slice(0,2));
 function replyName(child:TreeholeComment){
@@ -40,6 +40,9 @@ function replyLabel(child:TreeholeComment){
     <div class="th-comment-meta">
      <small>{{treeholeTimestamp(comment.createdAt)}}<span v-if="comment.isOriginalPoster"> · 楼主</span></small>
      <button v-if="!locked" class="th-reply" :disabled="busy" @click="$emit('reply',comment)">回复</button>
+     <button v-if="canAccept&&!comment.deleted&&!comment.author.mine&&!comment.author.anonymous"
+       class="th-reply" type="button" :aria-pressed="!!accepted" :disabled="busy" @click="$emit('accept',comment)">{{accepted?'撤销采纳':'采纳'}}</button>
+     <span v-if="accepted" class="muted">已采纳</span>
     </div>
    </template>
    <div v-if="liveReplies.length||(comment.replyCount||0)>0" class="th-replies">

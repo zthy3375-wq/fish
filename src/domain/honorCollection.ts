@@ -98,6 +98,8 @@ const achievementNames: Record<string, string> = {
 const hiddenCodes = new Set(["before-dawn","developer-noticed","world-lines","archivist","crossed-paths","no-island"]);
 const historicalCodes = new Set(["that-person", "campus-legend"]);
 export function definitionCode(code: string) { return code.replace(/-[0-9]{4}$/, ""); }
+const retiredAchievements = new Set(["bug-hunter","architect","first-feature","gold-creator","developer-noticed","welcome-guide","graduation-keepsake"]);
+export function isRetiredAchievement(code:string){return retiredAchievements.has(definitionCode(code));}
 export function collectionKind(item: Pick<CollectionItem, "code" | "category" | "displayKind">): CollectionKind {
   if (item.displayKind) return item.displayKind;
   if (historicalCodes.has(item.code)) return "history";

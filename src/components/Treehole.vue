@@ -50,6 +50,7 @@ const buddyRoster=ref<{post:TreeholePost;members:TreeholeBuddyMember[];loading:b
 const pollSnapshots=new Map<string,TreeholePoll>();
 const honorsEnabled=ref(false),hallMember=ref(''),awardQueue=ref<string[]>([]),shownAwards=new Set<string>();
 const hallAward=ref(''),collectionEnabled=ref(false),manageCollection=ref(true);
+const autoAchievementsEnabled=ref(false);
 function showHall(id:string,code=''){
  if(screen.value!=='honors')rememberRoute();
  hallMember.value=id;hallAward.value=code;screen.value='honors';
@@ -199,6 +200,19 @@ async function renewImage(){galleryFailed.value=false;const g=gallery.value,im=c
 function galleryStep(delta:number){if(!gallery.value)return;const n=gallery.value.post.images?.length||1;gallery.value.index=(gallery.value.index+delta+n)%n;zoomed.value=false;void renewImage();}
 function imageGesture(event:TouchEvent){const distance=event.changedTouches[0].clientX-galleryX.value;if(!zoomed.value&&Math.abs(distance)>60)galleryStep(distance<0?1:-1);}
 function actionError(e:unknown,epoch:number){if(!alive||epoch!==accountEpoch)return;error.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired')clearAccount();}
+const canAcceptAnswer=computed(()=> {
+ const post=detail.value;
+ return autoAchievementsEnabled.value&&!!post&&post.acceptedAnswerId!==undefined&&post.category==='help'&&post.author.mine&&!post.anonymous&&!post.locked;
+});
+async function acceptAnswer(comment:TreeholeComment){
+ const post=detail.value;
+ if(!post||!canAcceptAnswer.value||busy.value)return;
+ const enabled=post.acceptedAnswerId!==comment.id;
+ await run(async()=>{
+   const result=await api('comments.accept',{postId:post.id,commentId:comment.id,enabled});
+   if(result.post&&detail.value?.id===post.id)detail.value=result.post;
+ });
+}
 async function commentLike(c:TreeholeComment){
  const postId=detail.value?.id,epoch=accountEpoch;if(!postId||busy.value||pendingLikes.value[c.id])return;
  const before={liked:!!c.liked,likeCount:c.likeCount||0},enabled=!before.liked;pendingLikes.value[c.id]=true;error.value='';
@@ -372,6 +386,7 @@ async function toggleWatch(post:TreeholePost){
 }
 function applyConfig(config:TreeholeResult){
  honorsEnabled.value=config.honorsEnabled===true;collectionEnabled.value=config.honorCollectionEnabled===true;
+ autoAchievementsEnabled.value=config.autoAchievementsEnabled===true;
  registration.value=config.registrationEnabled===true&&config.simpleRegistration===true;
  combinedUnread.value=config.combinedUnread===true;
  imagesEnabled.value=!!config.imagesEnabled;engagementEnabled.value=!!config.engagementEnabled;avatarsEnabled.value=!!config.avatarsEnabled;responsesEnabled.value=!!config.responsesEnabled;joyEnabled.value=config.responseKinds?.includes('joy')===true;discoveryEnabled.value=!!config.discoveryEnabled;boardsEnabled.value=discoveryEnabled.value&&config.boardsEnabled===true;followingEnabled.value=!!config.followingEnabled;socialEnabled.value=!!config.socialEnabled;messagesEnabled.value=!!config.messagesEnabled;pollsEnabled.value=!!config.pollsEnabled;buddiesEnabled.value=!!config.buddiesEnabled;commentImagesEnabled.value=!!config.commentImagesEnabled;moderationEnabled.value=!!config.moderationEnabled;
@@ -715,11 +730,11 @@ onUnmounted(()=>{clearTimeout(ackTimer);clearTimeout(draftTimer);saveDraft();ali
        <TreeholePostCard :post="detail" :buddies-enabled="buddiesEnabled" :buddy-pending="pendingBuddies[detail.id]" @buddy-join="buddyAction(detail,'join',$event)" @buddy-close="buddyAction(detail,'close',$event)" @buddy-members="showBuddyMembers(detail)" :polls-enabled="pollsEnabled" :voting="pendingVotes[detail.id]" @vote="vote(detail,$event)" :responses-enabled="responsesEnabled" :joy-enabled="joyEnabled" :responding="pendingResponses[detail.id]" @response="respond(detail,$event)" full :busy="busy" @open="focusReply()" @react="react(detail,$event)" @menu="menu=detail.id" @image="imageView(detail,$event)" @author="openProfile" @category="selectCategory" @interest="selectInterest"/>
        <div class="th-discussion-title"><div><h2>评论 <span aria-hidden="true">{{detail.commentCount}}</span></h2><small>按时间排序</small></div><button v-if="engagementEnabled" class="th-watch-toggle" :aria-label="detail.watching?'取消关注':'关注讨论'" :aria-pressed="!!detail.watching" :title="detail.watching?'已关注，新回复会出现在互动消息':'关注后，新回复会出现在互动消息'" :disabled="busy||watchPending" @click="toggleWatch(detail)"><Check v-if="detail.watching" :size="15"/><Bell v-else :size="15"/>{{detail.watching?'已关注讨论':'关注讨论'}}</button></div>
        <div v-if="detailError" class="th-detail-error" role="alert"><AlertCircle :size="18"/><div><strong>暂时没有加载完整</strong><p>{{detailError}}，当前正文已保留。</p></div><button :disabled="detailLoading" @click="loadDetail(detail!)">重试</button></div>
-       <section v-if="focusedThread&&threadHasVisibleContent(focusedThread)" class="th-focus-context" aria-label="消息对应的回复"><div class="th-context-heading"><span>消息对应的回复</span><button @click="focusedThread=null;scrollDiscussion()">查看全部讨论</button></div><TreeholeCommentThread :comment="focusedThread" :busy="busy" :locked="detail.locked" :expanded="true" :loading="loadingThreads[focusedThread.id]" :pending-likes="pendingLikes" :more="(focusedThread.replyCount||0)>(focusedThread.replies?.length||0)" @image="commentImageView" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(focusedThread)"/></section>
+       <section v-if="focusedThread&&threadHasVisibleContent(focusedThread)" class="th-focus-context" aria-label="消息对应的回复"><div class="th-context-heading"><span>消息对应的回复</span><button @click="focusedThread=null;scrollDiscussion()">查看全部讨论</button></div><TreeholeCommentThread :comment="focusedThread" :accepted="detail.acceptedAnswerId===focusedThread.id" :can-accept="canAcceptAnswer" @accept="acceptAnswer" :busy="busy" :locked="detail.locked" :expanded="true" :loading="loadingThreads[focusedThread.id]" :pending-likes="pendingLikes" :more="(focusedThread.replyCount||0)>(focusedThread.replies?.length||0)" @image="commentImageView" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(focusedThread)"/></section>
        <div class="th-comments">
         <div v-if="detailLoading&&!visibleThreads.length" class="th-comment-loading" role="status"><span/><span/><span/><p>正在加载评论…</p></div>
         <div v-else-if="!visibleThreads.length&&!commentNext&&!detailError" class="th-no-comments"><MessageCircle :size="25"/><strong>第一声回应，就从你开始</strong><p>一句关心、一个想法，都很好。</p></div>
-        <TreeholeCommentThread v-for="comment in visibleThreads" :key="comment.id" :comment="comment" :busy="busy" :locked="detail.locked" :expanded="expandedReplies[comment.id]" :loading="loadingThreads[comment.id]" :pending-likes="pendingLikes" :more="!!replyPages[comment.id]" @image="commentImageView" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(comment)" @collapse="expandedReplies[comment.id]=false"/>
+        <TreeholeCommentThread v-for="comment in visibleThreads" :key="comment.id" :comment="comment" :accepted="detail.acceptedAnswerId===comment.id" :can-accept="canAcceptAnswer" @accept="acceptAnswer" :busy="busy" :locked="detail.locked" :expanded="expandedReplies[comment.id]" :loading="loadingThreads[comment.id]" :pending-likes="pendingLikes" :more="!!replyPages[comment.id]" @image="commentImageView" @reply="focusReply" @like="commentLike" @menu="menu=$event.id" @expand="expandThread(comment)" @collapse="expandedReplies[comment.id]=false"/>
        </div>
        <button v-if="commentNext" class="th-more" :disabled="busy||detailLoading" @click="loadDetail(detail!,true)">{{detailLoading?'正在加载…':'加载更多评论'}}</button>
        <p v-if="detail.locked" class="th-locked"><LockKeyhole :size="16"/>这条讨论已暂停回复。</p>

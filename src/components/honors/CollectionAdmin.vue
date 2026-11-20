@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { collectionKind, definitionCode, displayCollectionName, honorCategories, honorName, honorRarities, type CollectionAudit, type CollectionDefinition, type CollectionGrant, type CollectionMember, type HonorCategory, type HonorRarity } from "../../domain/honorCollection";
+import { collectionKind, definitionCode, displayCollectionName, honorCategories, honorName, honorRarities, isRetiredAchievement, type CollectionAudit, type CollectionDefinition, type CollectionGrant, type CollectionMember, type HonorCategory, type HonorRarity } from "../../domain/honorCollection";
 import { badges, honorDate, legacyWearableHonors, type Badge } from "../../domain/communityHonors";
 import { clearHonorCollectionCache } from "../../services/honorCollectionCache";
 import { treeholeError, treeholeErrorCode, type TreeholeResult } from "../../services/treehole";
@@ -27,7 +27,7 @@ const year = Number(new Intl.DateTimeFormat("en",{year:"numeric",timeZone:"Asia/
 const categories = Object.entries(honorCategories).filter(([code]) => code!=="hidden");
 const managed = computed(() => {
   const editions = new Set(definitions.value.filter(d=>d.year===year).map(d=>definitionCode(d.code)));
-  return definitions.value.filter(d=>collectionKind(d)===scope.value && !d.archived &&
+  return definitions.value.filter(d=>collectionKind(d)===scope.value && !d.archived && !isRetiredAchievement(d.code) &&
     (d.mode!=="template" || !editions.has(d.code)));
 });
 const regular = computed(() => managed.value.filter(d=>d.category!=="limited"));

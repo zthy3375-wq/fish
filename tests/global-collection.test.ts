@@ -27,6 +27,15 @@ it('rejects forged cloud awards and wrong account scope in an imported local rec
  localStorage.setItem('hyt-collection-v1:device',JSON.stringify({stamps:{year:stamp,grade:stamp,welcome:stamp},pins:['year','grade','welcome']}));
  await j.book('device');expect(Object.keys(j.localStamps.value)).toEqual(['welcome']);expect(j.privatePins.value).toEqual(['welcome']);
 });
+it('repairs a previously interrupted lifestyle achievement without replaying a toast',async()=>{
+ const j=await import('../src/services/achievementJournal');
+ const older={at:'2026-11-01T00:00:00Z',historical:false};
+ const later={at:'2026-11-02T00:00:00Z',historical:false};
+ localStorage.setItem('hyt-collection-v1:device',JSON.stringify({stamps:{bath:older,laundry:later,map:older},pins:[]}));
+ await j.book('device');
+ await vi.waitFor(()=>expect(j.localStamps.value.life).toEqual({...later,historical:true}));
+ expect(j.localQueue.value).toEqual([]);
+});
 it('requires actual school data and isolates school, learning, and signed-out histories',async()=>{
  const e=await import('../src/services/achievementEvidence'),j=await import('../src/services/achievementJournal');
  const c=emptyAcademicCache(),stamp='2026-10-01T12:00:00Z';e.observeSchool(c,true);e.schoolView(c,'exams',true);
@@ -46,7 +55,7 @@ it('requires actual school data and isolates school, learning, and signed-out hi
 });
 it('requires completed personal task and two checked steps, suppresses repeats',async()=>{
  const e=await import('../src/services/achievementEvidence'),j=await import('../src/services/achievementJournal'),s=emptyTasks();
- const t={completed:true,completedAt:new Date().toISOString(),steps:[{completed:true},{completed:false}]} as CampusTask;
+ const t={completed:true,completedAt:new Date().toISOString(),steps:[{completed:true},{completed:false},{completed:false}]} as CampusTask;
  s.tasks=[t];const previous=structuredClone(s);e.observeTasks(s,previous);expect(j.localStamps.value.tasks).toBeUndefined();
  t.steps![1].completed=true;t.source='chaoxing';e.observeTasks(s,previous);expect(j.localStamps.value.tasks).toBeUndefined();
  delete t.source;e.observeTasks(s,previous);await vi.waitFor(()=>expect(j.localStamps.value.tasks).toBeTruthy());

@@ -127,12 +127,23 @@ export async function checkCollection({client,db,api,output}) {
     await admin.getByText('授予 优质创作者已完成',{exact:true}).waitFor();
     assert((await call(owner.state,'collection.admin',{memberId:collector})).managedLegacyHonors.some(g=>g.code==='creator'));
     await button(admin,'审核社区成就').click();
-    await admin.getByRole('option',{name:'这个 Bug 修好了'}).waitFor({state:'attached'});
+    await admin.getByLabel('待审核成就').waitFor();
+    assert.equal(await admin.getByRole('option',{name:'这个 Bug 修好了'}).count(),0);
     assert.equal(await admin.getByRole('option',{name:'邯院之光'}).count(),0);
     await button(owner.page,'发放记录').click();
     await owner.page.getByLabel('只查看异常发放').check();
     await owner.page.getByText(/发放数量已用完/).waitFor();
     await shot(owner.page,'management-390.png');
+    const question=(await call(owner.state,'posts.create',{requestId:randomUUID(),body:'图书馆从哪里进去',anonymous:false,category:'help'})).post;
+    const answer=(await call(reader.state,'comments.create',{postId:question.id,requestId:randomUUID(),body:'从校园东门直走',anonymous:false})).comment;
+    await admin.reload();
+    await admin.locator('.th-post').filter({hasText:'图书馆从哪里进去'}).locator('.th-post-body').click();
+    await button(admin,'采纳').click();
+    await admin.getByText('已采纳',{exact:true}).waitFor();
+    assert.equal((await call(reader.state,'posts.get',{postId:question.id})).post.acceptedAnswerId,answer.id);
+    await button(admin,'撤销采纳').click();
+    await button(admin,'采纳').waitFor();
+    assert.equal((await call(reader.state,'posts.get',{postId:question.id})).post.acceptedAnswerId,null);
     assert.deepEqual([...owner.errors,...reader.errors],[]);
     console.log('PASS honor archive and collection at 360/390/430px, unlock, wear and title, edition archive, permissions and anomaly log');
   } finally {
