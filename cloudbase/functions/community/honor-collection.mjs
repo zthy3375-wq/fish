@@ -40,6 +40,7 @@ export function sanitizeHonorCollection(action, body, { text, id, oneOf, boolean
         memberId: id(body.memberId, true), query: text(body.query ?? '', 0, 64),
         exceptions: body.exceptions === true, offset: offset(body.offset),
         definitionOffset: offset(body.definitionOffset), grantOffset: offset(body.grantOffset),
+        definitionScope: body.definitionScope == null ? null : oneOf(body.definitionScope, ['honor','achievement']),
       };
     case 'collection.change':
       break;

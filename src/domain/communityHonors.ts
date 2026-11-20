@@ -3,11 +3,12 @@ export const badges={
  developer:{short:'开发者',dark:'#e3b75c',name:'开发者',icon:Crown,color:'#97600a',tint:'#fff0ce',description:'邯院通的创建者。',method:'通过原始所有者授权记录和稳定账号 ID 核验，全平台唯一。'},
  moderator:{short:'管理员',dark:'#87b9f0',name:'管理员',icon:ShieldCheck,color:'#2762a6',tint:'#e8f2ff',description:'维护社区秩序，处理违规内容和举报。',method:'由开发者任命，权限按职责授予。'},
  seed:{short:'种子',dark:'#83c6a0',name:'种子用户',icon:Sprout,color:'#277449',tint:'#e3f4e8',description:'在社区刚萌芽时参与测试和建设的同学。',method:'由开发者授予，永久保留。'},
- creator:{short:'优质',dark:'#c0a2ee',name:'优质创作者',icon:Sparkles,color:'#7042ae',tint:'#f1e9fc',description:'持续为同学分享值得收藏的作品。',method:'管理员推荐，由开发者审核授予。'},
+ creator:{short:'优质',dark:'#c0a2ee',name:'优质创作者',icon:Sparkles,color:'#7042ae',tint:'#f1e9fc',description:'持续为同学分享值得收藏的作品。',method:'由开发者核实创作记录后授予。'},
  contributor:{short:'贡献者',dark:'#f0a1ba',name:'社区贡献者',icon:HeartHandshake,color:'#a33f66',tint:'#fce9f0',description:'用反馈、建议或实际帮助改善社区。',method:'开发者核实贡献后授予。'}
 };
 export type BadgeCode=keyof typeof badges;
 export type Badge={code:BadgeCode;at:string|null};
+export const legacyWearableHonors = ['seed','creator','contributor'] as const;
 export function visibleBadges(items:(Badge|null|undefined)[],full=false):Badge[]{
   const valid=items.filter((b):b is Badge=>!!b&&Object.prototype.hasOwnProperty.call(badges,b.code));
   const unique=valid.filter((b,i)=>valid.findIndex(x=>x.code===b.code)===i);

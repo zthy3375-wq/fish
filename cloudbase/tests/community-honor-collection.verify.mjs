@@ -100,6 +100,16 @@ test("identities, wearable honors, and public achievement slots are independent"
 
 test("developer-only issuance, evidence, capacity, audit, edition closure and stable history", async () => {
   await assert.rejects(call(member,"collection.admin"),{code:"forbidden"});
+  const current = await call(owner,"collection.admin",{memberId:member.user.id,definitionScope:"honor"});
+  assert.deepEqual(current.honorDefinitions.map(d=>d.code).sort(),
+    ["creator-of-year","early-resident","handan-light","person-of-year","photo-of-year","warmth-of-year"]);
+  assert.deepEqual(current.managedLegacyHonors.map(g=>g.code),["seed"]);
+  assert.deepEqual(current.honorDefinitions.filter(d=>d.mode==="automatic").map(d=>d.code),["early-resident"]);
+  const reviews = await call(owner,"collection.admin",{definitionScope:"achievement"});
+  assert(reviews.honorDefinitions.some(d=>d.code==="bug-hunter"));
+  assert(reviews.honorDefinitions.every(d=>d.displayKind==="achievement" && d.mode!=="automatic"));
+  await assert.rejects(change({operation:"save",code:"creator",name:"优质创作者",category:"contribution",
+    rarity:"rare",criteria:"可信创作记录",story:"保留原授予渠道"}),{code:"honor_duplicate"});
   await assert.rejects(call(member,"collection.change",{
     operation:"title",memberId:member.user.id,title:"不应获取",reason:"企图更改",requestId:randomUUID(),
   }),{code:"forbidden"});

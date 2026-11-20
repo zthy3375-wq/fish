@@ -68,6 +68,7 @@ export interface CollectionGrant {
   at: string;
   revoked?: string | null;
   evidence?: string | null;
+  canRevoke?: boolean;
 }
 export interface CollectionAudit {
   id: string;

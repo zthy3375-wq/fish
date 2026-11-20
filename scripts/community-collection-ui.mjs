@@ -105,6 +105,30 @@ export async function checkCollection({client,db,api,output}) {
     await owner.page.waitForFunction(() => !document.querySelector('.unlock-toast'), undefined, {timeout:15000});
     await owner.page.locator('.th-nav .th-self:not([disabled])').click();
     await button(owner.page,'身份与荣誉管理').click();
+    const admin = owner.page;
+    await admin.getByText('系统自动发放',{exact:false}).first().waitFor();
+    for (const name of ['捉虫大师','这个 Bug 修好了','校园观察家','今天的邯院','开服第一批','校园传奇','迎新季引路人']) {
+      assert.equal(await admin.getByText(name,{exact:true}).count(),0);
+    }
+    await admin.getByRole('heading',{name:'常设荣誉'}).waitFor();
+    await admin.getByRole('heading',{name:'年度荣誉'}).waitFor();
+    assert.equal(await admin.getByText('年度最温暖的人',{exact:true}).count(),0);
+    await shot(admin,'honor-management-390.png');
+    await button(admin,'授予与称号').click();
+    await admin.getByLabel('查找成员').fill('校园档案测试同学');
+    await button(admin,'搜索').click();
+    await admin.getByRole('button',{name:/^校园档案测试同学 · /}).click();
+    await admin.getByLabel('待授荣誉').selectOption('creator');
+    assert.equal(await admin.getByRole('option',{name:'这个 Bug 修好了'}).count(),0);
+    assert.equal(await admin.getByRole('option',{name:'初代居民'}).count(),0);
+    await admin.getByLabel('管理原因').fill('核实过多次发布的原创作品');
+    await button(admin,'核对并授予').click();
+    await button(admin,'确认执行').click();
+    await admin.getByText('授予 优质创作者已完成',{exact:true}).waitFor();
+    assert((await call(owner.state,'collection.admin',{memberId:collector})).managedLegacyHonors.some(g=>g.code==='creator'));
+    await button(admin,'审核社区成就').click();
+    await admin.getByRole('option',{name:'这个 Bug 修好了'}).waitFor({state:'attached'});
+    assert.equal(await admin.getByRole('option',{name:'邯院之光'}).count(),0);
     await button(owner.page,'发放记录').click();
     await owner.page.getByLabel('只查看异常发放').check();
     await owner.page.getByText(/发放数量已用完/).waitFor();

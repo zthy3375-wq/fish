@@ -3,14 +3,14 @@ import OfficialBadges from "./OfficialBadges.vue";
 import {computed,onMounted,ref,watch} from 'vue';
 import {badges,capNames,honorDate,operations,type BadgeCode,type AdminMember,type HonorLog} from '../../domain/communityHonors';
 import {treeholeError,type TreeholeResult,type TreeholeUser} from '../../services/treehole';
-const props=defineProps<{user:TreeholeUser;request:(a:string,b?:Record<string,unknown>)=>Promise<TreeholeResult>}>();
+const props=defineProps<{user:TreeholeUser;permissionsOnly?:boolean;request:(a:string,b?:Record<string,unknown>)=>Promise<TreeholeResult>}>();
 const emit=defineEmits<{changed:[TreeholeResult]}>();
 const owner=computed(()=>props.user.badges?.official?.code==='developer');
 const query=ref(''),members=ref<AdminMember[]>([]),audit=ref<HonorLog[]>([]),subject=ref<AdminMember>(),reason=ref(''),caps=ref<string[]>([]),kind=ref<BadgeCode>('contributor'),op=ref(''),busy=ref(false),error=ref(''),notice=ref(''),confirmation=ref(''),requestId=ref('');
 const options=computed(()=>{
  const m=subject.value;if(!m)return [];
  const items:string[]=[];
- if(owner.value){items.push('grant');if(m.honors.some(h=>h!=='seed'))items.push('revoke');if(m.recommendation)items.push('decline');if(!m.official||m.official.code!=='developer'){items.push('appoint');if(m.official?.code==='moderator')items.push('dismiss');}}
+ if(owner.value){if(!props.permissionsOnly){items.push('grant');if(m.honors.some(h=>h!=='seed'))items.push('revoke');}if(m.recommendation)items.push('decline');if(!m.official||m.official.code!=='developer'){items.push('appoint');if(m.official?.code==='moderator')items.push('dismiss');}}
  if((owner.value||props.user.caps?.includes('recommend'))&&!m.honors.includes('creator'))items.push('recommend');
  if((owner.value||props.user.caps?.includes('users'))&&m.id!==props.user.id&&(!m.official||owner.value&&m.official.code!=='developer'))items.push(m.bannedUntil&&new Date(m.bannedUntil)>new Date()?'unmute':'mute');
  return items;
@@ -26,7 +26,7 @@ async function submit(){if(!subject.value||busy.value||reason.value.trim().lengt
  busy.value=true;error.value='';try{const r=await props.request('honors.change',{memberId:subject.value.id,operation:op.value,kind:kind.value,caps:caps.value,reason:reason.value.trim(),requestId:requestId.value});subject.value=undefined;confirmation.value='';notice.value='操作已记录';emit('changed',r);await list();}catch(e){error.value=treeholeError(e);}finally{busy.value=false;}}
 onMounted(search);
 </script>
-<template><section class="hon-admin"><h2>身份与荣誉管理</h2><form @submit.prevent="search"><label>查找社区成员<input v-model="query" placeholder="完整昵称或社区成员 ID" maxlength="64"/></label><button :disabled="busy">查找</button></form>
+<template><section class="hon-admin"><h2>{{permissionsOnly?'身份与权限':'身份与荣誉管理'}}</h2><form @submit.prevent="search"><label>查找社区成员<input v-model="query" placeholder="完整昵称或社区成员 ID" maxlength="64"/></label><button :disabled="busy">查找</button></form>
  <p v-if="error" role="alert">{{error}}</p><p v-if="notice" role="status">{{notice}}</p><p v-if="busy" role="status">正在处理…</p>
  <p v-if="!busy&&!members.length">没有匹配成员或待审核推荐。</p><button v-for="m in members" :key="m.id" class="hon-person" :disabled="busy" @click="choose(m)"><span class="honor-byline"><strong class="honor-name" :title="m.nickname">{{m.nickname}}</strong><OfficialBadges passive :items="[m.official,...m.honors.map(code=>({code,at:null}))]"/></span><small v-if="m.recommendation">待审核推荐</small></button>
  <form v-if="subject" @submit.prevent="submit"><h3>{{subject.nickname}}</h3><small class="hon-id">{{subject.id}}</small><p v-if="subject.recommendation">推荐理由 · {{subject.recommendation}}</p><label>操作<select v-model="op"><option v-for="o in options" :key="o" :value="o">{{operations[o]}}</option></select></label>

@@ -40,8 +40,11 @@ test('scoped moderator cannot use either legacy or direct content API after rest
  await assert.rejects(call(moderator,'admin.reports'),{code:'forbidden'});await assert.rejects(call(moderator,'admin.content'),{code:'forbidden'});
  await assert.rejects(call(moderator,'admin.resolve',{reportId:randomUUID(),reason:'违规内容',decision:'ban'}),{code:'forbidden'});
  await assert.rejects(change(moderator,bob,'mute'),{code:'forbidden'});await assert.rejects(change(moderator,alice,'grant',{kind:'creator'}),{code:'forbidden'});
- await assert.rejects(change(owner,alice,'grant',{kind:'creator'}),{code:'recommendation_required'});await change(moderator,alice,'recommend');
- await change(owner,alice,'grant',{kind:'creator'});await change(owner,moderator,'dismiss');await assert.rejects(change(moderator,bob,'recommend'),{code:'forbidden'});
+ await change(moderator,bob,'recommend');
+ assert.equal((await hall(bob)).honors.length,0);
+ const direct=await change(owner,alice,'grant',{kind:'creator'});
+ assert.equal(direct.updatedIdentity.badges.worn.code,'creator');
+ await change(owner,moderator,'dismiss');await assert.rejects(change(moderator,bob,'recommend'),{code:'forbidden'});
 });
 test('grants, audit replay, revocation, anonymous projections and permanent seed',async()=>{
  const rid=randomUUID();await change(owner,alice,'grant',{kind:'seed',requestId:rid});await change(owner,alice,'grant',{kind:'seed',requestId:rid});

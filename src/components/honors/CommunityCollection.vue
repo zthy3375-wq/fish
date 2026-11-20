@@ -6,7 +6,7 @@ import { archiveSections, collectionKind, definitionCode, displayCollectionName,
 import { catalog } from "../../domain/globalAchievements";
 import { clearHonorCollectionCache, getHonorCollection } from "../../services/honorCollectionCache";
 import { treeholeError, type TreeholeResult } from "../../services/treehole";
-import { badges, honorDate, type BadgeCode } from "../../domain/communityHonors";
+import { badges, honorDate, legacyWearableHonors, type BadgeCode } from "../../domain/communityHonors";
 
 type Card = CollectionItem & { legacy?: BadgeCode; base?: boolean; icon?: Component; unreleased?: boolean };
 const props = defineProps<{
@@ -34,7 +34,6 @@ const unlocked = ref(false);
 const useTitle = ref(false);
 const received = new Set<string>();
 const identityCodes = ["developer", "moderator"] as const;
-const wearableLegacy = ["seed", "creator", "contributor"] as const;
 const original = catalog.filter(a => a.source === "community");
 let alive = true, revision = 0;
 onBeforeUnmount(() => { alive = false; revision++; });
@@ -43,7 +42,7 @@ const organized = computed(() => (profile.value?.layoutVersion ?? 0) >= 2);
 const slots = computed(() => profile.value?.showcase ?? []);
 const oldCards = computed<Card[]>(() => {
   if (!profile.value) return [];
-  return wearableLegacy.flatMap(code => {
+  return legacyWearableHonors.flatMap(code => {
     const grant = profile.value?.legacyHonors?.find(b => b.code === code);
     const earned = !!grant || profile.value?.identities.includes(code) === true;
     if (!earned && !self.value) return [];
@@ -101,7 +100,7 @@ const distribution = computed(() => earned.value.reduce<Record<string,number>>((
 const equipped = computed(() => {
   const own = profile.value?.badges;
   if (own?.collection && collectionKind({...own.collection,category:"contribution"})==="honor") return honorName({...own.collection,name:own.collection.title || own.collection.name});
-  return own?.worn && wearableLegacy.some(code=>code===own.worn?.code) ? badges[own.worn.code].name : "";
+  return own?.worn && legacyWearableHonors.some(code=>code===own.worn?.code) ? badges[own.worn.code].name : "";
 });
 
 async function openInitial() {
@@ -298,6 +297,7 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
         <p v-if="'nickname' in selected">授予 {{ selected.nickname }}</p>
         <p>{{ selected.story || selected.criteria }}</p>
         <small>{{ honorRarities[selected.rarity] }}<template v-if="selected.at"> · {{ honorDate(selected.at) }}</template><template v-if="selected.archived"> · 已绝版</template></small>
+        <p v-if="collectionKind(selected)==='honor'" class="hc-empty">{{ selected.code==='early-resident' ? "系统自动发放" : "开发者授予" }}</p>
         <p v-if="'unreleased' in selected && selected.unreleased" class="hc-empty">{{ selected.category==="limited" ? "发行对应年份后可获得。" : "新版后台启用后可解锁。" }}</p>
         <div v-if="self && !archive && selected.awardId" class="hc-dialog-controls">
           <template v-if="collectionKind(selected)==='honor'">

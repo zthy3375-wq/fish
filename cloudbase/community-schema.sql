@@ -405,7 +405,8 @@ BEGIN
  ON CONFLICT(member_id,definition_id) DO NOTHING;
  WITH missing AS (
    SELECT d.* FROM public.hyt_collection_definitions d
-   WHERE d.mode='automatic' AND d.archived_at IS NULL AND NOT EXISTS
+   WHERE d.mode='automatic' AND d.archived_at IS NULL
+    AND (d.code='early-resident' OR public.hyt_collection_kind(d.code,d.category)='achievement') AND NOT EXISTS
     (SELECT 1 FROM public.hyt_collection_grants g WHERE g.member_id=m.id AND g.definition_id=d.id)
  ), qualifying AS (
    SELECT d.* FROM missing d WHERE CASE d.code
@@ -800,15 +801,29 @@ BEGIN
   RETURN jsonb_build_object('status',200,
    'honorDefinitions',(SELECT coalesce(jsonb_agg(public.hyt_collection_item(c,NULL)||jsonb_build_object(
     'mode',c.mode,'defaultStory',c.story,'issued',(SELECT count(*) FROM public.hyt_collection_grants WHERE definition_id=c.id))
-    ORDER BY c.archived_at NULLS FIRST,c.category,c.edition_year DESC,c.name),'[]') FROM (SELECT * FROM public.hyt_collection_definitions
-    ORDER BY archived_at NULLS FIRST,category,edition_year DESC,name LIMIT 101 OFFSET coalesce((b->>'definitionOffset')::int,0)) c),
+    ORDER BY c.archived_at NULLS FIRST,c.category,c.edition_year DESC,c.name,c.id),'[]')
+    FROM (SELECT d.* FROM public.hyt_collection_definitions d
+    WHERE b->>'definitionScope' IS NULL OR (
+      public.hyt_collection_kind(d.code,d.category)=b->>'definitionScope' AND d.archived_at IS NULL
+      AND (d.edition_year IS NULL OR d.edition_year>=extract(year FROM now() AT TIME ZONE 'Asia/Shanghai'))
+      AND (b->>'definitionScope'='honor' OR d.mode IN ('review','template'))
+      AND (d.mode<>'template' OR NOT EXISTS(
+        SELECT 1 FROM public.hyt_collection_definitions edition_def
+        WHERE edition_def.code=d.code||'-'||extract(year FROM now() AT TIME ZONE 'Asia/Shanghai')::int
+      ))
+    )
+    ORDER BY d.archived_at NULLS FIRST,d.category,d.edition_year DESC,d.name,d.id
+    LIMIT 101 OFFSET coalesce((b->>'definitionOffset')::int,0)) c),
    'honorMembers',(SELECT coalesce(jsonb_agg(to_jsonb(u)),'[]') FROM (
      SELECT id,nickname,collection_title AS "customTitle" FROM public.hyt_members
      WHERE deleted_at IS NULL AND b->>'query'<>'' AND (id::text=b->>'query' OR nickname=b->>'query')
      ORDER BY id LIMIT 20) u),
+   'managedLegacyHonors',(SELECT coalesce(jsonb_agg(jsonb_build_object('code',kind,'at',granted_at) ORDER BY granted_at),'[]')
+    FROM public.hyt_honors WHERE member_id=wanted),
    'honorGrants',CASE WHEN wanted IS NULL THEN '[]'::jsonb ELSE
     (SELECT coalesce(jsonb_agg(to_jsonb(s)),'[]') FROM (
-      SELECT g.id,public.hyt_collection_display_name(d.code,d.name) AS name,d.edition_year AS year,g.earned_at AS at,g.revoked_at AS revoked,g.evidence
+      SELECT g.id,public.hyt_collection_display_name(d.code,d.name) AS name,d.edition_year AS year,g.earned_at AS at,g.revoked_at AS revoked,g.evidence,
+       d.code NOT IN ('first-hundred','early-resident') AS "canRevoke"
       FROM public.hyt_collection_grants g JOIN public.hyt_collection_definitions d ON d.id=g.definition_id
       WHERE g.member_id=wanted ORDER BY g.earned_at DESC,g.id LIMIT 51 OFFSET coalesce((b->>'grantOffset')::int,0)) s) END,
    'honorAudit',(SELECT coalesce(jsonb_agg(to_jsonb(k)),'[]') FROM (
@@ -816,6 +831,10 @@ BEGIN
      SELECT operation,outcome,created_at AS at,member_id,payload->>'reason' AS reason,payload->>'evidence' AS evidence,request_id AS id
      FROM public.hyt_collection_audit
      WHERE NOT coalesce((b->>'exceptions')::boolean,false) OR outcome<>'ok'
+     UNION ALL
+     SELECT h.change->>'operation','ok',h.created_at,h.target,h.change->>'reason',NULL::text,h.id
+     FROM public.hyt_honor_history h WHERE h.change->>'operation' IN ('grant','revoke')
+      AND NOT coalesce((b->>'exceptions')::boolean,false)
      UNION ALL
      SELECT 'auto_grant','ok',g.earned_at,g.member_id,public.hyt_collection_display_name(d.code,d.name),g.evidence,g.id
      FROM public.hyt_collection_grants g JOIN public.hyt_collection_definitions d ON d.id=g.definition_id
@@ -834,10 +853,13 @@ BEGIN
  END IF;
  IF operation='save' THEN
   IF definition IS NULL THEN
-   INSERT INTO public.hyt_collection_definitions(code,name,category,rarity,criteria,story,edition_year,capacity,mode)
-    VALUES(b->>'code',b->>'name',b->>'category',b->>'rarity',b->>'criteria',b->>'story',edition,(b->>'capacity')::int,'review')
-    ON CONFLICT(code) DO NOTHING;
-   IF NOT FOUND THEN outcome:='honor_duplicate'; END IF;
+   IF b->>'code' IN ('seed','creator','contributor','developer','moderator') THEN outcome:='honor_duplicate';
+   ELSE
+    INSERT INTO public.hyt_collection_definitions(code,name,category,rarity,criteria,story,edition_year,capacity,mode)
+     VALUES(b->>'code',b->>'name',b->>'category',b->>'rarity',b->>'criteria',b->>'story',edition,(b->>'capacity')::int,'review')
+     ON CONFLICT(code) DO NOTHING;
+    IF NOT FOUND THEN outcome:='honor_duplicate'; END IF;
+   END IF;
   ELSE
    SELECT * INTO d FROM public.hyt_collection_definitions WHERE id=definition FOR UPDATE;
    IF NOT FOUND OR d.archived_at IS NOT NULL OR d.mode<>'review' OR public.hyt_collection_kind(d.code,d.category)='history'
@@ -1050,7 +1072,6 @@ BEGIN
     WHEN 'recommend' THEN INSERT INTO public.hyt_recommendations(member_id,actor,reason) VALUES(target,m.id,b->>'reason') ON CONFLICT(member_id) DO UPDATE SET actor=excluded.actor,reason=excluded.reason,created_at=now();
     WHEN 'decline' THEN DELETE FROM public.hyt_recommendations WHERE member_id=target;
     WHEN 'grant' THEN
-     IF b->>'kind'='creator' AND NOT EXISTS(SELECT 1 FROM public.hyt_recommendations WHERE member_id=target) THEN RETURN '{"status":409,"error":"recommendation_required"}'; END IF;
      INSERT INTO public.hyt_honors(member_id,kind) VALUES(target,b->>'kind') ON CONFLICT DO NOTHING;
      UPDATE public.hyt_members SET worn_honor=b->>'kind' WHERE id=target AND worn_honor IS NULL AND worn_collection IS NULL;
      IF b->>'kind'='creator' THEN DELETE FROM public.hyt_recommendations WHERE member_id=target; END IF;
