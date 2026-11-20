@@ -68,6 +68,16 @@ async function client(width){
  return {page,context,state,errors};
 }
 
+if(process.env.HYT_MEMBER_DIRECTORY_UI){
+ try{
+  const {checkMemberDirectory}=await import('./community-members-ui.mjs');
+  await checkMemberDirectory({client,db,api});
+ }finally{
+  await browser.close();await new Promise(resolve=>server.close(resolve));await new Promise(resolve=>backend.close(resolve));await db.close();
+ }
+ process.exit(0);
+}
+
 if(process.env.HYT_COLLECTION_UI){
  try{
   const {checkCollection}=await import('./community-collection-ui.mjs');

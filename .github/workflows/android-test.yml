@@ -138,6 +138,10 @@ jobs:
       - run: node scripts/academic-browser-check.mjs
       - run: npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund
       - run: node scripts/admin-browser-check.mjs
+      - name: Verify registration and developer member directory
+        run: |
+          HYT_MEMBER_DIRECTORY_UI=1 node scripts/treehole-browser-check.mjs
+          HYT_COLLECTION_UI=1 node scripts/treehole-browser-check.mjs
       - run: node scripts/treehole-browser-check.mjs
       - run: node scripts/community-messages-browser-check.mjs
       - name: Community preview and touch regression
