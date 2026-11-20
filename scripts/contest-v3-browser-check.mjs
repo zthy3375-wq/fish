@@ -185,7 +185,7 @@ try{
    const own = page.locator("#contest-own-works");
    const back = page.getByRole("button", { name: "返回上一层", exact: true });
    await another.waitFor();
-   await page.getByText("投稿截止", { exact: true }).waitFor();
+   await page.getByRole("region", { name: "赛事日程" }).getByText("投稿截止", { exact: true }).waitFor();
    await shot("11-additional-submission");
    await another.click();
    await page.getByLabel("作品名称", { exact: true }).fill("下课后的操场");
