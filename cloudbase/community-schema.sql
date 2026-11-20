@@ -722,6 +722,11 @@ BEGIN
    -- Acknowledgement is bounded to messages already delivered on this thread; newer messages remain unread.
    IF NOT EXISTS(SELECT 1 FROM public.hyt_dm_messages WHERE thread_id=dm.id AND seq=(b->>'throughSeq')::bigint) THEN RETURN '{"status":400,"error":"invalid_request"}'::jsonb; END IF;
    INSERT INTO public.hyt_dm_reads VALUES(dm.id,m.id,(b->>'throughSeq')::bigint) ON CONFLICT(thread_id,member_id) DO UPDATE SET last_seq=greatest(hyt_dm_reads.last_seq,excluded.last_seq);
+   IF coalesce((b->>'withUnread')::boolean,false) THEN
+   SELECT count(*) INTO n FROM public.hyt_dm_messages d JOIN public.hyt_dm_visible(m.id) t ON t.id=d.thread_id
+    WHERE d.sender_id<>m.id AND d.seq>coalesce((SELECT last_seq FROM public.hyt_dm_reads WHERE thread_id=t.id AND member_id=m.id),0);
+   RETURN jsonb_build_object('status',200,'messageUnreadCount',n);
+   END IF;
    RETURN '{"status":200}'::jsonb;
   END IF;
   IF a='messages.list' THEN
@@ -751,7 +756,9 @@ BEGIN
  IF a IN ('notifications.list','notifications.unread') THEN
   SELECT count(*) INTO n FROM public.hyt_visible_notifications(m.id) WHERE read_at IS NULL;
   IF b->>'withMessages'='true' THEN
-   k=public.hyt_community('messages.unread','{}'::jsonb,th)->>'messageUnreadCount';
+   -- Reuse the authenticated caller instead of recursively repeating auth and rate writes.
+   SELECT count(*)::text INTO k FROM public.hyt_dm_messages d JOIN public.hyt_dm_visible(m.id) t ON t.id=d.thread_id
+    WHERE d.sender_id<>m.id AND d.seq>coalesce((SELECT last_seq FROM public.hyt_dm_reads WHERE thread_id=t.id AND member_id=m.id),0);
   END IF;
   IF a='notifications.unread' THEN RETURN public.hyt_award_pending(m.id)||jsonb_strip_nulls(jsonb_build_object('status',200,'unreadCount',n,'messageUnreadCount',k::int)); END IF;
   SELECT coalesce(jsonb_agg(public.hyt_notification_json(q,m.id) ORDER BY q.created_at DESC,q.id DESC),'[]'::jsonb) INTO result
