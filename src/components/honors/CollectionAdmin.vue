@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { honorCategories, honorName, honorRarities, type CollectionAudit, type CollectionDefinition, type CollectionGrant, type CollectionMember, type HonorCategory, type HonorRarity } from "../../domain/honorCollection";
+import { collectionKind, honorCategories, honorName, honorRarities, type CollectionAudit, type CollectionDefinition, type CollectionGrant, type CollectionMember, type HonorCategory, type HonorRarity } from "../../domain/honorCollection";
 import { honorDate } from "../../domain/communityHonors";
 import { clearHonorCollectionCache } from "../../services/honorCollectionCache";
 import { treeholeError, type TreeholeResult } from "../../services/treehole";
@@ -21,7 +21,7 @@ const grantOffset = ref(0);
 const moreGrants = ref(false);
 const member = ref<CollectionMember>();
 const query = ref("");
-const issued = computed(() => definitions.value.filter(d => d.mode === "review" && !d.archived));
+const issued = computed(() => definitions.value.filter(d => d.mode === "review" && !d.archived && collectionKind(d)!=="history"));
 const busy = ref(false), error = ref(""), notice = ref("");
 const editing = ref<CollectionDefinition>(), formOpen = ref(false);
 const fields = ref({
@@ -133,9 +133,9 @@ onMounted(() => run(load));
    <ul class="hc-manage-list">
     <li v-for="d in definitions" :key="d.id">
       <strong>{{honorName(d)}}</strong>
-      <p>{{ honorRarities[d.rarity] }} · {{ d.mode==='template' ? "待创建年份" : d.archived ? "绝版" : d.mode==='automatic' ? "系统判定" : "审核授予" }}<span v-if="d.mode!=='template'"> · 已发 {{d.issued}}{{d.capacity ? " / " + d.capacity : ""}}</span></p>
+      <p>{{ honorRarities[d.rarity] }} · {{ d.mode==='template' ? "待创建年份" : collectionKind(d)==='history' ? "历史档案" : d.archived ? "绝版" : d.mode==='automatic' ? "系统判定" : "审核授予" }}<span v-if="d.mode!=='template'"> · 已发 {{d.issued}}{{d.capacity ? " / " + d.capacity : ""}}</span></p>
       <button v-if="d.mode==='template'" class="hc-more" @click="edit(d)">创建年度版本</button>
-      <button v-if="d.mode==='review'&&!d.archived" class="hc-more" @click="edit(d)">编辑</button>
+      <button v-if="d.mode==='review'&&!d.archived&&collectionKind(d)!=='history'" class="hc-more" @click="edit(d)">编辑</button>
       <button v-if="d.year&&!d.archived" class="hc-more" @click="prompt('封存 '+honorName(d),{operation:'archive',definitionId:d.id,reason:'确认封存此年度版本'})">封存</button>
     </li>
    </ul>

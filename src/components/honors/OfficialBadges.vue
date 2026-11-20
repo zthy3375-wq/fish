@@ -2,21 +2,26 @@
 import BadgeDetail from './BadgeDetail.vue';
 import {computed,ref} from 'vue';
 import {Gem} from 'lucide-vue-next';
-import {honorRarities,type CollectionBadge} from '../../domain/honorCollection';
+import {collectionKind,honorName,honorRarities,type CollectionBadge} from '../../domain/honorCollection';
 import {badges,visibleBadges,type Badge} from '../../domain/communityHonors';
 const props=defineProps<{items:(Badge|null|undefined)[]; full?:boolean; passive?:boolean; collection?:CollectionBadge|null}>();
-const marks=computed(()=>visibleBadges(props.collection&&!props.full?props.items.slice(0,1):props.items,props.full));
+const wornCollection=computed(()=>props.collection&&collectionKind({...props.collection,category:'contribution'})==='honor'?props.collection:null);
+const marks=computed(()=>visibleBadges(
+  props.full ? props.items : props.items.filter((badge,index) =>
+    badge?.code==='developer'||badge?.code==='moderator'||(!wornCollection.value&&index!==0)),
+  props.full,
+));
 const detail=ref<InstanceType<typeof BadgeDetail>>();
 </script>
 <template>
- <span v-if="marks.length || collection" class="hyt-badges">
+ <span v-if="marks.length || wornCollection" class="hyt-badges">
   <component v-for="b in marks" :key="b.code" :is="passive?'span':'button'" :type="passive?undefined:'button'" class="hyt-badge" :aria-label="badges[b.code].name" :title="badges[b.code].name" :style="{'--ink':badges[b.code].color,'--night':badges[b.code].dark}" @click="!passive&&($event.stopPropagation(),detail?.show(b))">
    <component :is="badges[b.code].icon" :size="13" :stroke-width="1.8" aria-hidden="true"/>{{badges[b.code].short}}
   </component>
-  <span v-if="collection" class="hyt-collection-chip" :class="collection.rarity"
-   :aria-label="honorRarities[collection.rarity]+'荣誉 '+collection.name"
-   :title="(collection.title || collection.name)+' · '+honorRarities[collection.rarity]">
-   <Gem :size="13" aria-hidden="true"/><span>{{collection.title || collection.name}}</span>
+  <span v-if="wornCollection" class="hyt-collection-chip" :class="wornCollection.rarity"
+   :aria-label="honorRarities[wornCollection.rarity]+'荣誉 '+wornCollection.name"
+   :title="honorName({...wornCollection,name:wornCollection.title || wornCollection.name})+' · '+honorRarities[wornCollection.rarity]">
+   <Gem :size="13" aria-hidden="true"/><span>{{honorName({...wornCollection,name:wornCollection.title || wornCollection.name})}}</span>
   </span>
   <BadgeDetail v-if="!passive" ref="detail"/>
  </span>

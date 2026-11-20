@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Award, ChevronRight, LockKeyhole } from "lucide-vue-next";
 import CollectionBadge from "./CollectionBadge.vue";
-import { archiveSections, honorCategories, honorName, honorRarities, type CollectionItem, type CollectionProfile, type HonorArchiveItem } from "../../domain/honorCollection";
+import { archiveSections, collectionKind, definitionCode, displayCollectionName, honorName, honorRarities, type CollectionItem, type CollectionProfile, type HonorArchiveItem } from "../../domain/honorCollection";
+import { catalog } from "../../domain/globalAchievements";
 import { clearHonorCollectionCache, getHonorCollection } from "../../services/honorCollectionCache";
 import { treeholeError, type TreeholeResult } from "../../services/treehole";
-import { badges, honorDate } from "../../domain/communityHonors";
+import { badges, honorDate, type BadgeCode } from "../../domain/communityHonors";
 
+type Card = CollectionItem & { legacy?: BadgeCode; base?: boolean; unreleased?: boolean };
 const props = defineProps<{
-  viewer: string; member: string; archive?: boolean; reducedMotion?: boolean;
+  viewer: string; member: string; archive?: boolean; reducedMotion?: boolean; initialCode?: string;
   request: (action: string, body?: Record<string, unknown>) => Promise<TreeholeResult>;
 }>();
 const emit = defineEmits<{ updated: [TreeholeResult]; person: [string] }>();
@@ -19,24 +21,96 @@ const archivists = ref<HonorArchiveItem[]>([]);
 const section = ref<keyof typeof archiveSections>("legend");
 const year = ref<number | null>(null);
 const years = ref<number[]>([]);
-const category = ref("all");
+const panel = ref<"honor" | "achievement">("honor");
+const filter = ref("all");
+const filters = { all:"全部", daily:"日常", milestone:"里程碑", season:"季节纪念", hidden:"隐藏" };
 const loading = ref(false);
 const changing = ref(false);
 const more = ref(false);
 const error = ref("");
 const dialog = ref<HTMLDialogElement>();
-const selected = ref<CollectionItem | HonorArchiveItem>();
+const selected = ref<Card | HonorArchiveItem>();
 const unlocked = ref(false);
 const useTitle = ref(false);
 const received = new Set<string>();
+const identityCodes = ["developer", "moderator"] as const;
+const wearableLegacy = ["seed", "creator", "contributor"] as const;
+const original = catalog.filter(a => a.source === "community");
 let alive = true, revision = 0;
 onBeforeUnmount(() => { alive = false; revision++; });
-const visible = computed(() => items.value.filter(i => category.value === "all" || i.category === category.value));
-const identities = computed(() => [...new Set([...(profile.value?.badges.official ? [profile.value.badges.official.code] : []), ...(profile.value?.identities ?? [])])]);
-const oldCount = computed(() => identities.value.length);
-const count = computed(() => (profile.value?.total ?? 0) + oldCount.value);
 
-async function load(append = false, fresh = false) {
+const organized = computed(() => (profile.value?.layoutVersion ?? 0) >= 2);
+const slots = computed(() => profile.value?.showcase ?? []);
+const oldCards = computed<Card[]>(() => {
+  if (!profile.value) return [];
+  return wearableLegacy.flatMap(code => {
+    const grant = profile.value?.legacyHonors?.find(b => b.code === code);
+    const earned = !!grant || profile.value?.identities.includes(code) === true;
+    if (!earned && !self.value) return [];
+    const { name, method, description } = badges[code];
+    return [{ id:code, code, name, category:"identity", rarity:"rare", legacy:code,
+      awardId:earned ? code : null, at:grant?.at, criteria:method,
+      story:earned ? (code === "seed" ? "最初的相遇 · " : "") + description : null,
+      archived:false, publicHidden:false }];
+  });
+});
+const baseCards = computed<Card[]>(() => {
+  if (!profile.value) return [];
+  return original.flatMap(a => {
+    const at = profile.value?.baseAwards?.[a.code];
+    if (!at && !self.value) return [];
+    return [{ id:a.code, code:a.code, name:a.name, category:"contribution", displayKind:"achievement", base:true,
+      rarity:a.tier==="稀有" ? "rare" : a.tier==="史诗" ? "epic" : "common", awardId:at ? a.code : null,
+      at, criteria:a.condition, story:at ? a.description : null, archived:false, publicHidden:false }];
+  });
+});
+const pending: Array<Pick<Card, "code" | "name" | "category" | "rarity" | "criteria">> = [
+  {code:"person-of-year",name:"年度人物",category:"limited",rarity:"legendary",criteria:"按年份评选年度社区人物。"},
+  {code:"creator-of-year",name:"年度最佳创作者",category:"limited",rarity:"epic",criteria:"按年份评选年度最佳创作者。"},
+  {code:"photo-of-year",name:"年度摄影师",category:"limited",rarity:"epic",criteria:"按年份评选年度摄影作品。"},
+  {code:"warmth-of-year",name:"年度最温暖的人",category:"limited",rarity:"epic",criteria:"按年份选出值得纪念的互助事迹。"},
+  {code:"graduation-keepsake",name:"毕业季青春纪念章",category:"limited",rarity:"rare",criteria:"按年份核实毕业季参与记录。"},
+  {code:"welcome-guide",name:"带新同学认路",category:"limited",rarity:"rare",criteria:"按年份核实参与迎新和互助的记录。"},
+  {code:"first-feature",name:"第一次上墙",category:"contribution",rarity:"rare",criteria:"第一篇原创作品入选官方精选。"},
+  {code:"hundred-likes",name:"一百个赞",category:"contribution",rarity:"legendary",criteria:"同一篇公开帖子收到 100 位不同同学的有效赞。"},
+  {code:"full-page",name:"写满这一页",category:"contribution",rarity:"epic",criteria:"累计解锁 15 项不同的常规社区成就。"},
+];
+const catalogCards = computed<Card[]>(() => {
+  const definitions = items.value.map(item => ({ ...item, name:displayCollectionName(item) }));
+  if (!self.value || !profile.value) return definitions;
+  const known = new Set(definitions.map(item => definitionCode(item.code)));
+  const templates = pending.filter(item => !known.has(item.code) && (item.category === "limited" || !organized.value));
+  return [...definitions, ...templates.map(item => ({...item,id:item.code,awardId:null,archived:false,publicHidden:false,unreleased:true}))];
+});
+const honors = computed(() => [...oldCards.value, ...catalogCards.value.filter(i => collectionKind(i) === "honor")]);
+const achievements = computed(() => [...baseCards.value, ...catalogCards.value.filter(i => collectionKind(i) === "achievement")]);
+function group(item: Card) {
+  if (item.base) return "daily";
+  if (item.category === "limited") return "season";
+  if (item.category === "hidden") return "hidden";
+  return "milestone";
+}
+const visible = computed(() => panel.value === "honor" ? honors.value : achievements.value.filter(item => filter.value === "all" || filter.value === group(item)));
+const mystery = computed(() => self.value && !!profile.value && panel.value === "achievement" && ["all","hidden"].includes(filter.value)
+  ? Math.max(0, 6 - achievements.value.filter(item => item.category === "hidden" && item.awardId).length) : 0);
+const total = computed(() => (panel.value==="honor" ? honors.value : achievements.value).filter(i=>i.awardId).length);
+const equipped = computed(() => {
+  const own = profile.value?.badges;
+  if (own?.collection && collectionKind({...own.collection,category:"contribution"})==="honor") return honorName({...own.collection,name:own.collection.title || own.collection.name});
+  return own?.worn && wearableLegacy.some(code=>code===own.worn?.code) ? badges[own.worn.code].name : "";
+});
+
+async function openInitial() {
+  if (!props.initialCode) return;
+  const item = [...honors.value,...achievements.value].find(i=>i.code===props.initialCode || i.awardId===props.initialCode);
+  if (!item) return;
+  panel.value = collectionKind(item)==="achievement" ? "achievement" : "honor";
+  filter.value = "all";
+  await show(item);
+}
+watch(()=>props.initialCode, (next, old)=>{ if (next && next!==old && profile.value) void openInitial(); });
+
+async function load(append = false, fresh = false, announce = true) {
   const request = ++revision;
   loading.value = true;
   error.value = "";
@@ -49,15 +123,21 @@ async function load(append = false, fresh = false) {
       archivists.value = [...(append ? archivists.value : []), ...rows.slice(0, 20)];
       more.value = rows.length > 20;
     } else {
-      const data = append ? (await props.request("collection.profile", { memberId: props.member, offset: items.value.length })).collection :
+      let data = append ? (await props.request("collection.profile", { memberId: props.member, offset: items.value.length })).collection :
         await getHonorCollection(props.viewer, props.member, props.request, fresh);
       if (!alive || request !== revision) return;
       if (!data || data.id !== props.member) throw Error("invalid_response");
-      profile.value = data;
+      if (!append && !data.baseAwards) {
+        const legacy = (await props.request("honors.hall", {memberId:props.member})).hall;
+        if (!alive || request !== revision) return;
+        if (!legacy || legacy.id !== props.member) throw Error("invalid_response");
+        data = { ...data, baseAwards:legacy.awards, legacyHonors:legacy.honors, showcase:legacy.showcase };
+      }
+      profile.value = append && profile.value ? { ...profile.value,...data } : data;
       items.value = [...(append ? items.value : []), ...data.items.slice(0, 40)];
       more.value = data.items.length > 40;
-      if (self.value && !append && !dialog.value?.open) {
-        const reward = data.items.find(i => i.awardId && data.unseen.includes(i.awardId) && !received.has(i.awardId));
+      if (self.value && !append && announce && !dialog.value?.open && !props.initialCode) {
+        const reward = catalogCards.value.find(i => collectionKind(i)!=='history' && i.awardId && data.unseen.includes(i.awardId) && !received.has(i.awardId));
         if (reward) void show(reward, true);
       }
     }
@@ -68,7 +148,7 @@ async function load(append = false, fresh = false) {
   }
 }
 
-async function show(item: CollectionItem | HonorArchiveItem, newAward = false) {
+async function show(item: Card | HonorArchiveItem, newAward = false) {
   selected.value = item;
   unlocked.value = newAward;
   useTitle.value = profile.value?.badges.collection?.id === item.awardId && profile.value?.useTitle === true;
@@ -98,16 +178,35 @@ async function update(action: string, body: Record<string, unknown>) {
   error.value = "";
   try {
     const update = await props.request(action, body);
-    if (!alive || !update.updatedIdentity) throw Error("invalid_response");
+    if (!alive || (!update.updatedIdentity && !update.user)) throw Error("invalid_response");
     emit("updated", update);
     clearHonorCollectionCache();
-    await load(false, true);
-    if (alive) selected.value = items.value.find(item => item.id === index);
+    await load(false, true, false);
+    if (alive && selected.value) selected.value = [...honors.value,...achievements.value].find(item => item.id === index);
   } catch (e) {
     if (alive) error.value = treeholeError(e);
   } finally { if (alive) changing.value = false; }
 }
-onMounted(() => load());
+function currentWear(item: Card) {
+  return item.legacy ? item.legacy===profile.value?.badges.worn?.code : item.awardId===profile.value?.badges.collection?.id;
+}
+function wear(item: Card, remove = false) {
+  if (!organized.value && item.legacy) {
+    void update("honors.wear",{honor:remove ? null : item.legacy,showcase:slots.value});
+    return;
+  }
+  void update("collection.wear",{awardId:item.legacy || remove ? null : item.awardId,
+    legacyCode:item.legacy && !remove ? item.legacy : null,useTitle:useTitle.value,organized:true});
+}
+function pin(item: Card) {
+  if (!item.awardId) return;
+  const key = item.awardId;
+  const next = slots.value.includes(key) ? slots.value.filter(value=>value!==key) : [...slots.value,key];
+  if (next.length>3) { error.value=treeholeError(Error("showcase_limit")); return; }
+  if (organized.value) void update("collection.showcase",{items:next});
+  else if (item.base) void update("honors.wear",{honor:profile.value?.badges.worn?.code ?? null,showcase:next});
+}
+onMounted(async () => { await load(); if (alive) await openInitial(); });
 </script>
 
 <template>
@@ -115,7 +214,7 @@ onMounted(() => load());
     <header class="hc-heading">
       <div><h2>{{ archive ? "社区荣誉殿堂" : self ? "我的荣誉收藏" : (profile?.nickname ?? "同学") + "的荣誉收藏" }}</h2>
       <p v-if="archive">收藏历届荣誉，阅读获奖者留下的校园故事。</p>
-      <p v-else-if="profile">已收藏 {{ count }} 枚<span v-if="profile.badges.collection"> · 佩戴 {{ profile.badges.collection.title || profile.badges.collection.name }}</span></p></div>
+      <p v-else-if="profile">已获得 {{ total }} 枚<span v-if="panel==='honor' && equipped"> · 佩戴 {{ equipped }}</span></p></div>
       <Award :size="27" aria-hidden="true" />
     </header>
 
@@ -139,15 +238,23 @@ onMounted(() => load());
     </template>
 
     <template v-else>
-      <div v-if="profile" class="hc-rarity">
-        <span v-for="(label, key) in honorRarities" :key="key"><b>{{ (profile.rarities[key] ?? 0) + (key === 'common' ? oldCount : 0) }}</b>{{ label }}</span>
-      </div>
-      <div v-if="identities.length" class="hc-existing" aria-label="已佩戴的身份与荣誉">
-        <span v-for="code in identities" :key="code">{{ badges[code].name }}</span>
-      </div>
-      <nav v-if="self || items.length" class="hc-tabs" aria-label="荣誉分类">
-        <button :aria-pressed="category === 'all'" @click="category = 'all'">全部</button>
-        <button v-for="(name, key) in honorCategories" :key="key" :aria-pressed="category === key" @click="category = key">{{ name }}</button>
+      <nav class="hc-tabs hc-sections" aria-label="社区收藏分类">
+        <button :aria-pressed="panel==='honor'" @click="panel='honor'">荣誉</button>
+        <button :aria-pressed="panel==='achievement'" @click="panel='achievement'">社区成就</button>
+      </nav>
+      <section v-if="panel==='honor' && profile" class="hc-identity" aria-label="身份标识">
+        <h3>身份标识</h3>
+        <div class="hc-existing">
+          <span v-for="code in identityCodes.filter(c=>self || profile?.badges.official?.code===c)" :key="code"
+            :class="{active:profile?.badges.official?.code===code}">
+            <component :is="badges[code].icon" :size="14" aria-hidden="true" />{{ badges[code].name }}
+          </span>
+          <span v-if="!self && !identityCodes.some(c=>profile?.badges.official?.code===c)">社区成员</span>
+        </div>
+        <h3>可佩戴荣誉</h3>
+      </section>
+      <nav v-if="panel==='achievement'" class="hc-tabs" aria-label="社区成就类型">
+        <button v-for="(label,key) in filters" :key="key" :aria-pressed="filter===key" @click="filter=key">{{ label }}</button>
       </nav>
       <ul class="hc-gallery">
         <li v-for="item in visible" :key="item.id">
@@ -159,8 +266,13 @@ onMounted(() => load());
             </small>
           </button>
         </li>
+        <li v-for="i in mystery" :key="'hidden-'+i" class="hc-mystery">
+          <div><CollectionBadge rarity="common" category="hidden" />
+            <strong>隐藏成就</strong><small><LockKeyhole :size="10" aria-hidden="true" /> 尚未发现</small>
+          </div>
+        </li>
       </ul>
-      <p v-if="!loading && !error && !visible.length" class="hc-empty">{{ self && category === "hidden" ? "隐藏荣誉会在获得后出现。" : "这里还没有可展示的荣誉。" }}</p>
+      <p v-if="!loading && !error && !visible.length && !mystery" class="hc-empty">这里还没有可展示的藏品。</p>
     </template>
 
     <p v-if="loading" role="status" class="hc-empty">正在读取荣誉记录…</p>
@@ -170,16 +282,23 @@ onMounted(() => load());
     <dialog ref="dialog" class="hc-dialog" :class="{ 'hc-unlock': unlocked && !reducedMotion }" aria-labelledby="hc-dialog-name" @cancel.prevent="closeDetail" @close="selected && closeDetail()">
       <div v-if="selected">
         <CollectionBadge :rarity="selected.rarity" :category="selected.category" :code="selected.code" :earned="archive || !!selected.awardId" />
-        <p v-if="unlocked" class="hc-new">新荣誉已获得</p>
-        <h3 id="hc-dialog-name">{{ honorName(selected) }}</h3>
+        <p v-if="unlocked" class="hc-new">{{ collectionKind(selected)==="achievement" ? "新成就已解锁" : "新荣誉已获得" }}</p>
+        <h3 id="hc-dialog-name">{{ honorName({...selected,name:displayCollectionName(selected)}) }}</h3>
         <p v-if="'nickname' in selected">授予 {{ selected.nickname }}</p>
         <p>{{ selected.story || selected.criteria }}</p>
         <small>{{ honorRarities[selected.rarity] }}<template v-if="selected.at"> · {{ honorDate(selected.at) }}</template><template v-if="selected.archived"> · 已绝版</template></small>
+        <p v-if="'unreleased' in selected && selected.unreleased" class="hc-empty">{{ selected.category==="limited" ? "发行对应年份后可获得。" : "新版后台启用后可解锁。" }}</p>
         <div v-if="self && !archive && selected.awardId" class="hc-dialog-controls">
-          <label v-if="selected.category !== 'hidden' || selected.publicHidden"><input v-model="useTitle" type="checkbox" />使用称号{{ profile?.customTitle ? '「' + profile.customTitle + '」' : '' }}</label>
-          <button v-if="selected.category === 'hidden'" :disabled="changing" @click="update('collection.visibility', { awardId:selected.awardId, public:!selected.publicHidden })">{{ selected.publicHidden ? "对他人隐藏" : "公开这枚隐藏荣誉" }}</button>
-          <button v-if="selected.category !== 'hidden' || selected.publicHidden" :disabled="changing" @click="update('collection.wear', { awardId:selected.awardId, useTitle })">{{ profile?.badges.collection?.id === selected.awardId ? "更新佩戴" : "佩戴荣誉" }}</button>
-          <button v-if="profile?.badges.collection?.id === selected.awardId" :disabled="changing" @click="update('collection.wear', { awardId:null })">取下荣誉</button>
+          <template v-if="collectionKind(selected)==='honor'">
+            <label v-if="!('legacy' in selected)"><input v-model="useTitle" type="checkbox" />使用称号{{ profile?.customTitle ? '「' + profile.customTitle + '」' : '' }}</label>
+            <button :disabled="changing" @click="wear(selected)">{{ currentWear(selected) ? "更新佩戴" : "佩戴荣誉" }}</button>
+            <button v-if="currentWear(selected)" :disabled="changing" @click="wear(selected,true)">取下荣誉</button>
+          </template>
+          <template v-if="collectionKind(selected)==='achievement'">
+            <button v-if="selected.category==='hidden'" :disabled="changing" @click="update('collection.visibility', {awardId:selected.awardId,public:!selected.publicHidden})">{{ selected.publicHidden ? "仅自己可见" : "公开这枚隐藏成就" }}</button>
+            <button v-if="(organized || 'base' in selected) && (selected.category!=='hidden' || selected.publicHidden)"
+              :disabled="changing" @click="pin(selected)">{{ slots.includes(selected.awardId) ? "从主页取下" : "展示到个人主页" }}</button>
+          </template>
         </div>
         <button v-if="'memberId' in selected" class="hc-more" @click="emit('person', selected.memberId); closeDetail()">打开荣誉档案</button>
         <p v-if="error" role="alert" class="hc-empty">{{ error }}</p>
@@ -215,11 +334,19 @@ onMounted(() => load());
 .hc-existing span {color:var(--color-text);background:var(--color-tint);padding:5px 8px;border-radius:6px;font-size:12px}
 .hc-gallery,.hc-archive {list-style:none;padding:0;margin:0}
 .hc-gallery {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
-.hc-gallery button {
+.hc-gallery button,.hc-mystery>div {
   display:grid;justify-items:center;align-content:start;gap:6px;width:100%;height:100%;
   min-height:123px;padding:10px 4px;color:var(--color-text);
   border:1px solid var(--color-divider);border-radius:11px;background:var(--color-raised,var(--color-surface));
 }
+.hc-sections {border-bottom:1px solid var(--color-divider)}
+.hc-sections button {min-width:88px}
+.hc-identity {display:grid;gap:7px}
+.hc-identity h3 {margin:0;font-size:14px;color:var(--color-text)}
+.hc-identity h3:last-child {margin-top:5px}
+.hc-existing span {display:inline-flex;align-items:center;gap:5px}
+.hc-existing span:not(.active) {background:transparent;color:var(--color-muted);border:1px solid var(--color-divider)}
+.hc-mystery {opacity:.75}
 .hc-gallery strong {font-size:12px;line-height:1.35;overflow-wrap:anywhere}
 .hc-gallery small {display:flex;align-items:center;gap:2px;color:var(--color-muted);font-size:10px}
 .hc-archive {display:grid;gap:7px}

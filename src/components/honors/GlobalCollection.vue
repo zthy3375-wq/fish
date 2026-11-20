@@ -28,7 +28,7 @@ const concealed=(a:Collectible)=>a.hidden&&!earned.value[a.code];
 function unknown(a:Collectible){return a.source==='community'?!hall.value:a.source!=='device'&&!scopes.value[a.source];}
 function stateLabel(a:Collectible){return earned.value[a.code]?'已解锁':unknown(a)?(a.source==='community'?'待同步':'待连接'):'未解锁';}
 const pinned=(a:Collectible)=>a.source==='community'?!!hall.value?.showcase.includes(a.code):privatePins.value.includes(a.code);
-const pins=(a:Collectible)=>a.source==='community'?hall.value?.showcase||[]:privatePins.value;
+const pinCount=(a:Collectible)=>a.source==='community'?hall.value?.showcaseUsed??hall.value?.showcase.length??0:privatePins.value.length;
 function progress(a:Collectible){
  if(earned.value[a.code])return a.goal;
  if(unknown(a))return null;
@@ -73,7 +73,7 @@ async function pin(a:Collectible){
  if(a.source!=='community'){await togglePrivate(a.code);return;}
  if(!hall.value||!navigator.onLine)return;
  const old=hall.value,items=pinned(a)?old.showcase.filter(k=>k!==a.code):[...old.showcase,a.code];
- if(items.length>3)return;
+ if(!pinned(a)&&pinCount(a)>=3)return;
  loading.value=true;failure.value='';
  try{const r=await treeholeRequest('honors.wear',{honor:old.badges.worn?.code??null,showcase:items});if(active&&r.hall){hall.value=r.hall;fromCache.value=false;}}
  catch(e){if(active){failure.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'){hall.value=undefined;signedIn.value=false;}}}
@@ -115,7 +115,7 @@ onUnmounted(()=>{active=false;window.removeEventListener('online',networkChanged
   <span>收藏归属</span><strong>{{sourceNames[selected.source]}}</strong>
   <template v-if="earned[selected.code]"><span>{{localStamps[selected.code]?.historical||hall?.backfilled?.includes(selected.code)?'历史记录核实':'解锁日期'}}</span><strong>{{honorDate(earned[selected.code])}}</strong></template>
   <template v-else-if="!concealed(selected)"><span>当前进度</span><strong>{{progress(selected)===null?'待账号同步':progress(selected)+' / '+selected.goal}}</strong></template></div>
-  <button v-if="earned[selected.code]" class="wear" :disabled="loading||(selected.source==='community'&&!online)||(!pinned(selected)&&pins(selected).length>=3)" @click="pin(selected)"><component :is="pinned(selected)?Check:Bookmark" :size="16"/>{{selected.source==='community'&&!online?(pinned(selected)?'已展示 · 离线':'离线，稍后展示'):pinned(selected)?'取下':selected.source==='community'?'展示到社区主页':'展示到我的页面'}} · {{pins(selected).length}}/3</button>
+  <button v-if="earned[selected.code]" class="wear" :disabled="loading||(selected.source==='community'&&!online)||(!pinned(selected)&&pinCount(selected)>=3)" @click="pin(selected)"><component :is="pinned(selected)?Check:Bookmark" :size="16"/>{{selected.source==='community'&&!online?(pinned(selected)?'已展示 · 离线':'离线，稍后展示'):pinned(selected)?'取下':selected.source==='community'?'展示到社区主页':'展示到我的页面'}} · {{pinCount(selected)}}/3</button>
   <p v-if="failure&&selected.source==='community'" role="alert">{{failure}}</p>
   </template>
  </dialog>

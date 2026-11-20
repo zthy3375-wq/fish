@@ -1,4 +1,4 @@
-import {Award,BookHeart,Crown,Feather,Heart,HeartHandshake,LockKeyhole,MapPin,MessageCircle,PenLine,ShieldCheck,Sparkles,Sprout,Star,Sunrise,UsersRound} from 'lucide-vue-next';
+import {BookHeart,Crown,Feather,Heart,HeartHandshake,LockKeyhole,MessageCircle,PenLine,ShieldCheck,Sparkles,Sprout,Star,Sunrise,UsersRound} from 'lucide-vue-next';
 export const badges={
  developer:{short:'开发者',dark:'#e3b75c',name:'开发者',icon:Crown,color:'#97600a',tint:'#fff0ce',description:'邯院通的创建者。',method:'通过原始所有者授权记录和稳定账号 ID 核验，全平台唯一。'},
  moderator:{short:'管理员',dark:'#87b9f0',name:'管理员',icon:ShieldCheck,color:'#2762a6',tint:'#e8f2ff',description:'维护社区秩序，处理违规内容和举报。',method:'由开发者任命，权限按职责授予。'},
@@ -26,14 +26,8 @@ export const awards=[
  {code:'popular',name:'小有名气',icon:Star,condition:'帖子与评论累计收到 30 个有效赞',description:'你的表达被更多同学看到了。',metric:'likes',goal:30,tier:'稀有'},
  {code:'collector',name:'故事收藏家',icon:BookHeart,condition:'收藏 20 篇不同的有效帖子',description:'你为二十个故事留下了书签。',metric:'saves',goal:20,tier:'稀有'}
 ] as const;
-export const specialAwards=[
- {name:'最初的相遇',tier:'稀有',limited:true,icon:Feather},
- {name:'闪闪发光',tier:'稀有',limited:false,icon:Award},
- {name:'众人瞩目',tier:'传奇',limited:false,icon:Star},
- {name:'邯院传说',tier:'传奇',limited:false,icon:MapPin}
-];
 export const lockedIcon=LockKeyhole;
-export interface HonorHall {backfilled?:string[];id:string;nickname:string;badges:Identity;honors:Badge[];showcase:string[];total:number;awards:Record<string,string>;progress?:Record<string,number>}
+export interface HonorHall {backfilled?:string[];id:string;nickname:string;badges:Identity;honors:Badge[];showcase:string[];showcaseUsed?:number;total:number;awards:Record<string,string>;progress?:Record<string,number>}
 export interface AdminMember {id:string;nickname:string;official?:Badge|null;caps:string[];honors:BadgeCode[];bannedUntil?:string;recommendation?:string}
 export interface HonorLog {at:string;target:string;actor:string;change:{operation:string;reason:string}}
 export const operations:Record<string,string>={bind:'绑定开发者',appoint:'任命或调整管理员',dismiss:'解除管理员',mute:'禁言七天',unmute:'解除禁言',grant:'授予荣誉',revoke:'撤销荣誉',recommend:'推荐优质创作者',decline:'驳回推荐'};
