@@ -176,6 +176,43 @@ try{
  await page.getByText('更多赛事操作',{exact:true}).click();
  if(!baseline){await page.getByRole('button',{name:'删除赛事',exact:true}).click();await page.locator('dialog[open]').waitFor();await shot('07-delete-confirm');await page.getByLabel('处理原因',{exact:true}).fill('移除验收测试数据');await page.getByRole('button',{name:'移入回收站',exact:true}).click();await page.getByRole('button',{name:'回收站',exact:true}).click();await page.getByRole('button',{name:/信息/}).waitFor();await shot('07-recycle-bin');await page.getByRole('button',{name:/信息/}).click();await page.getByRole('button',{name:'恢复赛事',exact:true}).click();await page.getByLabel('处理原因',{exact:true}).fill('恢复误删的测试比赛');await page.getByRole('button',{name:'确认恢复',exact:true}).click();await page.getByRole('button',{name:'预览普通用户视角',exact:true}).waitFor();checks.push('developer delete, trash, restore and preview all use confirmed real SQL');}
  else {await shot('07-delete-confirm');await shot('07-recycle-bin');}
+ if (!baseline) {
+   await db.query("UPDATE hyt_contests SET max_entries=2 WHERE id=$1", [id]);
+   activeMember = author;
+   await start();
+   await page.locator(".contest-entry").click();
+   const another = page.getByRole("button", { name: "继续投稿", exact: true });
+   const own = page.locator("#contest-own-works");
+   const back = page.getByRole("button", { name: "返回上一层", exact: true });
+   await another.waitFor();
+   await page.getByText("投稿截止", { exact: true }).waitFor();
+   await shot("11-additional-submission");
+   await another.click();
+   await page.getByLabel("作品名称", { exact: true }).fill("下课后的操场");
+   await page.getByLabel("作品内容", { exact: true }).fill("走过操场时，远处还在下着小雨。");
+   await page.getByLabel("我已阅读规则，作品符合投稿要求").check();
+   await page.getByRole("button", { name: "预览作品", exact: true }).click();
+   await page.getByRole("button", { name: "确认参赛", exact: true }).click();
+   await page.getByRole("heading", { name: "下课后的操场", exact: true }).waitFor();
+   await back.click();
+   await own.getByText("2 / 2 件", { exact: true }).waitFor();
+   assert.equal(await another.count(), 0, "submission action hidden when slots are full");
+   await page.getByRole("button", { name: "查看我的作品", exact: true }).click();
+   await own.getByRole("button", { name: "早八路上的光", exact: true }).click();
+   await page.getByRole("button", { name: "撤回作品", exact: true }).click();
+   await page.getByRole("dialog").getByRole("button", { name: "撤回作品", exact: true }).click();
+   await another.waitFor();
+   await own.getByText("1 / 2 件", { exact: true }).waitFor();
+   const rows = await db.query(
+     "SELECT title,status FROM hyt_contest_entries WHERE contest_id=$1 AND member_id=$2 ORDER BY created_at",
+     [id, author.user.id],
+   );
+   assert.deepEqual(rows.rows.map(({ title, status }) => [title, status]), [
+     ["早八路上的光", "withdrawn"],
+     ["下课后的操场", "approved"],
+   ]);
+   checks.push("additional entry submission, full quota and withdrawal use real SQL");
+ }
  await db.query('UPDATE hyt_contests SET published=false WHERE id=$1',[id]);activeMember=voter;await start();await shot('02-community-empty');if(!baseline){const emptyBox=await page.locator('.contest-entry').boundingBox();assert(emptyBox.height<=56,'empty entry '+emptyBox.height);assert.equal(await page.locator('.th-page-account .contest-honors').count(),0);activeMember=owner;await start();await page.getByRole('button',{name:'我的',exact:true}).click();await page.locator('.collection-entry').getByRole('button',{name:'查看全部荣誉殿堂藏品'}).click();await page.getByRole('button',{name:'赛事奖牌',exact:true}).click();await page.locator('.medal-shelf').waitFor();await shot('09-global-honor-medals');await page.getByRole('button',{name:'成就收藏',exact:true}).click();await page.locator('[data-code=arrival]').click();await page.getByRole('button',{name:/展示到社区主页/}).click();await page.getByRole('button',{name:/取下/}).waitFor();assert.equal((await call(owner,'me')).user.badges.worn.code,'contest_champion');checks.push('global and community Honor Hall share the medal collection; achievement pinning preserves worn contest identity');}
 
  assert.equal(errors.length,0,JSON.stringify(errors));await writeFile(path.join(output,'checks.json'),JSON.stringify({baseline,checks,errors},null,2));

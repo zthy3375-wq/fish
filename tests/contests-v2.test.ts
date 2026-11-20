@@ -9,6 +9,7 @@ import Management from "../src/components/contests/ContestManagement.vue";
 import ContestHonors from "../src/components/contests/ContestHonors.vue";
 import Cover from "../src/components/contests/ContestCover.vue";
 import WorkDetail from "../src/components/contests/ContestWorkDetail.vue";
+import Progress from "../src/components/contests/ContestProgress.vue";
 import Admin from "../src/components/contests/ContestAdmin.vue";
 import {
   contestRequest,
@@ -764,4 +765,76 @@ it("v3 renews a linked-post cover through the schema13-compatible media endpoint
  await mount(Cover,{contest:event});root.querySelector("img")!.dispatchEvent(new Event("error"));
  await ready(()=>root.querySelector("img")?.src==="https://renewed.invalid/cover.jpg");
  expect(bridge.request).toHaveBeenCalledWith("media.url",{postId:event.coverPostId,imageId:event.cover.id});
+});
+
+it("shows the remaining submission slot and lists every accepted own work", async () => {
+  event.maxEntries = 3;
+  const first = { ...work, mine: true, title: "第一篇自己写的作品" };
+  const second = { ...first, id: randomUUID(), title: "第二篇自己写的作品" };
+  const withdrawn = { ...first, id: randomUUID(), status: "withdrawn" };
+  bridge.request.mockImplementation(async (action: string) => {
+    if (action === "contests.list") return { contests: [event] };
+    if (action === "contests.get") return { contest: event, myEntries: [first, second, withdrawn] };
+    if (action === "contests.entries") return { entries: [] };
+    return {};
+  });
+  await mount(Hub, { user: { id: owner } });
+  await ready(() => btn("继续投稿"));
+  expect(root.querySelector("#contest-own-works")?.textContent).toContain("2 / 3 件");
+  btn("查看我的作品").click();
+  expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  btn(second.title).click();
+  await ready(() => btn("编辑作品"));
+  expect(root.querySelector(".ct-work-detail h1")?.textContent).toBe(second.title);
+  vm.requestBack();
+  await ready(() => btn("继续投稿"));
+  btn("继续投稿").click();
+  await ready(() => btn("预览作品"));
+  expect(root.querySelector("input")?.value).toBe("");
+});
+
+it("advances from submission to voting and keeps delayed results in review", async () => {
+  event.votingStarts = iso(5.5);
+  await mount(Progress, { contest: event, now: Date.parse(event.submissionEnds) });
+  expect(root.querySelector("li.done")?.textContent).toContain("投稿");
+  expect(root.querySelector("[aria-current=step]")).toBeNull();
+  expect(root.querySelector("time")?.getAttribute("datetime")).toBe(event.votingStarts);
+  expect(root.textContent).toContain("投票开始");
+
+  app!.unmount();
+  await mount(Progress, { contest: event, now: Date.parse(event.awardAt) + 60000 });
+  expect(root.querySelector("[aria-current=step]")?.textContent).toContain("公布");
+  expect(root.querySelector("time")).toBeNull();
+  expect(root.textContent).toContain("结果审核中");
+});
+
+it("a late vote response updates the original work without replacing the work opened next", async () => {
+  event.submissionEnds = event.votingStarts = iso(-0.1);
+  const nextWork = { ...work, id: randomUUID(), title: "隔壁同学的诗" };
+  let resolveVote!: (value: object) => void;
+  bridge.request.mockImplementation(async (action: string) => {
+    if (action === "contests.list") return { contests: [event] };
+    if (action === "contests.get") return { contest: event };
+    if (action === "contests.entries") return { entries: [work, nextWork] };
+    if (action === "contests.vote") return new Promise((resolve) => { resolveVote = resolve; });
+    return {};
+  });
+  await mount(Hub, { user: { id: owner } });
+  await ready(() => btn("查看作品：" + work.title));
+  btn("查看作品：" + work.title).click();
+  await ready(() => btn("投一票"));
+  btn("投一票").click();
+  await ready(() => resolveVote);
+  vm.requestBack();
+  await ready(() => btn("查看作品：" + nextWork.title));
+  btn("查看作品：" + nextWork.title).click();
+  await ready(() => root.querySelector(".ct-work-detail h1")?.textContent === nextWork.title);
+  resolveVote({ entry: { ...work, voted: true }, votesUsed: 1 });
+  await ready(() => root.textContent?.includes("还可投 2 / 3 票"));
+  expect(root.querySelector(".ct-work-detail h1")?.textContent).toBe(nextWork.title);
+  expect(root.querySelector(".ct-notice")).toBeNull();
+  vm.requestBack();
+  await ready(() => btn("查看作品：" + work.title));
+  btn("查看作品：" + work.title).click();
+  await ready(() => btn("已投票 · 撤回"));
 });
