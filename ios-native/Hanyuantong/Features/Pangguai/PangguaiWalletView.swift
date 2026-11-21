@@ -47,7 +47,7 @@ struct PangguaiWalletView: View {
             .alert(item: $confirmation) { item in alert(item) }
             .onChange(of: store.device?.id) { _ in
                 selection = ""
-                if store.device?.category == "08" { achievements.record("water") }
+                if store.device?.category == "04" { achievements.record("water") }
             }
             .onChange(of: store.maskedPhone) { _ in selection = ""; confirmation = nil; pollFailures = 0 }
             .onChange(of: store.snapshot.water?.id) { _ in pollFailures = 0 }
