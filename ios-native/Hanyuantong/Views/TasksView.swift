@@ -61,6 +61,13 @@ struct TasksView: View {
             if groups.isEmpty {
                 CampusEmpty(title: completionFilter == 1 ? "还没有已完成的待办" : "暂无待办", detail: "把要做的事记下来，一件一件完成。也可以调整筛选。", symbol: "checklist")
                     .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                if store.tasks.isEmpty {
+                    Button { achievements.record("emptyfish") } label: {
+                        Image(systemName: "fish.fill").font(.caption).foregroundStyle(CampusTheme.muted)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("空清单里的小鱼")
+                        .accessibilityIdentifier("empty-tasks-fish")
+                }
             }
             ForEach(groups) { group in
                 Section(group.title) {
