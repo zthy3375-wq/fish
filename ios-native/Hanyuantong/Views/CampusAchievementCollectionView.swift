@@ -4,6 +4,23 @@ import SwiftUI
 /// School and Learning evidence comes from the current authenticated native stores;
 /// private device awards use the encrypted journal, and community awards are read-only
 /// projections of the server's actual award records.
+private enum CommunityAchievementPlaceholders {
+    // Synchronized with src/domain/communityAchievementCards.ts. Server-owned,
+    // never awarded from the client based on an unverified local counter.
+    static let milestones: [CampusAchievement] = [
+        CampusAchievement("first-hundred", "开服第一批", "社区", "普通", "community", "flag", "同步社区记录后可查看解锁条件。", "社区历史里的一份珍贵纪念。"),
+        CampusAchievement("campus-observer", "今天的邯院", "社区", "普通", "community", "mappin", "同步社区记录后可查看解锁条件。", "每个校园角落都值得被发现。"),
+        CampusAchievement("good-company", "这一楼热闹了", "社区", "普通", "community", "bubble.left.and.bubble.right", "同步社区记录后可查看解锁条件。", "从一条回复开始的热闹。"),
+        CampusAchievement("answer-guide", "帮上忙了", "社区", "普通", "community", "hand.raised", "同步社区记录后可查看解锁条件。", "帮助别人，也是自己的故事。"),
+        CampusAchievement("campus-photographer", "留住邯院的光", "社区", "普通", "community", "camera", "同步社区记录后可查看解锁条件。", "邯院的光被你记录。"),
+        CampusAchievement("community-classic", "这帖被记住了", "社区", "普通", "community", "trophy", "同步社区记录后可查看解锁条件。", "一段值得纪念的社区内容。"),
+        CampusAchievement("landmark-post", "这帖火了", "社区", "普通", "community", "star", "同步社区记录后可查看解锁条件。", "有人记住了你的表达。"),
+        CampusAchievement("hundred-likes", "一百个赞", "社区", "普通", "community", "heart", "同步社区记录后可查看解锁条件。", "一百份来自同学的喜欢。"),
+        CampusAchievement("full-page", "写满这一页", "社区", "普通", "community", "books.vertical", "同步社区记录后可查看解锁条件。", "校园这一页，记录了你的故事。")
+    ]
+    static let hiddenCapacity = 5
+}
+
 struct CampusAchievementCollectionView: View {
     @EnvironmentObject private var achievements: CampusAchievementStore
     @EnvironmentObject private var school: CampusStore
@@ -35,8 +52,15 @@ struct CampusAchievementCollectionView: View {
                                      "community", "seal", item.criteria ?? "社区荣誉",
                                      item.story ?? item.criteria ?? "已获得的社区荣誉。")
         }
-        let deduplicated = Dictionary(grouping: extras, by: \.code).compactMap { $0.value.first }
-        return known + deduplicated.sorted { $0.name < $1.name }
+        let confirmed = Dictionary(grouping: extras, by: \.code).compactMap { $0.value.first }
+        let confirmedCodes = Set(confirmed.map(\.code))
+        let pendingMilestones = CommunityAchievementPlaceholders.milestones.filter { !confirmedCodes.contains($0.code) }
+        let revealedHidden = confirmed.filter { $0.hidden }.count
+        let hiddenPlaceholders: [CampusAchievement] = (0..<max(0, CommunityAchievementPlaceholders.hiddenCapacity - revealedHidden)).map { i in
+            CampusAchievement("community-mystery-" + String(i), "隐藏成就", "隐藏", "稀有",
+                              "community", "questionmark", "", "还没有发现的校园秘密。")
+        }
+        return known + pendingMilestones + confirmed.sorted { $0.name < $1.name } + hiddenPlaceholders
     }
     private var active: [CampusAchievement] { entries.filter { group == "全部" || $0.group == group } }
     private var earnedCount: Int { entries.filter { isEarned($0) }.count }
@@ -188,7 +212,7 @@ struct CampusAchievementCollectionView: View {
     }
     private func state(_ item: CampusAchievement) -> String {
         if isEarned(item) { return "已解锁" }
-        if item.source == "community" { return tree.user == nil ? "待登录" : "待同步 / 未解锁" }
+        if item.source == "community" { return tree.user == nil ? "待登录" : item.hidden ? "尚未发现" : "待同步 / 未解锁" }
         if item.source == "school" && !school.isConnected { return "待连接" }
         if item.source == "learning" && !learning.connected { return "待连接" }
         return item.hidden ? "尚未发现" : "未解锁"
