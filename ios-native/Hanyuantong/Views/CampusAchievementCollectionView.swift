@@ -41,9 +41,9 @@ struct CampusAchievementCollectionView: View {
     @State private var communityError: String?
     @State private var honorRoute: CampusHonorRoute?
     @State private var remoteGeneration = 0
-    private let columns = [GridItem(.flexible(), spacing: 8),
-                           GridItem(.flexible(), spacing: 8),
-                           GridItem(.flexible(), spacing: 8)]
+    @ScaledMetric(relativeTo: .caption) private var tileWidth: CGFloat = 76
+    @ScaledMetric(relativeTo: .caption) private var labelHeight: CGFloat = 34
+    private var columns: [GridItem] { [GridItem(.adaptive(minimum: tileWidth), spacing: 7)] }
 
     private var entries: [CampusAchievement] {
         let known = CampusAchievementCatalog.entries
@@ -82,21 +82,21 @@ struct CampusAchievementCollectionView: View {
             VStack(alignment: .leading, spacing: 16) {
                 overview
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 66), spacing: 8)], spacing: 8) {
-                        ForEach(groups, id: \.self) { item in
-                            Button { group = item } label: {
-                                Text(item).font(.subheadline.weight(group == item ? .semibold : .regular))
-                                    .frame(maxWidth: .infinity, minHeight: 44)
-                                    .foregroundStyle(group == item ? .white : CampusTheme.text)
-                                    .background(group == item ? CampusTheme.primary : CampusTheme.surface, in: Capsule())
-                            }.buttonStyle(.plain).accessibilityAddTraits(group == item ? .isSelected : [])
-                        }
+                    ForEach(groups, id: \.self) { item in
+                        Button { group = item } label: {
+                            Text(item).font(.subheadline.weight(group == item ? .semibold : .regular))
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .foregroundStyle(group == item ? .white : CampusTheme.text)
+                                .background(group == item ? CampusTheme.primary : CampusTheme.surface, in: Capsule())
+                        }.buttonStyle(.plain).accessibilityAddTraits(group == item ? .isSelected : [])
+                    }
                 }.accessibilityIdentifier("achievement-filters")
                 LazyVGrid(columns: columns, spacing: 8) {
                     ForEach(active) { item in
                         Button { selected = item } label: { medal(item) }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("achievement-" + item.code)
-                            .accessibilityLabel((isEarned(item) ? "已解锁 " : "未解锁 ") + visibleName(item))
+                            .accessibilityLabel(state(item) + " " + visibleName(item))
                     }
                 }
                 communitySection
@@ -112,6 +112,7 @@ struct CampusAchievementCollectionView: View {
         .background(CampusTheme.background)
         .navigationTitle("荣誉殿堂")
         .navigationBarTitleDisplayMode(.inline)
+        .campusTabBarHidden(true)
         .sheet(item: $selected) { item in detail(item) }
         .sheet(item: $honorRoute) { route in CampusHonorCollectionView(tree: tree, route: route) }
         .sheet(isPresented: $showSettings) { MedalSettings() }
@@ -132,7 +133,7 @@ struct CampusAchievementCollectionView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("成就收藏馆").font(.title2.bold())
-                    Text("本机、教务、学习通与社区荣誉集中展示")
+                    Text("本机、教务、学习通与社区")
                         .font(.footnote).foregroundStyle(CampusTheme.muted)
                 }
                 Spacer(minLength: 10)
@@ -147,8 +148,6 @@ struct CampusAchievementCollectionView: View {
             }
             ProgressView(value: Double(earnedCount), total: Double(max(1, activeEntries.count)))
                 .tint(Color(hex: 0xA58BDD))
-            Text("未连接的账号显示待连接；不会凭空解锁或合并不同账号的荣誉。")
-                .font(.caption2).foregroundStyle(CampusTheme.muted)
         }
         .padding(17).frame(maxWidth: .infinity, alignment: .leading)
         .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 20))
@@ -156,38 +155,39 @@ struct CampusAchievementCollectionView: View {
 
     private func medal(_ item: CampusAchievement) -> some View {
         let earned = isEarned(item)
-        return VStack(spacing: 7) {
-            ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: 13)
-                    .fill(earned ? Color(hex: 0xEEE6FB) : Color(hex: 0xF1EFF3))
-                    .frame(width: 49, height: 49)
-                Image(systemName: item.hidden && !earned ? "questionmark" : earned ? item.symbol : "lock")
-                    .font(.system(size: 23, weight: .medium))
-                    .foregroundStyle(earned ? Color(hex: 0x714B9A) : Color(hex: 0x92909A))
-                    .frame(width: 49, height: 49)
-                if earned {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16)).foregroundStyle(Color(hex: 0x7650AD))
-                        .background(Circle().fill(CampusTheme.surface))
-                        .offset(x: 4, y: 4)
-                }
+        let accent = medalColor(item)
+        return VStack(spacing: 5) {
+            Image(systemName: earned ? item.symbol : item.hidden ? "questionmark" : "lock")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(earned ? accent : CampusTheme.muted)
+                .frame(height: 30)
+            Text(visibleName(item)).font(.caption.weight(.semibold))
+                .foregroundStyle(earned ? CampusTheme.text : CampusTheme.muted)
+                .multilineTextAlignment(.center).lineLimit(2).frame(height: labelHeight)
+            HStack(spacing: 3) {
+                if earned { Image(systemName: "checkmark").accessibilityHidden(true) }
+                Text(state(item))
             }
-            Text(visibleName(item)).font(.system(size: 12, weight: .semibold))
-                .multilineTextAlignment(.center).lineLimit(2).frame(height: 32)
-            Text(state(item)).font(.caption2.weight(.medium))
-                .foregroundStyle(earned ? Color(hex: 0x624285) : CampusTheme.muted)
-                .padding(.horizontal, 5).padding(.vertical, 4)
-                .background(earned ? Color(hex: 0xE5D8F6) : .clear, in: Capsule())
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(earned ? CampusTheme.text : CampusTheme.muted)
+            .padding(.horizontal, 4).padding(.vertical, 3)
+            .background(earned ? accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
         }
-        .frame(maxWidth: .infinity, minHeight: 121)
-        .padding(.vertical, 8).padding(.horizontal, 4)
-        .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10).padding(.horizontal, 4)
+        .background(earned ? accent.opacity(0.09) : CampusTheme.surface, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(earned ? Color(hex: 0xAB8BD0) : CampusTheme.border,
-                              style: StrokeStyle(lineWidth: earned ? 1.2 : 1, dash: earned ? [] : [4, 4]))
+            RoundedRectangle(cornerRadius: 13)
+                .strokeBorder(earned ? accent.opacity(0.62) : CampusTheme.border,
+                              style: StrokeStyle(lineWidth: 1, dash: earned ? [] : [4, 4]))
         }
     }
+    private func medalColor(_ item: CampusAchievement) -> Color {
+        guard let color = CampusMedal.byCode[item.code]?.color,
+              let value = UInt32(color.dropFirst(), radix: 16) else { return CampusTheme.primary }
+        return Color(hex: value)
+    }
+
     private func visibleName(_ item: CampusAchievement) -> String {
         item.hidden && !isEarned(item) ? "隐藏成就" : item.name
     }
@@ -212,7 +212,10 @@ struct CampusAchievementCollectionView: View {
     }
     private func state(_ item: CampusAchievement) -> String {
         if isEarned(item) { return "已解锁" }
-        if item.source == "community" { return tree.user == nil ? "待登录" : item.hidden ? "尚未发现" : "待同步 / 未解锁" }
+        if item.source == "community" {
+            if communityHall?.id != tree.user?.id || communityHall == nil { return "待同步" }
+            return item.hidden ? "尚未发现" : "未解锁"
+        }
         if item.source == "school" && !school.isConnected { return "待连接" }
         if item.source == "learning" && !learning.connected { return "待连接" }
         return item.hidden ? "尚未发现" : "未解锁"

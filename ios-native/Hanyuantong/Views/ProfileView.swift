@@ -28,8 +28,9 @@ struct ProfileView: View {
                         HStack {
                             Image(systemName: "graduationcap").foregroundStyle(CampusTheme.primary)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("学校教务")
-                                Text(store.isConnected ? "已连接" : "未连接").font(.caption).foregroundStyle(.secondary)
+                                Text("邯郸学院")
+                                Text(store.isConnected ? "已连接" : "登录后同步课表与成绩")
+                                    .font(.caption).foregroundStyle(CampusTheme.muted)
                             }
                             Image(systemName: schoolExpanded ? "chevron.up" : "chevron.down").font(.caption2).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
@@ -38,11 +39,19 @@ struct ProfileView: View {
                     Button {
                         if store.isConnected { store.refreshSchool() } else { store.connectSchool() }
                     } label: {
-                            if store.isBusy { ProgressView() }
-                            else { Text(store.isConnected ? "刷新" : "连接").font(.subheadline.weight(.medium)).frame(minWidth: 44, minHeight: 44) }
-                        }.buttonStyle(.borderedProminent).disabled(store.isBusy)
-                        .accessibilityLabel(store.isConnected ? "刷新教务数据" : "连接邯郸学院")
-                         .accessibilityIdentifier("连接邯郸学院")
+                        Group {
+                            if store.isBusy { ProgressView().tint(CampusTheme.onPrimary) }
+                            else { Text(store.isConnected ? "刷新" : "连接").font(.subheadline.weight(.semibold)) }
+                        }
+                        .foregroundStyle(CampusTheme.onPrimary)
+                        .padding(.horizontal, 10)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .background(CampusTheme.primary, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(CampusPressStyle())
+                    .disabled(store.isBusy)
+                    .accessibilityLabel(store.isConnected ? "刷新教务数据" : "连接邯郸学院")
+                    .accessibilityIdentifier("连接邯郸学院")
                     }
                     if schoolExpanded {
                     if store.isBusy { Button("取消本次查询", role: .cancel) { store.cancelSchool() } }
@@ -71,8 +80,7 @@ struct ProfileView: View {
                 NavigationLink { LearningCenterView(store: learning) } label: { profileRow("学习通", icon: "book") }
                     .buttonStyle(CampusPressStyle()).accessibilityIdentifier("open-learning")
                 }.padding(.horizontal, 12).modifier(ProfilePanel())
-                VStack(alignment: .leading, spacing: 4) { CommunityGroupSection() }
-                    .padding(12).modifier(ProfilePanel())
+                CommunityGroupSection().padding(.horizontal, 12).modifier(ProfilePanel())
             }.padding(.horizontal, 16).padding(.vertical, 8).frame(maxWidth: 680)
         }
         .campusScrollBackground().background(CampusTheme.background)
@@ -81,8 +89,13 @@ struct ProfileView: View {
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
             ToolbarItem(placement: .navigationBarLeading) { CampusRootTitle(title: "我的") }
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink { ProfileSettingsView() } label: { Label("设置", systemImage: "slider.horizontal.3").labelStyle(.titleAndIcon).font(.subheadline) }
-                    .accessibilityLabel("设置与帮助").accessibilityIdentifier("profile-settings")
+                NavigationLink { ProfileSettingsView() } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "slider.horizontal.3")
+                        Text("设置")
+                    }.font(.subheadline).foregroundStyle(CampusTheme.primary)
+                }
+                .accessibilityLabel("设置与帮助").accessibilityIdentifier("profile-settings")
             }
         }
         .confirmationDialog("断开后会移除本机教务会话及教务缓存，个人课程和待办不受影响。", isPresented: $disconnecting, titleVisibility: .visible) {
@@ -162,6 +175,7 @@ private struct ProfileSettingsView: View {
         .campusScrollBackground().background(CampusTheme.background)
         .navigationTitle("设置与帮助").navigationBarTitleDisplayMode(.inline)
         .modifier(CampusDetailHeader(title: "设置与帮助"))
+        .campusTabBarHidden(true)
         .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
     }
 

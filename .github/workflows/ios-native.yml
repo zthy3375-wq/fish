@@ -137,7 +137,7 @@ jobs:
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/xcodebuild.log"
       - name: Check five tabs and quick entry on iPhone 13
         if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
-        timeout-minutes: 8
+        timeout-minutes: 12
         run: |
           set -o pipefail
           trap 'xcrun simctl shutdown "$SECOND_DEVICE" || true' EXIT

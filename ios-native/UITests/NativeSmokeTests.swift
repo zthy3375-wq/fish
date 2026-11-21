@@ -45,7 +45,8 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(welcome.label.contains("已解锁"))
         let locked = app.buttons["achievement-arrival"]
         XCTAssertTrue(locked.exists)
-        XCTAssertTrue(locked.label.contains("待登录") || locked.label.contains("未解锁"))
+        XCTAssertTrue(locked.label.contains("待同步") || locked.label.contains("未解锁"))
+        XCTAssertFalse(app.tabBars.buttons["我的"].isHittable)
         screenshot("10-global-achievements", app)
         welcome.tap()
         XCTAssertTrue(app.navigationBars["成就详情"].waitForExistence(timeout: 5))
@@ -53,6 +54,7 @@ final class NativeSmokeTests: XCTestCase {
         app.buttons["完成"].tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["查看成就，你好，邯院"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["我的"].isHittable)
     }
     func testPersonalTaskPersistsAndCompletes() throws {
         continueAfterFailure = false

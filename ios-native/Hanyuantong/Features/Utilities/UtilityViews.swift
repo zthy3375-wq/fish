@@ -64,21 +64,44 @@ struct CommunityGroupSection: View {
     @State private var status: String?
 
     var body: some View {
-        Section("交流") {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
                 openURL(NativeDestinations.communityCard) { opened in
                     status = opened ? "已请求打开 QQ。如未显示群资料，可复制群号搜索。" : "当前无法打开 QQ，可复制群号后在 QQ 搜索。"
                 }
-            } label: { Label("加入 QQ 交流群", systemImage: "person.2") }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "person.2").foregroundStyle(CampusTheme.primary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("加入 QQ 交流群").font(.subheadline.weight(.semibold)).foregroundStyle(CampusTheme.text)
+                        Text("交流使用体验 · 反馈问题与建议").font(.caption).foregroundStyle(CampusTheme.muted)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "arrow.up.right").font(.footnote).foregroundStyle(CampusTheme.primary)
+                }
+                .frame(minHeight: 56)
+                .contentShape(Rectangle())
+            }.buttonStyle(CampusPressStyle())
+            Divider()
             HStack {
-                Text(NativeDestinations.community).monospacedDigit().textSelection(.enabled)
+                Text("群号").font(.caption).foregroundStyle(CampusTheme.muted)
+                Text(NativeDestinations.community).font(.caption.weight(.semibold)).monospacedDigit()
+                    .textSelection(.enabled)
                 Spacer()
-                Button("复制群号") {
+                Button {
                     UIPasteboard.general.string = NativeDestinations.community
                     status = "群号已复制"
-                }.buttonStyle(.borderless).frame(minHeight: 44)
+                } label: {
+                    Label("复制群号", systemImage: "doc.on.doc")
+                        .font(.caption)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(CampusPressStyle())
+                .foregroundStyle(CampusTheme.primary)
             }
-            if let status { Text(status).font(.footnote).foregroundStyle(.secondary) }
+            if let status {
+                Text(status).font(.footnote).foregroundStyle(CampusTheme.muted).padding(.bottom, 8)
+            }
         }
     }
 }
