@@ -177,6 +177,8 @@ struct AcademicRecordsView: View {
             else { NativeExamRecordsView(exams: store.exams) }
             if !store.isConnected { Button("连接教务系统") { store.connectSchool() }.disabled(store.isBusy) }
         }.scrollContentBackground(.hidden).background(CampusTheme.background).navigationTitle("成绩与考试").navigationBarTitleDisplayMode(.inline)
+            .onAppear { if selection == 1 { store.markExamRecordsViewed() } }
+            .onChange(of: selection) { value in if value == 1 { store.markExamRecordsViewed() } }
             .toolbar { if store.isConnected { Button { store.refreshSchool() } label: { if store.isBusy { ProgressView() } else { Image(systemName: "arrow.clockwise") } }.disabled(store.isBusy).accessibilityLabel("更新教务数据") } }
     }
 }
