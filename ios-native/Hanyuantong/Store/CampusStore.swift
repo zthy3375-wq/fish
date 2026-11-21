@@ -22,6 +22,8 @@ final class CampusStore: ObservableObject {
     @Published var message: String?
     @Published private(set) var isConnected = false
     @Published private(set) var lastSynced: Date?
+    @Published private(set) var seenExamRecords = false
+    @Published private(set) var usedOfflineAcademicSchedule = false
     @Published var showSchoolLogin = false
     @Published private(set) var practice: [AcademicPractice] = []
     @Published private(set) var semesters: [AcademicTerm] = []
@@ -84,6 +86,14 @@ final class CampusStore: ObservableObject {
             snapshot = saved; isConnected = true; apply(saved)
         } else { try storage?.remove("academic") }
     }
+    func markExamRecordsViewed() {
+        if isConnected && !exams.isEmpty { seenExamRecords = true }
+    }
+    func markOfflineAcademicScheduleViewed() {
+        if isConnected && courses.contains(where: { $0.source == "school" }) {
+            usedOfflineAcademicSchedule = true
+        }
+    }
     func connectSchool() { query(interactive: true) }
     func refreshSchool() { query(interactive: false) }
     func cancelSchool() {
@@ -117,6 +127,9 @@ final class CampusStore: ObservableObject {
                     self.message = "所选学期课表未能读取，仍显示原学期记录，请重试。"
                     return
                 }
+                if self.snapshot?.scope != new.scope {
+                    self.seenExamRecords = false; self.usedOfflineAcademicSchedule = false
+                }
                 let merged = new.merging(previous: self.snapshot)
                 self.snapshot = merged; self.isConnected = true
                 self.apply(merged)
@@ -133,6 +146,7 @@ final class CampusStore: ObservableObject {
     @discardableResult private func clearAcademic() -> Bool {
         snapshot = nil; pausedCourseAdjustments = 0; isConnected = false; lastSynced = nil; selectedTerm = nil
         academicProfile = nil
+        seenExamRecords = false; usedOfflineAcademicSchedule = false
         grades = []; exams = []; practice = []; semesters = []; courses = personalCourses
         let widgetCleared = widget.clearForAccountChange()
         if widgetCleared { refreshWidget() }
