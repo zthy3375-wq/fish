@@ -144,6 +144,9 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertEqual(entry.label, "说点什么吧…")
         app.buttons["查看评论"].tap()
         XCTAssertTrue(app.staticTexts["Quick reply"].waitForExistence(timeout: 5))
+        app.buttons["返回社区"].tap()
+        XCTAssertTrue(app.buttons["快捷回复测试帖"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["社区"].isSelected)
     }
 
     private func replyFixture() throws -> String {

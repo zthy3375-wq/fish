@@ -21,6 +21,28 @@ enum ScheduleMath {
         return calendar.date(byAdding: .day, value: -offset, to: calendar.startOfDay(for: today))
     }
 
+    /// Unrecognized week text cannot prove that a day is free.
+    static func practiceMayOccur(_ raw: String, week: Int, limit: Int) -> Bool {
+        let normalized = raw.precomposedStringWithCompatibilityMapping
+            .components(separatedBy: .whitespacesAndNewlines).joined()
+            .replacingOccurrences(of: "[，、；;]", with: ",", options: .regularExpression)
+            .replacingOccurrences(of: "[–—−~～至到]", with: "-", options: .regularExpression)
+        let grammar = #"^(?:第)?([0-9]{1,2})(?:-(?:第)?([0-9]{1,2}))?(?:周)?(?:\((单|双)(?:周)?\)(?:周)?|(单|双)(?:周)?)?$"#
+        guard let regex = try? NSRegularExpression(pattern: grammar) else { return true }
+        for part in normalized.components(separatedBy: ",") {
+            let value = part as NSString
+            guard let match = regex.firstMatch(in: part, range: NSRange(location: 0, length: value.length)) else { return true }
+            func group(_ index: Int) -> String? {
+                let range = match.range(at: index)
+                return range.location == NSNotFound ? nil : value.substring(with: range)
+            }
+            guard let start = group(1).flatMap(Int.init), let end = (group(2) ?? group(1)).flatMap(Int.init),
+                  start >= 1, end >= start, end <= limit else { return true }
+            let parity = group(3) ?? group(4)
+            if (start...end).contains(week), parity == nil || (week.isMultiple(of: 2) ? parity == "双" : parity == "单") { return true }
+        }
+        return false
+    }
     static func parseRange(_ raw: String, limit: Int) -> [Int] {
         let value = raw.replacingOccurrences(of: "，", with: ",").replacingOccurrences(of: "、", with: ",").replacingOccurrences(of: "～", with: "-").replacingOccurrences(of: "~", with: "-").replacingOccurrences(of: "－", with: "-").replacingOccurrences(of: "—", with: "-")
         guard let regex = try? NSRegularExpression(pattern: #"(\d+)(?:\s*-\s*(\d+))?"#) else { return [] }

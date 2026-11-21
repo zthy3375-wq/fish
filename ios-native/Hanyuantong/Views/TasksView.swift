@@ -40,7 +40,8 @@ struct TasksView: View {
     private var canDiscoverEmptyList: Bool {
         store.personalDataAvailable && learning.canConfirmTaskList && actionError == nil &&
         source == .all && filter.search.isEmpty && filter.course.isEmpty && filter.priority == -1 &&
-        filter.scope != .completed && !taskSelection(scope: .all).tasks.contains { !$0.completed }
+        filter.scope != .completed && !store.tasks.contains { !$0.completed } &&
+        (!learning.connected || !learning.cache.items.contains { $0.status != "submitted" })
     }
 
     private var newTaskDay: String? {

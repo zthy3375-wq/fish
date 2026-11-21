@@ -73,10 +73,8 @@ struct ScheduleView: View {
         }).background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .overlay(alignment:.top) { if let surprise { Text(surprise == "freeday" ? "今天属于你自己。" : "回到本周了。").padding(10).background(.thinMaterial,in:Capsule()).allowsHitTesting(false) } }
             .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; if surprise == code { surprise=nil } }
+            .task(id: offlineScope) { offline.start(scope: offlineScope) }
             .onAppear {
-                if store.lastSynced != nil && store.courses.contains(where: { $0.source != "personal" }) {
-                    offline.start(scope: store.schoolMedalScope)
-                }
                 if store.selectedTab == .schedule { keepSelectionInTerm() }
             }
             .onChange(of: store.selectedTab) { tab in
@@ -99,6 +97,11 @@ struct ScheduleView: View {
             }.sheet(isPresented: $adding) { CourseEditorView() }
             .sheet(item: $cell) { CourseEditorView(preset: $0) }
             .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
+    }
+    private var offlineScope: String? {
+        guard store.selectedTab == .schedule, store.lastSynced != nil,
+              store.courses.contains(where: { $0.source != "personal" }) else { return nil }
+        return store.schoolMedalScope
     }
     private var schoolTermPicker: some View {
         HStack {
@@ -251,7 +254,7 @@ struct ScheduleView: View {
         }
         if checkDay, (1...store.scheduleWeekCount).contains(week), store.courses(on: date).isEmpty {
             let practiceThisWeek = store.practice.contains { item in
-                (try? CourseImportEngine.parseWeeks(item.weeks, maximum: store.scheduleWeekCount).contains(week)) ?? true
+                ScheduleMath.practiceMayOccur(item.weeks, week: week, limit: store.scheduleWeekCount)
             }
             if !practiceThisWeek {
                 MedalJournal.shared.unlock("freeday")

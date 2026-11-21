@@ -150,8 +150,12 @@ func assertFirstUnlockProtectionWhenObservable(at url: URL,
 private final class InMemoryAchievementPersistence: CampusAchievementPersisting {
     var journal: CampusAchievementJournal?
     var failWrites = false
+    var failReads = false
     var writes = 0
-    func load() throws -> CampusAchievementJournal? { journal }
+    func load() throws -> CampusAchievementJournal? {
+        if failReads { throw CampusAchievementFailure.unavailable }
+        return journal
+    }
     func save(_ value: CampusAchievementJournal) throws {
         if failWrites { throw CampusAchievementFailure.unavailable }
         journal = value
@@ -229,6 +233,21 @@ final class CampusAchievementTests: XCTestCase {
         XCTAssertNil(store.date(for: "firstpost"))
         XCTAssertEqual(store.journal.pins, ["welcome"])
         XCTAssertNil(defaults.dictionary(forKey: "campus.medals.v1")?["device"])
+    }
+
+    @MainActor func testTemporaryReadFailureRetriesWithExistingJournal() {
+        let disk = InMemoryAchievementPersistence()
+        let earned = Date()
+        disk.journal = CampusAchievementJournal(stamps: ["welcome": earned])
+        disk.failReads = true
+        let store = CampusAchievementStore(persistence: disk)
+        store.record("bath")
+        XCTAssertEqual(disk.writes, 0)
+        disk.failReads = false
+        store.record("bath")
+        XCTAssertNotNil(store.date(for: "bath"))
+        XCTAssertEqual(store.date(for: "welcome"), earned)
+        XCTAssertEqual(disk.writes, 1)
     }
 
     @MainActor func testInvalidDeviceJournalCannotOverwriteUnreadableStoredAwards() {

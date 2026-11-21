@@ -32,6 +32,13 @@ final class MedalParityTests:XCTestCase {
         XCTAssertEqual(j.pinned(school:"alpha",learning:nil),["schedule"])
         XCTAssertTrue(j.pinned(school:"beta",learning:nil).isEmpty)
     }
+    func testPracticeWeeksProtectFreeDayAward() {
+        XCTAssertTrue(ScheduleMath.practiceMayOccur("第1至第9周（单周）", week: 3, limit: 19))
+        XCTAssertFalse(ScheduleMath.practiceMayOccur("第1至第9周（单周）", week: 4, limit: 19))
+        XCTAssertFalse(ScheduleMath.practiceMayOccur("2、4、6", week: 5, limit: 19))
+        XCTAssertTrue(ScheduleMath.practiceMayOccur("1,待定", week: 5, limit: 19))
+    }
+
     func testTaskMedalWhenSecondStepOrParentIsCompletedLast() {
         var before = CampusTask(title: "自建待办", date: Date())
         before.originalID = "personal-backup-id"
