@@ -246,8 +246,33 @@ actor TreeholeService {
     }
 }
 
+struct TreeholeReplyIdentity {
+    let isAnonymous: Bool
+    let isRequired: Bool
+    let label: String
+
+    init(post: TreeholePost?, preferredAnonymous: Bool) {
+        let boardRequiresAnonymity = post?.category == "treehole"
+        let authorMustStayAnonymous = post?.anonymous == true && post?.author.mine == true
+        isRequired = boardRequiresAnonymity || authorMustStayAnonymous
+        isAnonymous = isRequired || preferredAnonymous
+        label = boardRequiresAnonymity ? "本区统一匿名" : authorMustStayAnonymous ? "保持楼主匿名身份" : "匿名回复"
+    }
+}
+
 // UTC API timestamps are displayed in campus time; cursor strings remain unmodified.
 enum TreeholePresentation {
+    static let replyLimit = 1000
+
+    static func boundedReply(_ value: String) -> String {
+        guard value.utf16.count > replyLimit else { return value }
+        var remaining = replyLimit
+        return String(value.prefix(while: { character in
+            remaining -= character.utf16.count
+            return remaining >= 0
+        }))
+    }
+
     static func date(_ value: String, now: Date = Date()) -> String {
         let reader = ISO8601DateFormatter(); reader.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         var parsed = reader.date(from: value)

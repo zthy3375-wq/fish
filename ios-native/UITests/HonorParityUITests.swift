@@ -83,6 +83,87 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(app.buttons["完成：" + title].waitForExistence(timeout: 5))
     }
 
+    func testCommunityQuickReplyKeepsDraftAndRetriesInPlace() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["HYT_REPLY_UI_FIXTURE"] = try replyFixture()
+        app.launch()
+        app.tabBars.buttons["社区"].tap()
+        let title = app.buttons["快捷回复测试帖"]
+        XCTAssertTrue(title.waitForExistence(timeout: 12))
+        title.tap()
+        let entry = app.buttons["community-quick-reply"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 8))
+        XCTAssertEqual(entry.label, "说点什么吧…")
+        capture("quick-reply-entry", app)
+        entry.tap()
+
+        let input = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", "community-reply-input", "你的回复")).matching(NSPredicate(format: "elementType == %d OR elementType == %d", XCUIElement.ElementType.textView.rawValue, XCUIElement.ElementType.textField.rawValue)).firstMatch
+        let submit = app.buttons["发布回复"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertFalse(submit.isEnabled)
+        XCTAssertTrue(submit.isHittable)
+        XCTAssertTrue(app.buttons["添加评论图片"].isHittable)
+        let anonymous = app.buttons["匿名回复"]
+        XCTAssertEqual(anonymous.value as? String, "已关闭")
+        anonymous.tap()
+        XCTAssertEqual(anonymous.value as? String, "已开启")
+
+        input.typeText("Quick reply")
+        XCTAssertTrue(submit.isEnabled)
+        capture("quick-reply-editor", app)
+        app.buttons["收起回复编辑器"].tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        XCTAssertEqual(entry.label, "继续编辑回复…")
+        entry.tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "Quick reply")
+        XCTAssertEqual(anonymous.value as? String, "已开启")
+        submit.tap()
+
+        let retry = app.buttons["重试回复"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 8))
+        XCTAssertEqual(input.value as? String, "Quick reply")
+        capture("quick-reply-retry", app)
+        retry.tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 8))
+        XCTAssertEqual(entry.label, "说点什么吧…")
+        app.buttons["查看评论"].tap()
+        XCTAssertTrue(app.staticTexts["Quick reply"].waitForExistence(timeout: 5))
+    }
+
+    private func replyFixture() throws -> String {
+        func response(_ payload: [String: Any], status: Int = 200) throws -> [String: Any] {
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            return ["status": status, "json": String(decoding: data, as: UTF8.self)]
+        }
+        let postID = "57932B87-002B-4ECC-A874-072227D3DA2D"
+        let author: [String: Any] = ["name": "测试同学", "anonymous": false, "mine": false]
+        let post: [String: Any] = [
+            "id": postID, "title": "快捷回复测试帖", "body": "", "createdAt": "2026-11-21T05:00:00Z",
+            "anonymous": false, "locked": false, "liked": false, "saved": false,
+            "author": author, "commentCount": 0, "likeCount": 0, "category": "daily"
+        ]
+        var updated = post
+        updated["commentCount"] = 1
+        let comment: [String: Any] = [
+            "id": "4D45E3F4-1DCD-4822-965E-B17E9CA0DD41", "postId": postID, "body": "Quick reply",
+            "createdAt": "2026-11-21T05:10:00Z", "author": ["name": "匿名同学", "anonymous": true, "mine": true],
+            "deleted": false, "isOriginalPoster": false
+        ]
+        let member: [String: Any] = ["id": "D815C068-2752-4B3B-A6C9-EEB1B7A245CF", "username": "fixture", "nickname": "测试用户", "role": "member"]
+        let configuration = try response([
+            "user": member, "config": ["engagementEnabled": true, "commentImagesEnabled": true],
+            "posts": [post]
+        ])
+        let fixture = [
+            "me": [configuration],
+            "posts.get": [try response(["post": post, "comments": []]), try response(["post": updated, "comments": [comment]])],
+            "comments.create": [try response(["error": "network_unavailable"], status: 503), try response(["comment": comment])]
+        ]
+        return String(decoding: try JSONSerialization.data(withJSONObject: fixture), as: UTF8.self)
+    }
+
     private func capture(_ name:String,_ app:XCUIApplication) {
         let image=XCTAttachment(screenshot:app.screenshot()); image.name="parity-"+name; image.lifetime = .keepAlways; add(image)
     }

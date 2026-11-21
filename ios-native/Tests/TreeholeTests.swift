@@ -46,6 +46,28 @@ final class TreeholeTests: XCTestCase {
         XCTAssertEqual(root.visibleReplyCount(complete: true), 0)
     }
 
+    func testQuickReplyLimitMatchesAndroidUTF16WithoutBreakingEmoji() {
+        let prefix = String(repeating: "学", count: 999)
+        XCTAssertEqual(TreeholePresentation.boundedReply(prefix + "🙂"), prefix)
+        let fits = String(repeating: "🙂", count: 500)
+        XCTAssertEqual(TreeholePresentation.boundedReply(fits + "a"), fits)
+        XCTAssertEqual(TreeholePresentation.boundedReply("一起上课"), "一起上课")
+    }
+
+    func testQuickReplyIdentityPreservesAnonymousBoardAndPostAuthor() {
+        func post(category: String, anonymous: Bool, mine: Bool) -> TreeholePost {
+            TreeholePost(id: "fixture", body: "", createdAt: "", anonymous: anonymous, locked: false, liked: false, saved: false,
+                         author: TreeholeAuthor(name: "同学", anonymous: anonymous, mine: mine), commentCount: 0, likeCount: 0, category: category)
+        }
+        let daily = post(category: "daily", anonymous: true, mine: false)
+        XCTAssertFalse(TreeholeReplyIdentity(post: daily, preferredAnonymous: false).isAnonymous)
+        XCTAssertTrue(TreeholeReplyIdentity(post: daily, preferredAnonymous: true).isAnonymous)
+        XCTAssertTrue(TreeholeReplyIdentity(post: post(category: "treehole", anonymous: false, mine: false), preferredAnonymous: false).isRequired)
+        let author = TreeholeReplyIdentity(post: post(category: "daily", anonymous: true, mine: true), preferredAnonymous: false)
+        XCTAssertTrue(author.isAnonymous)
+        XCTAssertEqual(author.label, "保持楼主匿名身份")
+    }
+
     func testCompactWeekGroupsOnlyOverlappingIntervals() {
         func course(_ start: String, _ end: String) -> Course {
             Course(name: start, day: 1, start: start, end: end, weeks: [1])

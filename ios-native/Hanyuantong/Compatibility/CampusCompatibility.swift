@@ -75,10 +75,6 @@ extension View {
     @ViewBuilder func campusKeyboardDismissal() -> some View {
         if #available(iOS 16.0, *) { scrollDismissesKeyboard(.interactively) } else { self }
     }
-    @ViewBuilder func campusReplySheet() -> some View {
-        if #available(iOS 16.0, *) { presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
-        else { self } // Standard dismissible sheet; all reply controls remain available.
-    }
 }
 
 /// Text-only sharing keeps the existing explicit system share sheet on iOS 15.
