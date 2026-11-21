@@ -3,6 +3,7 @@ import Foundation
 struct AcademicTerm: Codable, Equatable, Hashable {
     let xnm: String
     let xqm: String
+    var key: String { "\(xnm)-\(xqm)" }
     var isValid: Bool {
         xnm.range(of: "^20[0-9]{2}$", options: .regularExpression) != nil && ["3", "12"].contains(xqm)
     }
@@ -86,6 +87,17 @@ struct AcademicProfile: Codable, Equatable {
     }
 }
 
+struct AcademicTermCache: Codable, Equatable {
+    let term: AcademicTerm
+    let courses: [AcademicCourse]
+    let practice: [AcademicPractice]?
+    let exams: [AcademicExam]?
+    let periods: [AcademicPeriod]?
+    let updatedAt: Date
+    let timetableUpdatedAt: Date?
+    let examsUpdatedAt: Date?
+}
+
 /// Partial results preserve previous success, but never cross accounts or terms.
 /// Nil means unavailable; [] only means the server confirmed a complete empty module.
 struct AcademicSnapshot: Codable, Equatable {
@@ -103,13 +115,53 @@ struct AcademicSnapshot: Codable, Equatable {
     var gradeScope: String? = nil
     var moduleUpdatedAt: [String: Date] = [:]
     var courseAdjustments: [SchoolCourseAdjustment]? = nil
+    var cachedTerms: [String: AcademicTermCache]? = nil
+
+    func displayingCachedTerm(_ requested: AcademicTerm) -> AcademicSnapshot? {
+        guard requested != term, let cached = cachedTerms?[requested.key], cached.term == requested else { return nil }
+        var result = AcademicSnapshot(scope: scope, term: requested, courses: cached.courses,
+            practice: cached.practice, grades: gradeScope == "all" ? grades : nil, exams: cached.exams,
+            semesters: semesters, moduleErrors: [:], updatedAt: cached.updatedAt)
+        result.courseAdjustments = courseAdjustments
+        result.profile = profile
+        result.periods = cached.periods
+        result.gradeScope = gradeScope == "all" ? gradeScope : nil
+        result.moduleUpdatedAt["profile"] = moduleUpdatedAt["profile"]
+        result.moduleUpdatedAt["semesters"] = moduleUpdatedAt["semesters"]
+        if gradeScope == "all" { result.moduleUpdatedAt["grades"] = moduleUpdatedAt["grades"] }
+        result.moduleUpdatedAt["timetable"] = cached.timetableUpdatedAt
+        result.moduleUpdatedAt["exams"] = cached.examsUpdatedAt
+        var remaining = cachedTerms ?? [:]
+        remaining.removeValue(forKey: requested.key)
+        result.cachedTerms = remaining
+        result.remembering(previousTerm: self)
+        return result
+    }
+
+    private mutating func remembering(previousTerm: AcademicSnapshot) {
+        guard scope == previousTerm.scope, let prior = previousTerm.term,
+              prior != term, let courses = previousTerm.courses else { return }
+        var cached = cachedTerms ?? [:]
+        cached[prior.key] = AcademicTermCache(term: prior, courses: courses, practice: previousTerm.practice,
+            exams: previousTerm.exams, periods: previousTerm.periods, updatedAt: previousTerm.updatedAt,
+            timetableUpdatedAt: previousTerm.moduleUpdatedAt["timetable"], examsUpdatedAt: previousTerm.moduleUpdatedAt["exams"])
+        if cached.count > 16, let oldest = cached.min(by: { $0.value.updatedAt < $1.value.updatedAt })?.key {
+            cached.removeValue(forKey: oldest)
+        }
+        cachedTerms = cached
+    }
 
     func merging(previous: AcademicSnapshot?) -> AcademicSnapshot {
         guard let previous, previous.scope == scope else { return self }
         guard term == nil || previous.term == term else {
+            if let term, let cached = previous.displayingCachedTerm(term) {
+                return merging(previous: cached)
+            }
             var result = self
             result.courseAdjustments = previous.courseAdjustments
             result.profile = profile ?? previous.profile
+            result.cachedTerms = previous.cachedTerms
+            result.remembering(previousTerm: previous)
             if profile == nil { result.moduleUpdatedAt["profile"] = previous.moduleUpdatedAt["profile"] }
             return result
         }
@@ -118,6 +170,7 @@ struct AcademicSnapshot: Codable, Equatable {
             exams: exams ?? previous.exams, semesters: semesters.isEmpty ? previous.semesters : semesters,
             moduleErrors: moduleErrors, updatedAt: updatedAt)
         merged.courseAdjustments = previous.courseAdjustments
+        merged.cachedTerms = previous.cachedTerms
         merged.profile = profile ?? previous.profile
         merged.periods = periods ?? previous.periods
         merged.gradeScope = grades == nil ? previous.gradeScope : gradeScope

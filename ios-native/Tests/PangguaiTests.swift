@@ -319,14 +319,122 @@ final class PangguaiStoreTests: XCTestCase {
         XCTAssertFalse(api.calls.contains("order/afterPay/creating"))
         XCTAssertFalse(api.calls.contains("order/sync"))
     }
-    func testPhysicalRecoveryIsReadOnlyAndPreservesUnknownBill() async throws {
-        let (store,api,_) = harness(); configureWater(store,api)
-        let s = waterSession(); try store.saveWater(s,epoch:store.generation)
-        api.handler = { _, _, _ in .null }
-        await store.confirmPhysicalWaterEnd(sessionID:s.id)
-        XCTAssertEqual(store.snapshot.water?.phase,"closed_unknown")
-        XCTAssertEqual(store.snapshot.water?.endBasis,"physical_confirmed")
-        XCTAssertEqual(api.calls,["goods/water/sync"])
+    func testHomeAndWalletBalanceUseOnlyTheDrinkingWaterMerchant() throws {
+        let (store, api, _) = harness()
+        var snapshot = store.snapshot
+        snapshot.balance = "999.00"
+        let ticket = PGTicket(id: "water", name: "邯郸学院直饮水机", balance: "135", principal: nil, gift: nil)
+        for (tickets, expected) in [([PGTicket](), "暂未获取"), ([ticket], "¥1.35"), ([ticket, ticket], "暂未获取")] {
+            snapshot.tickets = tickets
+            try store.save(snapshot, epoch: store.generation)
+            XCTAssertEqual(store.waterBalanceText, expected)
+        }
+        XCTAssertTrue(api.calls.isEmpty)
+    }
+    func testConfirmedPhysicalStopReleasesOnlyLocalLockAndPersistsOffline() async throws {
+        for phase in ["starting", "using", "ending"] {
+            let (store, api, vault) = harness()
+            var session = waterSession()
+            session.phase = phase
+            if phase == "starting" { session.orderNo = nil }
+            try store.saveWater(session, epoch: store.generation)
+            configureWater(store, api)
+            api.handler = { _, _, _ in throw PGFailure.network }
+
+            store.archiveWaterAfterConfirmedStop(sessionID: session.id)
+            let archived = try XCTUnwrap(store.snapshot.water)
+            XCTAssertTrue(archived.isLocallyArchived)
+            XCTAssertTrue(archived.terminal)
+            XCTAssertEqual(archived.orderNo, session.orderNo)
+            XCTAssertEqual(archived.endBasis, "user_reported_stop")
+            XCTAssertFalse(archived.deviceEnded)
+            XCTAssertFalse(archived.remoteEnd)
+            XCTAssertNil(archived.endedAt)
+            XCTAssertNil(store.device)
+            let restored = PangguaiStore(api: api, persistence: vault)
+            restored.archiveWaterAfterConfirmedStop(sessionID: session.id)
+            await restored.pollSessions()
+            await restored.endWater(confirmedSessionID: session.id)
+            await restored.prepareWaterSettlement(sessionID: session.id)
+            XCTAssertNil(restored.settlementQuote)
+            XCTAssertEqual(restored.snapshot.water, archived)
+            XCTAssertTrue(api.calls.isEmpty)
+        }
+    }
+
+    func testArchiveRejectsStaleConfirmationAndBillingPhases() throws {
+        let (store, api, _) = harness()
+        var session = waterSession()
+        try store.saveWater(session, epoch: store.generation)
+        store.archiveWaterAfterConfirmedStop(sessionID: UUID())
+        XCTAssertEqual(store.snapshot.water, session)
+        XCTAssertEqual(store.message, PGFailure.waterStateChanged.message)
+        for phase in ["ended", "settling", "settled", "ended_zero", "closed_unknown", "unknown"] {
+            session.phase = phase
+            try store.saveWater(session, epoch: store.generation)
+            store.archiveWaterAfterConfirmedStop(sessionID: session.id)
+            XCTAssertEqual(store.snapshot.water, session, phase)
+            XCTAssertEqual(store.message, PGFailure.waterStateChanged.message)
+        }
+        XCTAssertTrue(api.calls.isEmpty)
+    }
+
+    func testArchiveStorageFailureKeepsLockAndExpiredAccountCanRetryLocally() throws {
+        let (store, api, vault) = harness()
+        let session = waterSession()
+        try store.saveWater(session, epoch: store.generation)
+        vault.current?.expired = true
+        let expiredStore = PangguaiStore(api: api, persistence: vault)
+        vault.failWrite = true
+        expiredStore.archiveWaterAfterConfirmedStop(sessionID: session.id)
+        XCTAssertEqual(expiredStore.snapshot.water, session)
+        XCTAssertEqual(vault.records["account-a"]?.water, session)
+        XCTAssertEqual(expiredStore.message, PGFailure.storage.message)
+        vault.failWrite = false
+        expiredStore.archiveWaterAfterConfirmedStop(sessionID: session.id)
+        XCTAssertEqual(vault.records["account-a"]?.water?.phase, "archived_unverified")
+        XCTAssertTrue(expiredStore.expired)
+        vault.current?.id = "account-b"
+        let otherStore = PangguaiStore(api: api, persistence: vault)
+        otherStore.archiveWaterAfterConfirmedStop(sessionID: session.id)
+        XCTAssertNil(otherStore.snapshot.water)
+        XCTAssertNil(vault.records["account-b"])
+        XCTAssertTrue(api.calls.isEmpty)
+    }
+
+    func testNewWaterScanAfterArchiveStillRequiresFreeDeviceAndFreshQuote() async throws {
+        let (store, api, _) = harness()
+        let session = waterSession()
+        try store.saveWater(session, epoch: store.generation)
+        store.archiveWaterAfterConfirmedStop(sessionID: session.id)
+        configureWater(store, api)
+        await store.prepareWater(skuID: "outlet")
+        let quote = try XCTUnwrap(store.waterQuote)
+        XCTAssertFalse(api.calls.contains("goods/water/unlock"))
+        let response = api.handler
+        api.handler = { path, fields, token in
+            if path == "goods/water/sync" { return self.json("{\"workStatus\":2}") }
+            return try await response(path, fields, token)
+        }
+        await store.startWater(confirmedQuoteID: quote.id)
+        XCTAssertFalse(api.calls.contains("goods/water/unlock"))
+        XCTAssertFalse(api.calls.contains("payChannelRoute/addUserAfterPayChannel"))
+        XCTAssertEqual(store.snapshot.water?.phase, "archived_unverified")
+        XCTAssertNil(store.waterQuote)
+    }
+
+    func testLegacyPhysicallyConfirmedRecordRemainsAvailableWithoutPolling() async throws {
+        let (store, api, _) = harness()
+        var legacy = waterSession()
+        legacy.phase = "closed_unknown"
+        legacy.endBasis = "physical_confirmed"
+        try store.saveWater(legacy, epoch: store.generation)
+        XCTAssertTrue(legacy.isLocallyArchived)
+        await store.pollSessions()
+        XCTAssertTrue(api.calls.isEmpty)
+        XCTAssertEqual(store.snapshot.water, legacy)
+        legacy.endBasis = "device_idle"
+        XCTAssertFalse(legacy.isLocallyArchived)
     }
     func testWrongOwnerWaterIsNeverEndedOrPaid() async throws {
         let (store,api,_) = harness(); configureWater(store,api)

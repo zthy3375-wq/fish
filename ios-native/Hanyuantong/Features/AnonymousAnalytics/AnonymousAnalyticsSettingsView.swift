@@ -16,13 +16,13 @@ struct AnonymousAnalyticsSettingsView: View {
                         .disabled(!store.state.hasIdentity).accessibilityIdentifier("analytics-delete")
                 }
                 if let last = store.state.lastSent {
-                    LabeledContent("上次上报", value: CampusTheme.date(last, format: "M月d日 HH:mm")).font(.caption)
+                    CampusLabeledValue("上次上报", value: CampusTheme.date(last, format: "M月d日 HH:mm")).font(.caption)
                 }
                 if store.isSending { ProgressView("正在处理统计请求") }
             }
             if let error = store.error { Section { Text(error).font(.caption).foregroundStyle(.red).accessibilityIdentifier("analytics-error") } }
         }.navigationTitle("旧版统计记录").navigationBarTitleDisplayMode(.inline)
-            .scrollContentBackground(.hidden).background(CampusTheme.background)
+            .campusScrollBackground().background(CampusTheme.background)
             .confirmationDialog("同时关闭统计并删除该安装已上报的记录？未确认删除时会保留凭证供重试。", isPresented: $confirmingDelete, titleVisibility: .visible) {
                 Button("确认删除", role: .destructive) { store.deleteData() }
                 Button("取消", role: .cancel) { }

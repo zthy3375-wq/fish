@@ -5,8 +5,9 @@ import SwiftUI
 final class SchoolCourseAdjustmentTests: XCTestCase {
     private let scope = "C171040F-EC43-4656-AFE7-F9981A355CB8"
     private let term = AcademicTerm(xnm: "2026", xqm: "3")
-    private func snapshot(room: String = "原教室") -> AcademicSnapshot {
-        AcademicSnapshot(scope: scope, term: term,
+    private func snapshot(room: String = "原教室", term requested: AcademicTerm? = nil) -> AcademicSnapshot {
+        let term = requested ?? self.term
+        return AcademicSnapshot(scope: scope, term: term,
             courses: [AcademicCourse(name: "合成调课测试", teacher: "教师", room: room, weekday: 2, periods: "1-2", weeks: "1-11周(单)")],
             practice: [], grades: [], exams: [], semesters: [term], moduleErrors: [:], updatedAt: Date())
     }
@@ -101,6 +102,52 @@ final class SchoolCourseAdjustmentTests: XCTestCase {
             XCTAssertTrue(reopened.courses.isEmpty)
         }
     }
+    @MainActor func testTeachingWeekCalibrationPersistsWithoutMovingOtherTerms() throws {
+        try withSchoolStore { store, storage, _ in
+            let today = BackupValue.dayDate("2026-11-21")
+            let original = store.schoolSemesterStart
+            let personalStart = store.semesterStart
+            let weeks = store.courses.map(\.weeks)
+            try store.calibrateTeachingWeek(9, today: today)
+            XCTAssertEqual(store.schoolSemesterStart, BackupValue.dayDate("2026-09-21"))
+            XCTAssertEqual(store.week(for: today), 9)
+            XCTAssertEqual(store.semesterStart, personalStart)
+            XCTAssertEqual(store.courses.map(\.weeks), weeks)
+            XCTAssertThrowsError(try store.calibrateTeachingWeek(0, today: today))
+            XCTAssertThrowsError(try store.calibrateTeachingWeek(store.scheduleWeekCount + 1, today: today))
+
+            let reopened = CampusStore(storage: storage)
+            try reopened.restoreAcademicCache(scope: scope)
+            XCTAssertEqual(reopened.schoolSemesterStart, store.schoolSemesterStart)
+
+            try storage.write(snapshot(term: AcademicTerm(xnm: "2025", xqm: "12")), name: "academic")
+            try reopened.restoreAcademicCache(scope: scope)
+            XCTAssertEqual(reopened.schoolSemesterStart, original)
+        }
+    }
+
+    @MainActor func testPreviouslySyncedTermCanBeOpenedOfflineWithoutMixingAccounts() throws {
+        try withSchoolStore { _, storage, _ in
+            let spring = AcademicTerm(xnm: "2025", xqm: "12")
+            let first = snapshot(room: "秋季教室")
+            let second = snapshot(room: "春季教室", term: spring).merging(previous: first)
+            XCTAssertEqual(second.courses?.first?.room, "春季教室")
+            try storage.write(second, name: "academic")
+
+            let reopened = CampusStore(storage: storage)
+            try reopened.restoreAcademicCache(scope: scope)
+            try reopened.applyCachedSchoolTerm(term)
+            XCTAssertEqual(reopened.displayedSchoolTerm, term)
+            XCTAssertEqual(reopened.courses.first?.room, "秋季教室")
+            try reopened.applyCachedSchoolTerm(spring)
+            XCTAssertEqual(reopened.courses.first?.room, "春季教室")
+
+            let differentAccount = AcademicSnapshot(scope: UUID().uuidString, term: spring, courses: [], practice: [],
+                grades: [], exams: [], semesters: [spring], moduleErrors: [:], updatedAt: Date()).merging(previous: second)
+            XCTAssertNil(differentAccount.displayingCachedTerm(term))
+        }
+    }
+
     @MainActor func testStorageFailureDoesNotPublishAdjustment() throws {
         try withSchoolStore { store, _, directory in
             let before = store.courses, source = try XCTUnwrap(store.courses.first)

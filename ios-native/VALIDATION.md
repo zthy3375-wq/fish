@@ -1,3 +1,39 @@
+## 成就进度与历史记录（2026-11-21）
+
+荣誉殿堂按当前账号保存完整分页的社区收藏，离线显示上次确认的记录。成就详情从服务端指标和本机生活体验读取进度。已保存的个人待办满足主任务完成且两个子任务完成时，重开或恢复个人备份会核实旧版漏记的「任务清零」。回归用例覆盖保留日期、避免重复弹窗、断网重开和账号隔离。模拟器用隔离账号验证这些路径。
+
+## 社区帖子快捷回复对齐（2026-11-21）
+
+参照 Android 1.3.1 的帖子底栏和回复编辑器。iPhone 采用贴底编辑层与可保持可见的发送区，支持点开后自动聚焦、收起保留文字与配图、继续回复指定评论、匿名状态和 1000 UTF-16 单元计数。发送失败在当前编辑层提示并允许重试，发送确认后再刷新讨论列表。
+
+新增仅在调试模拟器中启用的隔离交互用例，覆盖输入条、键盘、匿名、草稿恢复、失败重试与发布后评论显示。执行结果以该提交的 CI 和附件为准。
+
+## Android 1.3.1 逐页复审（2026-11-21）
+
+以 Android main `dca5582` 的 APK、页面代码和实际截图为基准，和 iPhone 13 的上一轮截图逐页复查。修正课表入口、教学周调整和已同步学期的离线切换、首页两钱包和生活卡片、社区登录注册、学习通作业与统一日程、设置主题和通知入口、荣誉殿堂的布局及五栏导航。
+
+iPhone 13 新截图与安卓再次并排审看后，补齐社区欢迎插图和未填写表单的提示、设置主题的行内排列、首页和课表的按钮配色，并先采集空待办清单，再运行测试数据写入流程。
+
+新增测试覆盖多学期缓存与换号隔离、校准后的跨学期隔离、重启后保留、不改变课程周次及学习通作业的清单状态。更新模拟器流程以检查课表视图切换及设置、荣誉殿堂中的底栏。新截图、编译和执行结果以本提交对应的 CI 为准。
+
+系统组件、官方登录页和第三方跳转使用各端原生实现。双端视觉验收需要相同网络状态、账号状态和数据。此次未使用实际学校、学习通或社区账号，也未操作接水机、洗衣机或真实支付。
+
+## Android 1.3.1 对齐整合（2026-11-21）
+
+本轮将 iPhone 五栏视图、课表时间轴、待办日程、钱包和私信与 1.3.1 荣誉、注册和管理流程整合。新增旧设备收藏迁移测试，扩展社区隔离联调用例以覆盖公开昵称、求助采纳及撤销、社区收藏查询和普通用户的成员目录权限。当前提交的 Xcode 和实体 iPhone 验收结果以对应 CI 及实际记录为准。
+
+## Android 1.3.0 对齐 · 首页与胖乖接水
+
+首页与胖乖钱包共用直饮水商户余额，缺失或重名时显示暂未获取。首页可分别连接学校、查看今天所属周的课表、折叠课程和进入学习通及成绩。头图铃铛提供本机公告、已读状态及原生系统提醒设置。
+
+对照 Android 1.3.0（184）的实际状态转换。机身已停水时可按当前记录 ID 离线恢复扫码，设备结束和付款结果仍由平台确认。仅在本机加密存储写入成功后释放占用。最近消费展示当前移出记录，也识别旧版的手动停水记录。下一次接水须重新识别设备、核价和确认。
+
+原生回归覆盖启动状态未知、使用中、结束请求已发送、核账阶段、重复点击、旧确认、登录过期、换号、落盘失败、重启以及下一次扫码时设备仍忙。验证使用隔离的胖乖请求和存储。真实扫码、机身停水和正式账单需在校园设备复核。
+
+## iOS 五 Tab 与 Android test.30 / test.31
+
+本次本地运行的共享协议、学习通解析和快递解析分别通过 5、34、39 个场景。前端 534 项及隔离的社区服务 126 项通过。目录由 Android 代码生成，包含 32 项，其中 8 项隐藏。未接触生产账号和设备。新增 iPhone 构建、两个尺寸的模拟器验收、实际 Android APK 截图任务；最终状态以此开发分支对应运行记录为准。以往运行的通过数量只适用于各自所列的提交。
+
 ## 搭子招募（test.12，本轮原生 CI 通过）
 
 客户端源码 `dd39d9cc76688699f497555826f3754d1ca0b76a`，tree `c47444f4d551374d792d9d82f01c55768f408ffb`；CI 合并提交 `ca9f96a953658cdf1c5b8e890367976ec3651e47` tree 一致。[CI 43839100059](https://github.com/zthy3375-wq/fish/actions/runs/43839100059) 整体成功：374 项单元用例中 373 项通过、1 项真机数据保护检查按设计跳过；42 项 TreeholeTests 全通过。5 项现有 UI 流程（重点任务 2 项、其他 3 项）、模拟器 App/测试目标、未签名 iPhone Release 编译、模拟器打包与截图导出通过。
@@ -159,3 +195,19 @@ Apple implementation references: [local notification scheduling](https://develop
 
 - Run [43018879724](https://github.com/zthy3375-wq/fish/actions/runs/43018879724), source1ee053b: all316 unit cases finished with315 passed, one explicit physical-device-protection skip and zero failures. Unsigned iPhone Release compiled successfully. Three UI scenarios passed; the two task flows still failed because their metadata belongs to a SwiftUI Other wrapper containing the real Button. The saved records are visible in exported screenshots and hierarchy; this remains a test-selector failure, not evidence of lost records. The exact wrapper/child structure is now used for the next targeted regression.
 - CI now runs the two task UI cases first, then all unit tests and the remaining three UI cases on the same source/build, avoiding duplicate execution while retaining full-suite coverage when both stages succeed. Each result bundle is preserved. Source after1ee053b also explicitly applies the existing high-contrast primary-label color to13 primary buttons and adds a four-appearance contrast assertion; this still requires its own runtime result.
+
+## Android 1.3.0 visual comparison, November 19
+
+The previous Pro Max and SE screenshots differ from Android on all five tabs. The owner independently observed the same on iPhone 13 with iOS 15.4. The visual branch uses the Android 1.3.0 header, home artwork, Lucide tab icons, period labels, task quick entry and four-column academic shortcuts as references. The screenshot regression now targets iPhone 13 hardware geometry and records the actual simulator runtime. An unsigned device build at minimum deployment 15.4 checks API availability. Neither that build nor a newer simulator establishes physical iOS 15.4 acceptance.
+
+On commit 0000176, Android 1.3.0 and iPhone 13 simulator screenshots confirmed all five tab highlights moved to the correct fifth of the screen. A geometry assertion on both simulator sizes confirmed the four profile shortcuts occupy a single row. The seven-page comparison exposed a proportional-minute gap over lunch and a longer settings front page. The follow-up maps teaching periods, occupied breaks and empty breaks with Android’s timetable axis rules, puts quick entry in the task list flow and groups the secondary settings. The visual test waits for a terminal community connection state before capture and exercises an empty period opening its course editor.
+
+## 2026-11-21 TestFlight 2.0.0 真机反馈
+
+同帖双机照片暴露了旧验收没有覆盖的登录后广场。以 Android 1.3.1 实际组件为参照，本次调整广场入口、排序、分区、卡片互动与发帖按钮。扩展 iPhone UI 回归，使用合成账号经过广场、学习分区、继续聊、帖子和回复重试，并保留广场截图。
+
+待办完成证据覆盖先完成主任务、先完成子任务和从安卓备份恢复的个人任务。课表从周视图打开空课日、保有已完成记录的空清单、立即离开彩蛋页、启动时已有教务和学习通缓存分别处理。学校缓存限当前已验证的本机账号，社区荣誉仍以服务端授予为准。此记录不代表两个实体设备的全流程验收。
+
+发帖页与广场共用分区编号。荣誉殿堂采用服务端返回的成就分类和解锁条件，保留未获得的常规里程碑，隐藏未获得的停发记录及隐藏成就的名称。
+
+复核「我的 → 学期校历 → 课表」时发现校历只显示到最后一门课的教学周。本次改用课表选周器的完整学期长度。空清单成就同时检查未安排到日期的学习通作业；实践教学的单双周或未知周次影响无课日判定。本机成就存储遇到临时读取失败后，下次记录前重新读取并验证原收藏。

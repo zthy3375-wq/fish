@@ -1,6 +1,6 @@
 # 邯院通 · Hanyuantong
 
-面向邯郸学院学生的独立校园应用。当前优先开发 Android；保留原生 iPhone 成果，待安卓体验稳定后再移植新增改动。
+面向邯郸学院学生的独立校园应用。Android 与原生 iPhone 同步开发。共用功能同时核对两端的入口、行为、协议和验证结果。
 
 ## 当前开发基线
 
@@ -13,7 +13,7 @@
 | iPhone | `ios-native/` 原生 Swift/SwiftUI，最低 iOS 16；模拟器与未签名构建验证，不等于真机可安装 |
 | 集成分支 | `main`。版本合并与面向用户的更新推送独立进行 |
 
-[身份荣誉与成就](docs/community-honors/README.md) · [schema 10 后台启用](docs/COMMUNITY-ACTIVATION-20261116.md) · [阅读与发帖设计](docs/COMMUNITY-READING-DESIGN.md) · [关注、粉丝与私信](docs/COMMUNITY-MESSAGES.md) · [安卓社区页面优化](docs/COMMUNITY-ANDROID-POLISH.md) · [搭子招募](docs/COMMUNITY-BUDDIES.md) · [投票与评论配图](docs/COMMUNITY-POLLS-COMMENTS.md) · [关注用户与动态](docs/COMMUNITY-FOLLOWING.md) · [兴趣分区与首页整理](docs/COMMUNITY-DISCOVERY.md) · [头像与轻量回应](docs/COMMUNITY-PARTICIPATION.md) · [社区回访功能与验证](docs/COMMUNITY-RETURN.md) · [树洞开发与验证](docs/TREEHOLE.md) · [1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md)
+[身份荣誉与成就](docs/community-honors/README.md) · [schema 10 后台启用](docs/COMMUNITY-ACTIVATION-20261116.md) · [阅读与发帖设计](docs/COMMUNITY-READING-DESIGN.md) · [关注、粉丝与私信](docs/COMMUNITY-MESSAGES.md) · [安卓社区页面优化](docs/COMMUNITY-ANDROID-POLISH.md) · [搭子招募](docs/COMMUNITY-BUDDIES.md) · [投票与评论配图](docs/COMMUNITY-POLLS-COMMENTS.md) · [关注用户与动态](docs/COMMUNITY-FOLLOWING.md) · [兴趣分区与首页整理](docs/COMMUNITY-DISCOVERY.md) · [头像与轻量回应](docs/COMMUNITY-PARTICIPATION.md) · [社区回访功能与验证](docs/COMMUNITY-RETURN.md) · [树洞开发与验证](docs/TREEHOLE.md) · [1.2.4 发布记录](docs/ANDROID-1.2.4-RELEASE.md) · [按周调课说明](docs/COURSE-ADJUSTMENTS.md) · [两端优化验收](docs/ANDROID-IOS-REVIEW-20261114.md) · [状态与历史](docs/STATUS.md) · [文档导航](docs/README.md) · [苹果构建](ios-native/README.md) · [两端开发与验收对照](ios-native/PARITY.md)
 
 [产品优化交付与截图](docs/product-quality/RESULTS.md) · [设计规范](DESIGN.md) · [验证记录](docs/product-quality/VALIDATION.md)
 

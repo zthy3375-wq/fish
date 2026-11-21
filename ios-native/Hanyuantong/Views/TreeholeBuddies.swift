@@ -49,7 +49,7 @@ struct TreeholeBuddyRoster: View {
     @State private var loading = false
     @State private var error: String?
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             List {
                 Section { Text("仅你作为发起人可见，请尊重同学的隐私。").font(.caption).foregroundStyle(.secondary) }
                 if let error { Section { Text(error); Button("重试") { Task { await load() } }.disabled(loading) } }

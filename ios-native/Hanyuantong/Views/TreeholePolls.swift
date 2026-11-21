@@ -41,7 +41,7 @@ struct TreeholePollEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack { Label("添加投票", systemImage: "chart.bar.xaxis").font(.subheadline.weight(.semibold)); Spacer(); Button("移除", action: remove).font(.caption).frame(minHeight: 44) }
-            TextField("想问大家什么？", text: $poll.question, axis: .vertical).lineLimit(1...3).accessibilityLabel("投票问题").onChange(of: poll.question) { poll.question = String($0.prefix(80)) }
+            CampusMultilineField("想问大家什么？", text: $poll.question, minimum: 1, maximum: 3).accessibilityLabel("投票问题").onChange(of: poll.question) { poll.question = String($0.prefix(80)) }
             ForEach(poll.options.indices, id: \.self) { index in
                 HStack {
                     TextField("选项 \(index + 1)", text: Binding(get: { index < poll.options.count ? poll.options[index] : "" }, set: { if index < poll.options.count { poll.options[index] = String($0.prefix(40)) } })).accessibilityLabel("投票选项 \(index + 1)")

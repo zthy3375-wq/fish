@@ -22,7 +22,7 @@ struct SemesterManagementView: View {
     private var courses: [AndroidManagedCourse] { state.courses.filter { $0.semesterId == state.activeSemesterId } }
 
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section {
                     Picker("当前个人学期", selection: Binding(get: { state.activeSemesterId }, set: { id in
@@ -40,7 +40,7 @@ struct SemesterManagementView: View {
                 else { timeTableSection }
                 if let error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("semesterManagementError") } }
             }.navigationTitle("个人课表管理").navigationBarTitleDisplayMode(.inline)
-                .scrollContentBackground(.hidden).background(CampusTheme.background)
+                .campusScrollBackground().background(CampusTheme.background)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } } }
                 .sheet(item: $semesterDraft) { draft in
                     PersonalSemesterEditor(semester: draft) { updated in
@@ -102,10 +102,10 @@ struct SemesterManagementView: View {
     private var semesterSection: some View {
         Section("学期与教学周") {
             if let semester {
-                LabeledContent("学期", value: semester.title)
-                LabeledContent("学期起始日期", value: semester.startDate)
-                LabeledContent("第一教学周周一", value: semester.weekStartDate)
-                LabeledContent("教学周数量", value: "\(semester.weekCount) 周")
+                CampusLabeledValue("学期", value: semester.title)
+                CampusLabeledValue("学期起始日期", value: semester.startDate)
+                CampusLabeledValue("第一教学周周一", value: semester.weekStartDate)
+                CampusLabeledValue("教学周数量", value: "\(semester.weekCount) 周")
                 Button("编辑当前学期") { semesterDraft = semester }
                 Button("删除当前学期", role: .destructive) { removingSemester = semester }.disabled(state.semesters.count <= 1)
             }
@@ -119,7 +119,7 @@ struct SemesterManagementView: View {
             if let table {
                 Text(table.name).font(.headline)
                 ForEach(table.slots, id: \.number) { slot in
-                    LabeledContent("第 \(slot.number) 节", value: "\(slot.start)–\(slot.end)")
+                    CampusLabeledValue("第 \(slot.number) 节", value: "\(slot.start)–\(slot.end)")
                 }
                 Button("管理作息方案") { showingTimeTable = true }
             }
@@ -157,7 +157,7 @@ private struct PersonalSemesterEditor: View {
         _semester = State(initialValue: semester); self.save = save
     }
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("学期信息") {
                     TextField("学年", text: $semester.academicYear)

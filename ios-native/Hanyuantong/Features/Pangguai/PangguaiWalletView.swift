@@ -40,11 +40,19 @@ struct PangguaiWalletView: View {
                 Button { confirmation = .official(nil) } label: { Label("打开支付宝胖乖生活", systemImage: "arrow.up.right.square") }.buttonStyle(.bordered)
                 Text("充值、支付宝付款、签约和蓝牙设备请在官方端完成。打开或返回官方端不代表支付成功。").font(.caption).foregroundStyle(CampusTheme.muted)
             }.padding(16)
-        }.background(CampusTheme.background).navigationTitle("胖乖生活").navigationBarTitleDisplayMode(.inline).tint(CampusTheme.primary)
+        }.background(CampusTheme.background).onAppear { MedalJournal.shared.unlock("laundry") }.navigationTitle("胖乖生活").navigationBarTitleDisplayMode(.inline).tint(CampusTheme.primary)
             .sheet(isPresented: $loginPresented) { PangguaiLoginView(store: store) }
             .sheet(isPresented: $scannerPresented) { PangguaiScannerView { code in Task { await store.readDevice(code) } } }
             .alert(item: $confirmation) { item in alert(item) }
-            .onChange(of: store.device?.id) { _ in selection = "" }
+            .onChange(of: store.device) { device in
+                if device?.category == "04" { MedalJournal.shared.unlock("water") }
+                if let device, device.category == "04", device.skus.count == 1,
+                   let outlet = device.skus.first, outlet.available {
+                    selection = outlet.id
+                } else {
+                    selection = ""
+                }
+            }
             .onChange(of: store.maskedPhone) { _ in selection = ""; confirmation = nil; pollFailures = 0 }
             .onChange(of: store.snapshot.water?.id) { _ in pollFailures = 0 }
             .onChange(of: store.snapshot.laundry?.id) { _ in pollFailures = 0 }
@@ -86,12 +94,12 @@ struct PangguaiWalletView: View {
         }
         VStack(alignment: .leading, spacing: 10) {
             Text("直饮水余额").font(.subheadline).foregroundStyle(CampusTheme.muted)
-            Text(PangguaiWalletMath.waterAmount(waterMerchant?.balance).map { "¥" + $0 } ?? "暂未获取").font(.system(size: 38, weight: .semibold)).privacySensitive()
+            Text(store.waterBalanceText).font(.system(size: 38, weight: .semibold)).privacySensitive()
             Text("查询于 " + updated(store.snapshot.ticketsUpdatedAt)).font(.caption).foregroundStyle(CampusTheme.muted)
             Button { scannerPresented = true } label: { Label("扫码识别设备", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked)
         }.campusCard()
         if store.snapshot.issues["tickets"] != nil { notice("直饮水余额未更新，保留上次结果。") }
-        if let water = store.snapshot.water { waterSession(water) }
+        if let water = store.snapshot.water, !water.isLocallyArchived { waterSession(water) }
         if let laundry = store.snapshot.laundry { laundrySession(laundry) }
         if let q = store.waterQuote { waterReview(q) }
         else if let q = store.laundryQuote { laundryReview(q) }
@@ -101,7 +109,7 @@ struct PangguaiWalletView: View {
         if tab == 0 { merchantList } else { orderList }
         DisclosureGroup("账户与帮助") {
             VStack(alignment: .leading, spacing: 10) {
-                LabeledContent("通用钱包余额", value: "¥" + PangguaiProtocol.amount(store.snapshot.balance)).privacySensitive()
+                CampusLabeledValue("通用钱包余额", value: "¥" + PangguaiProtocol.amount(store.snapshot.balance)).privacySensitive()
                 Text("商户钱包各自独立，不合并金额。退出不会停止设备或撤销扣款；未完成操作的加密防重记录会保留，重新连接相同账户后核对。").font(.caption).foregroundStyle(CampusTheme.muted)
                 Button("退出胖乖账户", role: .destructive) { confirmation = .logout }.disabled(store.busy)
             }.padding(.top, 10)
@@ -134,6 +142,17 @@ struct PangguaiWalletView: View {
             }.campusCard()
         }
         Text("最近 20 条 · 金额为现金实付 · " + updated(store.snapshot.ordersUpdatedAt)).font(.caption).foregroundStyle(CampusTheme.muted)
+        if let water = store.snapshot.water, water.isLocallyArchived {
+            DisclosureGroup("本机接水记录") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(water.deviceName + " · " + water.outlet).font(.headline)
+                    Text("移出于 " + updated(water.updatedAt)).font(.caption)
+                    if let number = water.orderNo { Text("订单 " + number).font(.caption).textSelection(.enabled) }
+                    Text("已按你的确认移出本机记录，实际费用请核对消费明细或官方账单。")
+                        .font(.caption).foregroundStyle(CampusTheme.muted)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.campusCard()
+        }
     }
     private func deviceCard(_ d: PGDevice) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -187,7 +206,7 @@ struct PangguaiWalletView: View {
     }
     private func laundrySession(_ s: PGLaundrySession) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack { Text(s.deviceName + " · " + s.program).font(.caption); Spacer(); queryButton }
+            HStack { Text(s.deviceName + " · " + s.program).font(.caption); Spacer(); queryButton(water: false) }
             Text(s.title).font(.title3.bold())
             Text("应付 ¥" + PangguaiProtocol.amount(s.amount))
             if s.phase == "running", let end = s.expectedEnd { Text("预计完成 " + updated(end) + "，以设备状态为准。").font(.caption) }
@@ -203,11 +222,11 @@ struct PangguaiWalletView: View {
     }
     private func waterSession(_ s: PGWaterSession) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack { Text(s.deviceName + " · " + s.outlet).font(.caption); Spacer(); queryButton }
+            HStack { Text(s.deviceName + " · " + s.outlet).font(.caption); Spacer(); queryButton(water: true) }
             Text(s.title).font(.title3.bold())
             if s.phase == "settled" { Text("本次实付 ¥" + PangguaiProtocol.amount(s.amount)).font(.title2) }
             if ["using", "ending"].contains(s.phase) {
-                if s.remoteEnd && !s.endSent { Button("结束接水") { confirmation = .endWater(s.id) }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked) }
+                if s.remoteEnd && !s.endSent && s.orderNo != nil && s.error != .waterOwnership { Button("结束接水") { confirmation = .endWater(s.id) }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked) }
                 notice(s.endSent ? "已请求结束，尚待设备确认；仍在出水请立即按机身「结算」。":"接完请按机身「结算」。暂停请使用机身按钮。")
             }
             if s.phase == "starting" { notice("尚未确认启动，不要重复扫码开水。请查看机身状态。") }
@@ -215,7 +234,7 @@ struct PangguaiWalletView: View {
             if s.phase == "closed_unknown" { Text("旧记录已移出，未确认账单仍需在最近消费或官方端核对。").font(.caption) }
             if s.endBasis == "session_closed" { notice("平台不再返回本次会话。若仍在出水，请立即按机身「结算」。") }
             if ["ended", "settling"].contains(s.phase), !s.settleSent { Button("生成并核对结算账单") { Task { await store.prepareWaterSettlement(sessionID: s.id) } }.buttonStyle(.bordered).disabled(blocked) }
-            if !s.terminal { Button("已在机身结算，恢复扫码") { confirmation = .physicalWater(s.id) }.disabled(blocked) }
+            if s.canArchiveAfterStop { Button("已在机身结算，恢复扫码") { confirmation = .physicalWater(s.id) }.disabled(store.busy) }
             if let number = s.orderNo { Text("订单 " + number).font(.caption).textSelection(.enabled) }
             Text(s.paymentName + " · 查询于 " + updated(s.updatedAt)).font(.caption).foregroundStyle(CampusTheme.muted)
         }.campusCard()
@@ -230,7 +249,7 @@ struct PangguaiWalletView: View {
             Button("取消") { store.settlementQuote = nil }.disabled(store.busy)
         }.campusCard()
     }
-    private var queryButton: some View { Button("查询状态") { pollFailures = 0; Task { await store.pollSessions() } }.font(.subheadline).disabled(blocked) }
+    private func queryButton(water: Bool) -> some View { Button("查询状态") { pollFailures = 0; Task { await store.pollSessions(laundry: !water, water: water) } }.font(.subheadline).disabled(blocked) }
     private func notice(_ text: String) -> some View { Text(text).font(.subheadline).foregroundStyle(CampusTheme.text).frame(maxWidth: .infinity, alignment: .leading).padding(12).background(CampusTheme.tint, in: RoundedRectangle(cornerRadius: 12)).accessibilityAddTraits(.isStaticText) }
     private func updated(_ date: Date?) -> String { date.map { CampusTheme.date($0, format:"MM-dd HH:mm") } ?? "尚未更新" }
     private func alert(_ action: PGConfirmation) -> Alert {
@@ -242,7 +261,7 @@ struct PangguaiWalletView: View {
             return Alert(title: Text("打开官方 \(name)？"), message: Text("\(store.maskedPhone.isEmpty ? "":("当前账户 " + store.maskedPhone + "。"))将打开支付宝胖乖小程序，请核对官方登录账户、商户和金额后自行确认。此操作不会提交付款。"), primaryButton: .default(Text("打开官方端")) { launchOfficial(merchant: merchant) }, secondaryButton: .cancel())
         case .cancelLaundry(let id): return Alert(title: Text("取消这笔未完成付款的订单？"), message: Text("将重新核对原订单；是否取消成功以平台返回为准。"), primaryButton: .destructive(Text("确认取消订单")) { Task { await store.cancelLaundry(confirmedSessionID: id) } }, secondaryButton: .cancel(Text("保留订单")))
         case .endWater(let id): return Alert(title: Text("结束本次接水？"), message: Text("将对当前设备发送一次结束命令，请确认杯子和机身状态。未停止时立即按机身「结算」。"), primaryButton: .default(Text("确认结束")) { Task { await store.endWater(confirmedSessionID: id) } }, secondaryButton: .cancel())
-        case .physicalWater(let id): return Alert(title: Text("已在机身结算并停止出水？"), message: Text("先确认机身已经停止。接下来仅核对设备记录，不发送结束或付款命令；账单仍需核对。"), primaryButton: .default(Text("确认已停止，核对设备")) { Task { await store.confirmPhysicalWaterEnd(sessionID: id) } }, secondaryButton: .cancel())
+        case .physicalWater(let id): return Alert(title: Text("已在机身结算并停止出水？"), message: Text("请先按机身「结算」并确认已经停水。恢复后可重新扫码，费用请在「最近消费」核对。"), primaryButton: .default(Text("机身已停止，恢复扫码")) { store.archiveWaterAfterConfirmedStop(sessionID: id) }, secondaryButton: .cancel())
         }
     }
     private func launchOfficial(merchant: String?) {
@@ -284,7 +303,7 @@ private struct PangguaiLoginView: View {
     @State private var code = ""
     @State private var consent = false
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("连接胖乖生活") {
                     TextField("胖乖手机号", text: $phone).keyboardType(.phonePad).textContentType(.telephoneNumber).privacySensitive()

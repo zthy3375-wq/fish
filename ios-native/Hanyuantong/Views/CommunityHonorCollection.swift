@@ -1,21 +1,11 @@
 import SwiftUI
 
-struct CampusIdentityBadge: Codable, Equatable {
-    let code: String
-}
-
 struct CampusWornBadge: Codable, Equatable, Identifiable {
     let id: String
     let code: String
     let name: String
     let rarity: String
     let title: String?
-}
-
-struct CampusHonorIdentity: Codable, Equatable {
-    let official: CampusIdentityBadge?
-    let worn: CampusIdentityBadge?
-    let collection: CampusWornBadge?
 }
 
 struct CampusHonorItem: Codable, Identifiable, Equatable {
@@ -29,6 +19,17 @@ struct CampusHonorItem: Codable, Identifiable, Equatable {
     let publicHidden: Bool
     let memberId: String?
     let nickname: String?
+    var displayKind: String? = nil
+    private var definitionCode: String {
+        code.replacingOccurrences(of: "-[0-9]{4}$", with: "", options: .regularExpression)
+    }
+    private static let retired: Set<String> = ["bug-hunter", "architect", "first-feature", "gold-creator", "developer-noticed", "welcome-guide", "graduation-keepsake"]
+    private static let achievements: Set<String> = ["first-hundred", "campus-observer", "good-company", "answer-guide", "campus-photographer", "community-classic", "landmark-post", "hundred-likes", "full-page", "archivist", "before-dawn", "world-lines", "crossed-paths", "no-island"]
+    var retiredAchievement: Bool { Self.retired.contains(definitionCode) }
+    var appearsInAchievementHall: Bool {
+        let isAchievement = displayKind.map { $0 == "achievement" } ?? (category == "hidden" || retiredAchievement || Self.achievements.contains(definitionCode))
+        return isAchievement && (awardId != nil || (category != "hidden" && !retiredAchievement))
+    }
     var archiveId: String { awardId ?? id }
     var earned: Bool { awardId != nil || memberId != nil }
     var caption: String { year.map { String($0) + " · " + name } ?? name }
@@ -36,14 +37,17 @@ struct CampusHonorItem: Codable, Identifiable, Equatable {
 
 struct CampusCollectionProfile: Codable {
     let id: String, nickname: String
-    let items: [CampusHonorItem]
-    let badges: CampusHonorIdentity
+    var items: [CampusHonorItem]
+    let badges: MemberBadges
     let identities: [String]
     let customTitle: String?
     let useTitle: Bool
     let total: Int
     let rarities: [String: Int]
     let unseen: [String]
+    let layoutVersion: Int?
+    let showcase: [String]?
+    let baseAwards: [String: String]?
     var legacyCount: Int {
         if let code = badges.official?.code { return Set(identities + [code]).count }
         return identities.count
@@ -52,7 +56,9 @@ struct CampusCollectionProfile: Codable {
 
 struct CampusIdentityUpdate: Codable {
     let id: String
-    let badges: CampusHonorIdentity
+    let badges: MemberBadges
+    let showcase: [String]?
+    let collectionShowcase: [CampusHonorItem]?
 }
 
 struct CampusHonorRoute: Identifiable {
@@ -69,10 +75,10 @@ let campusHonorCategories: [CampusHonorOption] = [.init("identity","身份"),.in
 let campusHonorRarities: [CampusHonorOption] = [.init("common","普通"),.init("fine","精良"),.init("rare","稀有"),.init("epic","史诗"),.init("legendary","传说")]
 
 struct CampusHonorByline: View {
-    var badges: CampusHonorIdentity?
+    var badges: MemberBadges?
     var body: some View {
         HStack(spacing: 5) {
-            if let role = badges?.official, let name = campusIdentityNames[role.code] {
+            if let role = badges?.official, ["developer", "moderator"].contains(role.code), let name = campusIdentityNames[role.code] {
                 Label(name, systemImage: role.code == "developer" ? "crown" : "shield")
                     .foregroundStyle(role.code == "developer" ? Color.orange : .blue)
             }
@@ -82,9 +88,10 @@ struct CampusHonorByline: View {
                     .foregroundStyle(badge.rarity == "legendary" || badge.rarity == "epic" ? Color.orange : .purple)
                     .accessibilityLabel(badge.name)
             } else if let worn = badges?.worn, let name = campusIdentityNames[worn.code] {
-                Label(name, systemImage: "seal").foregroundStyle(.purple).lineLimit(1)
+                let style = HonorByline.style(worn.code)
+                Label(style.0, systemImage: style.1).foregroundStyle(style.2).lineLimit(1).accessibilityLabel(name)
             }
-        }.font(.system(size: 10, weight: .semibold))
+        }.font(.system(size: 11, weight: .semibold))
     }
 }
 
@@ -101,7 +108,7 @@ private struct CampusMedalShape: Shape {
     }
 }
 
-private struct CampusMedal: View {
+private struct CommunityMedallion: View {
     let item: CampusHonorItem
     var size: CGFloat = 58
     private var tint: Color {
@@ -234,7 +241,7 @@ struct CampusHonorCollectionView: View {
             ForEach(shown) { item in
                 Button { show(item) } label: {
                     VStack(spacing: 5) {
-                        CampusMedal(item: item)
+                        CommunityMedallion(item: item)
                         Text(item.name).font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2)
                         Text(item.year.map { String($0) + " · " } ?? "").font(.caption2) +
                         Text(campusHonorRarities.first { $0.id == item.rarity }?.label ?? "").font(.caption2)
@@ -249,7 +256,7 @@ struct CampusHonorCollectionView: View {
             ForEach(shown, id: \.archiveId) { item in
                 Button { show(item) } label: {
                     HStack {
-                        CampusMedal(item: item, size: 39)
+                        CommunityMedallion(item: item, size: 39)
                         VStack(alignment: .leading) { Text(item.nickname ?? "").font(.subheadline.weight(.semibold)); Text(item.caption).font(.caption).foregroundStyle(.secondary) }
                         Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
                     }.padding(8).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
@@ -260,7 +267,7 @@ struct CampusHonorCollectionView: View {
     private func detail(_ item: CampusHonorItem) -> some View {
         ScrollView {
             VStack(spacing: 11) {
-                CampusMedal(item: item, size: 91).scaleEffect(reveal ? 1 : 0.77).opacity(reveal ? 1 : 0.2)
+                CommunityMedallion(item: item, size: 91).scaleEffect(reveal ? 1 : 0.77).opacity(reveal ? 1 : 0.2)
                 if unlocked == item.awardId && item.awardId != nil { Text("新荣誉已获得").font(.subheadline.weight(.semibold)).foregroundStyle(.orange) }
                 Text(item.caption).font(.title2.weight(.semibold))
                 if let nickname = item.nickname { Text("授予 " + nickname).font(.subheadline) }
