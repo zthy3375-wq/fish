@@ -98,9 +98,13 @@ final class HonorParityUITests:XCTestCase {
         capture("quick-reply-entry", app)
         entry.tap()
 
-        let input = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", "community-reply-input", "你的回复")).matching(NSPredicate(format: "elementType == %d OR elementType == %d", XCUIElement.ElementType.textView.rawValue, XCUIElement.ElementType.textField.rawValue)).firstMatch
+        let replyInput = NSPredicate(format: "identifier == %@ OR label == %@", "community-reply-input", "你的回复")
+        let textView = app.textViews.matching(replyInput).firstMatch
+        let textField = app.textFields.matching(replyInput).firstMatch
+        let inputReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in textView.exists || textField.exists }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [inputReady], timeout: 5), .completed)
+        let input = textView.exists ? textView : textField
         let submit = app.buttons["发布回复"]
-        XCTAssertTrue(input.waitForExistence(timeout: 5))
         XCTAssertFalse(submit.isEnabled)
         XCTAssertTrue(submit.isHittable)
         XCTAssertTrue(app.buttons["添加评论图片"].isHittable)

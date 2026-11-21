@@ -11,6 +11,7 @@ struct TreeholeView: View {
     @State private var routes: [TreeholeRouteFrame] = []
     @State private var bio = ""
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage("medal.reduce") private var localReduceMotion = false
     private var reduceMotion: Bool { systemReduceMotion || localReduceMotion }
     @State private var pageOffset: CGFloat = 0
@@ -83,6 +84,7 @@ struct TreeholeView: View {
     var body: some View {
         ScrollViewReader { proxy in
             lifecycle(scrolling(proxy))
+                .blur(radius: replyOverlayVisible && !reduceTransparency ? 2.5 : 0)
                 .allowsHitTesting(!replyOverlayVisible)
                 .accessibilityHidden(replyOverlayVisible)
                 .overlay(alignment: .top) {
@@ -855,7 +857,7 @@ struct TreeholeView: View {
             }.disabled(post.locked).accessibilityIdentifier("community-quick-reply")
             Button { tree.react(post, kind: "like") } label: { barAction(post.likeCount > 0 ? "\(post.likeCount)" : "点赞", icon: post.liked ? "heart.fill" : "heart") }.modifier(ReactionFeedback(active: post.liked)).foregroundStyle(post.liked ? Color(hex: 0xc45c74) : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":like")).accessibilityLabel(post.liked ? "取消点赞" : "点赞")
             Button { tree.react(post, kind: "save") } label: { barAction(post.saved ? "已收藏" : "收藏", icon: post.saved ? "bookmark.fill" : "bookmark") }.modifier(ReactionFeedback(active: post.saved)).foregroundStyle(post.saved ? TreeholeTheme.primary : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":save")).accessibilityLabel(post.saved ? "取消收藏" : "收藏")
-            Button(action: showComments) { barAction(post.commentCount > 0 ? "\(post.commentCount)" : "评论", icon: "bubble") }.foregroundStyle(TreeholeTheme.muted).accessibilityLabel("查看评论")
+            Button(action: showComments) { barAction(post.commentCount > 0 ? "\(post.commentCount)" : "评论", icon: "bubble.right") }.foregroundStyle(TreeholeTheme.muted).accessibilityLabel("查看评论")
         }.buttonStyle(.plain).padding(.horizontal, 16).padding(.vertical, 8).frame(maxWidth: 680)
             .frame(maxWidth: .infinity).background(TreeholeTheme.surface)
             .overlay(alignment: .top) { Divider() }
@@ -938,7 +940,8 @@ struct TreeholeView: View {
             }
             CampusMultilineField("说说你的想法…", text: $replyText, minimum: 4, maximum: 5)
                 .focused($replyFocused).font(.body).padding(.vertical, 8)
-                .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
+                .frame(maxWidth: .infinity, minHeight: 122, alignment: .topLeading)
+                .background(replyFocused ? CampusTheme.background : .clear)
                 .accessibilityLabel("你的回复").accessibilityIdentifier("community-reply-input")
                 .onChange(of: replyText) { if $0.utf16.count > TreeholePresentation.replyLimit { replyText = TreeholePresentation.boundedReply($0) } }
                 .disabled(tree.busy)
