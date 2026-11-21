@@ -322,7 +322,9 @@ struct TreeholeView: View {
                 HStack {
                     Spacer(minLength: 0)
                     Text(auth == "login" ? "登录树洞" : auth == "register" ? "创建账号" : "重设密码并登录")
-                    Image(systemName: "chevron.right").font(.caption).accessibilityHidden(true)
+                        .foregroundColor(CampusTheme.onPrimary)
+                    Image(systemName: "chevron.right").font(.caption)
+                        .foregroundColor(CampusTheme.onPrimary).accessibilityHidden(true)
                     Spacer(minLength: 0)
                 }.font(.subheadline.weight(.semibold)).frame(minHeight: 36)
             }.buttonStyle(.borderedProminent).tint(TreeholeTheme.primary)
