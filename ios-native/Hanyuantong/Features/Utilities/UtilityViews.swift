@@ -106,7 +106,8 @@ struct NativeReleaseHistoryView: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 Text("邯院通 Android 历史版本记录")
                     .font(.footnote).foregroundStyle(CampusTheme.muted)
-                ForEach(entries, id: \.version) { entry in
+                ForEach(entries.indices, id: \.self) { index in
+                    let entry = entries[index]
                     VStack(alignment: .leading, spacing: 7) {
                         Text(entry.version).font(.headline)
                         Text(entry.note).font(.subheadline)
