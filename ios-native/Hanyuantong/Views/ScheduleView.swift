@@ -2,9 +2,11 @@ import SwiftUI
 
 struct ScheduleView: View {
     @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var achievements: CampusAchievementStore
     @State private var mode = 0
     @State private var adding = false
     @State private var managingPersonalSchedule = false
+    @State private var visitedFirstWeek = false
     private var days: [Date] {
         let calendar = CampusTheme.calendar
         let weekday = (calendar.component(.weekday, from: store.selectedDate) + 5) % 7
@@ -31,7 +33,7 @@ struct ScheduleView: View {
                 }
                 HStack(spacing: 4) {
                     ForEach(days, id: \.self) { date in
-                        Button { store.selectedDate = date } label: {
+                        Button { visit(date) } label: {
                             VStack(spacing: 9) { Text(CampusTheme.date(date, format: "EE")).font(.caption2); Text(CampusTheme.date(date, format: "d")).font(.subheadline.weight(.semibold)); Circle().fill(CampusTheme.calendar.isDate(date, inSameDayAs: Date()) ? CampusTheme.primary : .clear).frame(width: 4, height: 4) }.frame(maxWidth: .infinity).padding(.vertical, 10).background(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? CampusTheme.tint : .clear, in: RoundedRectangle(cornerRadius: 12))
                         }.accessibilityLabel(CampusTheme.date(date)).accessibilityAddTraits(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? .isSelected : [])
                     }
@@ -73,7 +75,19 @@ struct ScheduleView: View {
     private var weekList: some View {
         TimetableGrid(days: days, courses: days.map { store.courses(on: $0) })
     }
-    private func shift(_ amount: Int) { if let date = CampusTheme.calendar.date(byAdding: .day, value: amount, to: store.selectedDate) { store.selectedDate = date } }
+    private func shift(_ amount: Int) {
+        if let date = CampusTheme.calendar.date(byAdding: .day, value: amount, to: store.selectedDate) { visit(date) }
+    }
+    private func visit(_ date: Date) {
+        let targetWeek = store.week(for: date)
+        let currentWeek = store.week(for: Date())
+        if targetWeek == 1 && currentWeek > 1 { visitedFirstWeek = true }
+        else if visitedFirstWeek && targetWeek == currentWeek {
+            achievements.record("timewalk"); visitedFirstWeek = false
+        }
+        store.selectedDate = date
+        if !store.courses.isEmpty && store.courses(on: date).isEmpty { achievements.record("freeday") }
+    }
 }
 
 /// A shared minute axis keeps free periods and simultaneous classes visible.
