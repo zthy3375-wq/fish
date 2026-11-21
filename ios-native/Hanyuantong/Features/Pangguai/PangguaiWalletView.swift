@@ -4,6 +4,7 @@ import UIKit
 @MainActor
 struct PangguaiWalletView: View {
     @StateObject private var store: PangguaiStore
+    @EnvironmentObject private var achievements: CampusAchievementStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     @State private var loginPresented = false
@@ -40,7 +41,7 @@ struct PangguaiWalletView: View {
                 Button { confirmation = .official(nil) } label: { Label("打开支付宝胖乖生活", systemImage: "arrow.up.right.square") }.buttonStyle(.bordered)
                 Text("充值、支付宝付款、签约和蓝牙设备请在官方端完成。打开或返回官方端不代表支付成功。").font(.caption).foregroundStyle(CampusTheme.muted)
             }.padding(16)
-        }.background(CampusTheme.background).navigationTitle("胖乖生活").navigationBarTitleDisplayMode(.inline).tint(CampusTheme.primary)
+        }.background(CampusTheme.background).onAppear { achievements.record("laundry") }.navigationTitle("胖乖生活").navigationBarTitleDisplayMode(.inline).tint(CampusTheme.primary)
             .sheet(isPresented: $loginPresented) { PangguaiLoginView(store: store) }
             .sheet(isPresented: $scannerPresented) { PangguaiScannerView { code in Task { await store.readDevice(code) } } }
             .alert(item: $confirmation) { item in alert(item) }
