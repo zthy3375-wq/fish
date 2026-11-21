@@ -1,7 +1,7 @@
 import XCTest
 
 final class HonorParityUITests:XCTestCase {
-    func testFiveTabsAndCollectionAcrossLaunches() throws {
+    func test01FiveTabsAndCollectionAcrossLaunches() throws {
         continueAfterFailure=false
         let app=XCUIApplication()
         app.launch()

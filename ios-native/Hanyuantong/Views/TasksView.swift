@@ -144,8 +144,9 @@ struct TasksView: View {
                         DiscoverySurface("emptyfish", label: "清单里的小金鱼") { CampusHeroFish().frame(width: 36, height: 25) }
                     } else { Image(systemName: "checkmark").foregroundStyle(CampusTheme.muted) }
                     Text(filter.search.isEmpty ? "这里暂时没有任务" : "没有匹配任务").font(.subheadline.weight(.semibold))
-                    Text("在下方输入标题即可添加。").font(.caption).foregroundStyle(CampusTheme.muted)
-                }.frame(maxWidth: .infinity).padding(.vertical, 46).listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    Text("在下方输入标题即可添加，也可以把学习通作业安排到今天。")
+                        .font(.caption).multilineTextAlignment(.center).foregroundStyle(CampusTheme.muted)
+                }.frame(maxWidth: .infinity).padding(.horizontal, 28).padding(.vertical, 62).listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
             ForEach(groups) { group in
                 Section(group.title) {

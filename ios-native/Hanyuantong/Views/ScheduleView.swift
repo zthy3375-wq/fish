@@ -40,7 +40,7 @@ struct ScheduleView: View {
                     Button { managingPersonalSchedule = true } label: {
                         Label("管理个人课程", systemImage: "chevron.right").labelStyle(TitleThenIconLabel())
                             .frame(minHeight: 44)
-                    }.accessibilityIdentifier("manage-personal-schedule")
+                    }.foregroundStyle(CampusTheme.primary).accessibilityIdentifier("manage-personal-schedule")
                 }.font(.caption)
                 weekNavigation
                 if mode == 1 { HStack(spacing: 4) {
@@ -133,7 +133,7 @@ struct ScheduleView: View {
             }.font(.caption).foregroundStyle(CampusTheme.muted)
                 .padding(12).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 12))
         } label: {
-            Text("教学周不对？校准本周").font(.caption).frame(minHeight: 44)
+            Text("教学周不对？校准本周").font(.caption).foregroundStyle(CampusTheme.primary).frame(minHeight: 44)
         }.padding(.horizontal, 6)
             .onChange(of: showingCalibration) { opened in
                 if opened { calibrationWeek = boundedWeek(for: Date()); calibrationMessage = nil }
@@ -144,12 +144,12 @@ struct ScheduleView: View {
         HStack {
             Button(comfortable ? "舒适阅读" : "整周总览") { comfortable.toggle() }
                 .accessibilityAddTraits(comfortable ? .isSelected : [])
-                .frame(minHeight: 44)
+                .foregroundStyle(CampusTheme.primary).frame(minHeight: 44)
             Spacer(minLength: 6)
             Picker("课表视图", selection: $mode) { Text("日视图").tag(1); Text("周视图").tag(0) }
                 .pickerStyle(.segmented).frame(maxWidth: 138)
             Spacer(minLength: 6)
-            Button("回到本周", action: goToCurrentWeek).frame(minHeight: 44)
+            Button("回到本周", action: goToCurrentWeek).foregroundStyle(CampusTheme.primary).frame(minHeight: 44)
         }.font(.caption)
     }
 

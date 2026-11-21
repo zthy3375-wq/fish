@@ -116,7 +116,7 @@ struct HomeView: View {
                         else { store.selectedTab = .profile }
                     } label: {
                         Label(canOpenSchedule ? "打开课表" : "连接学校", systemImage: "chevron.right")
-                            .labelStyle(TitleThenIconLabel()).font(.subheadline).frame(minHeight: 44)
+                            .labelStyle(TitleThenIconLabel()).font(.subheadline).foregroundStyle(CampusTheme.primary).frame(minHeight: 44)
                     }.disabled(store.isBusy && !canOpenSchedule)
                 }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                     .background(CampusTheme.tint)
@@ -131,8 +131,11 @@ struct HomeView: View {
                     }.accessibilityValue(timelineOpen ? "已展开" : "已收起")
                 }
                 Spacer()
-                Button("查看课表") { store.selectedDate = now; store.selectedTab = .schedule }
-                    .accessibilityIdentifier("home-open-schedule")
+                Button {
+                    store.selectedDate = now; store.selectedTab = .schedule
+                } label: {
+                    Label("查看课表", systemImage: "chevron.right").labelStyle(TitleThenIconLabel())
+                }.foregroundStyle(CampusTheme.primary).accessibilityIdentifier("home-open-schedule")
             }.font(.subheadline).frame(minHeight: 44).padding(.horizontal, 14)
             if timelineOpen {
                 ForEach(today) { course in
@@ -144,11 +147,11 @@ struct HomeView: View {
             Divider()
             HStack(spacing: 0) {
                 NavigationLink { LearningCenterView(store: learning) } label: {
-                    Label("学习通", systemImage: "books.vertical").frame(maxWidth: .infinity, minHeight: 44)
+                    studyShortcut("学习通", symbol: "books.vertical")
                 }
                 Divider().frame(height: 20)
                 NavigationLink { AcademicRecordsView() } label: {
-                    Label("成绩与学业", systemImage: "graduationcap").frame(maxWidth: .infinity, minHeight: 44)
+                    studyShortcut("成绩与学业", symbol: "chart.bar.xaxis")
                 }
             }.font(.subheadline.weight(.medium))
         }
@@ -271,6 +274,15 @@ struct HomeView: View {
             }.foregroundStyle(ink).buttonStyle(CampusPressStyle()).clipped()
         }.frame(height: height)
     }
+    private func studyShortcut(_ title: String, symbol: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: symbol).foregroundStyle(CampusTheme.primary).accessibilityHidden(true)
+            Text(title)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CampusTheme.muted).accessibilityHidden(true)
+        }.padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+    }
+
     private var teachingWeek: String {
         let week = store.week(for: now)
         return (1...store.scheduleWeekCount).contains(week) ? "第 \(week) 教学周" : "学期外"

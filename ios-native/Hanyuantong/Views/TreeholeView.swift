@@ -266,29 +266,29 @@ struct TreeholeView: View {
 
     private var authWelcome: some View {
         let headline = auth == "login" ? "说说校园里的那些事" : auth == "register" ? "遇见校园里的同频人" : "把账号找回来"
-        return VStack(spacing: 9) {
+        return VStack(spacing: 12) {
             ZStack {
                 Image(systemName: "bubble.left")
                     .font(.system(size: 36)).foregroundStyle(TreeholeTheme.primary)
                     .frame(width: 68, height: 60).background(CampusTheme.tint, in: RoundedRectangle(cornerRadius: 21))
                     .rotationEffect(.degrees(-10)).offset(x: -17, y: -3)
-                Image(systemName: "theatermask")
-                    .font(.system(size: 25)).foregroundStyle(TreeholeTheme.primary)
-                    .frame(width: 48, height: 43).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 15))
-                    .overlay { RoundedRectangle(cornerRadius: 15).strokeBorder(CampusTheme.border) }
+                Image(systemName: "theatermasks")
+                    .font(.system(size: 23)).foregroundStyle(CampusTheme.adaptive(light: 0x396951, dark: 0xB8D2C2))
+                    .frame(width: 48, height: 43).background(CampusTheme.walletGreen, in: RoundedRectangle(cornerRadius: 15))
                     .rotationEffect(.degrees(10)).offset(x: 23, y: 13)
-                Image(systemName: "sparkles").font(.title3).foregroundStyle(TreeholeTheme.primary)
+                Image(systemName: "sparkles").font(.title3)
+                    .foregroundStyle(CampusTheme.adaptive(light: 0x93662D, dark: 0xE6BE82))
                     .offset(x: 39, y: -25)
             }.frame(height: 84).accessibilityHidden(true)
             Text("邯院通 · 校园社区").font(.caption.weight(.semibold)).foregroundStyle(TreeholeTheme.primary)
             Text(headline).font(.title2.bold())
             Text("分享日常，认真倾听。\n用昵称相遇，也可以匿名说说心里话。")
                 .font(.subheadline).foregroundStyle(CampusTheme.muted)
-        }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 14)
+        }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 16).padding(.bottom, 8)
     }
 
     private var authForm: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 15) {
             HStack(alignment: .firstTextBaseline) {
                 Text(auth == "login" ? "登录邯院通" : auth == "register" ? "创建邯院通账号" : "找回邯院通账号")
                     .font(.headline)
@@ -296,19 +296,19 @@ struct TreeholeView: View {
                 Text("与教务账号独立").font(.caption).foregroundStyle(CampusTheme.muted)
             }
             authInput("登录账号") {
-                TextField("中文、数字、邮箱或其他账号", text: $username)
+                TextField("登录账号", text: $username, prompt: authPrompt("中文、数字、邮箱或其他账号"))
                     .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityLabel("登录账号")
             }
             if auth == "register" {
                 authInput("公开昵称") {
-                    TextField("2–20 个字符", text: $registrationNickname).textContentType(.nickname)
+                    TextField("公开昵称", text: $registrationNickname, prompt: authPrompt("2–20 个字符")).textContentType(.nickname)
                         .accessibilityLabel("公开昵称")
                 }
             }
             if auth == "recover" {
                 authInput("账号恢复码") {
-                    TextField("注册时保存的恢复码", text: $recoveryInput)
+                    TextField("账号恢复码", text: $recoveryInput, prompt: authPrompt("注册时保存的恢复码"))
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityLabel("账号恢复码")
                 }
@@ -325,24 +325,29 @@ struct TreeholeView: View {
                     Image(systemName: "chevron.right").font(.caption).accessibilityHidden(true)
                     Spacer(minLength: 0)
                 }.font(.subheadline.weight(.semibold)).frame(minHeight: 36)
-            }.buttonStyle(.borderedProminent).tint(TreeholeTheme.primary).disabled(!canAuthenticate)
+            }.buttonStyle(.borderedProminent).tint(TreeholeTheme.primary)
+                .disabled(tree.busy || (auth == "register" && !tree.registration))
             HStack {
                 if auth != "register" && tree.registration { Button("注册账号") { switchAuth(to: "register") }.frame(minHeight: 44) }
                 Spacer()
                 if auth == "login" { Button("忘记密码") { switchAuth(to: "recover") }.frame(minHeight: 44) }
                 else { Button("返回登录") { switchAuth(to: "login") }.frame(minHeight: 44) }
-            }.font(.subheadline)
+            }.font(.subheadline).foregroundStyle(TreeholeTheme.primary)
             if !tree.registration {
                 Text("新账号注册暂未开放，已有账号可以直接登录。").font(.caption).foregroundStyle(CampusTheme.muted)
             }
-        }.padding(14)
+        }.padding(16)
             .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))
             .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
     }
 
+    private func authPrompt(_ text: String) -> Text {
+        Text(text).foregroundColor(CampusTheme.muted)
+    }
+
     private func authInput<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.caption.weight(.semibold))
+            Text(label).font(.caption.weight(.semibold)).accessibilityHidden(true)
             content().font(.subheadline).padding(.horizontal, 10).frame(minHeight: 44)
                 .background(CampusTheme.background, in: RoundedRectangle(cornerRadius: 9))
                 .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
@@ -355,14 +360,14 @@ struct TreeholeView: View {
             HStack(spacing: 2) {
                 Group {
                     if showAuthPassword {
-                        TextField("至少 10 位", text: $password)
+                        TextField(label, text: $password, prompt: authPrompt("至少 10 位"))
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                     } else {
-                        SecureField("至少 10 位", text: $password)
+                        SecureField(label, text: $password, prompt: authPrompt("至少 10 位"))
                             .textContentType(auth == "login" ? .password : .newPassword)
                     }
                 }.accessibilityLabel(label).focused($authPasswordFocused)
-                    .onSubmit { if canAuthenticate { authenticate() } }
+                    .onSubmit(authenticate)
                 Button {
                     let wasFocused = authPasswordFocused
                     showAuthPassword.toggle()
@@ -380,13 +385,6 @@ struct TreeholeView: View {
         }
     }
 
-    private var canAuthenticate: Bool {
-        !tree.busy && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && password.utf16.count >= 10
-            && (auth != "register" || (tree.registration && (2...20).contains(registrationName.utf16.count)))
-            && (auth != "recover" || !recoveryInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-    }
-
     private func switchAuth(to mode: String) {
         authPasswordFocused = false
         showAuthPassword = false
@@ -396,7 +394,24 @@ struct TreeholeView: View {
     }
 
     private func authenticate() {
-        guard canAuthenticate else { return }
+        guard !tree.busy, auth != "register" || tree.registration else { return }
+        if username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            tree.message = "请填写登录账号。"
+            return
+        }
+        if auth == "register", !(2...20).contains(registrationName.utf16.count) {
+            tree.message = "公开昵称需为 2–20 个字符。"
+            return
+        }
+        if auth == "recover", recoveryInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            tree.message = "请填写账号恢复码。"
+            return
+        }
+        if password.utf16.count < 10 {
+            tree.message = "密码至少需要 10 位。"
+            authPasswordFocused = true
+            return
+        }
         authPasswordFocused = false
         let mode = auth
         tree.perform {

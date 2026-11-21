@@ -66,14 +66,16 @@ extension CampusDisplayTheme {
 @MainActor struct CampusAppearanceControls: View {
     @ObservedObject var store: DisplayPreferencesStore
     var inlineTheme = false
+    @Environment(\.dynamicTypeSize) private var typeSize
     let failed: (String) -> Void
 
     var body: some View {
         Group {
             if inlineTheme {
-                ViewThatFits(in: .horizontal) {
-                    HStack { themeLabel; Spacer(minLength: 8); themeButtons }
+                if typeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 8) { themeLabel; themeButtons }
+                } else {
+                    HStack(spacing: 6) { themeLabel; Spacer(minLength: 0); themeButtons }
                 }
             } else {
                 Picker("主题", selection: Binding(get: { store.preferences.theme }, set: setTheme)) {
@@ -105,8 +107,10 @@ extension CampusDisplayTheme {
             ForEach(CampusDisplayTheme.allCases) { theme in
                 let selected = theme == store.preferences.theme
                 Button { setTheme(theme) } label: {
-                    Label(theme.title, systemImage: theme == .system ? "display" : theme.symbol)
-                        .font(.caption)
+                    HStack(spacing: 4) {
+                        Image(systemName: theme == .system ? "display" : theme.symbol).accessibilityHidden(true)
+                        Text(theme.title)
+                    }.font(.caption)
                         .foregroundStyle(selected ? CampusTheme.primary : CampusTheme.muted)
                         .padding(.horizontal, 7).frame(minHeight: 38)
                         .background(selected ? CampusTheme.tint : .clear, in: RoundedRectangle(cornerRadius: 7))
