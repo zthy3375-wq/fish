@@ -70,7 +70,7 @@ enum TreeholeCategories {
     static func topics(_ category:String,boards:Bool) -> [(String,String)] {
         if category == "study" { return boards ? [("graduate","考研")] : [] }
         if category != "entertainment" { return [] }
-        return (boards ? [("reading","阅读"),("fitness","健身")] : []) + interests
+        return (boards ? [("reading","读书"),("fitness","健身")] : []) + interests
     }
     static func interestName(_ id: String?) -> String { (topics("study",boards:true) + topics("entertainment",boards:true)).first { $0.0 == id }?.1 ?? "" }
     static func filters(_ category: String, interest: String, enabled: Bool) -> [String: String] {

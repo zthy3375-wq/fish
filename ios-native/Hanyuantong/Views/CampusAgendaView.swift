@@ -218,10 +218,7 @@ struct SemesterCalendar:View {
     @EnvironmentObject var campus:CampusStore
     @Environment(\.dismiss) var dismiss
     private var start:Date { campus.isConnected ? campus.schoolSemesterStart : campus.semesterStart }
-    private var weeks:Int {
-        if campus.isConnected { return min(60,campus.courses.filter{$0.source == "school"}.flatMap(\.weeks).max() ?? 0) }
-        return min(60,campus.personalWeekCount)
-    }
+    private var weeks: Int { campus.scheduleWeekCount }
     var body:some View {
         List {
             Section("第一周周一") {

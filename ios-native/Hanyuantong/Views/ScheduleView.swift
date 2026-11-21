@@ -47,7 +47,7 @@ struct ScheduleView: View {
                     ForEach(days, id: \.self) { date in
                         Button { select(date,checkDay:true) } label: {
                             VStack(spacing: 9) { Text(CampusTheme.date(date, format: "EE")).font(.caption2); Text(CampusTheme.date(date, format: "d")).font(.subheadline.weight(.semibold)); Circle().fill(CampusTheme.calendar.isDate(date, inSameDayAs: Date()) ? CampusTheme.primary : .clear).frame(width: 4, height: 4) }.frame(maxWidth: .infinity).padding(.vertical, 10).background(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? CampusTheme.tint : .clear, in: RoundedRectangle(cornerRadius: 12))
-                        }.accessibilityLabel(CampusTheme.date(date)).accessibilityAddTraits(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? .isSelected : [])
+                        }.accessibilityIdentifier("schedule-weekday-\(ScheduleMath.weekday(on: date))").accessibilityLabel(CampusTheme.date(date)).accessibilityAddTraits(CampusTheme.calendar.isDate(date, inSameDayAs: store.selectedDate) ? .isSelected : [])
                     }
                 }
                 }
@@ -72,11 +72,9 @@ struct ScheduleView: View {
                 .onChange(of: bounds.size.height) { viewportHeight = $0 }
         }).background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .overlay(alignment:.top) { if let surprise { Text(surprise == "freeday" ? "今天属于你自己。" : "回到本周了。").padding(10).background(.thinMaterial,in:Capsule()).allowsHitTesting(false) } }
-            .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; MedalJournal.shared.unlock(code); surprise=nil }
+            .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; if surprise == code { surprise=nil } }
+            .task(id: offlineScope) { offline.start(scope: offlineScope) }
             .onAppear {
-                if store.lastSynced != nil && store.courses.contains(where: { $0.source != "personal" }) {
-                    offline.start(scope: store.schoolMedalScope)
-                }
                 if store.selectedTab == .schedule { keepSelectionInTerm() }
             }
             .onChange(of: store.selectedTab) { tab in
@@ -99,6 +97,11 @@ struct ScheduleView: View {
             }.sheet(isPresented: $adding) { CourseEditorView() }
             .sheet(item: $cell) { CourseEditorView(preset: $0) }
             .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
+    }
+    private var offlineScope: String? {
+        guard store.selectedTab == .schedule, store.lastSynced != nil,
+              store.courses.contains(where: { $0.source != "personal" }) else { return nil }
+        return store.schoolMedalScope
     }
     private var schoolTermPicker: some View {
         HStack {
@@ -205,7 +208,9 @@ struct ScheduleView: View {
         if week != boundedWeek(for: store.selectedDate) { jump(to: boundedWeek(for: store.selectedDate)) }
     }
     private func resetTermSelection() {
+        firstWeekContext = nil
         goToCurrentWeek()
+        firstWeekContext = nil
         calibrationWeek = boundedWeek(for: Date())
         calibrationMessage = nil
     }
@@ -230,7 +235,7 @@ struct ScheduleView: View {
             guard !store.isConnected else { return }
             cell = ScheduleCell(date: date, slot: slot)
         }, editable: !store.isConnected) { date in
-            select(date, checkDay: false)
+            select(date, checkDay: true)
             mode = 1
         }
     }
@@ -239,10 +244,23 @@ struct ScheduleView: View {
         let week=store.week(for:date), today=store.week(for:Date())
         let previous=store.week(for:store.selectedDate)
         store.selectedDate=date
-        guard today > 0 && today <= store.scheduleWeekCount, !store.courses.isEmpty else { return }
-        if week == 1 && today > 1 && previous != 1 { firstWeekContext=start }
-        if week == today && previous != today && firstWeekContext == start { surprise="timewalk"; firstWeekContext=nil }
-        else if checkDay && week > 0 && week <= store.scheduleWeekCount && store.courses(on:date).isEmpty { mode=1; surprise="freeday" }
+        guard !store.isBusy, !store.courses.isEmpty else { return }
+        if !checkDay, (1...store.scheduleWeekCount).contains(today) {
+            if week == 1 && today > 1 && previous != 1 { firstWeekContext = start }
+            if week == today && previous != today && firstWeekContext == start {
+                MedalJournal.shared.unlock("timewalk")
+                surprise = "timewalk"; firstWeekContext = nil
+            }
+        }
+        if checkDay, (1...store.scheduleWeekCount).contains(week), store.courses(on: date).isEmpty {
+            let practiceThisWeek = store.practice.contains { item in
+                ScheduleMath.practiceMayOccur(item.weeks, week: week, limit: store.scheduleWeekCount)
+            }
+            if !practiceThisWeek {
+                MedalJournal.shared.unlock("freeday")
+                mode = 1; surprise = "freeday"
+            }
+        }
     }
 }
 

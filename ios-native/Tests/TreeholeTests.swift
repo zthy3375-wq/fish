@@ -139,8 +139,9 @@ final class TreeholeTests: XCTestCase {
         XCTAssertEqual(TreeholePresentation.date("2026-11-15T00:59:01Z", now: now), "刚刚")
         XCTAssertEqual(TreeholePresentation.date("2026-11-15T00:59:00Z", now: now), "1 分钟前")
         XCTAssertEqual(TreeholePresentation.date("2026-11-15T00:00:00.000Z", now: now), "1 小时前")
-        XCTAssertEqual(TreeholePresentation.date("2026-11-14T01:00:00Z", now: now), "11月14日 09:00")
-        XCTAssertEqual(TreeholePresentation.date("2026-11-15T02:00:00Z", now: now), "11月15日 10:00")
+        XCTAssertEqual(TreeholePresentation.date("2026-11-14T01:00:00Z", now: now), "11/14 09:00")
+        XCTAssertEqual(TreeholePresentation.date("2026-11-15T02:00:00Z", now: now), "11/15 10:00")
+        XCTAssertEqual(TreeholePresentation.date("2026-11-12T16:10:00Z", now: now), "11/13 00:10")
         XCTAssertEqual(TreeholePresentation.date("invalid", now: now), "时间未知")
     }
 
@@ -426,6 +427,8 @@ final class TreeholeTests: XCTestCase {
         await store.refreshUnread(); await store.refreshUnread()
         XCTAssertEqual(calls, 1); XCTAssertEqual(store.unreadCount, 7)
         instant = instant.addingTimeInterval(31); await store.refreshUnread()
+        XCTAssertEqual(calls, 1)
+        instant = instant.addingTimeInterval(150); await store.refreshUnread()
         XCTAssertEqual(calls, 2)
         await store.refreshUnread(force: true); XCTAssertEqual(calls, 3)
         store.clear(); store.user = member; await store.refreshUnread()

@@ -8,10 +8,10 @@ struct CampusMapView: View {
             Picker("校区", selection: $campus) { Text("东校区").tag(0); Text("西校区").tag(1) }.pickerStyle(.segmented).padding(.horizontal, 20)
             Text("双指缩放，拖动查看完整平面图").font(.caption).foregroundStyle(CampusTheme.muted)
             ZoomableCampusMap(imageName: campus == 0 ? "east-campus-plan" : "west-campus-plan").id(campus)
+                .accessibilityLabel(campus == 0 ? "东校区平面图，可双指缩放" : "西校区平面图，可双指缩放")
                 .overlay(alignment:.bottomTrailing) { if UIImage(named:campus == 0 ? "east-campus-plan" : "west-campus-plan") != nil {
                     DiscoverySurface("mapfish",label:"地图上的小金鱼") { Text("🐠").font(.caption) }.padding(18)
                 } }
-                .accessibilityLabel(campus == 0 ? "东校区平面图，可双指缩放" : "西校区平面图，可双指缩放")
         }.padding(.top, 12).background(CampusTheme.background)
             .navigationTitle("校园平面图").navigationBarTitleDisplayMode(.inline)
     }

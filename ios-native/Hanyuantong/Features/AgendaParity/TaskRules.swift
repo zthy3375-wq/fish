@@ -232,6 +232,17 @@ enum TaskRules {
         throw Failure("未找到有效的下次重复日期，请检查规则")
     }
 
+    static func stepsMedalEvidence(_ task: CampusTask) -> Date? {
+        guard task.completed, let completed = task.completedAt,
+              task.steps.filter(\.completed).count >= 2 else { return nil }
+        // Steps can be checked after the parent. The saved snapshot proves both conditions by this date.
+        return max(completed, task.updatedAt)
+    }
+
+    static func earnedStepsMedal(previous: CampusTask, saved: CampusTask) -> Bool {
+        previous.id == saved.id && stepsMedalEvidence(previous) == nil && stepsMedalEvidence(saved) != nil
+    }
+
     /// Idempotent completion and protected undo. Throws before the caller can replace persisted data.
     static func settingCompleted(_ tasks: [CampusTask], id: UUID, completed: Bool, now: Date = Date()) throws -> [CampusTask] {
         guard let index = tasks.firstIndex(where: { $0.id == id }) else { throw Failure("任务已不存在，请重新读取") }

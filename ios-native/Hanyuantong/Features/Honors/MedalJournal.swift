@@ -111,21 +111,20 @@ enum MedalDates {
         else { guard pinned(school:school,learning:learning).count<3 else{return}; selected.append(medal.code) }
         pins[key]=selected; defaults.set(pins,forKey:"campus.medal-pins.v1")
     }
-    func unlock(_ code: String, scope: String? = nil) {
+    func unlock(_ code: String, scope: String? = nil, at: Date = Date(), historical: Bool = false) {
         guard let medal = CampusMedal.byCode[code], medal.source != "community",
               let key = bucket(source:medal.source,scope:scope), stamp(medal, scope: scope) == nil else { return }
         if key == "device", let device {
             objectWillChange.send()
             let hadLife = device.date(for: "life") != nil
-            device.record(code)
-            guard device.date(for: code) != nil else { return }
+            guard device.record(code, at: at), !historical else { return }
             enqueue(medal)
             if code != "life", !hadLife, device.date(for: "life") != nil, let life = CampusMedal.byCode["life"] { enqueue(life) }
             return
         }
-        records[key,default:[:]][code] = Date()
+        records[key,default:[:]][code] = at
         defaults.set(records,forKey:"campus.medals.v1")
-        enqueue(medal)
+        if !historical { enqueue(medal) }
         if ["bath","laundry","map"].contains(code), ["bath","laundry","map"].allSatisfy({records[key]?[$0] != nil}) { unlock("life") }
     }
     // Account-bound delivery markers suppress duplicates on retries. They never confer an award.

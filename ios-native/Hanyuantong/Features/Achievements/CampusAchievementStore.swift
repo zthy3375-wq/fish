@@ -110,21 +110,30 @@ final class CampusAchievementStore: ObservableObject {
     @Published private(set) var journal = CampusAchievementJournal()
     @Published private(set) var error: String?
     private var persistence: CampusAchievementPersisting?
+    private var loaded = false
 
     init(persistence: CampusAchievementPersisting? = nil) {
+        self.persistence = persistence
+        _ = readablePersistence()
+    }
+
+    private func readablePersistence() -> CampusAchievementPersisting? {
+        if loaded { return persistence }
         do {
             let vault: CampusAchievementPersisting = try persistence ?? ProtectedAchievementPersistence()
             journal = try (vault.load() ?? CampusAchievementJournal()).validated()
-            self.persistence = vault
+            persistence = vault; loaded = true; error = nil
+            return vault
         } catch {
             self.error = CampusAchievementFailure.invalid.localizedDescription
+            return nil
         }
     }
 
     func date(for code: String) -> Date? { journal.stamps[code] }
 
     func importPreviousDeviceAwards(stamps: [String: Date], pins: [String]) -> Bool {
-        guard let persistence else { return false }
+        guard let persistence = readablePersistence() else { return false }
         let cutoff = Date().addingTimeInterval(86400)
         var next = journal
         for (code, date) in stamps where CampusAchievementCatalog.byCode[code]?.source == "device"
@@ -149,11 +158,11 @@ final class CampusAchievementStore: ObservableObject {
     }
 
     /// Save before updating the view. A read/save failure must never overwrite prior awards.
-    func record(_ code: String, at: Date = Date()) {
+    @discardableResult func record(_ code: String, at: Date = Date()) -> Bool {
         guard let definition = CampusAchievementCatalog.byCode[code],
-              definition.source == "device", journal.stamps[code] == nil,
+              definition.source == "device", let persistence = readablePersistence(), journal.stamps[code] == nil,
               at.timeIntervalSince1970 > 0, at <= Date().addingTimeInterval(86400),
-              let persistence else { return }
+              code != "life" || CampusAchievementCatalog.lifeCodes.isSubset(of: journal.stamps.keys) else { return false }
         var next = journal
         next.stamps[code] = at
         if CampusAchievementCatalog.lifeCodes.isSubset(of: Set(next.stamps.keys)),
@@ -163,13 +172,15 @@ final class CampusAchievementStore: ObservableObject {
         do {
             try persistence.save(try next.validated())
             journal = next; error = nil
+            return true
         } catch {
             self.error = "荣誉收藏保存失败，原有记录保持不变。"
+            return false
         }
     }
 
     func togglePin(_ code: String) {
-        guard journal.stamps[code] != nil, let persistence else { return }
+        guard let persistence = readablePersistence(), journal.stamps[code] != nil else { return }
         var next = journal
         if next.pins.contains(code) { next.pins.removeAll { $0 == code } }
         else {

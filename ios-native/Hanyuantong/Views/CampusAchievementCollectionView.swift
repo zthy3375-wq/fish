@@ -34,7 +34,6 @@ struct CampusAchievementCollectionView: View {
     @State private var showSettings = false
     @State private var communityHall: NativeHonorHall?
     @State private var communityCollection: CampusCollectionProfile?
-    @State private var communityItems: [CampusHonorItem] = []
     @State private var editingShowcase = false
     @State private var showcaseError: String?
     @State private var loadingCommunity = false
@@ -49,23 +48,24 @@ struct CampusAchievementCollectionView: View {
         let known = CampusAchievementCatalog.entries
         let extras: [CampusAchievement] = currentItems.compactMap { item in
             guard CampusAchievementCatalog.byCode[item.code] == nil,
-                  item.awardId != nil, item.category != "identity" else { return nil }
-            let category = item.archived ? "已停发" : item.category == "hidden" ? "隐藏" : "社区"
-            return CampusAchievement(item.code, item.name, category,
+                  item.appearsInAchievementHall else { return nil }
+            let category = item.retiredAchievement ? "已停发" : item.category == "hidden" ? "隐藏" : "社区"
+            return CampusAchievement(item.code, item.caption, category,
                                      ["common": "普通", "fine": "普通", "rare": "稀有",
                                       "epic": "史诗", "legendary": "传奇"][item.rarity] ?? "普通",
-                                     "community", "seal", item.criteria ?? "社区荣誉",
+                                     "community", CommunityAchievementPlaceholders.milestones.first { $0.code == item.code }?.symbol ?? "seal", item.criteria ?? "社区成就",
                                      item.story ?? item.criteria ?? "已获得的社区荣誉。")
         }
         let confirmed = Dictionary(grouping: extras, by: \.code).compactMap { $0.value.first }
-        let confirmedCodes = Set(confirmed.map(\.code))
-        let pendingMilestones = CommunityAchievementPlaceholders.milestones.filter { !confirmedCodes.contains($0.code) }
         let revealedHidden = confirmed.filter { $0.hidden }.count
         let hiddenPlaceholders: [CampusAchievement] = (0..<max(0, CommunityAchievementPlaceholders.hiddenCapacity - revealedHidden)).map { i in
             CampusAchievement("community-mystery-" + String(i), "隐藏成就", "隐藏", "稀有",
                               "community", "questionmark", "", "还没有发现的校园秘密。")
         }
-        return known + pendingMilestones + confirmed.sorted { $0.name < $1.name } + hiddenPlaceholders
+        let byCode = Dictionary(uniqueKeysWithValues: confirmed.map { ($0.code, $0) })
+        let milestones = CommunityAchievementPlaceholders.milestones.map { byCode[$0.code] ?? $0 }
+        let milestoneCodes = Set(milestones.map(\.code))
+        return known + milestones + confirmed.filter { !milestoneCodes.contains($0.code) }.sorted { $0.name < $1.name } + hiddenPlaceholders
     }
     private var activeEntries: [CampusAchievement] { entries.filter { $0.group != "已停发" } }
     private var active: [CampusAchievement] { group == "全部" ? activeEntries : entries.filter { $0.group == group } }
@@ -75,7 +75,7 @@ struct CampusAchievementCollectionView: View {
     }
     private var privatePins: [String] { journal.pinned(school: school.schoolMedalScope, learning: learning.cache.account) }
     private var publicPins: [String] { tree.user?.showcase ?? communityCollection?.showcase ?? communityHall?.showcase ?? [] }
-    private var currentItems: [CampusHonorItem] { communityCollection?.id == tree.user?.id ? communityItems : [] }
+    private var currentItems: [CampusHonorItem] { communityCollection?.id == tree.user?.id ? communityCollection?.items ?? [] : [] }
 
     var body: some View {
         ScrollView {
@@ -229,12 +229,31 @@ struct CampusAchievementCollectionView: View {
     private func state(_ item: CampusAchievement) -> String {
         if isEarned(item) { return "已解锁" }
         if item.source == "community" {
-            if communityHall?.id != tree.user?.id || communityHall == nil { return "待同步" }
+            let needsCatalog = CampusMedal.byCode[item.code] == nil
+            if needsCatalog {
+                guard let id = tree.user?.id, communityCollection?.id == id,
+                      item.hidden || currentItems.contains(where: { $0.code == item.code }) else { return "待同步" }
+            } else if communityHall == nil || communityHall?.id != tree.user?.id { return "待同步" }
             return item.hidden ? "尚未发现" : "未解锁"
         }
         if item.source == "school" && !school.isConnected { return "待连接" }
         if item.source == "learning" && !learning.connected { return "待连接" }
         return item.hidden ? "尚未发现" : "未解锁"
+    }
+    private func progressText(_ medal: CampusMedal) -> String {
+        let count: Int
+        if medal.code == "life" {
+            count = CampusAchievementCatalog.lifeCodes.filter { deviceAchievements.date(for: $0) != nil }.count
+        } else if medal.source == "community" {
+            guard let owner = tree.user?.id, communityHall?.id == owner,
+                  let metric = medal.metric, let value = communityHall?.progress?[metric] else { return "待账号同步" }
+            count = value
+        } else {
+            if medal.source == "school" && school.schoolMedalScope == nil { return "待连接" }
+            if medal.source == "learning" && !learning.connected { return "待连接" }
+            count = 0
+        }
+        return "\(min(medal.goal, max(0, count))) / \(medal.goal)"
     }
     private var communitySection: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -292,7 +311,7 @@ struct CampusAchievementCollectionView: View {
                         .background(isEarned(item) ? Color(hex: 0xEEE6FB) : Color(hex: 0xF1EFF3),
                                     in: RoundedRectangle(cornerRadius: 22))
                     Text(visibleName(item)).font(.title2.bold())
-                    Text(item.group + " · " + (isEarned(item) ? item.tier : "未解锁"))
+                    Text(item.group + " · " + (item.hidden && !isEarned(item) ? state(item) : item.tier + " · " + state(item)))
                         .font(.subheadline).foregroundStyle(CampusTheme.muted)
                     if !item.hidden || isEarned(item) {
                         Text(item.story).multilineTextAlignment(.center)
@@ -306,6 +325,10 @@ struct CampusAchievementCollectionView: View {
                     LabeledContent("收藏归属", value: ["device": "本机", "school": "当前教务连接",
                                                      "learning": "当前学习通账号", "community": "邯院通社区账号"][item.source] ?? "")
                     if let date = awardDate(item) { LabeledContent("获得记录", value: date) }
+                    else if !item.hidden, let medal = CampusMedal.byCode[item.code] {
+                        LabeledContent("当前进度", value: progressText(medal))
+                            .accessibilityIdentifier("achievement-progress")
+                    }
                     if item.source == "community", isEarned(item) {
                         communityShowcaseButton(item)
                     } else if isEarned(item), let medal = CampusMedal.byCode[item.code] {
@@ -381,19 +404,27 @@ struct CampusAchievementCollectionView: View {
         do {
             if tree.user == nil { try await tree.restoreGalleryIdentity() }
             guard let id = tree.user?.id, current == remoteGeneration, !Task.isCancelled else { return }
-            if communityHall?.id != id { communityHall = nil; communityCollection = nil; communityItems = [] }
-            if let storage = try? ProtectedStorage(),
-               let cached = try? storage.read("honors-" + id, as: NativeHonorHall.self), cached.id == id {
-                communityHall = cached
+            let storage = try? ProtectedStorage()
+            if communityHall?.id != id {
+                communityHall = nil
+                if let cached = try? storage?.read("honors-" + id, as: NativeHonorHall.self), cached.id == id {
+                    communityHall = cached
+                }
+            }
+            if communityCollection?.id != id {
+                communityCollection = nil
+                if let cached = try? storage?.read("achievement-collection-" + id, as: CampusCollectionProfile.self), cached.id == id {
+                    communityCollection = cached
+                }
             }
             let result = try await tree.api.request("honors.hall")
             guard current == remoteGeneration, tree.user?.id == id, !Task.isCancelled else { return }
             guard let hall = result.hall, hall.id == id else { throw TreeholeError(code: "invalid_response") }
             communityHall = hall
-            if let storage = try? ProtectedStorage() { try? storage.write(hall, name: "honors-" + id) }
+            try? storage?.write(hall, name: "honors-" + id)
             guard tree.honorCollectionEnabled || !tree.ready else { return }
             do {
-                let first = try await tree.loadHonorCollection(member: id, fresh: force)
+                var first = try await tree.loadHonorCollection(member: id, fresh: force)
                 var page = first.items
                 var items = Array(page.prefix(40))
                 while page.count > 40 {
@@ -402,8 +433,9 @@ struct CampusAchievementCollectionView: View {
                     items.append(contentsOf: page.prefix(40))
                 }
                 guard current == remoteGeneration, tree.user?.id == id, !Task.isCancelled else { return }
+                first.items = items
                 communityCollection = first
-                communityItems = items
+                try? storage?.write(first, name: "achievement-collection-" + id)
                 if let showcase = first.showcase {
                     tree.applyCollectionIdentity(.init(id: id, badges: first.badges, showcase: showcase, collectionShowcase: nil))
                 }
@@ -413,7 +445,9 @@ struct CampusAchievementCollectionView: View {
         } catch {
             guard current == remoteGeneration, !Task.isCancelled else { return }
             if (error as? TreeholeError)?.code == "session_expired" { tree.clear() }
-            communityError = "社区荣誉暂未同步。本机收藏及教务数据仍可查看。"
+            if let owner = tree.user?.id, communityCollection?.id == owner || communityHall?.id == owner {
+                communityError = "社区荣誉暂未更新，当前展示上次同步的记录。"
+            } else { communityError = "社区荣誉暂未同步。本机收藏及教务数据仍可查看。" }
         }
     }
 }

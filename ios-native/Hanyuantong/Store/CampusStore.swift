@@ -88,6 +88,7 @@ final class CampusStore: ObservableObject {
             }
             courses = personalCourses
             loadedPersonal = true
+            restoreTaskMedal()
             refreshReminders()
         } catch { message = "本机加密数据暂时无法读取。请解锁设备后重试；不会用空数据覆盖原记录。" }
     }
@@ -106,6 +107,14 @@ final class CampusStore: ObservableObject {
         guard let scope else { return }
         if let saved = try storage?.read("academic", as: AcademicSnapshot.self), saved.scope == scope {
             snapshot = saved; isConnected = true; apply(saved)
+            let journal = MedalJournal.shared
+            journal.unlock("identity", scope: scope, at: saved.updatedAt, historical: true)
+            if saved.courses?.isEmpty == false {
+                journal.unlock("schedule", scope: scope, at: saved.moduleUpdatedAt["timetable"] ?? saved.updatedAt, historical: true)
+            }
+            if saved.grades?.isEmpty == false {
+                journal.unlock("grade", scope: scope, at: saved.moduleUpdatedAt["grades"] ?? saved.updatedAt, historical: true)
+            }
         } else { try storage?.remove("academic") }
     }
 
@@ -307,14 +316,16 @@ final class CampusStore: ObservableObject {
             value.seriesOriginalID = previous.seriesOriginalID
             value.updatedAt = Date(); next[index] = value
         } else { value.updatedAt = Date(); next.append(value) }
+        let previous = tasks.first { $0.id == value.id }
         try commitPersonal(courses: personalCourses, tasks: next, semesterStart: semesterStart, schedule: personalSchedule)
+        if let previous, TaskRules.earnedStepsMedal(previous: previous, saved: value) { MedalJournal.shared.unlock("tasks") }
     }
     func toggleTask(_ id: UUID) {
         guard let current = tasks.first(where: { $0.id == id }) else { return }
         do {
             let next = try TaskRules.settingCompleted(tasks, id: id, completed: !current.completed)
             try commitPersonal(courses: personalCourses, tasks: next, semesterStart: semesterStart, schedule: personalSchedule)
-            if let done=next.first(where:{$0.id == id}), done.completed, done.originalID == nil, done.steps.count >= 2, done.steps.allSatisfy({$0.completed}) { MedalJournal.shared.unlock("tasks") }
+            if let done = next.first(where: { $0.id == id }), TaskRules.earnedStepsMedal(previous: current, saved: done) { MedalJournal.shared.unlock("tasks") }
         } catch { message = error.localizedDescription }
     }
     func addTask(title: String, date: Date) {
@@ -350,11 +361,18 @@ final class CampusStore: ObservableObject {
         let backup = PersonalBackup(courses: personalCourses, tasks: tasks, semesterStart: semesterStart, personalSchedule: personalSchedule)
         try backup.validate(); return backup
     }
+    private func restoreTaskMedal() {
+        let now = Date()
+        let verifiedAt = tasks.lazy.compactMap(TaskRules.stepsMedalEvidence).filter { $0 <= now }.min()
+        if let verifiedAt { MedalJournal.shared.unlock("tasks", at: verifiedAt, historical: true) }
+    }
+
     func restorePersonalBackup(_ backup: PersonalBackup) throws {
         try backup.validate()
         // A v1 snapshot can remain in legacy form if its dates/weeks cannot be migrated without changes.
         let state = try backup.personalSchedule?.validated()
         try commitPersonal(courses: backup.courses, tasks: backup.tasks, semesterStart: backup.semesterStart, schedule: state)
+        restoreTaskMedal()
     }
     func restoreAndroidSchedule(_ plan: AndroidScheduleImportPlan, semesterID: String) throws {
         var next = try plan.state.validated()
@@ -364,6 +382,7 @@ final class CampusStore: ObservableObject {
     func mergeAndroidTasks(_ plan: AndroidTaskImportPlan) throws -> AndroidTaskMergePreview {
         let result = try plan.merge(into: tasks)
         try commitPersonal(courses: personalCourses, tasks: result.tasks, semesterStart: semesterStart, schedule: personalSchedule)
+        restoreTaskMedal()
         return result
     }
     func refreshReminders() {
