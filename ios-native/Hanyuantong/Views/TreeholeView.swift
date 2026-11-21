@@ -22,6 +22,8 @@ struct TreeholeView: View {
     @State private var auth = "login"
     @State private var username = ""
     @State private var password = ""
+    @State private var showAuthPassword = false
+    @FocusState private var authPasswordFocused: Bool
     @State private var nickname = ""
     @State private var registrationNickname = ""
     @State private var recoveryInput = ""
@@ -250,53 +252,170 @@ struct TreeholeView: View {
         }
     }
     private var authentication: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Spacer()
-                Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: 42)).foregroundStyle(TreeholeTheme.primary)
-                    .frame(width: 96, height: 96).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 30)).rotationEffect(.degrees(-7)).accessibilityHidden(true)
-                Spacer()
-            }.padding(.vertical, 12)
-            Text(auth == "login" ? "说说校园里的那些事" : auth == "register" ? "创建邯院通账号" : "找回邯院通账号").font(.title2.bold())
-            Text("树洞使用独立的邯院通账号，昵称由你决定。学校账号继续用于课表和成绩。").font(.subheadline).foregroundStyle(.secondary)
-            TextField("账号（中文、数字或邮箱）", text: $username).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
-            if auth == "register" {
-                TextField("公开昵称（2–20 个字符）", text: $registrationNickname).textContentType(.nickname)
+        VStack(spacing: 16) {
+            authWelcome
+            authForm
+            DisclosureGroup {
+                Text(Self.rules).font(.caption).foregroundStyle(CampusTheme.muted).padding(.top, 8)
+            } label: {
+                Label("树洞规则与匿名说明", systemImage: "checkmark.shield")
+                    .font(.footnote).foregroundStyle(CampusTheme.muted).frame(minHeight: 44)
             }
-            if auth == "recover" { TextField("账号恢复码", text: $recoveryInput).textInputAutocapitalization(.never).autocorrectionDisabled() }
-            SecureField(auth == "recover" ? "新密码 · 至少 10 位" : "密码 · 至少 10 位", text: $password).textContentType(auth == "login" ? .password : .newPassword)
-            DisclosureGroup("树洞规则与匿名说明") {
-                Text(Self.rules).font(.caption).foregroundStyle(.secondary).padding(.top, 8)
-            }
-            if auth == "register" { Text("点击创建账号即表示同意上方社区规则。").font(.caption) }
-            Button(auth == "login" ? "登录树洞" : auth == "register" ? "创建账号" : "重设密码并登录") {
-                tree.perform {
-                    var payload: [String: Any] = ["username": username, "password": password]
-                    if auth == "register" {
-                        payload["agreed"] = true
-                        payload["nickname"] = registrationName
-                    }
-                    if auth == "recover" { payload["recoveryCode"] = recoveryInput }
-                    let result = try await tree.api.request(auth, payload)
-                    password = ""; recoveryInput = ""; registrationNickname = ""
-                    tree.user = result.user
-                    registrationRecovery = auth == "register" ? result.recoveryCode : nil
-                    tree.recovery = auth == "recover" ? result.recoveryCode : nil
-                    try await tree.feed()
-                    await tree.refreshUnread()
-                }
-            }.buttonStyle(.borderedProminent).disabled(tree.busy || username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                         || password.utf16.count < 10
-                         || (auth == "register" && (!tree.registration || !(2...20).contains(registrationName.utf16.count))))
-            HStack {
-                if auth != "register" && tree.registration { Button("注册账号") { auth = "register"; password = "" } }
-                Spacer()
-                if auth == "login" { Button("忘记密码") { auth = "recover"; password = "" } }
-                else { Button("返回登录") { auth = "login"; password = "" } }
-            }.font(.subheadline)
-            if tree.ready && !tree.registration { Text("社区暂未开放新账号注册。").font(.caption).foregroundStyle(.secondary) }
-        }.textFieldStyle(.roundedBorder).padding(8).campusCard()
+        }
     }
+
+    private var authWelcome: some View {
+        let headline = auth == "login" ? "说说校园里的那些事" : auth == "register" ? "遇见校园里的同频人" : "把账号找回来"
+        return VStack(spacing: 9) {
+            ZStack {
+                Image(systemName: "bubble.left")
+                    .font(.system(size: 36)).foregroundStyle(TreeholeTheme.primary)
+                    .frame(width: 68, height: 60).background(CampusTheme.tint, in: RoundedRectangle(cornerRadius: 21))
+                    .rotationEffect(.degrees(-10)).offset(x: -17, y: -3)
+                Image(systemName: "theatermask")
+                    .font(.system(size: 25)).foregroundStyle(TreeholeTheme.primary)
+                    .frame(width: 48, height: 43).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+                    .overlay { RoundedRectangle(cornerRadius: 15).strokeBorder(CampusTheme.border) }
+                    .rotationEffect(.degrees(10)).offset(x: 23, y: 13)
+                Image(systemName: "sparkles").font(.title3).foregroundStyle(TreeholeTheme.primary)
+                    .offset(x: 39, y: -25)
+            }.frame(height: 84).accessibilityHidden(true)
+            Text("邯院通 · 校园社区").font(.caption.weight(.semibold)).foregroundStyle(TreeholeTheme.primary)
+            Text(headline).font(.title2.bold())
+            Text("分享日常，认真倾听。\n用昵称相遇，也可以匿名说说心里话。")
+                .font(.subheadline).foregroundStyle(CampusTheme.muted)
+        }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 14)
+    }
+
+    private var authForm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(auth == "login" ? "登录邯院通" : auth == "register" ? "创建邯院通账号" : "找回邯院通账号")
+                    .font(.headline)
+                Spacer(minLength: 4)
+                Text("与教务账号独立").font(.caption).foregroundStyle(CampusTheme.muted)
+            }
+            authInput("登录账号") {
+                TextField("中文、数字、邮箱或其他账号", text: $username)
+                    .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .accessibilityLabel("登录账号")
+            }
+            if auth == "register" {
+                authInput("公开昵称") {
+                    TextField("2–20 个字符", text: $registrationNickname).textContentType(.nickname)
+                        .accessibilityLabel("公开昵称")
+                }
+            }
+            if auth == "recover" {
+                authInput("账号恢复码") {
+                    TextField("注册时保存的恢复码", text: $recoveryInput)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .accessibilityLabel("账号恢复码")
+                }
+            }
+            authPassword
+            if auth == "register" {
+                Text("点击「创建账号」即同意下方社区规则。社区会显示你填写的昵称，注册后可修改。")
+                    .font(.caption).foregroundStyle(CampusTheme.muted)
+            }
+            Button(action: authenticate) {
+                HStack {
+                    Spacer(minLength: 0)
+                    Text(auth == "login" ? "登录树洞" : auth == "register" ? "创建账号" : "重设密码并登录")
+                    Image(systemName: "chevron.right").font(.caption).accessibilityHidden(true)
+                    Spacer(minLength: 0)
+                }.font(.subheadline.weight(.semibold)).frame(minHeight: 36)
+            }.buttonStyle(.borderedProminent).tint(TreeholeTheme.primary).disabled(!canAuthenticate)
+            HStack {
+                if auth != "register" && tree.registration { Button("注册账号") { switchAuth(to: "register") }.frame(minHeight: 44) }
+                Spacer()
+                if auth == "login" { Button("忘记密码") { switchAuth(to: "recover") }.frame(minHeight: 44) }
+                else { Button("返回登录") { switchAuth(to: "login") }.frame(minHeight: 44) }
+            }.font(.subheadline)
+            if !tree.registration {
+                Text("新账号注册暂未开放，已有账号可以直接登录。").font(.caption).foregroundStyle(CampusTheme.muted)
+            }
+        }.padding(14)
+            .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
+    }
+
+    private func authInput<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.caption.weight(.semibold))
+            content().font(.subheadline).padding(.horizontal, 10).frame(minHeight: 44)
+                .background(CampusTheme.background, in: RoundedRectangle(cornerRadius: 9))
+                .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
+        }
+    }
+
+    private var authPassword: some View {
+        let label = auth == "recover" ? "新密码" : "密码"
+        return authInput(label) {
+            HStack(spacing: 2) {
+                Group {
+                    if showAuthPassword {
+                        TextField("至少 10 位", text: $password)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    } else {
+                        SecureField("至少 10 位", text: $password)
+                            .textContentType(auth == "login" ? .password : .newPassword)
+                    }
+                }.accessibilityLabel(label).focused($authPasswordFocused)
+                    .onSubmit { if canAuthenticate { authenticate() } }
+                Button {
+                    let wasFocused = authPasswordFocused
+                    showAuthPassword.toggle()
+                    if wasFocused {
+                        Task { @MainActor in
+                            await Task.yield()
+                            authPasswordFocused = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: showAuthPassword ? "eye.slash" : "eye")
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel(showAuthPassword ? "隐藏密码" : "显示密码")
+            }
+        }
+    }
+
+    private var canAuthenticate: Bool {
+        !tree.busy && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && password.utf16.count >= 10
+            && (auth != "register" || (tree.registration && (2...20).contains(registrationName.utf16.count)))
+            && (auth != "recover" || !recoveryInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    private func switchAuth(to mode: String) {
+        authPasswordFocused = false
+        showAuthPassword = false
+        password = ""; recoveryInput = ""; registrationNickname = ""
+        auth = mode
+        tree.message = nil
+    }
+
+    private func authenticate() {
+        guard canAuthenticate else { return }
+        authPasswordFocused = false
+        let mode = auth
+        tree.perform {
+            var payload: [String: Any] = ["username": username, "password": password]
+            if mode == "register" {
+                payload["agreed"] = true
+                payload["nickname"] = registrationName
+            }
+            if mode == "recover" { payload["recoveryCode"] = recoveryInput }
+            let result = try await tree.api.request(mode, payload)
+            password = ""; recoveryInput = ""; registrationNickname = ""; showAuthPassword = false
+            tree.user = result.user
+            registrationRecovery = mode == "register" ? result.recoveryCode : nil
+            tree.recovery = mode == "recover" ? result.recoveryCode : nil
+            try await tree.feed()
+            await tree.refreshUnread()
+        }
+    }
+
     private var registrationName: String {
         registrationNickname.trimmingCharacters(in: .whitespacesAndNewlines).precomposedStringWithCanonicalMapping
     }

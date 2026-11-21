@@ -15,6 +15,12 @@ enum ScheduleMath {
         return Int(floor(Double(days) / 7)) + 1
     }
     static func weekday(on date: Date) -> Int { (calendar.component(.weekday, from: date) + 5) % 7 + 1 }
+    static func firstMonday(for week: Int, today: Date, weekCount: Int) -> Date? {
+        guard week > 0, week <= weekCount, today.timeIntervalSince1970.isFinite else { return nil }
+        let offset = weekday(on: today) - 1 + (week - 1) * 7
+        return calendar.date(byAdding: .day, value: -offset, to: calendar.startOfDay(for: today))
+    }
+
     static func parseRange(_ raw: String, limit: Int) -> [Int] {
         let value = raw.replacingOccurrences(of: "，", with: ",").replacingOccurrences(of: "、", with: ",").replacingOccurrences(of: "～", with: "-").replacingOccurrences(of: "~", with: "-").replacingOccurrences(of: "－", with: "-").replacingOccurrences(of: "—", with: "-")
         guard let regex = try? NSRegularExpression(pattern: #"(\d+)(?:\s*-\s*(\d+))?"#) else { return [] }

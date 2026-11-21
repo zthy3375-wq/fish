@@ -256,14 +256,15 @@ struct LearningCenterView: View {
 
 private extension String { var nonEmpty: String? { isEmpty ? nil : self } }
 
-private struct LearningItemDetail: View {
+struct LearningItemDetail: View {
     @ObservedObject var store: LearningStore
     let item: LearningItem
     let open: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var plan: LearningPlan
+    private let account: String
     init(store: LearningStore, item: LearningItem, open: @escaping () -> Void) {
-        self.store = store; self.item = item; self.open = open
+        self.store = store; self.item = item; self.open = open; self.account = store.cache.account
         _plan = State(initialValue: store.cache.plans[item.id] ?? LearningPlan())
     }
     var body: some View {
@@ -277,7 +278,7 @@ private struct LearningItemDetail: View {
                     if !item.timeText.isEmpty { Text(item.timeText).font(.footnote) }
                     if !item.description.isEmpty { Text(item.description).font(.subheadline) }
                     if item.stale { Text("这是上次记录，需要更新核对。").foregroundStyle(.orange) }
-                    Button("打开学习通官方页面", action: open).disabled(store.blocked)
+                    Button("打开学习通官方页面", action: open).disabled(store.blocked || store.cache.account != account)
                 }
                 Section("本机计划") {
                     Toggle("安排日期", isOn: Binding(get: { plan.plannedDay != nil }, set: { plan.plannedDay = $0 ? CampusTheme.date(Date(), format: "yyyy-MM-dd") : nil }))
@@ -298,18 +299,18 @@ private struct LearningItemDetail: View {
             .navigationTitle(item.kind == "exam" ? "考试详情" : "作业详情").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存") { store.plan(item, value: plan); dismiss() }.disabled(plan.notes.count > 4000) }
+                ToolbarItem(placement: .confirmationAction) { Button("保存") { store.plan(item, value: plan); dismiss() }.disabled(plan.notes.count > 4000 || store.cache.account != account) }
             }
         }
     }
 }
 
-private struct LearningPresenterAnchor: UIViewControllerRepresentable {
+struct LearningPresenterAnchor: UIViewControllerRepresentable {
     let attach: (UIViewController) -> Void
     func makeUIViewController(context: Context) -> LearningPresenterController { let controller = LearningPresenterController(); controller.attach = attach; return controller }
     func updateUIViewController(_ controller: LearningPresenterController, context: Context) { controller.attach = attach; if controller.viewIfLoaded?.window != nil { attach(controller) } }
 }
-private final class LearningPresenterController: UIViewController {
+final class LearningPresenterController: UIViewController {
     var attach: ((UIViewController) -> Void)?
     override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); attach?(self) }
 }

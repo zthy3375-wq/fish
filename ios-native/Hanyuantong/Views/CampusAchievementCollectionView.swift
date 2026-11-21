@@ -41,7 +41,7 @@ struct CampusAchievementCollectionView: View {
     @State private var communityError: String?
     @State private var honorRoute: CampusHonorRoute?
     @State private var remoteGeneration = 0
-    @ScaledMetric(relativeTo: .caption) private var tileWidth: CGFloat = 76
+    @ScaledMetric(relativeTo: .caption) private var tileWidth: CGFloat = 68
     @ScaledMetric(relativeTo: .caption) private var labelHeight: CGFloat = 34
     private var columns: [GridItem] { [GridItem(.adaptive(minimum: tileWidth), spacing: 7)] }
 
@@ -80,25 +80,19 @@ struct CampusAchievementCollectionView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                overview
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 66), spacing: 8)], spacing: 8) {
-                    ForEach(groups, id: \.self) { item in
-                        Button { group = item } label: {
-                            Text(item).font(.subheadline.weight(group == item ? .semibold : .regular))
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .foregroundStyle(group == item ? .white : CampusTheme.text)
-                                .background(group == item ? CampusTheme.primary : CampusTheme.surface, in: Capsule())
-                        }.buttonStyle(.plain).accessibilityAddTraits(group == item ? .isSelected : [])
+                VStack(alignment: .leading, spacing: 12) {
+                    overview
+                    filters
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        ForEach(active) { item in
+                            Button { selected = item } label: { medal(item) }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("achievement-" + item.code)
+                                .accessibilityLabel(state(item) + " " + visibleName(item))
+                        }
                     }
-                }.accessibilityIdentifier("achievement-filters")
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(active) { item in
-                        Button { selected = item } label: { medal(item) }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("achievement-" + item.code)
-                            .accessibilityLabel(state(item) + " " + visibleName(item))
-                    }
-                }
+                }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 20))
                 communitySection
                 Button { showSettings = true } label: { Label("成就反馈", systemImage: "bell") }
                     .frame(minHeight: 44)
@@ -112,7 +106,7 @@ struct CampusAchievementCollectionView: View {
         .background(CampusTheme.background)
         .navigationTitle("荣誉殿堂")
         .navigationBarTitleDisplayMode(.inline)
-        .campusTabBarHidden(true)
+        .modifier(CampusDetailHeader(title: "荣誉殿堂", subtitle: "身份、荣誉与校园收藏"))
         .sheet(item: $selected) { item in detail(item) }
         .sheet(item: $honorRoute) { route in CampusHonorCollectionView(tree: tree, route: route) }
         .sheet(isPresented: $showSettings) { MedalSettings() }
@@ -128,29 +122,51 @@ struct CampusAchievementCollectionView: View {
         .task(id: tree.user?.id) { await loadCommunity() }
     }
 
-    private var overview: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("成就收藏馆").font(.title2.bold())
-                    Text("本机、教务、学习通与社区")
-                        .font(.footnote).foregroundStyle(CampusTheme.muted)
-                }
-                Spacer(minLength: 10)
-                Image(systemName: "trophy.fill").font(.title2).foregroundStyle(Color(hex: 0x9D77BC))
+    private var filters: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 56), spacing: 6)], spacing: 2) {
+            ForEach(groups, id: \.self) { item in
+                Button { group = item } label: {
+                    Text(item).font(.footnote.weight(group == item ? .semibold : .regular))
+                        .foregroundStyle(group == item ? CampusTheme.surface : CampusTheme.muted)
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .background(group == item ? CampusTheme.text : CampusTheme.surface, in: Capsule())
+                        .overlay { Capsule().strokeBorder(CampusTheme.border).allowsHitTesting(false) }
+                        .frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityAddTraits(group == item ? .isSelected : [])
             }
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text(String(earnedCount)).font(.system(size: 34, weight: .bold, design: .rounded))
-                Text("/ \(activeEntries.count) 已解锁").font(.subheadline).foregroundStyle(CampusTheme.muted)
+        }.accessibilityIdentifier("achievement-filters")
+    }
+
+    private var overview: some View {
+        let percent = earnedCount * 100 / max(1, activeEntries.count)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("成就收藏馆").font(.headline)
+                    Text("你的每一段校园经历，都值得被记住")
+                        .font(.caption).foregroundStyle(CampusTheme.muted)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "trophy").font(.title3).foregroundStyle(CampusTheme.adaptive(light: 0x946A2E, dark: 0xE8BE83))
+                    .accessibilityHidden(true)
+            }
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(String(earnedCount)).font(.system(size: 34, weight: .bold, design: .rounded))
+                        Text("/ \(activeEntries.count)").font(.subheadline).foregroundStyle(CampusTheme.muted)
+                    }
+                    Text("本机已确认成就").font(.caption2).foregroundStyle(CampusTheme.muted)
+                }
                 Spacer()
-                Text("\(activeEntries.isEmpty ? 0 : Int(Double(earnedCount) / Double(activeEntries.count) * 100))%")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(CampusTheme.primary)
+                Text("\(percent)% 完成").font(.caption2.weight(.semibold))
+                    .foregroundStyle(CampusTheme.course("green"))
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(CampusTheme.walletGreen, in: Capsule())
             }
             ProgressView(value: Double(earnedCount), total: Double(max(1, activeEntries.count)))
                 .tint(Color(hex: 0xA58BDD))
         }
-        .padding(17).frame(maxWidth: .infinity, alignment: .leading)
-        .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 20))
     }
 
     private func medal(_ item: CampusAchievement) -> some View {
@@ -175,7 +191,7 @@ struct CampusAchievementCollectionView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10).padding(.horizontal, 4)
-        .background(earned ? accent.opacity(0.09) : CampusTheme.surface, in: RoundedRectangle(cornerRadius: 13))
+        .background(earned ? accent.opacity(0.09) : CampusTheme.background, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
             RoundedRectangle(cornerRadius: 13)
                 .strokeBorder(earned ? accent.opacity(0.62) : CampusTheme.border,

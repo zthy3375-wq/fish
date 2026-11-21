@@ -9,6 +9,29 @@ final class LearningTests: XCTestCase {
     private func item(_ id: String = "78", status: String = "pending", deadline: String? = "2026-11-12T18:00") -> LearningItem {
         LearningItem(id: "12/34/homework/\(id)", courseId: "12", classId: "34", workId: id, kind: "homework", title: "合成作业", course: "合成课程", status: status, statusText: status == "submitted" ? "已提交" : "未提交", deadline: deadline)
     }
+    func testTaskListProjectsOnlyEligibleLearningItems() throws {
+        var cache = LearningCache()
+        cache.account = "synthetic-account"
+        cache.session = "connected"
+        let planned = item("78", deadline: "2026-11-24T18:00")
+        let urgent = item("79", deadline: "2026-11-25T18:00")
+        let closed = item("80", deadline: "2026-11-20T18:00")
+        let submitted = item("81", status: "submitted", deadline: nil)
+        cache.items = [planned, urgent, closed, submitted]
+        cache.plans[planned.id] = LearningPlan(plannedDay: "2026-11-21", notes: "复习")
+        let now = try XCTUnwrap(LearningDisplay.date("2026-11-21T12:00"))
+        let today = cache.taskListEntries(scope: .today, now: now)
+        XCTAssertEqual(today.map { $0.item.id }, [planned.id])
+        XCTAssertEqual(today.first?.projection.notes, "复习")
+        XCTAssertEqual(cache.taskListEntries(scope: .due, now: now).map { $0.item.id }, [planned.id, urgent.id])
+        let completed = cache.taskListEntries(scope: .completed, now: now).map { $0.projection }
+        let ids = Set(completed.map(\.id))
+        let groups = TaskRules.groups(completed, filter: TaskFilter(scope: .completed), now: now, unknownCompletionDates: ids)
+        XCTAssertEqual(groups.first?.title, "已完成 · 日期未记录")
+        XCTAssertEqual(groups.first?.tasks.map(\.title), [submitted.title])
+        cache.session = "disconnected"
+        XCTAssertTrue(cache.taskListEntries(scope: .due, now: now).isEmpty)
+    }
     func testOfficialHTTPSOriginBoundary() {
         for value in ["https://chaoxing.com/", "https://mooc1.chaoxing.com/mooc2/work/list", "https://passport2.chaoxing.com:443/login"] { XCTAssertTrue(LearningPolicy.allowed(value), value) }
         for value in ["http://mooc1.chaoxing.com/", "https://chaoxing.com.evil.test/", "https://notchaoxing.com/", "https://user@chaoxing.com/", "https://user:pass@chaoxing.com/", "https://chaoxing.com:8443/", "file:///tmp/x", "javascript:alert(1)", "https://chaoxing.com\\@evil.test/", "https://chaoxing.com./"] { XCTAssertFalse(LearningPolicy.allowed(value), value) }

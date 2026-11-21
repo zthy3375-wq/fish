@@ -46,7 +46,7 @@ final class NativeSmokeTests: XCTestCase {
         let locked = app.buttons["achievement-arrival"]
         XCTAssertTrue(locked.exists)
         XCTAssertTrue(locked.label.contains("待同步") || locked.label.contains("未解锁"))
-        XCTAssertFalse(app.tabBars.buttons["我的"].isHittable)
+        XCTAssertTrue(app.tabBars.buttons["我的"].isHittable)
         screenshot("10-global-achievements", app)
         welcome.tap()
         XCTAssertTrue(app.navigationBars["成就详情"].waitForExistence(timeout: 5))

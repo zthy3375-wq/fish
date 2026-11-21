@@ -15,9 +15,11 @@ final class HonorParityUITests:XCTestCase {
         cell.tap()
         XCTAssertTrue(app.navigationBars["添加课程"].waitForExistence(timeout: 5))
         app.buttons["取消"].tap()
-        app.buttons["放大查看"].tap()
-        XCTAssertTrue(app.buttons["显示整周"].waitForExistence(timeout: 5))
-        app.buttons["显示整周"].tap()
+        XCTAssertTrue(app.buttons["跳转教学周"].exists)
+        XCTAssertTrue(app.staticTexts["教学周不对？校准本周"].exists || app.buttons["教学周不对？校准本周"].exists)
+        app.buttons["整周总览"].tap()
+        XCTAssertTrue(app.buttons["舒适阅读"].waitForExistence(timeout: 5))
+        app.buttons["舒适阅读"].tap()
         app.tabBars.buttons["社区"].tap()
         let connectedOrFailed = NSPredicate { _, _ in
             app.buttons["重试连接"].exists || app.secureTextFields.firstMatch.exists || app.buttons["发帖"].exists
@@ -38,6 +40,7 @@ final class HonorParityUITests:XCTestCase {
         capture("profile",app)
         app.buttons["profile-settings"].tap()
         XCTAssertTrue(app.navigationBars["设置与帮助"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["我的"].isHittable)
         capture("settings",app)
         app.navigationBars.buttons.firstMatch.tap()
         shelf.tap()

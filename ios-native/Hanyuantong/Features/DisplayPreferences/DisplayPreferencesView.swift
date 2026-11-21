@@ -65,26 +65,61 @@ extension CampusDisplayTheme {
 
 @MainActor struct CampusAppearanceControls: View {
     @ObservedObject var store: DisplayPreferencesStore
+    var inlineTheme = false
     let failed: (String) -> Void
+
     var body: some View {
         Group {
-                Picker("主题", selection: Binding(get: { store.preferences.theme }, set: { value in
-                    perform { try store.updateTheme(value) }
-                })) {
+            if inlineTheme {
+                ViewThatFits(in: .horizontal) {
+                    HStack { themeLabel; Spacer(minLength: 8); themeButtons }
+                    VStack(alignment: .leading, spacing: 8) { themeLabel; themeButtons }
+                }
+            } else {
+                Picker("主题", selection: Binding(get: { store.preferences.theme }, set: setTheme)) {
                     ForEach(CampusDisplayTheme.allCases) { theme in
                         Label(theme.title, systemImage: theme.symbol).tag(theme)
                     }
                 }.pickerStyle(.segmented).disabled(!store.canEdit).accessibilityIdentifier("display-theme")
-                Toggle(isOn: Binding(get: { store.preferences.compact }, set: { value in
-                    perform { try store.updateCompact(value) }
-                })) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("紧凑布局")
-                        Text("更少留白，更高信息密度").font(.caption).foregroundStyle(CampusTheme.muted)
-                    }
-                }.disabled(!store.canEdit).accessibilityIdentifier("display-compact")
+            }
+            Toggle(isOn: Binding(get: { store.preferences.compact }, set: { value in
+                perform { try store.updateCompact(value) }
+            })) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("紧凑布局").font(.subheadline.weight(.semibold))
+                    Text("更少留白，更高信息密度").font(.caption).foregroundStyle(CampusTheme.muted)
+                }
+            }.disabled(!store.canEdit).accessibilityIdentifier("display-compact")
         }
     }
+
+    private var themeLabel: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "sun.max").foregroundStyle(CampusTheme.primary).accessibilityHidden(true)
+            Text("主题")
+        }.font(.subheadline).fixedSize()
+    }
+
+    private var themeButtons: some View {
+        HStack(spacing: 2) {
+            ForEach(CampusDisplayTheme.allCases) { theme in
+                let selected = theme == store.preferences.theme
+                Button { setTheme(theme) } label: {
+                    Label(theme.title, systemImage: theme == .system ? "display" : theme.symbol)
+                        .font(.caption)
+                        .foregroundStyle(selected ? CampusTheme.primary : CampusTheme.muted)
+                        .padding(.horizontal, 7).frame(minHeight: 38)
+                        .background(selected ? CampusTheme.tint : .clear, in: RoundedRectangle(cornerRadius: 7))
+                        .frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.borderless).accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }.padding(.horizontal, 3).fixedSize(horizontal: true, vertical: false)
+            .background(CampusTheme.background, in: RoundedRectangle(cornerRadius: 9))
+            .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
+            .disabled(!store.canEdit)
+    }
+
+    private func setTheme(_ value: CampusDisplayTheme) { perform { try store.updateTheme(value) } }
     private func perform(_ action: () throws -> Void) {
         do { try action() } catch { failed(error.localizedDescription) }
     }

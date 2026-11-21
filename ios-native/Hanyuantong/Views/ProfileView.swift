@@ -138,12 +138,14 @@ private struct ProfileSettingsView: View {
     @State private var managingPersonalSchedule = false
 
     @State private var extraSettings = false
+    @AppStorage("home.announcements.enabled") private var announcementsEnabled = true
+    @AppStorage("home.announcements.welcomeRead") private var welcomeRead = false
 
     var body: some View {
         List {
             Section("偏好与数据") {
-                CampusAppearanceControls(store: displayPreferences) { store.message = $0 }
-                NavigationLink { NativeReminderSettingsView(reminders: store.reminders) } label: {
+                CampusAppearanceControls(store: displayPreferences, inlineTheme: true) { store.message = $0 }
+                NavigationLink { HomeAnnouncementView(enabled: $announcementsEnabled, read: $welcomeRead) } label: {
                     settingsRow("通知设置", "应用内提醒与消息", "bell")
                 }
                 NavigationLink { PersonalBackupView() } label: {
@@ -152,6 +154,12 @@ private struct ProfileSettingsView: View {
                 Button { managingPersonalSchedule = true } label: {
                     settingsRow("课表与数据管理", "课程、学期、备份与提醒", "slider.horizontal.3")
                 }.buttonStyle(CampusPressStyle()).accessibilityIdentifier("open-personal-schedule")
+                DisclosureGroup {
+                    NavigationLink("系统提醒") { NativeReminderSettingsView(reminders: store.reminders) }
+                    NavigationLink("待办备份与恢复") { PersonalBackupView() }
+                } label: {
+                    Text("提醒与待办备份").font(.caption).foregroundStyle(CampusTheme.muted)
+                }
                 Button {
                     extraSettings.toggle()
                 } label: {
@@ -175,7 +183,6 @@ private struct ProfileSettingsView: View {
         .campusScrollBackground().background(CampusTheme.background)
         .navigationTitle("设置与帮助").navigationBarTitleDisplayMode(.inline)
         .modifier(CampusDetailHeader(title: "设置与帮助"))
-        .campusTabBarHidden(true)
         .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
     }
 

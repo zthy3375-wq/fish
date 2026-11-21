@@ -63,13 +63,16 @@ struct HomeView: View {
                         Text("校园生活").font(.headline)
                         VStack(spacing: 10) {
                             HStack(spacing: 10) {
-                                NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", showerBalance, showerDetail, "drop", CampusTheme.walletPurple) }
-                                NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen) }
-                            }
-                            HStack(spacing: 10) {
-                                NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
+                                NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", showerBalance, showerDetail, "drop", CampusTheme.walletPurple, CampusTheme.primary) }
+                                NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen, CampusTheme.course("green")) }
+                            }.fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 0) {
+                                NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多出库码", "shippingbox") }
+                                Rectangle().fill(CampusTheme.border).frame(width: 1).accessibilityHidden(true)
                                 NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
-                            }
+                            }.fixedSize(horizontal: false, vertical: true)
+                                .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+                                .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
                         }.buttonStyle(CampusPressStyle())
                         todayTasks
                         upcomingExams
@@ -105,11 +108,16 @@ struct HomeView: View {
             } else {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("暂时没有后续课程").font(.system(size: 20, weight: .bold))
-                    if !store.isConnected && store.courses.isEmpty {
-                        Text("连接学校后，可在这里查看课程安排。").font(.caption).foregroundStyle(CampusTheme.muted)
-                        Button("连接学校 ›") { store.selectedTab = .profile }
-                            .font(.subheadline).frame(minHeight: 44).disabled(store.isBusy)
-                    }
+                    Text(!store.isConnected || store.lastSynced == nil ? "连接学校后，可在这里查看课程安排。" : "未找到后续课程，可在课表中查看或添加课程。")
+                        .font(.caption).foregroundStyle(CampusTheme.muted)
+                    let canOpenSchedule = store.isConnected || !store.courses.isEmpty
+                    Button {
+                        if canOpenSchedule { store.selectedDate = now; store.selectedTab = .schedule }
+                        else { store.selectedTab = .profile }
+                    } label: {
+                        Label(canOpenSchedule ? "打开课表" : "连接学校", systemImage: "chevron.right")
+                            .labelStyle(TitleThenIconLabel()).font(.subheadline).frame(minHeight: 44)
+                    }.disabled(store.isBusy && !canOpenSchedule)
                 }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                     .background(CampusTheme.tint)
             }
@@ -265,15 +273,23 @@ struct HomeView: View {
     }
     private var teachingWeek: String {
         let week = store.week(for: now)
-        return (1...(store.isConnected ? 30 : max(1, store.personalWeekCount))).contains(week) ? "第 \(week) 教学周" : "学期外"
+        return (1...store.scheduleWeekCount).contains(week) ? "第 \(week) 教学周" : "学期外"
     }
-    private func wallet(_ name: String, _ label: String, _ balance: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(name, systemImage: icon).font(.subheadline.weight(.semibold))
-            Text(label).font(.caption).foregroundStyle(CampusTheme.muted)
-            Text(balance).font(.title2.bold()).monospacedDigit().privacySensitive()
+    private func wallet(_ name: String, _ label: String, _ balance: String, _ detail: String, _ icon: String, _ fill: Color, _ ink: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 7) {
+                Image(systemName: icon).accessibilityHidden(true)
+                Text(name).font(.subheadline.weight(.semibold))
+                Spacer(minLength: 2)
+                Image(systemName: "arrow.up.right").font(.caption).accessibilityHidden(true)
+            }.foregroundStyle(ink)
+            Text(label).font(.caption2).foregroundStyle(CampusTheme.muted).padding(.top, 6)
+            Text(balance).font(.title3.bold()).monospacedDigit().privacySensitive()
+            Spacer(minLength: 0)
             Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(14).background(LinearGradient(colors: [color, CampusTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18))
+        }.padding(14).frame(maxWidth: .infinity, minHeight: 122, alignment: .leading)
+            .background(LinearGradient(colors: [fill, CampusTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18))
+            .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
     }
     private var showerBalance: String {
         guard quzhi.connected else { return "连接账户" }
@@ -289,7 +305,15 @@ struct HomeView: View {
         return pangguai.connected ? "上次查询 · 饮水与洗衣" : "饮水 · 洗衣 · 扫码"
     }
     private func utility(_ title: String, _ detail: String, _ icon: String) -> some View {
-        HStack { Image(systemName: icon).foregroundStyle(CampusTheme.primary); VStack(alignment: .leading, spacing: 4) { Text(title).font(.subheadline.weight(.semibold)); Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted) } }.frame(maxWidth: .infinity, alignment: .leading).padding(12).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+        HStack(spacing: 8) {
+            Image(systemName: icon).foregroundStyle(CampusTheme.primary).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.footnote.weight(.semibold))
+                Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CampusTheme.muted).accessibilityHidden(true)
+        }.padding(.horizontal, 10).padding(.vertical, 8).frame(maxWidth: .infinity, minHeight: 64)
+            .contentShape(Rectangle())
     }
 }
 
@@ -354,7 +378,7 @@ struct CampusHeroFish: View {
 }
 
 
-private struct HomeAnnouncementView: View {
+struct HomeAnnouncementView: View {
     @EnvironmentObject var store: CampusStore
     @Binding var enabled: Bool
     @Binding var read: Bool

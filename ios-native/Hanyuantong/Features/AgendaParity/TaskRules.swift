@@ -139,7 +139,7 @@ enum TaskRules {
         a.compare(b, options: .caseInsensitive, locale: Locale(identifier: "zh_CN")) == .orderedAscending
     }
 
-    static func groups(_ tasks: [CampusTask], filter: TaskFilter, now: Date = Date()) -> [TaskDateGroup] {
+    static func groups(_ tasks: [CampusTask], filter: TaskFilter, now: Date = Date(), unknownCompletionDates: Set<UUID> = []) -> [TaskDateGroup] {
         let selected = select(tasks, filter: filter, now: now)
         var groups: [TaskDateGroup] = []
         let today = TaskClock.day(now), tomorrow = TaskClock.shifted(today, days: 1)
@@ -149,11 +149,13 @@ enum TaskRules {
                 key = task.course; title = task.course.isEmpty ? "个人事务" : task.course
             } else {
                 let day: String?
-                if task.completed { day = task.completedAt.map(TaskClock.day) ?? TaskClock.day(task.updatedAt) }
+                if task.completed {
+                    day = unknownCompletionDates.contains(task.id) ? nil : task.completedAt.map(TaskClock.day) ?? TaskClock.day(task.updatedAt)
+                }
                 else if filter.scope == .due { day = task.deadline.map(TaskClock.day) }
                 else { day = plannedDay(task) }
                 key = day ?? "undated"
-                let label = day == today ? "今天" : day == tomorrow ? "明天" : day ?? "未安排"
+                let label = day == today ? "今天" : day == tomorrow ? "明天" : day ?? (task.completed ? "日期未记录" : "未安排")
                 title = task.completed ? "已完成 · \(label)" : label
             }
             let identity = (filter.groupByCourse ? "course/" : task.completed ? "done/" : "plan/") + key

@@ -9,6 +9,48 @@ struct CampusAgendaView: View {
     @State private var range = 1
     @State private var kind: AgendaKind = .all
     @State private var task: CampusTask?
+    @State private var learningDetail: LearningItem?
+
+    private enum Entry: Identifiable {
+        case course(Course)
+        case exam(ExamRecord)
+        case personal(CampusTask, deadline: Bool)
+        case official(LearningItem, kind: OfficialKind)
+
+        enum OfficialKind: String { case plan, deadline, exam }
+
+        var id: String {
+            switch self {
+            case .course(let value): return "course/" + value.id.uuidString
+            case .exam(let value): return "exam/" + String(describing: value.id)
+            case .personal(let value, let deadline): return (deadline ? "deadline/" : "plan/") + value.id.uuidString
+            case .official(let value, let kind): return "learning/" + kind.rawValue + "/" + value.id
+            }
+        }
+
+        var minute: Int? {
+            switch self {
+            case .course(let value):
+                return TimetableDay.minutes(value.start)
+            case .exam(let value):
+                let separated = value.time.components(separatedBy: CharacterSet(charactersIn: "-–—~至"))
+                guard separated.count == 2,
+                      let start = TimetableDay.minutes(separated[0].trimmingCharacters(in: .whitespaces)),
+                      let end = TimetableDay.minutes(separated[1].trimmingCharacters(in: .whitespaces)), end > start else { return nil }
+                return start
+            case .personal(let value, let deadline):
+                return (deadline ? value.deadline : value.plannedAt).map(Self.minuteOfDay)
+            case .official(let value, let kind):
+                let stamp = kind == .exam ? value.startAt : kind == .deadline ? value.deadline : nil
+                return LearningDisplay.date(stamp).map(Self.minuteOfDay)
+            }
+        }
+
+        private static func minuteOfDay(_ date: Date) -> Int {
+            let clock = ScheduleMath.calendar
+            return clock.component(.hour, from: date) * 60 + clock.component(.minute, from: date)
+        }
+    }
 
     private enum AgendaKind: String, CaseIterable, Identifiable {
         case all = "全部安排"
@@ -56,8 +98,10 @@ struct CampusAgendaView: View {
                 }.pickerStyle(.menu)
             }
             ForEach(days, id: \.self) { day in
+                let entries = agendaEntries(for: day)
                 Section {
-                    agendaRows(for: day)
+                    if entries.isEmpty { Text("暂无已知安排").foregroundStyle(CampusTheme.muted) }
+                    ForEach(entries) { entry in agendaRow(entry, day: day) }
                 } header: {
                     Text(CampusTheme.date(day))
                 }
@@ -65,6 +109,19 @@ struct CampusAgendaView: View {
         }
         .environment(\.timeZone, ScheduleMath.calendar.timeZone)
         .sheet(item: $task) { TaskEditorView(task: $0) }
+        .background {
+            if !embedded { LearningPresenterAnchor { learning.attachPresenter($0) }.frame(width: 0, height: 0) }
+        }
+        .onChange(of: learning.cache.account) { _ in learningDetail = nil }
+        .sheet(item: $learningDetail) { item in
+            LearningItemDetail(store: learning, item: item) {
+                let account = learning.cache.account
+                learningDetail = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    if learning.cache.account == account { learning.openItem(item) }
+                }
+            }
+        }
     }
 
     private func chevron(_ symbol: String, label: String) -> some View {
@@ -84,57 +141,64 @@ struct CampusAgendaView: View {
         range = 7
     }
 
-    @ViewBuilder private func agendaRows(for day: Date) -> some View {
-        let calendar = ScheduleMath.calendar
+    private func agendaEntries(for day: Date) -> [Entry] {
         let key = TaskClock.day(day)
-        let courses = kind == .all || kind == .course ? campus.courses(on: day) : []
-        let exams = kind == .all || kind == .exam ? campus.exams.filter { exam in
-            NativeExamPresentation.day(exam).map { calendar.isDate($0, inSameDayAs: day) } ?? false
-        } : []
-        let showTasks = kind == .all || kind == .task
-        let tasks = showTasks ? campus.tasks.filter { task in
-            !task.completed && (TaskRules.plannedDay(task) == key || task.deadline.map(TaskClock.day) == key)
-        } : []
-        let learningItems = showTasks ? learning.cache.items.filter { item in
-            guard item.status != "submitted", item.status != "closed" else { return false }
-            return item.deadline?.prefix(10) == Substring(key) || learning.cache.plans[item.id]?.plannedDay == key
-        } : []
-
-        ForEach(courses) { course in
-            NavigationLink { CourseDetailView(course: course, occurrenceDate: day) } label: { CourseRow(course: course) }
+        var entries: [Entry] = []
+        if kind == .all || kind == .course { entries += campus.courses(on: day).map(Entry.course) }
+        if kind == .all || kind == .exam {
+            entries += campus.exams.filter { NativeExamPresentation.day($0).map(TaskClock.day) == key }.map(Entry.exam)
         }
-        ForEach(exams) { exam in
+        let showTasks = kind == .all || kind == .task
+        if showTasks {
+            for task in campus.tasks where !task.completed {
+                if TaskRules.plannedDay(task) == key { entries.append(.personal(task, deadline: false)) }
+                if task.deadline.map(TaskClock.day) == key { entries.append(.personal(task, deadline: true)) }
+            }
+        }
+        if learning.connected {
+            for item in learning.cache.items {
+                let examStart = item.kind == "exam" ? LearningDisplay.date(item.startAt) : nil
+                if (kind == .all || kind == .exam), examStart.map(TaskClock.day) == key {
+                    entries.append(.official(item, kind: .exam))
+                }
+                guard showTasks, item.status != "submitted", item.status != "closed" else { continue }
+                if learning.cache.plans[item.id]?.plannedDay == key { entries.append(.official(item, kind: .plan)) }
+                if examStart == nil, item.deadline?.prefix(10) == Substring(key) { entries.append(.official(item, kind: .deadline)) }
+            }
+        }
+        return entries.sorted {
+            let first = $0.minute ?? Int.max, second = $1.minute ?? Int.max
+            return first == second ? $0.id < $1.id : first < second
+        }
+    }
+
+    @ViewBuilder private func agendaRow(_ entry: Entry, day: Date) -> some View {
+        switch entry {
+        case .course(let course):
+            NavigationLink { CourseDetailView(course: course, occurrenceDate: day) } label: { CourseRow(course: course) }
+        case .exam(let exam):
             NavigationLink { AcademicRecordsView(initialSelection: 1) } label: {
                 agendaLabel(exam.name, detail: [exam.time, exam.room].filter { !$0.isEmpty }.joined(separator: " · "), icon: "calendar.badge.clock")
             }
-        }
-        ForEach(tasks) { item in
-            if TaskRules.plannedDay(item) == key {
-                Button { task = item } label: {
-                    agendaLabel(item.title, detail: item.plannedAt.map { CampusTheme.date($0, format: "HH:mm") } ?? "当天安排", icon: "checklist")
-                }
+        case .personal(let item, let deadline):
+            Button { task = item } label: {
+                let time = (deadline ? item.deadline : item.plannedAt).map { CampusTheme.date($0, format: "HH:mm") }
+                agendaLabel(item.title, detail: deadline ? "截止 " + (time ?? "") : time ?? "当天安排",
+                            icon: deadline ? "clock.badge.exclamationmark" : "checklist")
             }
-            if let deadline = item.deadline, TaskClock.day(deadline) == key {
-                Button { task = item } label: {
-                    agendaLabel(item.title, detail: "截止 " + CampusTheme.date(deadline, format: "HH:mm"), icon: "clock.badge.exclamationmark")
-                }
-            }
-        }
-        ForEach(learningItems) { item in
-            if learning.cache.plans[item.id]?.plannedDay == key {
-                Button { learning.openItem(item) } label: {
+        case .official(let item, let kind):
+            Button { learningDetail = item } label: {
+                switch kind {
+                case .plan:
                     agendaLabel(item.title, detail: "学习通计划 · " + LearningDisplay.state(item).label, icon: "book")
-                }.disabled(!item.hasLink)
+                case .deadline:
+                    agendaLabel(item.title, detail: "学习通 · " + LearningDisplay.deadline(item), icon: "clock.badge.exclamationmark")
+                case .exam:
+                    let start = item.startAt.map { String($0.dropFirst(11)) } ?? ""
+                    let finish = item.deadline.map { String($0.dropFirst(11)) } ?? "结束未知"
+                    agendaLabel(item.title, detail: start + "–" + finish + " · 学习通考试", icon: "calendar.badge.clock")
+                }
             }
-            if let deadline = item.deadline, deadline.prefix(10) == Substring(key) {
-                Button { learning.openItem(item) } label: {
-                    let time = String(deadline.dropFirst(11))
-                    agendaLabel(item.title, detail: time.isEmpty ? "学习通截止" : "学习通截止 " + time, icon: "clock.badge.exclamationmark")
-                }.disabled(!item.hasLink)
-            }
-        }
-        if courses.isEmpty && exams.isEmpty && tasks.isEmpty && learningItems.isEmpty {
-            Text("暂无已知安排").foregroundStyle(CampusTheme.muted)
         }
     }
 

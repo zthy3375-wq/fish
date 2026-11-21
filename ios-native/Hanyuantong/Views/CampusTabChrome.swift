@@ -114,11 +114,12 @@ struct CampusRootTitle: View {
 
 struct CampusDetailHeader: ViewModifier {
     let title: String
+    var subtitle: String? = nil
     func body(content: Content) -> some View {
         content.toolbar {
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
             ToolbarItem(placement: .navigationBarLeading) {
-                CampusRootTitle(title: title)
+                CampusRootTitle(title: title, subtitle: subtitle)
             }
         }
     }

@@ -33,6 +33,27 @@ struct LearningCache: Codable {
     var noticeUpdatedAt: Date?
     var lastAttempt: Date?
     var connected: Bool { !account.isEmpty && session != "disconnected" }
+    func taskListEntries(scope: TaskListScope, now: Date = Date()) -> [(item: LearningItem, projection: CampusTask)] {
+        guard connected else { return [] }
+        let timestamp = ISO8601DateFormatter()
+        return items.compactMap { item in
+            let plan = plans[item.id]
+            if scope == .due {
+                guard LearningDisplay.state(item, now: now).key == "pending" else { return nil }
+            } else if scope != .completed && plan?.plannedDay == nil { return nil }
+            let deadline = LearningDisplay.date(item.deadline)
+            let id = BackupValue.stableID(item.id, namespace: "learning-task/" + account)
+            let firstSeen = item.firstSeenAt.flatMap { timestamp.date(from: $0) } ?? .distantPast
+            var projection = CampusTask(id: id, title: item.title, date: firstSeen,
+                                        completed: item.status == "submitted", notes: plan?.notes ?? "")
+            projection.course = item.course
+            projection.plannedAt = nil
+            projection.plannedDay = plan?.plannedDay
+            projection.deadline = deadline
+            return (item, projection)
+        }
+    }
+
     var remaining: Int { cursor.map { max(0, activeCourses.count - $0) } ?? 0 }
 
     /// Unknown, empty and partial observations never remove successful records or infer submission.
@@ -289,8 +310,13 @@ final class LearningStore: ObservableObject {
         var next = cache; next.plans[item.id] = value
         do { try persist(next); message = "本机计划已保存，平台截止时间与提交状态不变。" } catch { failed(error) }
     }
+    func setPlannedDay(_ day: String?, for item: LearningItem) {
+        var value = cache.plans[item.id] ?? LearningPlan()
+        value.plannedDay = day
+        plan(item, value: value)
+    }
     func today(_ item: LearningItem) {
-        var value = cache.plans[item.id] ?? LearningPlan(); value.plannedDay = CampusTheme.date(Date(), format: "yyyy-MM-dd"); plan(item, value: value)
+        setPlannedDay(TaskClock.day(Date()), for: item)
     }
     func openCourse(_ course: LearningCourse) {
         guard cache.courses.contains(where: { $0 == course }), let url = URL(string: course.url), LearningPolicy.safeRead(url) else { return }

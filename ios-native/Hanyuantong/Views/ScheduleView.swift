@@ -6,6 +6,10 @@ struct ScheduleView: View {
     @State private var firstWeekContext: Date?
     @State private var surprise: String?
     @State private var mode = 0
+    @State private var comfortable = false
+    @State private var showingCalibration = false
+    @State private var calibrationWeek = 1
+    @State private var calibrationMessage: String?
     @State private var adding = false
     @State private var cell: ScheduleCell?
     @State private var viewportHeight: CGFloat = 640
@@ -27,34 +31,18 @@ struct ScheduleView: View {
         ScrollView {
             VStack(spacing: 8) {
                 if store.pausedCourseAdjustments > 0 { Text("学校原安排已变化，\(store.pausedCourseAdjustments) 条按周调课记录已暂停，请按新课表重新核对。").font(.caption).foregroundStyle(CampusTheme.muted) }
+                if store.isConnected && !store.semesters.isEmpty { schoolTermPicker }
+                calibration
+                scheduleToolbar
                 HStack {
-                    Text("视图类型").font(.caption).foregroundStyle(CampusTheme.muted)
-                    Spacer()
-                    Picker("课表视图", selection: $mode) { Text("日视图").tag(1); Text("周视图").tag(0) }
-                        .pickerStyle(.segmented).frame(maxWidth: 138)
-                    Spacer()
-                    Button("回到本周") { select(Date(), checkDay: false) }.font(.caption)
-                }
-                HStack {
-                    Text(store.isConnected ? "学校课表" : "个人课表").font(.caption).foregroundStyle(CampusTheme.muted)
+                    Text(store.isConnected ? "学校课表" : "个人课表").foregroundStyle(CampusTheme.muted)
                     Spacer()
                     Button { managingPersonalSchedule = true } label: {
-                        Label("管理个人课表", systemImage: "slider.horizontal.3").font(.caption)
+                        Label("管理个人课程", systemImage: "chevron.right").labelStyle(TitleThenIconLabel())
+                            .frame(minHeight: 44)
                     }.accessibilityIdentifier("manage-personal-schedule")
-                }.frame(minHeight: 40)
-                HStack {
-                    Button { shift(-7) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("上一周")
-                    Spacer()
-                    VStack(spacing: 5) {
-                        Text("第 \(store.week(for: store.selectedDate)) 周").font(.headline)
-                        Text(CampusTheme.date(days.first ?? store.selectedDate, format: "M/d") + " – " + CampusTheme.date(days.last ?? store.selectedDate, format: "M/d")).font(.caption).foregroundStyle(CampusTheme.muted)
-                        if store.isConnected, store.courses.contains(where: { $0.source == "personal" }) {
-                            Text("个人第\(ScheduleMath.week(on: store.selectedDate, start: store.semesterStart))周").font(.caption).foregroundStyle(CampusTheme.muted)
-                        }
-                    }
-                    Spacer()
-                    Button { shift(7) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.accessibilityLabel("下一周")
-                }
+                }.font(.caption)
+                weekNavigation
                 if mode == 1 { HStack(spacing: 4) {
                     ForEach(days, id: \.self) { date in
                         Button { select(date,checkDay:true) } label: {
@@ -85,7 +73,19 @@ struct ScheduleView: View {
         }).background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .overlay(alignment:.top) { if let surprise { Text(surprise == "freeday" ? "今天属于你自己。" : "回到本周了。").padding(10).background(.thinMaterial,in:Capsule()).allowsHitTesting(false) } }
             .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; MedalJournal.shared.unlock(code); surprise=nil }
-            .onAppear { if store.lastSynced != nil && store.courses.contains(where:{$0.source != "personal"}) { offline.start(scope:store.schoolMedalScope) } }
+            .onAppear {
+                if store.lastSynced != nil && store.courses.contains(where: { $0.source != "personal" }) {
+                    offline.start(scope: store.schoolMedalScope)
+                }
+                if store.selectedTab == .schedule { keepSelectionInTerm() }
+            }
+            .onChange(of: store.selectedTab) { tab in
+                if tab == .schedule { keepSelectionInTerm() }
+            }
+            .onChange(of: store.displayedSchoolTerm) { _ in resetTermSelection() }
+            .onChange(of: store.personalSchedule?.activeSemesterId) { _ in
+                if !store.isConnected { resetTermSelection() }
+            }
             .onDisappear { offline.stop(); firstWeekContext=nil }
             .toolbar {
                 ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
@@ -100,6 +100,123 @@ struct ScheduleView: View {
             .sheet(item: $cell) { CourseEditorView(preset: $0) }
             .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
     }
+    private var schoolTermPicker: some View {
+        HStack {
+            Text("学期").foregroundStyle(CampusTheme.muted)
+            Spacer()
+            Menu {
+                ForEach(store.semesters, id: \.self) { term in
+                    Button(term.title) { store.selectSchoolTerm(term) }
+                }
+            } label: {
+                Label(store.displayedSchoolTerm?.title ?? "当前学期", systemImage: "chevron.down")
+                    .labelStyle(TitleThenIconLabel()).frame(minHeight: 44)
+            }.accessibilityLabel("课表学期").disabled(store.isBusy)
+        }.font(.subheadline).padding(.horizontal, 10)
+            .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var calibration: some View {
+        DisclosureGroup(isExpanded: $showingCalibration) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("按学校或老师确认的周次设置。只调整本学期的日期对应关系，保留课程的单双周和上课周次。")
+                HStack {
+                    Picker("本周教学周", selection: $calibrationWeek) {
+                        ForEach(1...store.scheduleWeekCount, id: \.self) { Text("第 \($0) 周").tag($0) }
+                    }.pickerStyle(.menu)
+                    Spacer()
+                    Button("保存校准", action: saveCalibration).buttonStyle(.borderedProminent)
+                        .frame(minHeight: 44).disabled(store.isBusy)
+                }.font(.subheadline)
+                Text("第一教学周周一：\(CampusTheme.date(semesterStart, format: "yyyy-MM-dd")) · 本机设置")
+                if let calibrationMessage { Text(calibrationMessage).accessibilityIdentifier("week-calibration-result") }
+            }.font(.caption).foregroundStyle(CampusTheme.muted)
+                .padding(12).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+        } label: {
+            Text("教学周不对？校准本周").font(.caption).frame(minHeight: 44)
+        }.padding(.horizontal, 6)
+            .onChange(of: showingCalibration) { opened in
+                if opened { calibrationWeek = boundedWeek(for: Date()); calibrationMessage = nil }
+            }
+    }
+
+    private var scheduleToolbar: some View {
+        HStack {
+            Button(comfortable ? "舒适阅读" : "整周总览") { comfortable.toggle() }
+                .accessibilityAddTraits(comfortable ? .isSelected : [])
+                .frame(minHeight: 44)
+            Spacer(minLength: 6)
+            Picker("课表视图", selection: $mode) { Text("日视图").tag(1); Text("周视图").tag(0) }
+                .pickerStyle(.segmented).frame(maxWidth: 138)
+            Spacer(minLength: 6)
+            Button("回到本周", action: goToCurrentWeek).frame(minHeight: 44)
+        }.font(.caption)
+    }
+
+    private var weekNavigation: some View {
+        let week = boundedWeek(for: store.selectedDate)
+        return HStack {
+            Button { jump(to: week - 1) } label: {
+                Image(systemName: "chevron.left").frame(width: 44, height: 44)
+            }.accessibilityLabel("上一周").disabled(week == 1)
+            Spacer()
+            VStack(spacing: 5) {
+                Menu {
+                    ForEach(1...store.scheduleWeekCount, id: \.self) { number in
+                        Button("第 \(number) 周") { jump(to: number) }
+                    }
+                } label: {
+                    Label("第 \(week) 周", systemImage: "chevron.down")
+                        .labelStyle(TitleThenIconLabel()).font(.headline).padding(.horizontal, 8)
+                        .frame(minHeight: 36)
+                }.accessibilityLabel("跳转教学周").accessibilityValue("第 \(week) 周")
+                Text(CampusTheme.date(days.first ?? store.selectedDate, format: "M/d") + " — " +
+                     CampusTheme.date(days.last ?? store.selectedDate, format: "M/d") +
+                     (week == boundedWeek(for: Date()) ? " · 当前周" : " · 非当前周"))
+                    .font(.caption).foregroundStyle(CampusTheme.muted)
+                if store.isConnected, store.courses.contains(where: { $0.source == "personal" }) {
+                    Text("个人第\(ScheduleMath.week(on: store.selectedDate, start: store.semesterStart))周")
+                        .font(.caption).foregroundStyle(CampusTheme.muted)
+                }
+            }
+            Spacer()
+            Button { jump(to: week + 1) } label: {
+                Image(systemName: "chevron.right").frame(width: 44, height: 44)
+            }.accessibilityLabel("下一周").disabled(week == store.scheduleWeekCount)
+        }
+    }
+
+    private var semesterStart: Date { store.isConnected ? store.schoolSemesterStart : store.semesterStart }
+    private func boundedWeek(for date: Date) -> Int { min(store.scheduleWeekCount, max(1, store.week(for: date))) }
+    private func jump(to week: Int, weekday: Int? = nil) {
+        guard (1...store.scheduleWeekCount).contains(week) else { return }
+        let day = weekday ?? ScheduleMath.weekday(on: store.selectedDate)
+        let offset = (day - ScheduleMath.weekday(on: semesterStart) + 7) % 7
+        if let date = ScheduleMath.calendar.date(byAdding: .day, value: (week - 1) * 7 + offset, to: semesterStart) {
+            select(date, checkDay: false)
+        }
+    }
+    private func goToCurrentWeek() {
+        let now = Date()
+        jump(to: boundedWeek(for: now), weekday: ScheduleMath.weekday(on: now))
+    }
+    private func keepSelectionInTerm() {
+        let week = store.week(for: store.selectedDate)
+        if week != boundedWeek(for: store.selectedDate) { jump(to: boundedWeek(for: store.selectedDate)) }
+    }
+    private func resetTermSelection() {
+        goToCurrentWeek()
+        calibrationWeek = boundedWeek(for: Date())
+        calibrationMessage = nil
+    }
+    private func saveCalibration() {
+        do {
+            try store.calibrateTeachingWeek(calibrationWeek)
+            goToCurrentWeek()
+            calibrationMessage = "已校准，首页和课表同步生效"
+        } catch { calibrationMessage = error.localizedDescription }
+    }
+
     private var dayList: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(CampusTheme.date(store.selectedDate)).font(.headline)
@@ -109,7 +226,7 @@ struct ScheduleView: View {
     }
     private var weekList: some View {
         TimetableGrid(days: days, courses: days.map { store.courses(on: $0) }, periods: store.visiblePeriods,
-                      viewportHeight: viewportHeight, create: { date, slot in
+                      viewportHeight: viewportHeight, comfortable: comfortable, create: { date, slot in
             guard !store.isConnected else { return }
             cell = ScheduleCell(date: date, slot: slot)
         }, editable: !store.isConnected) { date in
@@ -117,16 +234,21 @@ struct ScheduleView: View {
             mode = 1
         }
     }
-    private func shift(_ amount: Int) { if let date = CampusTheme.calendar.date(byAdding: .day, value: amount, to: store.selectedDate) { select(date,checkDay:false) } }
     private func select(_ date: Date, checkDay: Bool) {
         let start = store.isConnected ? store.schoolSemesterStart : store.semesterStart
         let week=store.week(for:date), today=store.week(for:Date())
         let previous=store.week(for:store.selectedDate)
         store.selectedDate=date
-        guard today > 0 && today <= (store.isConnected ? 30 : store.personalWeekCount), !store.courses.isEmpty else { return }
+        guard today > 0 && today <= store.scheduleWeekCount, !store.courses.isEmpty else { return }
         if week == 1 && today > 1 && previous != 1 { firstWeekContext=start }
         if week == today && previous != today && firstWeekContext == start { surprise="timewalk"; firstWeekContext=nil }
-        else if checkDay && week > 0 && week <= (store.isConnected ? 30 : store.personalWeekCount) && store.courses(on:date).isEmpty { mode=1; surprise="freeday" }
+        else if checkDay && week > 0 && week <= store.scheduleWeekCount && store.courses(on:date).isEmpty { mode=1; surprise="freeday" }
+    }
+}
+
+struct TitleThenIconLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) { configuration.title; configuration.icon.font(.caption2) }
     }
 }
 
@@ -189,21 +311,21 @@ private struct TimetableGrid: View {
     let days: [Date]
     let periods: [AndroidTimeSlot]
     let viewportHeight: CGFloat
+    let comfortable: Bool
     let create: (Date, AndroidTimeSlot) -> Void
     let editable: Bool
     let openDay: (Date) -> Void
     private let layouts: [TimetableDay]
     private let axis: SchedulePeriodAxis
-    init(days: [Date], courses: [[Course]], periods: [AndroidTimeSlot], viewportHeight: CGFloat,
+    init(days: [Date], courses: [[Course]], periods: [AndroidTimeSlot], viewportHeight: CGFloat, comfortable: Bool,
          create: @escaping (Date, AndroidTimeSlot) -> Void, editable: Bool, openDay: @escaping (Date) -> Void) {
         self.days = days; self.periods = periods
-        self.viewportHeight = viewportHeight; self.create = create; self.editable = editable; self.openDay = openDay
+        self.viewportHeight = viewportHeight; self.comfortable = comfortable; self.create = create; self.editable = editable; self.openDay = openDay
         let daysLayout = courses.map(TimetableDay.init)
         self.layouts = daysLayout
         self.axis = SchedulePeriodAxis(slots: periods, events: daysLayout.flatMap(\.events).map { $0.start..<$0.end })
     }
     @Environment(\.dynamicTypeSize) private var typeSize
-    @State private var enlarged = false
     @ScaledMetric(relativeTo: .caption) private var laneWidth: CGFloat = 112
     @ScaledMetric(relativeTo: .caption) private var minimumRow: CGFloat = 38
     private let timeWidth: CGFloat = 54
@@ -215,22 +337,12 @@ private struct TimetableGrid: View {
     private func dayWidth(_ layout: TimetableDay) -> CGFloat { CGFloat(layout.laneCount) * laneWidth }
     private func y(_ minute: Int) -> CGFloat { axis.position(minute) * rowHeight }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(typeSize.isAccessibilitySize || enlarged ? "左右滑动查看整周" : "整周课表").font(.caption).foregroundStyle(CampusTheme.muted)
-                Spacer()
-                if !typeSize.isAccessibilitySize {
-                    Button(enlarged ? "显示整周" : "放大查看") { enlarged.toggle() }
-                        .font(.caption.weight(.medium)).frame(minHeight: 44)
-                }
-            }
-            if enlarged || typeSize.isAccessibilitySize {
-                ScrollView(.horizontal) { grid(compactDayWidth: nil) }
-            } else {
-                GeometryReader { bounds in
-                    grid(compactDayWidth: max(1, (bounds.size.width - 36) / CGFloat(max(1, days.count))))
-                }.frame(height: headerHeight + height + 20)
-            }
+        if comfortable || typeSize.isAccessibilitySize {
+            ScrollView(.horizontal) { grid(compactDayWidth: nil) }
+        } else {
+            GeometryReader { bounds in
+                grid(compactDayWidth: max(1, (bounds.size.width - 36) / CGFloat(max(1, days.count))))
+            }.frame(height: headerHeight + height + 20)
         }
     }
 
