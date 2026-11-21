@@ -2,6 +2,7 @@ import SwiftUI
 
 struct QuzhiWalletView: View {
     @ObservedObject var store: QuzhiStore
+    @EnvironmentObject private var achievements: CampusAchievementStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     @State private var month = QuzhiProtocol.currentMonth()
@@ -27,6 +28,7 @@ struct QuzhiWalletView: View {
             }.padding(20)
         }
         .background(CampusTheme.background)
+        .onAppear { achievements.record("bath") }
         .navigationTitle("趣智校园").navigationBarTitleDisplayMode(.inline)
         .tint(CampusTheme.primary)
         .refreshable { if store.valid { _ = await store.refresh(month: month) } }
