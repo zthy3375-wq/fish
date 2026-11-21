@@ -157,11 +157,17 @@ final class NativeSmokeTests: XCTestCase {
         let savedField = taskEditorField("task-notes-editor", in: app)
         XCTAssertEqual(savedField.value as? String, savedNotes)
 
-        savedField.tap(); savedField.typeText("-x")
-        let unsavedValue = savedNotes + "-x"
-        let completedInput = XCTNSPredicateExpectation(predicate:NSPredicate(format:"value == %@",unsavedValue),object:savedField)
-        XCTAssertEqual(XCTWaiter.wait(for:[completedInput],timeout:8),.completed,
-                       "The final keyboard event must reach the text editor before reopening its confirmation.")
+        let insertion = "-x"
+        savedField.tap()
+        savedField.typeText(insertion)
+        let completedInput = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value CONTAINS %@", insertion), object: savedField)
+        XCTAssertEqual(XCTWaiter.wait(for: [completedInput], timeout: 8), .completed,
+                       "The keyboard must commit the new text before opening the confirmation.")
+        let unsavedValue = try XCTUnwrap(savedField.value as? String)
+        XCTAssertEqual(unsavedValue.count, savedNotes.count + insertion.count)
+        XCTAssertEqual(unsavedValue.replacingOccurrences(of: insertion, with: ""), savedNotes,
+                       "The insertion must preserve the saved text wherever the caret was placed.")
         app.buttons["取消"].tap()
         XCTAssertTrue(app.buttons["放弃修改"].waitForExistence(timeout: 5))
         app.buttons["继续编辑"].tap()

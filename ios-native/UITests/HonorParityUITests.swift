@@ -65,6 +65,15 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(app.buttons["完成：" + title].waitForExistence(timeout: 6))
         app.segmentedControls.buttons["日程"].tap()
         XCTAssertTrue(app.datePickers.firstMatch.waitForExistence(timeout: 5))
+        app.buttons["后一天日程"].tap()
+        let weekRange = app.segmentedControls.buttons["未来7天"]
+        weekRange.tap()
+        XCTAssertTrue(weekRange.isSelected)
+        app.buttons["添加待办"].tap()
+        XCTAssertTrue(app.navigationBars["添加待办"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["task-plan-date"].firstMatch.exists,
+                      "A task started from the agenda inherits a plan date")
+        app.buttons["取消"].tap()
         app.terminate(); app.launch()
         app.tabBars.buttons["待办"].tap()
         app.buttons["未安排"].tap()

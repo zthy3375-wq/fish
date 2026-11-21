@@ -11,8 +11,9 @@ struct TaskEditorView: View {
     private let original: CampusTask
     private let isNew: Bool
 
-    init(task: CampusTask? = nil) {
-        let value = task ?? TaskRules.makeTask()
+    init(task: CampusTask? = nil, defaultPlannedDay: String? = nil) {
+        var value = task ?? TaskRules.makeTask()
+        if task == nil { value.plannedDay = defaultPlannedDay }
         _draft = State(initialValue: value)
         original = value; isNew = task == nil
     }
@@ -109,6 +110,7 @@ struct TaskEditorView: View {
             if planMode.wrappedValue != 0 {
                 DatePicker(planMode.wrappedValue == 1 ? "计划日期" : "日期与时间", selection: planDate,
                            displayedComponents: planMode.wrappedValue == 1 ? [.date] : [.date, .hourAndMinute])
+                    .accessibilityIdentifier("task-plan-date")
                 HStack {
                     Button("今天") { replan(0) }.buttonStyle(.borderless)
                     Button("明天") { replan(1) }.buttonStyle(.borderless)

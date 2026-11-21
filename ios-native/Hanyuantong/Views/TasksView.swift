@@ -5,6 +5,7 @@ struct TasksView: View {
     @EnvironmentObject var learning: LearningStore
     @State private var filter = TaskFilter(scope: .today)
     @State private var agenda = false
+    @State private var agendaDay = Date()
     @State private var showFilters = false
     @State private var quickTitle = ""
     @Environment(\.accessibilityReduceMotion) private var reduce
@@ -15,6 +16,11 @@ struct TasksView: View {
 
     private var groups: [TaskDateGroup] { TaskRules.groups(store.tasks, filter: filter) }
     private var courses: [String] { Array(Set(store.tasks.map(\.course).filter { !$0.isEmpty })).sorted() }
+
+    private var newTaskDay: String? {
+        if agenda { return TaskClock.day(agendaDay) }
+        return filter.scope == .today ? TaskClock.day(Date()) : nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,7 +33,7 @@ struct TasksView: View {
                 }.buttonStyle(CampusPressStyle())
                 HStack(spacing: 12) {
                     Picker("待办与日程", selection: $agenda) { Text("任务清单").tag(false); Text("日程").tag(true) }.pickerStyle(.segmented)
-                    Button { adding = true } label: { Image(systemName: "plus").frame(width: 44, height: 44) }.accessibilityLabel("添加待办")
+                    Button { adding = true } label: { Image(systemName: "plus").frame(width: 44, height: 44) }.accessibilityLabel("添加待办").disabled(!store.personalDataAvailable)
                 }
                 if !agenda {
                     HStack(spacing: 3) {
@@ -49,7 +55,7 @@ struct TasksView: View {
                         .background(CampusTheme.tint.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
                 }
             }.padding(.horizontal, 16).padding(.vertical, 10)
-            if agenda { CampusAgendaView(embedded: true) }
+            if agenda { CampusAgendaView(embedded: true, sharedDay: $agendaDay) }
             else { taskList }
         }
         .background(CampusTheme.background)
@@ -58,7 +64,7 @@ struct TasksView: View {
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
             ToolbarItem(placement: .navigationBarLeading) { CampusRootTitle(title: "待办", subtitle: "今天、接下来，按自己的节奏") }
         }
-        .sheet(isPresented: $adding) { TaskEditorView() }
+        .sheet(isPresented: $adding) { TaskEditorView(defaultPlannedDay: newTaskDay) }
         .sheet(item: $editing) { TaskEditorView(task: $0) }
         .confirmationDialog("删除这条待办？", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {
             Button("删除待办", role: .destructive) { if let task = deletion { store.deleteTask(task.id) }; deletion = nil }

@@ -81,7 +81,10 @@ struct CommunityGroupSection: View {
                 }
                 .frame(minHeight: 56)
                 .contentShape(Rectangle())
-            }.buttonStyle(CampusPressStyle())
+            }
+            .buttonStyle(CampusPressStyle())
+            .accessibilityLabel("加入 QQ 交流群")
+            .accessibilityHint("交流使用体验，反馈问题与建议")
             Divider()
             HStack {
                 Text("群号").font(.caption).foregroundStyle(CampusTheme.muted)
