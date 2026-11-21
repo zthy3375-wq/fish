@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   native-ios:
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
@@ -92,25 +92,6 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" build-for-testing | tee "$RUNNER_TEMP/ios-compile.log"
-      - name: Check five tabs and quick entry on iPhone 13
-        run: |
-          set -o pipefail
-          trap 'xcrun simctl shutdown "$SECOND_DEVICE" || true' EXIT
-          xcrun simctl boot "$SECOND_DEVICE" || true
-          xcrun simctl bootstatus "$SECOND_DEVICE" -b
-          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$SECOND_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/Second.xcresult" IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/HonorParityUITests test-without-building
-      - name: Export iPhone 13 visual comparison
-        if: always()
-        run: |
-          if [ -d "$RUNNER_TEMP/Second.xcresult" ]; then
-            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Second.xcresult" --output-path "$RUNNER_TEMP/iphone13-review"
-          fi
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: iphone13-visual-review
-          path: ${{ runner.temp }}/iphone13-review
-          retention-days: 14
       - name: Boot selected iPhone simulator
         id: boot
         timeout-minutes: 5
@@ -154,6 +135,28 @@ jobs:
           # The two task flows already passed above against these exact build products.
           # Unit tests ran in their own invocation; exercise every other UI flow once.
           xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/NativeIOS.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskPersistsAndCompletes -skip-testing:HanyuantongUITests/NativeSmokeTests/testPersonalTaskEditSaveDiscardAndRelaunch test-without-building | tee "$RUNNER_TEMP/xcodebuild.log"
+      - name: Check five tabs and quick entry on iPhone 13
+        if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
+        timeout-minutes: 8
+        run: |
+          set -o pipefail
+          trap 'xcrun simctl shutdown "$SECOND_DEVICE" || true' EXIT
+          xcrun simctl shutdown "$DEVICE" || true
+          xcrun simctl boot "$SECOND_DEVICE" || true
+          xcrun simctl bootstatus "$SECOND_DEVICE" -b
+          xcodebuild -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -destination "platform=iOS Simulator,id=$SECOND_DEVICE" -derivedDataPath "$RUNNER_TEMP/ios-build" -resultBundlePath "$RUNNER_TEMP/Second.xcresult" IPHONEOS_DEPLOYMENT_TARGET="$TEST_DEPLOYMENT" -parallel-testing-enabled NO -only-testing:HanyuantongUITests/HonorParityUITests test-without-building
+      - name: Export iPhone 13 visual comparison
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/Second.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Second.xcresult" --output-path "$RUNNER_TEMP/iphone13-review"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iphone13-visual-review
+          path: ${{ runner.temp }}/iphone13-review
+          retention-days: 14
       - name: Package simulator app
         if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
         run: ditto -c -k --keepParent "$RUNNER_TEMP/ios-build/Build/Products/Debug-iphonesimulator/Hanyuantong.app" "$RUNNER_TEMP/Hanyuantong-iOS-Simulator.zip"
