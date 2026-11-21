@@ -27,6 +27,8 @@ struct HomeView: View {
     @EnvironmentObject var learning: LearningStore
     @EnvironmentObject var quzhi: QuzhiStore
     @EnvironmentObject var pangguai: PangguaiStore
+    @EnvironmentObject var achievements: CampusAchievementStore
+    @State private var fishTaps = 0
     @Environment(\.scenePhase) private var scenePhase
     @State private var now = Date()
     var body: some View {
@@ -146,8 +148,21 @@ struct HomeView: View {
                 Spacer()
                 HStack { Text(CampusTheme.date(now)); Spacer(); Text("第\(store.week(for: now))周") }.font(.caption).foregroundStyle(.white)
             }.padding(22)
-            VStack { Spacer(); HStack { Spacer(); CampusHeroFish().frame(width: 108, height: 68) } }
-                .padding(.trailing, 14).padding(.bottom, 48).allowsHitTesting(false).accessibilityHidden(true)
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    CampusHeroFish().frame(width: 108, height: 68)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            fishTaps += 1
+                            if fishTaps >= 5 { achievements.record("puff"); fishTaps = 0 }
+                        }
+                        .onLongPressGesture(minimumDuration: 3) { achievements.record("dream") }
+                        .accessibilityLabel("首页小金鱼")
+                        .accessibilityAddTraits(.isButton)
+                }
+            }.padding(.trailing, 14).padding(.bottom, 48)
         }.frame(height: 275).clipShape(RoundedRectangle(cornerRadius: 22))
     }
     private func wallet(_ name: String, _ label: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
