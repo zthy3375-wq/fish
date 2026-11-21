@@ -7,14 +7,34 @@ struct ProfileView: View {
     @EnvironmentObject var pangguai: PangguaiStore
     @EnvironmentObject var analytics: AnonymousAnalyticsStore
     @EnvironmentObject var displayPreferences: DisplayPreferencesStore
+    @EnvironmentObject var achievements: CampusAchievementStore
     @State private var disconnecting = false
     @State private var managingPersonalSchedule = false
+    @State private var versionTaps = 0
     var body: some View {
         List {
             Section {
                 LocalProfileSummaryView(store: displayPreferences, academicName: store.academicProfile?.name,
                                         academicMajor: store.academicProfile?.major, academicClass: store.academicProfile?.className)
                     .padding(.vertical, 12)
+            }
+            Section("荣誉与成就") {
+                NavigationLink { CampusAchievementCollectionView() } label: {
+                    Label("荣誉殿堂", systemImage: "trophy")
+                }.accessibilityIdentifier("open-achievement-hall")
+                if !achievements.pins.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("我的成就展示").font(.caption).foregroundStyle(CampusTheme.muted)
+                        HStack(spacing: 8) {
+                            ForEach(achievements.pins) { item in
+                                Label(item.name, systemImage: item.symbol)
+                                    .font(.caption2.weight(.semibold))
+                                    .padding(8)
+                                    .background(CampusTheme.tint, in: RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
+                    }.accessibilityIdentifier("local-achievement-showcase")
+                }
             }
             Section("邯院通账号") {
                 Button { store.selectedTab = .community } label: { Label("账号与树洞 · 昵称与匿名交流", systemImage: "bubble.left.and.bubble.right") }
@@ -72,6 +92,12 @@ struct ProfileView: View {
             }
             Section("关于邯院通") {
                 Text("学习 · 生活 · 校园")
+                Button {
+                    versionTaps += 1
+                    if versionTaps >= 7 { achievements.record("goldfish"); versionTaps = 0 }
+                } label: {
+                    HStack { Text("邯院通版本"); Spacer(); Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "开发版").foregroundStyle(CampusTheme.muted) }
+                }.buttonStyle(.plain).accessibilityIdentifier("about-version")
                 Text("iPhone 原生开发版。教务数据以学校官方系统为准；各服务需独立登录，真实账号和设备联调尚待完成。").font(.caption).foregroundStyle(CampusTheme.muted)
                 NavigationLink("隐私与本机数据") { PrivacyView() }
                 if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
