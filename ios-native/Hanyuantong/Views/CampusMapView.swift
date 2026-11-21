@@ -10,6 +10,15 @@ struct CampusMapView: View {
             Text("双指缩放，拖动查看完整平面图").font(.caption).foregroundStyle(CampusTheme.muted)
             ZoomableCampusMap(imageName: campus == 0 ? "east-campus-plan" : "west-campus-plan").id(campus)
                 .accessibilityLabel(campus == 0 ? "东校区平面图，可双指缩放" : "西校区平面图，可双指缩放")
+                .overlay(alignment: .bottomTrailing) {
+                    Button { achievements.record("mapfish") } label: {
+                        Image(systemName: "fish.fill").font(.system(size: 15))
+                            .foregroundStyle(CampusTheme.muted.opacity(0.45))
+                            .frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("地图里的小金鱼")
+                        .accessibilityIdentifier("map-hidden-fish")
+                        .padding(.trailing, 5).padding(.bottom, 8)
+                }
         }.padding(.top, 12).background(CampusTheme.background)
             .onAppear { if UIImage(named: "east-campus-plan") != nil { achievements.record("map") } }
             .navigationTitle("校园平面图").navigationBarTitleDisplayMode(.inline)
