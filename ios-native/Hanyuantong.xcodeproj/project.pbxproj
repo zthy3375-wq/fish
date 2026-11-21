@@ -1257,9 +1257,19 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "6D40887B150B901E032B8AC3";
 		};
+		"622481EFA6B87BD348D9BCE4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "image.jpeg";
+			"path" = "Hanyuantong/Assets.xcassets/campus-autumn.imageset/campus-autumn.jpg";
+			"sourceTree" = "<group>";
+		};
+		"8071A260817CC5DB9263CEC8" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "622481EFA6B87BD348D9BCE4";
+		};
 		"8D5093D2C263EEDEAE2010BE" = {
 			"isa" = "PBXGroup";
-			"children" = ( "8AA6C4190BF91468DEEADC31", "6D40887B150B901E032B8AC3" );
+			"children" = ( "8AA6C4190BF91468DEEADC31", "6D40887B150B901E032B8AC3", "622481EFA6B87BD348D9BCE4" );
 			"name" = "UITests";
 			"sourceTree" = "<group>";
 		};
@@ -1682,7 +1692,7 @@
 		"468EB80ECB22F76AD5F25D26" = {
 			"isa" = "PBXResourcesBuildPhase";
 			"buildActionMask" = 2147483647;
-			"files" = (  );
+			"files" = ( "8071A260817CC5DB9263CEC8" );
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
 		"C103FE7A41DD9D47A6B85354" = {

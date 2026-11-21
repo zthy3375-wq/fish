@@ -14,7 +14,8 @@ struct TreeholeResponses: View {
         return Menu {
             ForEach(choices, id: \.0) { key, label, icon in
                 Button { choose(key) } label: {
-                    Label(label, systemImage: post.myResponse == key ? "checkmark" : icon)
+                    let votes = post.responseCounts?[key] ?? 0
+                    Label(votes > 0 ? label + " " + String(votes) : label, systemImage: post.myResponse == key ? "checkmark" : icon)
                 }.disabled(!kinds.contains(key))
             }
         } label: {

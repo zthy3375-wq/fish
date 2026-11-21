@@ -1068,8 +1068,16 @@ struct TreeholeView: View {
                     Spacer(minLength: 0)
                     if post.locked { Image(systemName: "lock").accessibilityLabel("已暂停回复") }
                     if !full {
-                        Button { open(post, comments: true) } label: { Label("\(post.commentCount)", systemImage: "bubble.right").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("查看评论，共 \(post.commentCount) 条")
-                        Button { tree.react(post, kind: "like") } label: { Label("\(post.likeCount)", systemImage: post.liked ? "heart.fill" : "heart").frame(minWidth: 44, minHeight: 44) }.modifier(ReactionFeedback(active:post.liked)).foregroundStyle(post.liked ? TreeholeTheme.primary : TreeholeTheme.muted).disabled(tree.pendingReactions.contains(post.id + ":like"))
+                        Button { open(post, comments: true) } label: { HStack(spacing: 5) {
+                            Image(systemName: "bubble.right").font(.system(size: 18))
+                            Text(post.commentCount > 0 ? String(post.commentCount) : "评论")
+                        }.frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("查看评论，共 \(post.commentCount) 条")
+                        Button { tree.react(post, kind: "like") } label: { HStack(spacing: 5) {
+                            Image(systemName: post.liked ? "heart.fill" : "heart").font(.system(size: 18))
+                            Text(post.likeCount > 0 ? String(post.likeCount) : "赞")
+                        }.frame(minWidth: 44, minHeight: 44) }.modifier(ReactionFeedback(active:post.liked)).foregroundStyle(post.liked ? TreeholeTheme.primary : TreeholeTheme.muted)
+                            .accessibilityLabel(post.liked ? "取消点赞" : "点赞").accessibilityValue(String(post.likeCount))
+                            .disabled(tree.pendingReactions.contains(post.id + ":like"))
                     }
                 }.font(.caption).foregroundStyle(TreeholeTheme.muted).buttonStyle(TreeholePressStyle())
             }.padding(.leading, full ? 0 : 46)

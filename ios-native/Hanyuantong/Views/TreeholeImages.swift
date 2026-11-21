@@ -68,18 +68,30 @@ struct TreeholeRemoteImage: View {
     var fit = false
     @State private var url: URL?
     @State private var attempted = false
+    @State private var renewalFailed = false
+    private var unavailable: some View {
+        Label("图片暂未加载", systemImage: "photo").font(.caption).frame(maxWidth: .infinity, maxHeight: .infinity).background(TreeholeTheme.background)
+    }
     var body: some View {
         AsyncImage(url: url) { phase in
             switch phase {
             case .success(let value): if fit { value.resizable().scaledToFit() } else { value.resizable().scaledToFill() }
-            case .failure: Label("图片暂未加载", systemImage: "photo").font(.caption).frame(maxWidth: .infinity, maxHeight: .infinity).background(TreeholeTheme.background).task { if !attempted { await renew() } }
+            case .failure: unavailable.task { if !attempted { await renew() } }
+            case .empty where renewalFailed: unavailable
             default: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity).background(TreeholeTheme.background)
             }
-        }.task(id: image.id) { url = image.url.flatMap(URL.init(string:)); if url == nil { await renew() } }
+        }.task(id: image) {
+            attempted = false; renewalFailed = false
+            url = image.url.flatMap(URL.init(string:))
+            if url == nil { await renew() }
+        }
     }
     private func renew() async {
         attempted = true
-        if let result = try? await api.request("media.url", ["postId": postId, "imageId": image.id]), let value = result.image?.url { url = URL(string: value) }
+        let result = try? await api.request("media.url", ["postId": postId, "imageId": image.id])
+        guard !Task.isCancelled else { return }
+        if let value = result?.image?.url, let refreshed = URL(string: value) { url = refreshed }
+        else { renewalFailed = true }
     }
 }
 struct TreeholeGallery: View {
@@ -106,8 +118,12 @@ private struct TreeholeZoomImage: View {
     @State private var failed = false
     var body: some View {
         Group {
-            if let bitmap { TreeholeZoomScroll(bitmap: bitmap) }
-            else if failed { Button("点击重新加载") { Task { await load() } }.foregroundStyle(.white) }
+            if let bitmap {
+                TreeholeZoomScroll(bitmap: bitmap)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("帖子大图").accessibilityAddTraits(.isImage)
+                    .accessibilityIdentifier("community-zoomed-photo")
+            } else if failed { Button("点击重新加载") { Task { await load() } }.foregroundStyle(.white) }
             else { ProgressView().tint(.white) }
         }.task { await load() }
     }

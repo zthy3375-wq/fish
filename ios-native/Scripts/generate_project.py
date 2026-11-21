@@ -22,12 +22,13 @@ widget_files = sorted((ROOT/'Widget').glob('*.swift')) + shared_files
 unit_files = sorted((ROOT/'Tests').glob('*.swift'))
 ui_files = sorted((ROOT/'UITests').glob('*.swift'))
 resources = [ROOT/'Hanyuantong/Assets.xcassets'] + sorted((ROOT/'Hanyuantong/Resources').glob('*'))
+ui_resource = ROOT/'Hanyuantong/Assets.xcassets/campus-autumn.imageset/campus-autumn.jpg'
 groups = []
-for title, files in [('Sources',app_files),('Tests',unit_files),('UITests',ui_files),('Resources', resources),('Widget', [x for x in widget_files if x not in shared_files])]:
+for title, files in [('Sources',app_files),('Tests',unit_files),('UITests',ui_files + [ui_resource]),('Resources', resources),('Widget', [x for x in widget_files if x not in shared_files])]:
     entries=[]
     for file in files:
         path=file.relative_to(ROOT).as_posix()
-        kind='sourcecode.swift' if file.suffix=='.swift' else 'folder.assetcatalog' if file.suffix=='.xcassets' else 'text.xml' if file.suffix=='.xcprivacy' else 'text.json' if file.suffix=='.json' else 'sourcecode.javascript'
+        kind='sourcecode.swift' if file.suffix=='.swift' else 'folder.assetcatalog' if file.suffix=='.xcassets' else 'text.xml' if file.suffix=='.xcprivacy' else 'text.json' if file.suffix=='.json' else 'image.jpeg' if file.suffix=='.jpg' else 'sourcecode.javascript'
         entries.append(add(path,'PBXFileReference',lastKnownFileType=kind,path=path,sourceTree='<group>'))
         add('build:'+path,'PBXBuildFile',fileRef=ref(path))
     groups.append(add(title,'PBXGroup',children=entries,name=title,sourceTree='<group>'))
@@ -37,7 +38,8 @@ for name,files,extension,ptype in [('Hanyuantong',app_files,'app','application')
     product=add(name+'product','PBXFileReference',explicitFileType='wrapper.application' if extension=='app' else 'wrapper.app-extension' if extension=='appex' else 'wrapper.cfbundle',includeInIndex=0,path=name+'.'+extension,sourceTree='BUILT_PRODUCTS_DIR');products.append(product)
     sources=add(name+'sources','PBXSourcesBuildPhase',buildActionMask=2147483647,files=[ref('build:'+x.relative_to(ROOT).as_posix()) for x in files],runOnlyForDeploymentPostprocessing=0)
     frameworks=add(name+'frameworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[],runOnlyForDeploymentPostprocessing=0)
-    resource=add(name+'resources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=[ref('build:'+x.relative_to(ROOT).as_posix()) for x in resources] if extension=='app' else [],runOnlyForDeploymentPostprocessing=0)
+    target_resources = resources if extension=='app' else [ui_resource] if name=='HanyuantongUITests' else []
+    resource=add(name+'resources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=[ref('build:'+x.relative_to(ROOT).as_posix()) for x in target_resources],runOnlyForDeploymentPostprocessing=0)
     settings=dict(base,PRODUCT_NAME='$(TARGET_NAME)',PRODUCT_BUNDLE_IDENTIFIER='org.handancampus.ios.native'+('' if extension=='app' else '.'+name),SUPPORTED_PLATFORMS='iphoneos iphonesimulator',ENABLE_TESTABILITY='YES',GENERATE_INFOPLIST_FILE='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks'])
     deps=[]; phases=[sources,frameworks,resource]
     if extension=='app':settings.update(GENERATE_INFOPLIST_FILE='NO',INFOPLIST_FILE='Hanyuantong/Info.plist',ASSETCATALOG_COMPILER_APPICON_NAME='AppIcon',ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME='',SUPPORTS_MACCATALYST='NO',CODE_SIGN_ENTITLEMENTS='Hanyuantong/Hanyuantong.entitlements',OTHER_LDFLAGS=['$(inherited)','-lz'])
