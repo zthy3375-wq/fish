@@ -83,3 +83,48 @@ struct NativeHelpView: View {
         "邯院通 iPhone 原生版\n版本：\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知")\n教务已连接：\(store.isConnected ? "是" : "否")\n课程条数：\(store.courses.count)\n成绩条数：\(store.grades.count)\n考试条数：\(store.exams.count)\n未包含账号、课程名称或凭证。"
     }
 }
+
+/// Previous Android release notes are shown as historical app milestones, not as a
+/// claim that those Android APK builds were shipped on iPhone.
+struct NativeReleaseHistoryView: View {
+    @EnvironmentObject private var achievements: CampusAchievementStore
+    private let entries: [(version: String, note: String)] = [
+        ("1.3.0", "校园社区上线，支持发帖、评论和私信。在「我的」可以查看荣誉收藏，也可以直接加入 QQ 交流群。"),
+        ("1.3.0-test.30", "在「我的」和社区主页翻看荣誉展柜，点开徽章可以看看它的来历。"),
+        ("1.3.0-test.29", "昵称旁的身份标识变小了。校园各处多了几段可以收入收藏馆的小插曲。"),
+        ("1.3.0-test.28", "在「我的」进入荣誉殿堂，可以分类翻看全局成就，也可以挑出喜欢的收藏。"),
+        ("1.3.0-test.26", "社区加入官方身份、荣誉称号和成就展示。"),
+        ("1.2.4", "学校课程可以按周调整时间和地点，支持确认冲突和恢复原安排。"),
+        ("1.2.1", "改善学习通作业读取与单课程刷新，修复部分旧接水记录影响扫码的问题。"),
+        ("1.2", "加入桌面课表小组件和洗澡码，校园地图改为东、西校区平面图。"),
+        ("1.1", "调整课程管理入口，作业、考试更好找了。首页迎来了校园小鱼。"),
+        ("1.0.1", "可以在应用内查看新版说明，下载并校验安装包。"),
+        ("1.0.0", "邯院通有了自己的名字和图标。")
+    ]
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 12) {
+                Text("邯院通 Android 历史版本记录")
+                    .font(.footnote).foregroundStyle(CampusTheme.muted)
+                ForEach(entries, id: \.version) { entry in
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(entry.version).font(.headline)
+                        Text(entry.note).font(.subheadline)
+                            .foregroundStyle(CampusTheme.text).fixedSize(horizontal: false, vertical: true)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 11)
+                    Divider()
+                }
+                Button {
+                    achievements.record("lastline")
+                } label: {
+                    Text("— 小金鱼，记于邯院")
+                        .font(.caption).foregroundStyle(CampusTheme.muted)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }.buttonStyle(.plain).accessibilityIdentifier("release-history-colophon")
+            }.padding(18).frame(maxWidth: 680)
+                .frame(maxWidth: .infinity)
+        }.background(CampusTheme.background).navigationTitle("更新日志")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
