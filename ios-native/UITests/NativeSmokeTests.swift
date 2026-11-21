@@ -30,6 +30,29 @@ final class NativeSmokeTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["首页"].waitForExistence(timeout: 10))
     }
+    func testGlobalAchievementHallShowsLockedAndUnlocked() throws {
+        let app = XCUIApplication()
+        app.launch()
+        app.tabBars.buttons["我的"].tap()
+        let entry = app.buttons["open-achievement-hall"]
+        for _ in 0..<5 { if entry.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["荣誉殿堂"].waitForExistence(timeout: 5))
+        let welcome = app.buttons["achievement-welcome"]
+        XCTAssertTrue(welcome.waitForExistence(timeout: 5))
+        XCTAssertTrue(welcome.label.contains("已解锁"))
+        let locked = app.buttons["achievement-water"]
+        XCTAssertTrue(locked.exists)
+        XCTAssertTrue(locked.label.contains("未解锁"))
+        screenshot("10-global-achievements", app)
+        welcome.tap()
+        XCTAssertTrue(app.navigationBars["成就详情"].waitForExistence(timeout: 5))
+        app.buttons["展示到我的页面"].tap()
+        app.buttons["完成"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.staticTexts["我的成就展示"].waitForExistence(timeout: 5))
+    }
     func testPersonalTaskPersistsAndCompletes() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
