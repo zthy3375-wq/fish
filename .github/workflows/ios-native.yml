@@ -23,6 +23,7 @@ jobs:
           git diff --exit-code -- ios-native/Hanyuantong.xcodeproj
           cmp android/app/src/main/assets/handan-academic.js ios-native/Hanyuantong/Resources/handan-academic.js
           cmp android/app/src/main/assets/handan-rendered-reader.js ios-native/Hanyuantong/Resources/handan-rendered-reader.js
+          python3 scripts/check-ios-achievement-parity.py
       - name: Select SDK-matched iPhone simulator
         timeout-minutes: 5
         run: |
