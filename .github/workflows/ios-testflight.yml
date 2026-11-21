@@ -47,15 +47,14 @@ jobs:
       - name: Check approved application source and installed SDK
         run: |
           set -eu
-          test "$(git rev-parse HEAD^1)" = dcb59fcd8f54e5e9a7077fb4dacd726fb41747a2
-          test "$(git rev-parse HEAD^2)" = 67adb9781c0e7c36ad9bb314f6ef71a806253774
+          test "$(git rev-parse HEAD^)" = ec2c193366ed888b8c58c6dea4e455fba80c3f0a
           test "$(git rev-parse HEAD:ios-native)" = 848cc57c836bf323732b1ab2f3405c7e42f66cc2
-          git diff --exit-code HEAD^2 HEAD -- ios-native
-          git diff --exit-code HEAD^1 HEAD -- .github/scripts android src
+          git diff --exit-code HEAD^ HEAD -- ios-native .github/scripts/testflight_signing.py android src
           xcodebuild -version
           sdk=$(xcrun --sdk iphoneos --show-sdk-version)
           test "${sdk%%.*}" -ge 26
-          echo "TF_BUILD=2.0.1" >> "$GITHUB_ENV"
+          echo "TF_REFERENCE_BUILD=2.0.0" >> "$GITHUB_ENV"
+          echo "TF_BUILD=2.0.2" >> "$GITHUB_ENV"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/hyt-sign/upload.p8" >> "$GITHUB_ENV"
           mkdir -m 700 "$RUNNER_TEMP/hyt-sign"
       - name: Check App Store Connect access and existing build
@@ -87,6 +86,8 @@ jobs:
           umask 077
           signing_dir="$RUNNER_TEMP/hyt-sign"
           openssl_bin="$(brew --prefix openssl@3)/bin/openssl"
+          # check already read the previous distribution's declaration from Apple.
+          /usr/libexec/PlistBuddy -c 'Add :ITSAppUsesNonExemptEncryption bool false' ios-native/Hanyuantong/Info.plist
           python3 .github/scripts/testflight_signing.py configure "$signing_dir" "$TF_BUILD"
           printf '%s\n' "$IOS_SIGNING_KEY_PEM" > "$signing_dir/key.pem"
           "$openssl_bin" x509 -inform DER -in "$signing_dir/distribution.cer" -out "$signing_dir/cert.pem"
@@ -118,6 +119,7 @@ jobs:
             -configuration Release -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Hanyuantong.xcarchive" archive
           python3 .github/scripts/testflight_signing.py verify "$RUNNER_TEMP/Hanyuantong.xcarchive" "$TF_BUILD"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$RUNNER_TEMP/Hanyuantong.xcarchive/Products/Applications/Hanyuantong.app/Info.plist")" = false
       - name: Upload approved build
         if: steps.lookup.outputs.exists == 'false'
         env:

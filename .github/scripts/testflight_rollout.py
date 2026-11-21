@@ -146,8 +146,21 @@ def group_has_build(group_id, build_id):
     return any(row["id"] == build_id for row in rows)
 
 
+def release_reference(builds):
+    reference = find_build(builds, os.environ["TF_REFERENCE_BUILD"])
+    if not reference or reference["attributes"].get("processingState") != "VALID":
+        raise RuntimeError("The previous distributed reference build is unavailable.")
+    if reference["attributes"].get("usesNonExemptEncryption") is not False:
+        raise RuntimeError("The signed build requires the previous recorded Apple declaration.")
+    return reference
+
+
 def check(app_id, number):
     builds = ios_builds(app_id)
+    reference = release_reference(builds)
+    if version_key(reference["attributes"]["version"]) >= version_key(number):
+        raise RuntimeError("Expected an earlier reference build.")
+    summary("Verified the existing encryption declaration for " + VERSION + " (" + reference["attributes"]["version"] + ").")
     candidate = find_build(builds, number)
     resume = os.environ.get("TF_RESUME_ONLY") == "true" or os.environ.get("GITHUB_RUN_ATTEMPT", "1") != "1"
     if candidate and (not resume or candidate["attributes"]["processingState"] in {"FAILED", "INVALID"}
@@ -209,7 +222,7 @@ def resolve_compliance(current, previous):
 
 def rollout(app_id, number):
     builds, current = wait_for_processing(app_id, number)
-    previous = select_previous(builds, current)
+    previous = release_reference(builds)
     current_id = current["id"]
     resolve_compliance(current, previous)
     group_fields = {"fields[betaGroups]": "isInternalGroup,hasAccessToAllBuilds"}
