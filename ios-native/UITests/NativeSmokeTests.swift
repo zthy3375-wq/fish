@@ -42,7 +42,7 @@ final class NativeSmokeTests: XCTestCase {
         let welcome = app.buttons["achievement-welcome"]
         XCTAssertTrue(welcome.waitForExistence(timeout: 5))
         XCTAssertTrue(welcome.label.contains("已解锁"))
-        let locked = app.buttons["achievement-water"]
+        let locked = app.buttons["achievement-arrival"]
         XCTAssertTrue(locked.exists)
         XCTAssertTrue(locked.label.contains("未解锁"))
         screenshot("10-global-achievements", app)
