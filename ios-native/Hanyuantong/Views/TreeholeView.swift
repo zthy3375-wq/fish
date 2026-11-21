@@ -222,7 +222,8 @@ struct TreeholeView: View {
             }.padding(.vertical, 12)
             Text(auth == "login" ? "说说校园里的那些事" : auth == "register" ? "创建邯院通账号" : "找回邯院通账号").font(.title2.bold())
             Text("树洞使用独立的邯院通账号，昵称由你决定。学校账号继续用于课表和成绩。").font(.subheadline).foregroundStyle(.secondary)
-            TextField("登录账号 · 4–24 位字母、数字或下划线", text: $username).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
+            TextField("登录账号 · 中文、数字、邮箱或其他账号", text: $username).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
+                .onChange(of: username) { value in if value.count > 64 { username = String(value.prefix(64)) } }
             if auth == "register" { TextField("公开昵称 · 2–20 字", text: $nickname).textContentType(.nickname) }
             if auth == "recover" { TextField("账号恢复码", text: $recoveryInput).textInputAutocapitalization(.never).autocorrectionDisabled() }
             SecureField(auth == "recover" ? "新密码 · 至少 10 位" : "密码 · 至少 10 位", text: $password).textContentType(auth == "login" ? .password : .newPassword)
@@ -248,11 +249,6 @@ struct TreeholeView: View {
     }
     private var feed: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if tree.honorCollectionEnabled {
-                Button { honorRoute = CampusHonorRoute(memberId: nil) } label: {
-                    HStack { Label("荣誉殿堂", systemImage: "seal"); Spacer(); Image(systemName: "chevron.right") }.font(.subheadline).frame(minHeight: 44)
-                }.buttonStyle(.plain)
-            }
             if tree.engagementEnabled {
                 TreeholeFeedScopes(tree: tree, select: accountFeed)
             }
