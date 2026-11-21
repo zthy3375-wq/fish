@@ -3,6 +3,7 @@ import SwiftUI
 struct TasksView: View {
     @EnvironmentObject var store: CampusStore
     @EnvironmentObject var learning: LearningStore
+    @EnvironmentObject var achievements: CampusAchievementStore
     @State private var completionFilter = 0
     @State private var filter = TaskFilter()
     @State private var adding = false
@@ -87,7 +88,13 @@ struct TasksView: View {
 
     private func taskRow(_ task: CampusTask) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Button { store.toggleTask(task.id) } label: {
+            Button {
+                store.toggleTask(task.id)
+                if let updated = store.tasks.first(where: { $0.id == task.id }),
+                   updated.completed, updated.steps.filter(\.completed).count >= 2 {
+                    achievements.record("tasks", at: updated.completedAt ?? Date())
+                }
+            } label: {
                 Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
                     .font(.title2).frame(width: 44, height: 44)
             }.buttonStyle(.borderless).accessibilityLabel(task.completed ? "标记未完成：\(task.title)" : "完成：\(task.title)")
