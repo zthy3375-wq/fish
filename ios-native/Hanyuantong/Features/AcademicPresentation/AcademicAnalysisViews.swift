@@ -113,6 +113,7 @@ struct NativeGradeAnalysisView: View {
 }
 
 struct NativeExamRecordsView: View {
+    @EnvironmentObject private var store: CampusStore
     let exams: [ExamRecord]
     @State private var upcomingOnly = true
     var body: some View {
@@ -121,6 +122,8 @@ struct NativeExamRecordsView: View {
             Text("今天及以后共 \(upcoming.count) 场；\(NativeExamPresentation.unknownDates(exams).count) 场日期待核对。").font(.subheadline)
             Toggle("仅看今天及以后和日期待核对", isOn: $upcomingOnly)
             Text("日期按学校时区；当天考试不推测是否已结束。请以学校最新通知为准。").font(.caption).foregroundStyle(CampusTheme.muted)
+        }.task(id: exams.isEmpty ? nil : store.schoolMedalScope) {
+            if !exams.isEmpty { MedalJournal.shared.unlock("exam", scope: store.schoolMedalScope) }
         }
         let rows = upcomingOnly ? upcoming + NativeExamPresentation.unknownDates(exams) : exams
         Section("考试安排") {

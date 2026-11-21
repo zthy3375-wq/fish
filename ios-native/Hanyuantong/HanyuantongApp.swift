@@ -3,7 +3,7 @@ import UIKit
 
 @main
 struct HanyuantongApp: App {
-    @StateObject private var store = CampusStore()
+    @StateObject private var store: CampusStore
     @StateObject private var treehole: TreeholeStore
     @StateObject private var learning = LearningStore()
     @StateObject private var quzhi = QuzhiStore()
@@ -14,11 +14,26 @@ struct HanyuantongApp: App {
     init() {
         CampusTabChrome.configure()
         #if DEBUG && targetEnvironment(simulator)
+        _store = StateObject(wrappedValue: Self.discoveryTestStore() ?? CampusStore())
         _treehole = StateObject(wrappedValue: CommunityReplyUITestTransport.store() ?? TreeholeStore())
         #else
+        _store = StateObject(wrappedValue: CampusStore())
         _treehole = StateObject(wrappedValue: TreeholeStore())
         #endif
     }
+    #if DEBUG && targetEnvironment(simulator)
+    @MainActor private static func discoveryTestStore() -> CampusStore? {
+        guard ProcessInfo.processInfo.environment["HYT_DISCOVERY_UI_FIXTURE"] == "1" else { return nil }
+        do {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let store = CampusStore(storage: try ProtectedStorage(directory: directory))
+            try store.calibrateTeachingWeek(3)
+            try store.saveCourse(Course(name: "测试课", day: 1, start: "08:00", end: "08:45",
+                                        weeks: [1, 2, 3], startPeriod: 1, endPeriod: 1))
+            return store
+        } catch { preconditionFailure("Invalid discovery UI test schedule: \(error)") }
+    }
+    #endif
     var body: some Scene {
         WindowGroup {
             RootView()

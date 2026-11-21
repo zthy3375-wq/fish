@@ -235,6 +235,29 @@ final class CampusAchievementTests: XCTestCase {
         XCTAssertNil(defaults.dictionary(forKey: "campus.medals.v1")?["device"])
     }
 
+    @MainActor func testAllPrivateCatalogAwardsPersistWithTheRightOwner() throws {
+        let key = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: key))
+        defer { defaults.removePersistentDomain(forName: key) }
+        let disk = InMemoryAchievementPersistence()
+        let journal = MedalJournal(defaults: defaults, device: CampusAchievementStore(persistence: disk))
+        let local = CampusMedal.catalog.filter { $0.source != "community" }
+        XCTAssertEqual(local.count, 22)
+        let date = Date(timeIntervalSince1970: 1_750_000_000)
+        for medal in local where medal.code != "life" {
+            journal.unlock(medal.code, scope: "owner", at: date)
+        }
+        let reopened = MedalJournal(defaults: defaults, device: CampusAchievementStore(persistence: disk))
+        for medal in local {
+            XCTAssertEqual(reopened.stamp(medal, scope: "owner"), date, medal.code)
+            if medal.source != "device" { XCTAssertNil(reopened.stamp(medal, scope: "other"), medal.code) }
+        }
+        for medal in CampusMedal.catalog where medal.source == "community" {
+            reopened.unlock(medal.code, scope: "owner", at: date)
+            XCTAssertNil(reopened.stamp(medal, scope: "owner"), medal.code)
+        }
+    }
+
     @MainActor func testRestoreVerifiedCompletedTaskKeepsDateAndDoesNotReplayBanner() throws {
         let key = UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: key))

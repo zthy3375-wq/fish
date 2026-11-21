@@ -213,6 +213,100 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(badge.label.contains("待同步"))
     }
 
+    func testHomeFishRespondsToRealTapsAndHoldAndKeepsAwards() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        let fish = app.buttons["home-mascot"]
+        XCTAssertTrue(fish.waitForExistence(timeout: 6) && fish.isHittable)
+        fish.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertEqual(fish.value as? String, "咕噜")
+        fish.press(forDuration: 3.4)
+        XCTAssertEqual(fish.value as? String, "呼……")
+        fish.tap(withNumberOfTaps: 5, numberOfTouches: 1)
+        XCTAssertEqual(fish.value as? String, "别戳啦！")
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["open-achievement-hall"].tap()
+        app.buttons["隐藏"].tap()
+        for id in ["puff", "dream"] {
+            let badge = app.buttons["achievement-" + id]
+            XCTAssertTrue(badge.waitForExistence(timeout: 5))
+            XCTAssertTrue(badge.label.contains("已解锁"), badge.label)
+        }
+    }
+
+    func testMapWalletVersionAndReleaseDiscoveriesUseTheirVisibleControls() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        func reveal(_ button: XCUIElement, swipes: Int = 7) {
+            for _ in 0..<swipes {
+                if button.exists && button.isHittable { return }
+                app.swipeUp()
+            }
+            XCTAssertTrue(button.isHittable, button.description)
+        }
+        for (id, title) in [("home-quzhi", "趣智校园"), ("home-pangguai", "胖乖生活"), ("home-campus-map", "校园平面图")] {
+            let entry = app.buttons[id]
+            reveal(entry); entry.tap()
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+            if id == "home-campus-map" { app.buttons["地图上的小金鱼"].tap() }
+            app.navigationBars.buttons.firstMatch.tap()
+        }
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["profile-settings"].tap()
+        let about = app.buttons["版本与更新日志"]
+        reveal(about); about.tap()
+        app.buttons["版本号"].tap(withNumberOfTaps: 7, numberOfTouches: 1)
+        app.buttons["更新日志"].tap()
+        let colophon = app.buttons["release-history-colophon"]
+        reveal(colophon, swipes: 16); colophon.tap()
+        app.terminate(); app.launch()
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["open-achievement-hall"].tap()
+        for (group, ids) in [("生活", ["bath","laundry","map","life"]), ("隐藏", ["mapfish","goldfish","lastline"])] {
+            app.buttons[group].tap()
+            for id in ids {
+                let badge = app.buttons["achievement-" + id]
+                XCTAssertTrue(badge.waitForExistence(timeout: 5))
+                XCTAssertTrue(badge.label.contains("已解锁"), badge.label)
+            }
+        }
+    }
+
+    func testScheduleJourneyFreeDayAndEmptyListUseVisibleControls() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["HYT_DISCOVERY_UI_FIXTURE"] = "1"
+        app.launch()
+        app.tabBars.buttons["待办"].tap()
+        let emptyFish = app.buttons["清单里的小金鱼"]
+        XCTAssertTrue(emptyFish.waitForExistence(timeout: 5))
+        emptyFish.tap()
+        app.tabBars.buttons["课表"].tap()
+        let weeks = app.buttons["跳转教学周"]
+        XCTAssertEqual(weeks.value as? String, "第 3 周")
+        weeks.tap()
+        app.buttons["第 1 周"].tap()
+        XCTAssertEqual(weeks.value as? String, "第 1 周")
+        app.buttons["回到本周"].tap()
+        XCTAssertEqual(weeks.value as? String, "第 3 周")
+        app.segmentedControls.buttons["日视图"].tap()
+        app.buttons["schedule-weekday-2"].tap()
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["open-achievement-hall"].tap()
+        app.buttons["隐藏"].tap()
+        for id in ["timewalk","freeday","emptyfish"] {
+            let badge = app.buttons["achievement-" + id]
+            if !badge.exists { app.swipeUp() }
+            XCTAssertTrue(badge.waitForExistence(timeout: 5) && badge.label.contains("已解锁"), id)
+        }
+    }
+
     private func serveCampusPhoto() throws -> NWListener {
         let resource = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "campus-autumn", withExtension: "jpg"))
         let jpeg = try Data(contentsOf: resource)

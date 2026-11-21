@@ -48,10 +48,15 @@ struct HomeView: View {
     @State private var paused = false
     @State private var swimStarted: Date?
     @State private var swimElapsed: TimeInterval = 0
+    @State private var fishPressed = false
+    @State private var fishTaps = TapSequence()
+    @State private var lastFishResponse: String?
+    @State private var fishCue: String?
+    @State private var fishTouchSerial = 0
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var systemReduce
     @AppStorage("medal.reduce") private var reduceMotion=false
-    private var allowsSwimming:Bool { scenePhase == .active && store.selectedTab == .home && !systemReduce && !reduceMotion && !paused }
+    private var allowsSwimming:Bool { scenePhase == .active && store.selectedTab == .home && !systemReduce && !reduceMotion && !paused && !fishPressed }
 
     var body: some View {
         GeometryReader { screen in
@@ -63,13 +68,13 @@ struct HomeView: View {
                         Text("校园生活").font(.headline)
                         VStack(spacing: 10) {
                             HStack(spacing: 10) {
-                                NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", showerBalance, showerDetail, "drop", CampusTheme.walletPurple, CampusTheme.primary) }
-                                NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen, CampusTheme.course("green")) }
+                                NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", showerBalance, showerDetail, "drop", CampusTheme.walletPurple, CampusTheme.primary) }.accessibilityIdentifier("home-quzhi")
+                                NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen, CampusTheme.course("green")) }.accessibilityIdentifier("home-pangguai")
                             }.fixedSize(horizontal: false, vertical: true)
                             HStack(spacing: 0) {
                                 NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多出库码", "shippingbox") }
                                 Rectangle().fill(CampusTheme.border).frame(width: 1).accessibilityHidden(true)
-                                NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
+                                NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }.accessibilityIdentifier("home-campus-map")
                             }.fixedSize(horizontal: false, vertical: true)
                                 .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
                                 .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
@@ -252,24 +257,45 @@ struct HomeView: View {
                     Text(CampusTheme.date(now, format: "M月d日 · EEE") + "   " + teachingWeek)
                         .font(.caption2).padding(.horizontal, 9).padding(.vertical, 5).background(badge, in: Capsule())
                 }.padding(.horizontal, 24).padding(.top, safeTop + 20).padding(.bottom, 9)
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !allowsSwimming)) { timeline in
-                    let t = swimElapsed + (swimStarted.map { max(0, timeline.date.timeIntervalSince($0)) } ?? 0)
-                    let cycle = t.truncatingRemainder(dividingBy: 17) / 17
-                    let bob = cos(t * 2 * .pi / 2.9)
-                    DiscoverySurface("puff", label: "首页小金鱼", taps: 5, canDream: true) {
+                ZStack {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !allowsSwimming)) { timeline in
+                        let t = swimElapsed + (swimStarted.map { max(0, timeline.date.timeIntervalSince($0)) } ?? 0)
+                        let cycle = t.truncatingRemainder(dividingBy: 17) / 17
+                        let bob = cos(t * 2 * .pi / 2.9)
                         VStack(spacing: -6) {
                             CampusHeroFish().frame(width: 94, height: 60)
                             Ellipse().stroke(.white.opacity(0.6), lineWidth: 1).frame(width: 61, height: 7)
-                        }
-                    }.rotationEffect(.degrees(-2 * bob)).scaleEffect(x: cycle < 0.48 || cycle >= 0.98 ? 1 : -1, y: 1)
-                        .offset(x: bounds.size.width * 0.35 + CGFloat(18 * cos(2 * .pi * cycle)), y: height - 95 + CGFloat(2 * bob))
-                }
+                        }.rotationEffect(.degrees(-2 * bob))
+                            .scaleEffect(x: cycle < 0.48 || cycle >= 0.98 ? 1 : -1, y: 1)
+                            .scaleEffect(fishPressed && !systemReduce && !reduceMotion ? 0.94 : 1)
+                            .offset(x: CGFloat(18 * cos(2 * .pi * cycle)), y: CGFloat(2 * bob))
+                    }.allowsHitTesting(false).accessibilityHidden(true)
+                    HomeFishTouchTarget(lastResponse: lastFishResponse, pressing: { fishPressed = $0 }, tap: {
+                        if fishTaps.tap(target: 5) {
+                            MedalJournal.shared.unlock("puff"); showFishCue("别戳啦！")
+                        } else { showFishCue("咕噜") }
+                    }, dream: {
+                        fishTaps = TapSequence()
+                        MedalJournal.shared.unlock("dream"); showFishCue("呼……")
+                    }, cancel: { fishTaps = TapSequence() })
+                    if let fishCue {
+                        Text(fishCue).font(.caption.weight(.semibold)).padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(badge, in: Capsule()).offset(y: -34).allowsHitTesting(false)
+                            .accessibilityIdentifier("home-fish-cue")
+                    }
+                }.frame(width: 138, height: 76)
+                    .offset(x: bounds.size.width * 0.35 - 22, y: height - 102)
+                    .task(id: fishTouchSerial) {
+                        guard fishCue != nil else { return }
+                        do { try await Task.sleep(nanoseconds: 800_000_000) } catch { return }
+                        fishCue = nil
+                    }
                 if !systemReduce && !reduceMotion {
                     Button { paused.toggle() } label: {
                         Image(systemName: paused ? "play.fill" : "pause.fill").font(.caption2)
                             .padding(5).background(badge, in: Circle()).frame(width: 44, height: 44)
                     }.accessibilityLabel(paused ? "播放小鱼动画" : "暂停小鱼动画")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(.trailing, 8)
+                        .position(x: bounds.size.width - 30, y: height - 22)
                 }
             }.foregroundStyle(ink).buttonStyle(CampusPressStyle()).clipped()
         }.frame(height: height)
@@ -283,6 +309,9 @@ struct HomeView: View {
         }.padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
     }
 
+    private func showFishCue(_ text: String) {
+        lastFishResponse = text; fishCue = text; fishTouchSerial += 1
+    }
     private var teachingWeek: String {
         let week = store.week(for: now)
         return (1...store.scheduleWeekCount).contains(week) ? "第 \(week) 教学周" : "学期外"

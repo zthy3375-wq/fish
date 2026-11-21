@@ -278,3 +278,50 @@ test("retired names keep their previous grant but new grants and nickname wear a
   const archive = await call(other,"collection.archive",{section:"retired"});
   assert(archive.honorArchive.some(entry=>entry.awardId===saved.id));
 });
+
+test("one eligible account can earn all 24 current community achievements from activity", async () => {
+  const actor = await server.execute("register", {username:"auditmedals",password:"collection-fixture-password",agreed:true}, "", "auditmedals");
+  const id = actor.user.id;
+  await sql("UPDATE hyt_members SET created_at=now()-interval '800 days' WHERE id=$1", [id]);
+  const peers = (await sql(`INSERT INTO hyt_members(username,nickname,password_hash,recovery_hash,created_at)
+    SELECT 'auditpeer'||n,'测试同学'||n,'test','test',now()-interval '500 days' FROM generate_series(1,100) n RETURNING id`)).rows.map(r => r.id);
+  const own = (await sql(`INSERT INTO hyt_posts(author_id,body,category,interest,anonymous,request_id,created_at)
+    SELECT $1,'校园见闻'||n, CASE WHEN n<=3 THEN 'daily' ELSE 'entertainment' END,
+    CASE WHEN n<=3 THEN '' ELSE 'photo' END,false,gen_random_uuid(),
+    ((now() AT TIME ZONE 'Asia/Shanghai')::date - (35+n) + time '04:15') AT TIME ZONE 'Asia/Shanghai'
+    FROM generate_series(1,6) n RETURNING id,interest`,[id])).rows;
+  const post = own[0].id;
+  for (const [index, photo] of own.filter(p=>p.interest==="photo").entries()) {
+    await sql(`INSERT INTO hyt_media(member_id,post_id,object_key,bytes,width,height,request_id,digest,ready)
+      VALUES($1,$2,$3,25,100,100,gen_random_uuid(),$4,true)`,[id,photo.id,"audit-photo-"+index,String(index+1).repeat(64)]);
+  }
+  const questions = (await sql(`INSERT INTO hyt_posts(author_id,body,category,anonymous,request_id,created_at)
+    SELECT peer,'旧讨论'||i,'help',false,gen_random_uuid(),now()-interval '200 days'
+    FROM unnest($1::uuid[]) WITH ORDINALITY AS peerlist(peer,i) RETURNING id`,[peers.slice(0,20)])).rows.map(r=>r.id);
+  const replies = (await sql(`INSERT INTO hyt_comments(post_id,author_id,body,anonymous,request_id)
+    SELECT question,$1,'有效建议'||i,false,gen_random_uuid()
+    FROM unnest($2::uuid[]) WITH ORDINALITY AS list(question,i) RETURNING id,post_id`,[id,questions])).rows;
+  for (const c of replies.slice(0,3)) {
+    await sql("INSERT INTO hyt_collection_accepted_answers(post_id,comment_id) VALUES($1,$2)",[c.post_id,c.id]);
+    await sql("INSERT INTO hyt_comment_likes(comment_id,member_id) VALUES($1,$2)",[c.id,peers[0]]);
+  }
+  await sql(`INSERT INTO hyt_reactions(post_id,member_id,kind) SELECT $1,peer,'like' FROM unnest($2::uuid[]) peer`,[post,peers]);
+  await sql(`INSERT INTO hyt_reactions(post_id,member_id,kind) SELECT $1,peer,'save' FROM unnest($2::uuid[]) peer`,[post,peers.slice(0,5)]);
+  await sql(`INSERT INTO hyt_reactions(post_id,member_id,kind) SELECT question,$1,'save' FROM unnest($2::uuid[]) question`,[id,questions]);
+  await sql(`INSERT INTO hyt_comments(post_id,author_id,body,anonymous,request_id)
+    SELECT $1,peer,'我看到了这条校园见闻',false,gen_random_uuid() FROM unnest($2::uuid[]) peer`,[post,peers.slice(0,5)]);
+  await sql("INSERT INTO hyt_follows(member_id,followed_id) VALUES($1,$2),($2,$1)",[id,peers[0]]);
+  for (let i=0;i<3;i++) {
+    await sql("INSERT INTO hyt_responses(post_id,member_id,kind) VALUES($1,$2,'hug')",[own[i].id,peers[i]]);
+  }
+  // Re-evaluate verified history through the ordinary hall and collection APIs.
+  await sql("UPDATE hyt_members SET awards_initialized=false,collection_checked_at=NULL WHERE id=$1",[id]);
+  const hall=(await call(actor,"honors.hall",{timeAwards:true})).hall;
+  const collection=await open(actor);
+  const base=["arrival","firstpost","hello","liked","sprout","neighbor","popular","collector","month","year"];
+  const extra=["first-hundred","campus-observer","good-company","answer-guide","campus-photographer","community-classic",
+    "landmark-post","hundred-likes","full-page","archivist","before-dawn","world-lines","crossed-paths","no-island"];
+  assert.deepEqual(base.filter(code=>!hall.awards[code]),[]);
+  const earned=new Set(collection.items.filter(i=>i.awardId).map(i=>i.code));
+  assert.deepEqual(extra.filter(code=>!earned.has(code)),[]);
+});
