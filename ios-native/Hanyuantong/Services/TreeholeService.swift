@@ -55,7 +55,13 @@ struct TreeholeNotification: Codable, Identifiable, Equatable {
 }
 struct TreeholePublicProfile: Codable, Equatable { let id: String, nickname: String, bio: String; let postCount: Int; var following: Bool? = nil; var avatar: TreeholeImage? = nil; var badges: CampusHonorIdentity? = nil }
 struct TreeholeFollow: Codable, Identifiable, Equatable { let id: String, nickname: String, bio: String, followedAt: String; var avatar: TreeholeImage? = nil }
+struct NativeCommunityAchievementHall: Decodable {
+    let id: String
+    let awards: [String: String]
+}
+
 struct TreeholeEnvelope: Decodable {
+    var hall: NativeCommunityAchievementHall?
     var honorCollectionEnabled: Bool?
     var collection: CampusCollectionProfile?
     var honorArchive: [CampusHonorItem]?
@@ -118,7 +124,7 @@ private final class TreeholeRedirectGuard: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
 actor TreeholeService {
-    static let actions: Set<String> = ["collection.profile", "collection.archive", "collection.wear", "collection.visibility", "collection.ack", "collection.admin", "collection.change", "config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like", "comments.context", "threads.watch", "notifications.list", "notifications.unread", "notifications.read", "profile.get", "avatar.set", "responses.set", "follows.set", "follows.list", "polls.vote", "buddies.join", "buddies.close", "buddies.members"]
+    static let actions: Set<String> = ["honors.hall", "collection.profile", "collection.archive", "collection.wear", "collection.visibility", "collection.ack", "collection.admin", "collection.change", "config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.reports", "admin.resolve", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like", "comments.context", "threads.watch", "notifications.list", "notifications.unread", "notifications.read", "profile.get", "avatar.set", "responses.set", "follows.set", "follows.list", "polls.vote", "buddies.join", "buddies.close", "buddies.members"]
     private let vault: TreeholeTokenVault
     private let session: URLSession
     private var generation = 0
