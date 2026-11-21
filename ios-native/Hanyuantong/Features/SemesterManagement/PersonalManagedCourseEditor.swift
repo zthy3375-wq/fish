@@ -18,7 +18,7 @@ struct PersonalManagedCourseEditor: View {
     }
 
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("个人课程") {
                     TextField("课程名称", text: $course.name)
@@ -26,7 +26,7 @@ struct PersonalManagedCourseEditor: View {
                     Picker("颜色", selection: $course.color) {
                         Text("蓝色").tag("blue"); Text("紫色").tag("purple"); Text("绿色").tag("green"); Text("橙色").tag("orange")
                     }
-                    TextField("备注（选填）", text: $course.notes, axis: .vertical).lineLimit(3...6)
+                    CampusMultilineField("备注（选填）", text: $course.notes, minimum: 3, maximum: 6)
                 }
                 Section("上课安排 · \(course.arrangements.count) 个") {
                     ForEach(course.arrangements) { arrangement in
@@ -97,7 +97,7 @@ private struct PersonalArrangementEditor: View {
         self.semester = semester; self.table = table; self.save = save
     }
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("时间与地点") {
                     Picker("星期", selection: $arrangement.day) { ForEach(1...7, id: \.self) { Text("周" + ["一", "二", "三", "四", "五", "六", "日"][$0 - 1]).tag($0) } }

@@ -15,29 +15,15 @@ extension CampusDisplayTheme {
     var body: some View {
         Form {
             Section("本机资料") {
-                LabeledContent("昵称", value: store.preferences.name)
-                LabeledContent("专业 / 年级", value: store.preferences.major.isEmpty ? "未填写" : store.preferences.major)
+                CampusLabeledValue("昵称", value: store.preferences.name)
+                CampusLabeledValue("专业 / 年级", value: store.preferences.major.isEmpty ? "未填写" : store.preferences.major)
                 Button("编辑个人资料") { editingProfile = true }
                     .disabled(!store.canEdit).accessibilityIdentifier("edit-local-profile")
                 Text("无需填写真实学号和身份信息。昵称与专业 / 年级仅加密保存在本机，不修改学校资料，也不加入匿名统计或发送到学校。")
                     .font(.caption).foregroundStyle(CampusTheme.muted)
             }
             Section("偏好与数据") {
-                Picker("主题", selection: Binding(get: { store.preferences.theme }, set: { value in
-                    perform { try store.updateTheme(value) }
-                })) {
-                    ForEach(CampusDisplayTheme.allCases) { theme in
-                        Label(theme.title, systemImage: theme.symbol).tag(theme)
-                    }
-                }.pickerStyle(.segmented).disabled(!store.canEdit).accessibilityIdentifier("display-theme")
-                Toggle(isOn: Binding(get: { store.preferences.compact }, set: { value in
-                    perform { try store.updateCompact(value) }
-                })) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("紧凑布局")
-                        Text("更少留白，更高信息密度").font(.caption).foregroundStyle(CampusTheme.muted)
-                    }
-                }.disabled(!store.canEdit).accessibilityIdentifier("display-compact")
+                CampusAppearanceControls(store: store) { message = $0 }
                 Text("主题与布局立即应用，保存失败时保留原设置。紧凑布局不会缩小系统文字；辅助功能大字号仍保留阅读空间。")
                     .font(.caption).foregroundStyle(CampusTheme.muted)
             }
@@ -58,7 +44,7 @@ extension CampusDisplayTheme {
                 Text("只恢复昵称、专业 / 年级、主题和紧凑布局，不影响学校连接、个人课程、待办、系统提醒、小组件或匿名统计选择。")
             }
         }
-        .scrollContentBackground(.hidden).background(CampusTheme.background)
+        .campusScrollBackground().background(CampusTheme.background)
         .navigationTitle("显示与本机资料").navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $editingProfile) { LocalProfileEditorView(store: store) }
         .confirmationDialog("恢复默认本机设置？", isPresented: $confirmingReset, titleVisibility: .visible) {
@@ -74,6 +60,33 @@ extension CampusDisplayTheme {
     private func perform(_ action: () throws -> Void) {
         do { try action(); message = "本机设置已保存" }
         catch { message = error.localizedDescription }
+    }
+}
+
+@MainActor struct CampusAppearanceControls: View {
+    @ObservedObject var store: DisplayPreferencesStore
+    let failed: (String) -> Void
+    var body: some View {
+        Group {
+                Picker("主题", selection: Binding(get: { store.preferences.theme }, set: { value in
+                    perform { try store.updateTheme(value) }
+                })) {
+                    ForEach(CampusDisplayTheme.allCases) { theme in
+                        Label(theme.title, systemImage: theme.symbol).tag(theme)
+                    }
+                }.pickerStyle(.segmented).disabled(!store.canEdit).accessibilityIdentifier("display-theme")
+                Toggle(isOn: Binding(get: { store.preferences.compact }, set: { value in
+                    perform { try store.updateCompact(value) }
+                })) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("紧凑布局")
+                        Text("更少留白，更高信息密度").font(.caption).foregroundStyle(CampusTheme.muted)
+                    }
+                }.disabled(!store.canEdit).accessibilityIdentifier("display-compact")
+        }
+    }
+    private func perform(_ action: () throws -> Void) {
+        do { try action() } catch { failed(error.localizedDescription) }
     }
 }
 
@@ -97,13 +110,13 @@ extension CampusDisplayTheme {
     var body: some View {
         Button { editing = true } label: {
             HStack(spacing: 13) {
-                Text(String(store.preferences.name.prefix(1))).font(.title2.weight(.medium))
+                Text(String(name.prefix(1))).font(.title2.weight(.medium))
                     .frame(width: 49, height: 49).foregroundStyle(CampusTheme.primary)
                     .background(CampusTheme.tint, in: RoundedRectangle(cornerRadius: 17)).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(name).font(.title3.weight(.semibold)).foregroundStyle(CampusTheme.text)
                     if !major.isEmpty { Text(major).font(.subheadline).foregroundStyle(CampusTheme.muted) }
-                    Text(nonempty(academicClass) ?? "本地资料").font(.caption).foregroundStyle(CampusTheme.muted)
+                    if let academicClass = nonempty(academicClass) { Text(academicClass).font(.caption).foregroundStyle(CampusTheme.muted) }
                 }
                 Spacer(minLength: 4)
                 Label("编辑", systemImage: "chevron.right").font(.caption).foregroundStyle(CampusTheme.primary)
@@ -130,7 +143,7 @@ extension CampusDisplayTheme {
     private var valid: Bool { (try? store.preferences.editingProfile(name: name, major: major)) != nil }
 
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section {
                     TextField("昵称", text: $name).textContentType(.nickname)
@@ -149,7 +162,7 @@ extension CampusDisplayTheme {
                     Section { Text(issue).foregroundStyle(.red).accessibilityIdentifier("local-profile-error") }
                 }
             }
-            .scrollContentBackground(.hidden).background(CampusTheme.background)
+            .campusScrollBackground().background(CampusTheme.background)
             .navigationTitle("编辑个人资料").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

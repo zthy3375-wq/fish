@@ -93,7 +93,7 @@ struct LearningCenterView: View {
                 }.font(.subheadline).frame(minHeight: 44)
             }
             if !store.cache.issues.isEmpty {
-                ShareLink(item: store.feedbackText) { Label("导出连接反馈（不含账号或任务内容）", systemImage: "square.and.arrow.up").font(.caption) }.frame(minHeight: 44)
+                CampusShareLink(item: store.feedbackText) { Label("导出连接反馈（不含账号或任务内容）", systemImage: "square.and.arrow.up").font(.caption) }.frame(minHeight: 44)
             }
             if store.isOpening { HStack { ProgressView(); Text("官方页面打开中").font(.footnote) } }
         }.campusCard()
@@ -267,7 +267,7 @@ private struct LearningItemDetail: View {
         _plan = State(initialValue: store.cache.plans[item.id] ?? LearningPlan())
     }
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("学习通记录") {
                     Text(item.title).font(.headline)
@@ -291,7 +291,7 @@ private struct LearningItemDetail: View {
                     }
                     Stepper("预计 \(plan.durationMinutes) 分钟", value: $plan.durationMinutes, in: 5...480, step: 5)
                     Toggle("已准备好", isOn: $plan.prepared)
-                    TextField("备注", text: $plan.notes, axis: .vertical).lineLimit(3...8)
+                    CampusMultilineField("备注", text: $plan.notes, minimum: 3, maximum: 8)
                     Text("计划不修改平台截止时间，也不会把作业标为已提交。请在官方页面自行完成操作。").font(.footnote).foregroundStyle(.secondary)
                 }
             }

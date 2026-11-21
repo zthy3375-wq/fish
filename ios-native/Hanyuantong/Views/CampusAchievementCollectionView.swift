@@ -1,9 +1,8 @@
 import SwiftUI
 
 /// Global iPhone entry corresponding to Android's GlobalCollection.vue.
-/// School and Learning evidence comes from the current authenticated native stores;
-/// private device awards use the encrypted journal, and community awards are read-only
-/// projections of the server's actual award records.
+/// Local awards come from persisted device and account journals.
+/// Community awards and the public showcase use the community service.
 private enum CommunityAchievementPlaceholders {
     // Synchronized with src/domain/communityAchievementCards.ts. Server-owned,
     // never awarded from the client based on an unverified local counter.
@@ -22,16 +21,22 @@ private enum CommunityAchievementPlaceholders {
 }
 
 struct CampusAchievementCollectionView: View {
-    @EnvironmentObject private var achievements: CampusAchievementStore
+    @ObservedObject private var deviceAchievements = CampusAchievementStore.shared
+    @ObservedObject private var journal = MedalJournal.shared
     @EnvironmentObject private var school: CampusStore
     @EnvironmentObject private var learning: LearningStore
     @EnvironmentObject private var tree: TreeholeStore
-    @EnvironmentObject private var display: DisplayPreferencesStore
+    let initialCode: String?
+    @State private var openedInitial = false
 
     @State private var group = "全部"
     @State private var selected: CampusAchievement?
-    @State private var communityHall: NativeCommunityAchievementHall?
+    @State private var showSettings = false
+    @State private var communityHall: NativeHonorHall?
     @State private var communityCollection: CampusCollectionProfile?
+    @State private var communityItems: [CampusHonorItem] = []
+    @State private var editingShowcase = false
+    @State private var showcaseError: String?
     @State private var loadingCommunity = false
     @State private var communityError: String?
     @State private var honorRoute: CampusHonorRoute?
@@ -42,10 +47,10 @@ struct CampusAchievementCollectionView: View {
 
     private var entries: [CampusAchievement] {
         let known = CampusAchievementCatalog.entries
-        let extras: [CampusAchievement] = (communityCollection?.items ?? []).compactMap { item in
+        let extras: [CampusAchievement] = currentItems.compactMap { item in
             guard CampusAchievementCatalog.byCode[item.code] == nil,
                   item.awardId != nil, item.category != "identity" else { return nil }
-            let category = item.category == "hidden" ? "隐藏" : "社区"
+            let category = item.archived ? "已停发" : item.category == "hidden" ? "隐藏" : "社区"
             return CampusAchievement(item.code, item.name, category,
                                      ["common": "普通", "fine": "普通", "rare": "稀有",
                                       "epic": "史诗", "legendary": "传奇"][item.rarity] ?? "普通",
@@ -62,24 +67,29 @@ struct CampusAchievementCollectionView: View {
         }
         return known + pendingMilestones + confirmed.sorted { $0.name < $1.name } + hiddenPlaceholders
     }
-    private var active: [CampusAchievement] { entries.filter { group == "全部" || $0.group == group } }
-    private var earnedCount: Int { entries.filter { isEarned($0) }.count }
+    private var activeEntries: [CampusAchievement] { entries.filter { $0.group != "已停发" } }
+    private var active: [CampusAchievement] { group == "全部" ? activeEntries : entries.filter { $0.group == group } }
+    private var earnedCount: Int { activeEntries.filter { isEarned($0) }.count }
+    private var groups: [String] {
+        CampusAchievementCatalog.groups + (entries.contains { $0.group == "已停发" } ? ["已停发"] : [])
+    }
+    private var privatePins: [String] { journal.pinned(school: school.schoolMedalScope, learning: learning.cache.account) }
+    private var publicPins: [String] { tree.user?.showcase ?? communityCollection?.showcase ?? communityHall?.showcase ?? [] }
+    private var currentItems: [CampusHonorItem] { communityCollection?.id == tree.user?.id ? communityItems : [] }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 overview
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(CampusAchievementCatalog.groups, id: \.self) { item in
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 66), spacing: 8)], spacing: 8) {
+                        ForEach(groups, id: \.self) { item in
                             Button { group = item } label: {
                                 Text(item).font(.subheadline.weight(group == item ? .semibold : .regular))
-                                    .padding(.horizontal, 15).frame(minHeight: 38)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
                                     .foregroundStyle(group == item ? .white : CampusTheme.text)
                                     .background(group == item ? CampusTheme.primary : CampusTheme.surface, in: Capsule())
                             }.buttonStyle(.plain).accessibilityAddTraits(group == item ? .isSelected : [])
                         }
-                    }
                 }.accessibilityIdentifier("achievement-filters")
                 LazyVGrid(columns: columns, spacing: 8) {
                     ForEach(active) { item in
@@ -90,7 +100,9 @@ struct CampusAchievementCollectionView: View {
                     }
                 }
                 communitySection
-                if let error = achievements.error {
+                Button { showSettings = true } label: { Label("成就反馈", systemImage: "bell") }
+                    .frame(minHeight: 44)
+                if let error = deviceAchievements.error {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .font(.footnote).foregroundStyle(.red)
                 }
@@ -102,14 +114,15 @@ struct CampusAchievementCollectionView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selected) { item in detail(item) }
         .sheet(item: $honorRoute) { route in CampusHonorCollectionView(tree: tree, route: route) }
+        .sheet(isPresented: $showSettings) { MedalSettings() }
         .onAppear {
-            achievements.record("welcome")
-            if display.preferences.name != "同学", !display.preferences.major.isEmpty {
-                achievements.record("profile")
-            }
-            if school.tasks.contains(where: { $0.completed && $0.steps.filter(\.completed).count >= 2 }) {
-                achievements.record("tasks")
-            }
+            guard !openedInitial else { return }
+            openedInitial = true
+            selected = entries.first { $0.code == initialCode }
+        }
+        .onChange(of: tree.user?.id) { _ in
+            if selected?.source == "community" { selected = nil }
+            showcaseError = nil
         }
         .task(id: tree.user?.id) { await loadCommunity() }
     }
@@ -118,7 +131,7 @@ struct CampusAchievementCollectionView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("你的校园纪念册").font(.title2.bold())
+                    Text("成就收藏馆").font(.title2.bold())
                     Text("本机、教务、学习通与社区荣誉集中展示")
                         .font(.footnote).foregroundStyle(CampusTheme.muted)
                 }
@@ -127,12 +140,12 @@ struct CampusAchievementCollectionView: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(String(earnedCount)).font(.system(size: 34, weight: .bold, design: .rounded))
-                Text("/ \(entries.count) 已解锁").font(.subheadline).foregroundStyle(CampusTheme.muted)
+                Text("/ \(activeEntries.count) 已解锁").font(.subheadline).foregroundStyle(CampusTheme.muted)
                 Spacer()
-                Text("\(entries.isEmpty ? 0 : Int(Double(earnedCount) / Double(entries.count) * 100))%")
+                Text("\(activeEntries.isEmpty ? 0 : Int(Double(earnedCount) / Double(activeEntries.count) * 100))%")
                     .font(.subheadline.weight(.semibold)).foregroundStyle(CampusTheme.primary)
             }
-            ProgressView(value: Double(earnedCount), total: Double(max(1, entries.count)))
+            ProgressView(value: Double(earnedCount), total: Double(max(1, activeEntries.count)))
                 .tint(Color(hex: 0xA58BDD))
             Text("未连接的账号显示待连接；不会凭空解锁或合并不同账号的荣誉。")
                 .font(.caption2).foregroundStyle(CampusTheme.muted)
@@ -182,28 +195,15 @@ struct CampusAchievementCollectionView: View {
 
     private func awardDate(_ item: CampusAchievement) -> String? {
         switch item.source {
-        case "device":
-            return achievements.date(for: item.code).map { CampusTheme.date($0, format: "yyyy-MM-dd") }
-        case "school":
-            guard school.isConnected else { return nil }
-            switch item.code {
-            case "identity": return school.lastSynced.map { CampusTheme.date($0, format: "yyyy-MM-dd") } ?? "当前连接"
-            case "schedule":
-                return school.courses.contains(where: { $0.source == "school" }) && school.lastSynced != nil
-                    ? CampusTheme.date(school.lastSynced!, format: "yyyy-MM-dd") : nil
-            case "grade": return school.grades.isEmpty ? nil : "当前教务连接"
-            case "exam":
-                return school.exams.isEmpty || !school.seenExamRecords ? nil : "当前教务连接"
-            case "offline":
-                return school.usedOfflineAcademicSchedule ? "当前教务连接" : nil
-            default: return nil
-            }
-        case "learning":
-            return learning.cache.session == "valid" && !learning.cache.courses.isEmpty &&
-                   learning.cache.issues["courses"] == nil ? "当前学习通账号" : nil
+        case "device", "school", "learning":
+            guard let medal = CampusMedal.byCode[item.code] else { return nil }
+            let scope = item.source == "school" ? school.schoolMedalScope : learning.cache.account
+            return journal.stamp(medal, scope: scope).map { CampusTheme.date($0, format: "yyyy-MM-dd") }
         case "community":
-            if let date = communityHall?.awards[item.code] { return String(date.prefix(10)) }
-            if let awarded = communityCollection?.items.first(where: { $0.code == item.code && $0.awardId != nil }) {
+            let id = tree.user?.id
+            if communityHall?.id == id, let date = communityHall?.awards[item.code] { return String(date.prefix(10)) }
+            if communityCollection?.id == id, let date = communityCollection?.baseAwards?[item.code] { return String(date.prefix(10)) }
+            if let awarded = currentItems.first(where: { $0.code == item.code && $0.awardId != nil }) {
                 return awarded.at.map { String($0.prefix(10)) } ?? "社区已确认"
             }
             return nil
@@ -228,7 +228,7 @@ struct CampusAchievementCollectionView: View {
                 Spacer()
                 if loadingCommunity { ProgressView() }
                 else if tree.user != nil {
-                    Button { Task { await loadCommunity() } } label: { Image(systemName: "arrow.clockwise") }
+                    Button { Task { await loadCommunity(force: true) } } label: { Image(systemName: "arrow.clockwise") }
                         .accessibilityLabel("同步社区荣誉")
                 }
             }
@@ -245,6 +245,7 @@ struct CampusAchievementCollectionView: View {
                 }.buttonStyle(.plain).foregroundStyle(CampusTheme.primary)
             } else {
                 Button {
+                    tree.accountEntryRequested = true
                     school.selectedTab = .community
                 } label: {
                     HStack {
@@ -286,19 +287,23 @@ struct CampusAchievementCollectionView: View {
                     LabeledContent("收藏归属", value: ["device": "本机", "school": "当前教务连接",
                                                      "learning": "当前学习通账号", "community": "邯院通社区账号"][item.source] ?? "")
                     if let date = awardDate(item) { LabeledContent("获得记录", value: date) }
-                    if item.source == "device", isEarned(item) {
+                    if item.source == "community", isEarned(item) {
+                        communityShowcaseButton(item)
+                    } else if isEarned(item), let medal = CampusMedal.byCode[item.code] {
+                        let pinned = privatePins.contains(item.code)
                         Button {
-                            achievements.togglePin(item.code)
+                            journal.togglePin(medal, school: school.schoolMedalScope, learning: learning.cache.account)
                         } label: {
-                            Label(achievements.journal.pins.contains(item.code) ? "从我的页面取下" : "展示到我的页面",
-                                  systemImage: achievements.journal.pins.contains(item.code) ? "checkmark" : "bookmark")
+                            Label(pinned ? "从我的页面取下" : "展示到我的页面",
+                                  systemImage: pinned ? "checkmark" : "bookmark")
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(!achievements.journal.pins.contains(item.code) && achievements.journal.pins.count >= 3)
-                        Text("本机展示 \(achievements.journal.pins.count)/3")
+                        .disabled(!pinned && privatePins.count >= 3)
+                        Text("本机展示 \(privatePins.count)/3")
                             .font(.footnote).foregroundStyle(CampusTheme.muted)
                     }
+
                 }.padding(24).frame(maxWidth: 450)
             }
             .navigationTitle("成就详情")
@@ -307,25 +312,88 @@ struct CampusAchievementCollectionView: View {
         }
     }
 
-    @MainActor private func loadCommunity() async {
+    @ViewBuilder private func communityShowcaseButton(_ item: CampusAchievement) -> some View {
+        let award = currentItems.first { $0.code == item.code && $0.awardId != nil }
+        let key = award?.awardId ?? item.code
+        let pinned = publicPins.contains(key)
+        if let award, award.category == "hidden", !award.publicHidden {
+            Text("这枚隐藏成就仅自己可见，可在社区荣誉收藏中设置公开。").font(.footnote)
+        } else if (communityCollection?.layoutVersion ?? 0) >= 2 || award == nil {
+            Button {
+                Task { await changeShowcase(key, remove: pinned) }
+            } label: {
+                Label(pinned ? "从社区主页取下" : "展示到社区主页", systemImage: pinned ? "checkmark" : "bookmark")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(editingShowcase || (!pinned && publicPins.count >= 3))
+            if let showcaseError { Text(showcaseError).font(.footnote).foregroundStyle(.red) }
+        }
+    }
+
+    @MainActor private func changeShowcase(_ key: String, remove: Bool) async {
+        guard !editingShowcase, let owner = tree.user?.id, remove || publicPins.count < 3 else { return }
+        let pins = remove ? publicPins.filter { $0 != key } : publicPins + [key]
+        editingShowcase = true; showcaseError = nil
+        defer { editingShowcase = false }
+        do {
+            if (communityCollection?.layoutVersion ?? 0) >= 2 {
+                let result = try await tree.api.request("collection.showcase", ["items": pins])
+                guard tree.user?.id == owner, let identity = result.updatedIdentity, identity.id == owner else { return }
+                tree.applyCollectionIdentity(identity)
+            } else {
+                guard let hall = communityHall, hall.id == owner else { return }
+                let result = try await tree.api.request("honors.wear", ["honor": hall.badges.worn?.code as Any? ?? NSNull(), "showcase": pins])
+                guard tree.user?.id == owner, let updated = result.hall, updated.id == owner else { return }
+                communityHall = updated
+                tree.applyIdentity(updated)
+            }
+        } catch {
+            guard tree.user?.id == owner else { return }
+            showcaseError = error.localizedDescription
+        }
+    }
+
+    @MainActor private func loadCommunity(force: Bool = false) async {
         remoteGeneration += 1
         let current = remoteGeneration
-        communityHall = nil; communityCollection = nil
-        guard let id = tree.user?.id else { communityError = nil; return }
         loadingCommunity = true; communityError = nil
         defer { if current == remoteGeneration { loadingCommunity = false } }
         do {
-            // The legacy hall is a read-only, user-scoped endpoint; it must not issue awards.
+            if tree.user == nil { try await tree.restoreGalleryIdentity() }
+            guard let id = tree.user?.id, current == remoteGeneration, !Task.isCancelled else { return }
+            if communityHall?.id != id { communityHall = nil; communityCollection = nil; communityItems = [] }
+            if let storage = try? ProtectedStorage(),
+               let cached = try? storage.read("honors-" + id, as: NativeHonorHall.self), cached.id == id {
+                communityHall = cached
+            }
             let result = try await tree.api.request("honors.hall")
-            guard current == remoteGeneration, tree.user?.id == id else { return }
-            if result.hall?.id == id { communityHall = result.hall }
-            if tree.honorCollectionEnabled {
-                let profile = try await tree.loadHonorCollection(member: id)
-                guard current == remoteGeneration, tree.user?.id == id else { return }
-                if profile.id == id { communityCollection = profile }
+            guard current == remoteGeneration, tree.user?.id == id, !Task.isCancelled else { return }
+            guard let hall = result.hall, hall.id == id else { throw TreeholeError(code: "invalid_response") }
+            communityHall = hall
+            if let storage = try? ProtectedStorage() { try? storage.write(hall, name: "honors-" + id) }
+            guard tree.honorCollectionEnabled || !tree.ready else { return }
+            do {
+                let first = try await tree.loadHonorCollection(member: id, fresh: force)
+                var page = first.items
+                var items = Array(page.prefix(40))
+                while page.count > 40 {
+                    guard current == remoteGeneration, tree.user?.id == id, !Task.isCancelled else { return }
+                    page = try await tree.loadHonorCollection(member: id, offset: items.count).items
+                    items.append(contentsOf: page.prefix(40))
+                }
+                guard current == remoteGeneration, tree.user?.id == id, !Task.isCancelled else { return }
+                communityCollection = first
+                communityItems = items
+                if let showcase = first.showcase {
+                    tree.applyCollectionIdentity(.init(id: id, badges: first.badges, showcase: showcase, collectionShowcase: nil))
+                }
+            } catch let error as TreeholeError where ["not_found", "invalid_request"].contains(error.code) {
+                // Older service deployments expose only the original hall.
             }
         } catch {
-            guard current == remoteGeneration, tree.user?.id == id else { return }
+            guard current == remoteGeneration, !Task.isCancelled else { return }
+            if (error as? TreeholeError)?.code == "session_expired" { tree.clear() }
             communityError = "社区荣誉暂未同步。本机收藏及教务数据仍可查看。"
         }
     }

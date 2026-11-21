@@ -10,8 +10,8 @@ struct HanyuantongApp: App {
     @StateObject private var pangguai = PangguaiStore()
     @StateObject private var analytics = AnonymousAnalyticsStore()
     @StateObject private var displayPreferences = DisplayPreferencesStore()
-    @StateObject private var achievements = CampusAchievementStore()
     @Environment(\.scenePhase) private var scenePhase
+    init() { CampusTabChrome.configure() }
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -22,10 +22,8 @@ struct HanyuantongApp: App {
                 .environmentObject(pangguai)
                 .environmentObject(analytics)
                 .environmentObject(displayPreferences)
-                .environmentObject(achievements)
                 .preferredColorScheme(displayPreferences.preferences.theme.colorScheme)
                 .environment(\.campusCompactLayout, displayPreferences.preferences.compact)
-                .onAppear { achievements.record("welcome") }
                 .onOpenURL { url in
                     if url.scheme == "hanyuantong", url.host == "schedule", url.user == nil, url.password == nil { store.selectedTab = .schedule }
                 }

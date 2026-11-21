@@ -1,21 +1,11 @@
 import SwiftUI
 
-struct CampusIdentityBadge: Codable, Equatable {
-    let code: String
-}
-
 struct CampusWornBadge: Codable, Equatable, Identifiable {
     let id: String
     let code: String
     let name: String
     let rarity: String
     let title: String?
-}
-
-struct CampusHonorIdentity: Codable, Equatable {
-    let official: CampusIdentityBadge?
-    let worn: CampusIdentityBadge?
-    let collection: CampusWornBadge?
 }
 
 struct CampusHonorItem: Codable, Identifiable, Equatable {
@@ -37,13 +27,16 @@ struct CampusHonorItem: Codable, Identifiable, Equatable {
 struct CampusCollectionProfile: Codable {
     let id: String, nickname: String
     let items: [CampusHonorItem]
-    let badges: CampusHonorIdentity
+    let badges: MemberBadges
     let identities: [String]
     let customTitle: String?
     let useTitle: Bool
     let total: Int
     let rarities: [String: Int]
     let unseen: [String]
+    let layoutVersion: Int?
+    let showcase: [String]?
+    let baseAwards: [String: String]?
     var legacyCount: Int {
         if let code = badges.official?.code { return Set(identities + [code]).count }
         return identities.count
@@ -52,7 +45,9 @@ struct CampusCollectionProfile: Codable {
 
 struct CampusIdentityUpdate: Codable {
     let id: String
-    let badges: CampusHonorIdentity
+    let badges: MemberBadges
+    let showcase: [String]?
+    let collectionShowcase: [CampusHonorItem]?
 }
 
 struct CampusHonorRoute: Identifiable {
@@ -69,7 +64,7 @@ let campusHonorCategories: [CampusHonorOption] = [.init("identity","身份"),.in
 let campusHonorRarities: [CampusHonorOption] = [.init("common","普通"),.init("fine","精良"),.init("rare","稀有"),.init("epic","史诗"),.init("legendary","传说")]
 
 struct CampusHonorByline: View {
-    var badges: CampusHonorIdentity?
+    var badges: MemberBadges?
     var body: some View {
         HStack(spacing: 5) {
             if let role = badges?.official, let name = campusIdentityNames[role.code] {
@@ -101,7 +96,7 @@ private struct CampusMedalShape: Shape {
     }
 }
 
-private struct CampusMedal: View {
+private struct CommunityMedallion: View {
     let item: CampusHonorItem
     var size: CGFloat = 58
     private var tint: Color {
@@ -234,7 +229,7 @@ struct CampusHonorCollectionView: View {
             ForEach(shown) { item in
                 Button { show(item) } label: {
                     VStack(spacing: 5) {
-                        CampusMedal(item: item)
+                        CommunityMedallion(item: item)
                         Text(item.name).font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2)
                         Text(item.year.map { String($0) + " · " } ?? "").font(.caption2) +
                         Text(campusHonorRarities.first { $0.id == item.rarity }?.label ?? "").font(.caption2)
@@ -249,7 +244,7 @@ struct CampusHonorCollectionView: View {
             ForEach(shown, id: \.archiveId) { item in
                 Button { show(item) } label: {
                     HStack {
-                        CampusMedal(item: item, size: 39)
+                        CommunityMedallion(item: item, size: 39)
                         VStack(alignment: .leading) { Text(item.nickname ?? "").font(.subheadline.weight(.semibold)); Text(item.caption).font(.caption).foregroundStyle(.secondary) }
                         Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
                     }.padding(8).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
@@ -260,7 +255,7 @@ struct CampusHonorCollectionView: View {
     private func detail(_ item: CampusHonorItem) -> some View {
         ScrollView {
             VStack(spacing: 11) {
-                CampusMedal(item: item, size: 91).scaleEffect(reveal ? 1 : 0.77).opacity(reveal ? 1 : 0.2)
+                CommunityMedallion(item: item, size: 91).scaleEffect(reveal ? 1 : 0.77).opacity(reveal ? 1 : 0.2)
                 if unlocked == item.awardId && item.awardId != nil { Text("新荣誉已获得").font(.subheadline.weight(.semibold)).foregroundStyle(.orange) }
                 Text(item.caption).font(.title2.weight(.semibold))
                 if let nickname = item.nickname { Text("授予 " + nickname).font(.subheadline) }

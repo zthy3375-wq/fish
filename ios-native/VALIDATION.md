@@ -1,3 +1,19 @@
+## Android 1.3.1 对齐整合（2026-11-21）
+
+本轮将 iPhone 五栏视图、课表时间轴、待办日程、钱包和私信与 1.3.1 荣誉、注册和管理流程整合。新增旧设备收藏迁移测试，扩展社区隔离联调用例以覆盖公开昵称、求助采纳及撤销、社区收藏查询和普通用户的成员目录权限。当前提交的 Xcode 和实体 iPhone 验收结果以对应 CI 及实际记录为准。
+
+## Android 1.3.0 对齐 · 首页与胖乖接水
+
+首页与胖乖钱包共用直饮水商户余额，缺失或重名时显示暂未获取。首页可分别连接学校、查看今天所属周的课表、折叠课程和进入学习通及成绩。头图铃铛提供本机公告、已读状态及原生系统提醒设置。
+
+对照 Android 1.3.0（184）的实际状态转换。机身已停水时可按当前记录 ID 离线恢复扫码，设备结束和付款结果仍由平台确认。仅在本机加密存储写入成功后释放占用。最近消费展示当前移出记录，也识别旧版的手动停水记录。下一次接水须重新识别设备、核价和确认。
+
+原生回归覆盖启动状态未知、使用中、结束请求已发送、核账阶段、重复点击、旧确认、登录过期、换号、落盘失败、重启以及下一次扫码时设备仍忙。验证使用隔离的胖乖请求和存储。真实扫码、机身停水和正式账单需在校园设备复核。
+
+## iOS 五 Tab 与 Android test.30 / test.31
+
+本次本地运行的共享协议、学习通解析和快递解析分别通过 5、34、39 个场景。前端 534 项及隔离的社区服务 126 项通过。目录由 Android 代码生成，包含 32 项，其中 8 项隐藏。未接触生产账号和设备。新增 iPhone 构建、两个尺寸的模拟器验收、实际 Android APK 截图任务；最终状态以此开发分支对应运行记录为准。以往运行的通过数量只适用于各自所列的提交。
+
 ## 搭子招募（test.12，本轮原生 CI 通过）
 
 客户端源码 `dd39d9cc76688699f497555826f3754d1ca0b76a`，tree `c47444f4d551374d792d9d82f01c55768f408ffb`；CI 合并提交 `ca9f96a953658cdf1c5b8e890367976ec3651e47` tree 一致。[CI 43839100059](https://github.com/zthy3375-wq/fish/actions/runs/43839100059) 整体成功：374 项单元用例中 373 项通过、1 项真机数据保护检查按设计跳过；42 项 TreeholeTests 全通过。5 项现有 UI 流程（重点任务 2 项、其他 3 项）、模拟器 App/测试目标、未签名 iPhone Release 编译、模拟器打包与截图导出通过。
@@ -159,3 +175,9 @@ Apple implementation references: [local notification scheduling](https://develop
 
 - Run [43018879724](https://github.com/zthy3375-wq/fish/actions/runs/43018879724), source1ee053b: all316 unit cases finished with315 passed, one explicit physical-device-protection skip and zero failures. Unsigned iPhone Release compiled successfully. Three UI scenarios passed; the two task flows still failed because their metadata belongs to a SwiftUI Other wrapper containing the real Button. The saved records are visible in exported screenshots and hierarchy; this remains a test-selector failure, not evidence of lost records. The exact wrapper/child structure is now used for the next targeted regression.
 - CI now runs the two task UI cases first, then all unit tests and the remaining three UI cases on the same source/build, avoiding duplicate execution while retaining full-suite coverage when both stages succeed. Each result bundle is preserved. Source after1ee053b also explicitly applies the existing high-contrast primary-label color to13 primary buttons and adds a four-appearance contrast assertion; this still requires its own runtime result.
+
+## Android 1.3.0 visual comparison, November 19
+
+The previous Pro Max and SE screenshots differ from Android on all five tabs. The owner independently observed the same on iPhone 13 with iOS 15.4. The visual branch uses the Android 1.3.0 header, home artwork, Lucide tab icons, period labels, task quick entry and four-column academic shortcuts as references. The screenshot regression now targets iPhone 13 hardware geometry and records the actual simulator runtime. An unsigned device build at minimum deployment 15.4 checks API availability. Neither that build nor a newer simulator establishes physical iOS 15.4 acceptance.
+
+On commit 0000176, Android 1.3.0 and iPhone 13 simulator screenshots confirmed all five tab highlights moved to the correct fifth of the screen. A geometry assertion on both simulator sizes confirmed the four profile shortcuts occupy a single row. The seven-page comparison exposed a proportional-minute gap over lunch and a longer settings front page. The follow-up maps teaching periods, occupied breaks and empty breaks with Android’s timetable axis rules, puts quick entry in the task list flow and groups the secondary settings. The visual test waits for a terminal community connection state before capture and exercises an empty period opening its course editor.

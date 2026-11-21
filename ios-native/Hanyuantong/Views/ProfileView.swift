@@ -1,77 +1,197 @@
 import SwiftUI
 
 struct ProfileView: View {
+    @EnvironmentObject var tree: TreeholeStore
     @EnvironmentObject var store: CampusStore
     @EnvironmentObject var learning: LearningStore
-    @EnvironmentObject var quzhi: QuzhiStore
-    @EnvironmentObject var pangguai: PangguaiStore
-    @EnvironmentObject var analytics: AnonymousAnalyticsStore
     @EnvironmentObject var displayPreferences: DisplayPreferencesStore
-    @EnvironmentObject var achievements: CampusAchievementStore
+    @State private var schoolExpanded = false
     @State private var disconnecting = false
-    @State private var managingPersonalSchedule = false
-    @State private var versionTaps = 0
+
     var body: some View {
-        List {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
                 LocalProfileSummaryView(store: displayPreferences, academicName: store.academicProfile?.name,
                                         academicMajor: store.academicProfile?.major, academicClass: store.academicProfile?.className)
-                    .padding(.vertical, 12)
-            }
-            Section("荣誉与成就") {
-                NavigationLink { CampusAchievementCollectionView() } label: {
-                    Label("荣誉殿堂", systemImage: "trophy")
-                }.accessibilityIdentifier("open-achievement-hall")
-                if !achievements.pins.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("我的成就展示").font(.caption).foregroundStyle(CampusTheme.muted)
-                        HStack(spacing: 8) {
-                            ForEach(achievements.pins) { item in
-                                Label(item.name, systemImage: item.symbol)
-                                    .font(.caption2.weight(.semibold))
-                                    .padding(8)
-                                    .background(CampusTheme.tint, in: RoundedRectangle(cornerRadius: 12))
+                HonorShelfLink(badges: tree.user?.badges, pins: tree.user?.showcase ?? [], personal: true)
+                Text("常用教务").font(.subheadline.weight(.semibold)).padding(.top, 6)
+                HStack(alignment: .top, spacing: 0) {
+                    shortcut("成绩与学业", icon: "chart.bar") { AcademicRecordsView() }
+                    shortcut("考试安排", icon: "calendar.badge.clock") { AcademicRecordsView(initialSelection: 1) }
+                    shortcut("学期校历", icon: "calendar") { SemesterCalendar() }
+                    shortcut("桌面课表", icon: "rectangle.grid.1x2") { NativeWidgetSettingsView(publisher: store.widget) }
+                }.padding(5).modifier(ProfilePanel())
+                Text("账号与连接").font(.subheadline.weight(.semibold)).padding(.top, 6)
+                VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 12) {
+                    Button { schoolExpanded.toggle() } label: {
+                        HStack {
+                            Image(systemName: "graduationcap").foregroundStyle(CampusTheme.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("学校教务")
+                                Text(store.isConnected ? "已连接" : "未连接").font(.caption).foregroundStyle(.secondary)
                             }
-                        }
-                    }.accessibilityIdentifier("local-achievement-showcase")
+                            Image(systemName: schoolExpanded ? "chevron.up" : "chevron.down").font(.caption2).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("school-details")
+                    .accessibilityValue(schoolExpanded ? "已展开" : "已收起")
+                    Button {
+                        if store.isConnected { store.refreshSchool() } else { store.connectSchool() }
+                    } label: {
+                            if store.isBusy { ProgressView() }
+                            else { Text(store.isConnected ? "刷新" : "连接").font(.subheadline.weight(.medium)).frame(minWidth: 44, minHeight: 44) }
+                        }.buttonStyle(.borderedProminent).disabled(store.isBusy)
+                        .accessibilityLabel(store.isConnected ? "刷新教务数据" : "连接邯郸学院")
+                         .accessibilityIdentifier("连接邯郸学院")
+                    }
+                    if schoolExpanded {
+                    if store.isBusy { Button("取消本次查询", role: .cancel) { store.cancelSchool() } }
+                    if !store.semesters.isEmpty {
+                        Picker("查询学期", selection: $store.selectedTerm) {
+                            Text("当前学期").tag(Optional<AcademicTerm>.none)
+                            ForEach(store.semesters, id: \.self) { term in Text(term.title).tag(Optional(term)) }
+                        }.disabled(store.isBusy)
+                        Text("选择后点击更新，切换学期会替换当前显示的学校课表。").font(.caption).foregroundStyle(CampusTheme.muted)
+                    }
+                    if let synced = store.lastSynced {
+                        CampusLabeledValue("上次更新", value: CampusTheme.date(synced, format: "M月d日 HH:mm"))
+                    }
+                    if store.isConnected {
+                        Button("断开教务连接", role: .destructive) { disconnecting = true }.disabled(store.isBusy)
+                    } else {
+                        Text("连接后可同步课表、成绩和考试安排。").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
+                Divider()
+                Button {
+                    tree.accountEntryRequested = true
+                    store.selectedTab = .community
+                } label: { profileRow("邯院通社区账号", icon: "bubble.left") }.buttonStyle(CampusPressStyle())
+                Divider()
+                NavigationLink { LearningCenterView(store: learning) } label: { profileRow("学习通", icon: "book") }
+                    .buttonStyle(CampusPressStyle()).accessibilityIdentifier("open-learning")
+                }.padding(.horizontal, 12).modifier(ProfilePanel())
+                VStack(alignment: .leading, spacing: 4) { CommunityGroupSection() }
+                    .padding(12).modifier(ProfilePanel())
+            }.padding(.horizontal, 16).padding(.vertical, 8).frame(maxWidth: 680)
+        }
+        .campusScrollBackground().background(CampusTheme.background)
+        .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
+            ToolbarItem(placement: .navigationBarLeading) { CampusRootTitle(title: "我的") }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink { ProfileSettingsView() } label: { Label("设置", systemImage: "slider.horizontal.3").labelStyle(.titleAndIcon).font(.subheadline) }
+                    .accessibilityLabel("设置与帮助").accessibilityIdentifier("profile-settings")
             }
-            Section("邯院通账号") {
-                Button { store.selectedTab = .community } label: { Label("账号与树洞 · 昵称与匿名交流", systemImage: "bubble.left.and.bubble.right") }
-            }
-            Section("教务系统") {
-                if store.isBusy { Button("取消本次查询", role: .cancel) { store.cancelSchool() } }
-                if !store.semesters.isEmpty {
-                    Picker("查询学期", selection: $store.selectedTerm) {
-                        Text("当前学期").tag(Optional<AcademicTerm>.none)
-                        ForEach(store.semesters, id: \.self) { term in Text(term.title).tag(Optional(term)) }
-                    }.disabled(store.isBusy)
-                    Text("选择后点击更新，切换学期会替换当前显示的学校课表。").font(.caption).foregroundStyle(CampusTheme.muted)
+        }
+        .confirmationDialog("断开后会移除本机教务会话及教务缓存，个人课程和待办不受影响。", isPresented: $disconnecting, titleVisibility: .visible) {
+            Button("断开连接", role: .destructive) { store.disconnectSchool() }
+        }
+    }
+    private func profileRow(_ title: String, icon: String) -> some View {
+        HStack {
+            Image(systemName: icon).foregroundStyle(CampusTheme.primary)
+            Text(title).font(.subheadline.weight(.medium)).foregroundStyle(CampusTheme.text)
+            Spacer()
+            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(CampusTheme.muted)
+        }.frame(minHeight: 48).contentShape(Rectangle())
+    }
+    private func shortcut<Content: View>(_ title: String, icon: String, @ViewBuilder destination: () -> Content) -> some View {
+        NavigationLink(destination: destination()) {
+            VStack(spacing: 7) {
+                Image(systemName: icon).font(.system(size: 18)).foregroundStyle(CampusTheme.primary)
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(CampusTheme.text)
+                    .multilineTextAlignment(.center)
+            }.frame(maxWidth: .infinity, minHeight: 56).contentShape(Rectangle())
+        }.buttonStyle(CampusPressStyle()).accessibilityLabel(title)
+    }
+
+}
+
+private struct ProfilePanel: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(CampusTheme.border, lineWidth: 1).allowsHitTesting(false))
+    }
+}
+
+private struct ProfileSettingsView: View {
+    @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var displayPreferences: DisplayPreferencesStore
+    @EnvironmentObject var analytics: AnonymousAnalyticsStore
+    @EnvironmentObject var quzhi: QuzhiStore
+    @EnvironmentObject var pangguai: PangguaiStore
+    @State private var managingPersonalSchedule = false
+
+    @State private var extraSettings = false
+
+    var body: some View {
+        List {
+            Section("偏好与数据") {
+                CampusAppearanceControls(store: displayPreferences) { store.message = $0 }
+                NavigationLink { NativeReminderSettingsView(reminders: store.reminders) } label: {
+                    settingsRow("通知设置", "应用内提醒与消息", "bell")
                 }
-                if store.isConnected {
-                    Label("教务系统已连接", systemImage: "checkmark.shield")
-                    Button { store.refreshSchool() } label: { HStack { Label("更新课表、成绩与考试", systemImage: "arrow.clockwise"); Spacer(); if store.isBusy { ProgressView() } } }.disabled(store.isBusy)
-                    if let synced = store.lastSynced { LabeledContent("上次更新", value: CampusTheme.date(synced, format: "M月d日 HH:mm")).font(.caption) }
-                    Button("断开教务连接", role: .destructive) { disconnecting = true }.disabled(store.isBusy)
-                } else {
-                    Button { store.connectSchool() } label: { Label("连接邯郸学院教务系统", systemImage: "link") }.disabled(store.isBusy).accessibilityIdentifier("连接邯郸学院")
-                }
-                NavigationLink { AcademicRecordsView() } label: { Label("成绩与考试", systemImage: "graduationcap") }
+                NavigationLink { PersonalBackupView() } label: {
+                    settingsRow("缓存管理", "查看数据存储状态与备份", "externaldrive")
+                }.accessibilityLabel("备份与恢复")
+                Button { managingPersonalSchedule = true } label: {
+                    settingsRow("课表与数据管理", "课程、学期、备份与提醒", "slider.horizontal.3")
+                }.buttonStyle(CampusPressStyle()).accessibilityIdentifier("open-personal-schedule")
+                Button {
+                    extraSettings.toggle()
+                } label: {
+                    HStack {
+                        Image(systemName: extraSettings ? "chevron.down" : "chevron.right")
+                        Text("更多设置与校园服务")
+                    }.font(.subheadline).foregroundStyle(CampusTheme.muted)
+                }.accessibilityIdentifier("more-settings").accessibilityValue(extraSettings ? "已展开" : "已收起")
+
             }
+            if extraSettings { detailedSettings }
+            Section("帮助") {
+                NavigationLink { NativeHelpView() } label: { Label("问题反馈", systemImage: "bubble.left") }
+            }
+            Section("关于与隐私") {
+                NavigationLink("版本与更新日志") { CampusVersionPage() }
+                NavigationLink("隐私与本机数据") { PrivacyView() }
+                if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
+            }
+        }
+        .campusScrollBackground().background(CampusTheme.background)
+        .navigationTitle("设置与帮助").navigationBarTitleDisplayMode(.inline)
+        .modifier(CampusDetailHeader(title: "设置与帮助"))
+        .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
+    }
+
+    private func settingsRow(_ title: String, _ subtitle: String, _ icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(CampusTheme.primary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(CampusTheme.text)
+                Text(subtitle).font(.caption).foregroundStyle(CampusTheme.muted)
+            }
+            Spacer()
+        }.frame(minHeight: 48).contentShape(Rectangle())
+    }
+
+    @ViewBuilder private var detailedSettings: some View {
+            Section("学校服务") { Link("邯郸学院官网",destination:URL(string:"https://www.hdc.edu.cn/")!); NavigationLink("统一日程") { CampusAgendaView() } }
             Section("学校课表设置") {
+                NavigationLink("学期校历") { SemesterCalendar() }
                 DatePicker("学校第一周周一", selection: Binding(get: { store.schoolSemesterStart }, set: { store.calibrateSchoolStart($0) }), displayedComponents: .date)
                     .environment(\.timeZone, ScheduleMath.calendar.timeZone)
                 Text("请与学校校历核对，按北京时间计算学校教学周。此处不修改个人学期。").font(.caption).foregroundStyle(CampusTheme.muted)
             }
             Section("个人课表设置") {
                 if let state = store.personalSchedule, let semester = state.semesters.first(where: { $0.id == state.activeSemesterId }) {
-                    LabeledContent("当前个人学期", value: semester.title)
+                    CampusLabeledValue("当前个人学期", value: semester.title)
                     Text("第一周周一：\(semester.weekStartDate) · \(semester.weekCount) 周").font(.caption).foregroundStyle(CampusTheme.muted)
                 } else {
                     Text("旧个人记录已保留。校准第一周周一后尝试启用多学期管理；不兼容记录不会被丢弃。").font(.caption).foregroundStyle(CampusTheme.muted)
                 }
-                Button { managingPersonalSchedule = true } label: { Label("个人学期、课程与作息", systemImage: "calendar.badge.clock") }
-                    .accessibilityIdentifier("open-personal-schedule")
+
             }
             Section("显示与个人资料") {
                 NavigationLink("昵称、主题与紧凑布局") { DisplayPreferencesSettingsView(store: displayPreferences) }
@@ -79,8 +199,6 @@ struct ProfileView: View {
             }
             Section("个人数据") {
                 NavigationLink { CourseImportView(semesterStart: store.semesterStart, existing: store.courses.filter { $0.source == "personal" }, weekCount: store.personalWeekCount, onReplace: store.replacePersonalCourses, onImport: store.importPersonalCourses) } label: { Label("导入课程文件", systemImage: "doc.badge.plus") }.accessibilityIdentifier("open-course-import")
-                NavigationLink { PersonalBackupView() } label: { Label("备份与恢复", systemImage: "externaldrive") }
-                NavigationLink { NativeReminderSettingsView(reminders: store.reminders) } label: { Label("系统提醒", systemImage: "bell.badge") }
                 NavigationLink { NativeWidgetSettingsView(publisher: store.widget) } label: { Label("课表小组件", systemImage: "rectangle.grid.1x2") }
             }
             Section("校园服务") {
@@ -88,25 +206,7 @@ struct ProfileView: View {
                 NavigationLink { PangguaiWalletView(store: pangguai) } label: { Label("胖乖生活", systemImage: "washer") }.accessibilityIdentifier("open-pangguai")
                 NavigationLink { ParcelCenterView() } label: { Label("取快递", systemImage: "shippingbox") }
                 NavigationLink { CampusMapView() } label: { Label("校园平面图", systemImage: "map") }
-                NavigationLink { LearningCenterView(store: learning) } label: { Label("学习通", systemImage: "books.vertical") }.accessibilityIdentifier("open-learning")
             }
-            Section("关于邯院通") {
-                Text("学习 · 生活 · 校园")
-                Button {
-                    versionTaps += 1
-                    if versionTaps >= 7 { achievements.record("goldfish"); versionTaps = 0 }
-                } label: {
-                    HStack { Text("邯院通版本"); Spacer(); Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "开发版").foregroundStyle(CampusTheme.muted) }
-                }.buttonStyle(.plain).accessibilityIdentifier("about-version")
-                Text("iPhone 原生开发版。教务数据以学校官方系统为准；各服务需独立登录，真实账号和设备联调尚待完成。").font(.caption).foregroundStyle(CampusTheme.muted)
-                NavigationLink("隐私与本机数据") { PrivacyView() }
-                if analytics.state.hasIdentity { NavigationLink("旧版统计记录") { AnonymousAnalyticsSettingsView(store: analytics) } }
-                NavigationLink("更新日志") { NativeReleaseHistoryView() }
-                NavigationLink("帮助与反馈") { NativeHelpView() }
-            }
-        }.scrollContentBackground(.hidden).background(CampusTheme.background).navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $managingPersonalSchedule) { PersonalScheduleSettingsSheet() }
-            .confirmationDialog("断开后会移除本机教务会话及教务缓存，个人课程和待办不受影响。", isPresented: $disconnecting, titleVisibility: .visible) { Button("断开连接", role: .destructive) { store.disconnectSchool() } }
     }
 }
 
@@ -133,7 +233,7 @@ private struct LegacyPersonalCalendarView: View {
         _start = State(initialValue: start); self.save = save
     }
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("校准旧个人课表") {
                     DatePicker("个人第一周周一", selection: $start, displayedComponents: .date)
@@ -170,16 +270,15 @@ struct PrivacyView: View {
 
 struct AcademicRecordsView: View {
     @EnvironmentObject var store: CampusStore
-    @State private var selection = 0
+    @State private var selection: Int
+    init(initialSelection: Int = 0) { _selection = State(initialValue: initialSelection) }
     var body: some View {
         List {
             Section { Picker("教务记录", selection: $selection) { Text("成绩").tag(0); Text("考试").tag(1) }.pickerStyle(.segmented) }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())
             if selection == 0 { NativeGradeAnalysisView(grades: store.grades, profile: store.academicProfile) }
-            else { NativeExamRecordsView(exams: store.exams) }
+            else { NativeExamRecordsView(exams: store.exams).onAppear { if !store.exams.isEmpty { MedalJournal.shared.unlock("exam",scope:store.schoolMedalScope) } } }
             if !store.isConnected { Button("连接教务系统") { store.connectSchool() }.disabled(store.isBusy) }
-        }.scrollContentBackground(.hidden).background(CampusTheme.background).navigationTitle("成绩与考试").navigationBarTitleDisplayMode(.inline)
-            .onAppear { if selection == 1 { store.markExamRecordsViewed() } }
-            .onChange(of: selection) { value in if value == 1 { store.markExamRecordsViewed() } }
+        }.campusScrollBackground().background(CampusTheme.background).navigationTitle("成绩与考试").navigationBarTitleDisplayMode(.inline)
             .toolbar { if store.isConnected { Button { store.refreshSchool() } label: { if store.isBusy { ProgressView() } else { Image(systemName: "arrow.clockwise") } }.disabled(store.isBusy).accessibilityLabel("更新教务数据") } }
     }
 }

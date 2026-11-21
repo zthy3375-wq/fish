@@ -22,14 +22,22 @@ final class CampusStore: ObservableObject {
     @Published var message: String?
     @Published private(set) var isConnected = false
     @Published private(set) var lastSynced: Date?
-    @Published private(set) var seenExamRecords = false
-    @Published private(set) var usedOfflineAcademicSchedule = false
     @Published var showSchoolLogin = false
     @Published private(set) var practice: [AcademicPractice] = []
     @Published private(set) var semesters: [AcademicTerm] = []
     @Published var selectedTerm: AcademicTerm?
     private var storage: ProtectedStorage?
     private var session: AcademicSession?
+    var schoolMedalScope: String? { isConnected ? snapshot?.scope : nil }
+    var personalDataAvailable: Bool { loadedPersonal }
+    var visiblePeriods: [AndroidTimeSlot] {
+        if isConnected, let snapshot {
+            return SchoolCourseAdjustments.periods(snapshot).map { AndroidTimeSlot(number: $0.number, start: $0.start, end: $0.end) }
+        }
+        if let state = personalSchedule, let semester = try? PersonalSemesterRules.activeSemester(in: state),
+           let table = try? PersonalSemesterRules.table(for: semester, in: state) { return table.slots }
+        return PersonalSemesterRules.standardTimeTable().slots
+    }
     private var snapshot: AcademicSnapshot?
     private var personalCourses: [Course] = []
     private var requestGeneration = 0
@@ -86,14 +94,7 @@ final class CampusStore: ObservableObject {
             snapshot = saved; isConnected = true; apply(saved)
         } else { try storage?.remove("academic") }
     }
-    func markExamRecordsViewed() {
-        if isConnected && !exams.isEmpty { seenExamRecords = true }
-    }
-    func markOfflineAcademicScheduleViewed() {
-        if isConnected && courses.contains(where: { $0.source == "school" }) {
-            usedOfflineAcademicSchedule = true
-        }
-    }
+
     func connectSchool() { query(interactive: true) }
     func refreshSchool() { query(interactive: false) }
     func cancelSchool() {
@@ -128,7 +129,7 @@ final class CampusStore: ObservableObject {
                     return
                 }
                 if self.snapshot?.scope != new.scope {
-                    self.seenExamRecords = false; self.usedOfflineAcademicSchedule = false
+
                 }
                 let merged = new.merging(previous: self.snapshot)
                 self.snapshot = merged; self.isConnected = true
@@ -136,6 +137,9 @@ final class CampusStore: ObservableObject {
                 do {
                     guard let storage = self.storage else { throw ProtectedStorage.Failure.unavailable }
                     try storage.write(merged, name: "academic")
+                    MedalJournal.shared.unlock("identity",scope:new.scope)
+                    if !(new.courses ?? []).isEmpty { MedalJournal.shared.unlock("schedule",scope:new.scope) }
+                    if !(new.grades ?? []).isEmpty { MedalJournal.shared.unlock("grade",scope:new.scope) }
                     if self.message == nil { self.message = new.moduleErrors.isEmpty ? "学校数据已更新。" : "部分模块读取未完成，已保留同账号上次成功记录。" }
                 } catch { self.message = "数据已读取，但离线保存失败。请勿将本次结果视为已保存。" }
             case .failure(let error):
@@ -146,7 +150,7 @@ final class CampusStore: ObservableObject {
     @discardableResult private func clearAcademic() -> Bool {
         snapshot = nil; pausedCourseAdjustments = 0; isConnected = false; lastSynced = nil; selectedTerm = nil
         academicProfile = nil
-        seenExamRecords = false; usedOfflineAcademicSchedule = false
+
         grades = []; exams = []; practice = []; semesters = []; courses = personalCourses
         let widgetCleared = widget.clearForAccountChange()
         if widgetCleared { refreshWidget() }
@@ -253,6 +257,7 @@ final class CampusStore: ObservableObject {
         do {
             let next = try TaskRules.settingCompleted(tasks, id: id, completed: !current.completed)
             try commitPersonal(courses: personalCourses, tasks: next, semesterStart: semesterStart, schedule: personalSchedule)
+            if let done=next.first(where:{$0.id == id}), done.completed, done.originalID == nil, done.steps.count >= 2, done.steps.allSatisfy({$0.completed}) { MedalJournal.shared.unlock("tasks") }
         } catch { message = error.localizedDescription }
     }
     func addTask(title: String, date: Date) {

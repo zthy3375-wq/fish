@@ -106,6 +106,7 @@ private struct ProtectedAchievementPersistence: CampusAchievementPersisting {
 
 @MainActor
 final class CampusAchievementStore: ObservableObject {
+    static let shared = CampusAchievementStore()
     @Published private(set) var journal = CampusAchievementJournal()
     @Published private(set) var error: String?
     private var persistence: CampusAchievementPersisting?
@@ -120,8 +121,32 @@ final class CampusAchievementStore: ObservableObject {
         }
     }
 
-    var pins: [CampusAchievement] { journal.pins.compactMap { CampusAchievementCatalog.byCode[$0] } }
     func date(for code: String) -> Date? { journal.stamps[code] }
+
+    func importPreviousDeviceAwards(stamps: [String: Date], pins: [String]) -> Bool {
+        guard let persistence else { return false }
+        let cutoff = Date().addingTimeInterval(86400)
+        var next = journal
+        for (code, date) in stamps where CampusAchievementCatalog.byCode[code]?.source == "device"
+            && date.timeIntervalSince1970 > 0 && date <= cutoff {
+            next.stamps[code] = min(next.stamps[code] ?? date, date)
+        }
+        for code in pins where next.stamps[code] != nil && !next.pins.contains(code) {
+            guard next.pins.count < 3 else { break }
+            next.pins.append(code)
+        }
+        if CampusAchievementCatalog.lifeCodes.isSubset(of: Set(next.stamps.keys)),
+           next.stamps["life"] == nil {
+            next.stamps["life"] = CampusAchievementCatalog.lifeCodes.compactMap { next.stamps[$0] }.max()
+        }
+        do {
+            if next != journal { try persistence.save(try next.validated()); journal = next }
+            return true
+        } catch {
+            self.error = "荣誉收藏迁移失败，下次打开应用会重试。"
+            return false
+        }
+    }
 
     /// Save before updating the view. A read/save failure must never overwrite prior awards.
     func record(_ code: String, at: Date = Date()) {

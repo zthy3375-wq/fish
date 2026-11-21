@@ -237,20 +237,20 @@ final class DisplayPreferencesTests: XCTestCase {
     }
 
     func testDynamicColorsResolveNormalAndIncreasedContrastWithoutCachedAppearance() {
-        let color = CampusTheme.dynamicUIColor(light: 0x283445, dark: 0xe1e7ef, highLight: 0x131f30, highDark: 0xffffff)
-        assertColor(color, hex: 0x283445, style: .light)
+        let color = CampusTheme.dynamicUIColor(light: 0x262233, dark: 0xe1e7ef, highLight: 0x131f30, highDark: 0xffffff)
+        assertColor(color, hex: 0x262233, style: .light)
         assertColor(color, hex: 0xe1e7ef, style: .dark)
         assertColor(color, hex: 0x131f30, style: .light, contrast: .high)
         assertColor(color, hex: 0xffffff, style: .dark, contrast: .high)
-        assertColor(color, hex: 0x283445, style: .light)
+        assertColor(color, hex: 0x262233, style: .light)
     }
 
     func testCurrentLightAndDarkSemanticPaletteIsPreserved() {
         let values: [(Color, UInt32, UInt32)] = [
-            (CampusTheme.background, 0xf7f8fb, 0x171c24), (CampusTheme.surface, 0xfdfdff, 0x1e2530),
-            (CampusTheme.text, 0x283445, 0xe1e7ef), (CampusTheme.muted, 0x6d7889, 0xa6b1c2),
-            (CampusTheme.primary, 0x4f6f94, 0xa4bbd9), (CampusTheme.tint, 0xeaf0f8, 0x303e53),
-            (CampusTheme.border, 0xdce1e9, 0x3a4556)
+            (CampusTheme.background, 0xf7f6fa, 0x171c24), (CampusTheme.surface, 0xffffff, 0x1e2530),
+            (CampusTheme.text, 0x262233, 0xe1e7ef), (CampusTheme.muted, 0x696477, 0xa6b1c2),
+            (CampusTheme.primary, 0x6843b5, 0xa4bbd9), (CampusTheme.tint, 0xeee8f8, 0x303e53),
+            (CampusTheme.border, 0xe3dfeb, 0x3a4556)
         ]
         for (color, light, dark) in values {
             assertColor(UIColor(color), hex: light, style: .light)

@@ -5,12 +5,10 @@ struct TreeholeResponses: View {
     let post: TreeholePost
     var disabled = false
     let choose: (String) -> Void
-    private let choices = [("same", "我也一样", "🤝"), ("hug", "抱抱", "🫂"), ("useful", "有用", "💡")]
+    var kinds = ["same","hug","useful"]
+    private var choices:[(String,String,String)] { ([("joy","欢乐","😄"),("same", "我也一样", "🤝"), ("hug", "抱抱", "🫂"), ("useful", "有用", "💡")]).filter { kinds.contains($0.0) } }
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { buttons }
-            VStack(alignment: .leading, spacing: 8) { buttons }
-        }.accessibilityElement(children: .contain).accessibilityLabel("轻量回应").disabled(disabled)
+        CampusAdaptiveRow { HStack(spacing: 8) { buttons } } fallback: { VStack(alignment: .leading, spacing: 8) { buttons } }.accessibilityElement(children: .contain).accessibilityLabel("轻量回应").disabled(disabled)
     }
     @ViewBuilder private var buttons: some View {
         ForEach(choices, id: \.0) { key, label, icon in
@@ -26,7 +24,7 @@ struct TreeholeResponses: View {
 }
 struct TreeholeAvatarEditor: View {
     @ObservedObject var tree: TreeholeStore
-    @State private var selection: PhotosPickerItem?
+    @State private var selection: CampusPhotoItem?
     @State private var candidate: TreeholeDraftPhoto?
     @State private var confirmRemove = false
     var body: some View {
@@ -39,7 +37,7 @@ struct TreeholeAvatarEditor: View {
                     Button("取消") { candidate = nil; selection = nil }.buttonStyle(.bordered)
                 }
             } else {
-                PhotosPicker(selection: $selection, matching: .images) { Label("更换头像", systemImage: "person.crop.circle.badge.plus").frame(minHeight: 44) }
+                CampusPhotoPicker(selection: $selection, matching: .images) { Label("更换头像", systemImage: "person.crop.circle.badge.plus").frame(minHeight: 44) }
                 if tree.user?.avatar != nil { Button("恢复默认头像") { confirmRemove = true }.frame(minHeight: 44) }
             }
             Text("公开昵称发言使用此头像，匿名发言仍使用匿名图标。").font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -47,7 +45,7 @@ struct TreeholeAvatarEditor: View {
         .onChange(of: selection) { item in
             guard let item else { return }; let identity = tree.user?.id
             tree.perform {
-                guard let bytes = try await item.loadTransferable(type: Data.self), identity == tree.user?.id else { return }
+                guard let bytes = try await item.loadData(), identity == tree.user?.id else { return }
                 candidate = try TreeholeDraftStore.prepare(bytes, avatar: true)
             }
         }
@@ -55,5 +53,17 @@ struct TreeholeAvatarEditor: View {
         .confirmationDialog("恢复默认头像？", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("恢复默认头像", role: .destructive) { tree.perform { try await tree.setAvatar(nil) } }
         }
+    }
+}
+
+struct ReactionFeedback:ViewModifier {
+    let active:Bool
+    @Environment(\.accessibilityReduceMotion) var reduced
+    @State private var pulse=false
+    func body(content:Content)->some View {
+        content.scaleEffect(pulse && !reduced ? 1.10 : 1)
+            .animation(reduced ? nil : .easeOut(duration:0.15),value:pulse)
+            .onChange(of:active) { value in pulse=value }
+            .task(id:pulse) { guard pulse else {return}; do {try await Task.sleep(nanoseconds:150_000_000)} catch{return}; pulse=false }
     }
 }

@@ -210,6 +210,27 @@ final class CampusAchievementTests: XCTestCase {
         XCTAssertEqual(store.journal.pins, ["welcome"])
     }
 
+    @MainActor func testDeviceMigrationRemovesOldRecordsOnlyAfterTheSecureSave() throws {
+        let domain = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let legacyDate = Date(timeIntervalSince1970: 1_700_000_000)
+        defaults.set(["device": ["welcome": legacyDate, "firstpost": legacyDate]], forKey: "campus.medals.v1")
+        defaults.set(["device": ["welcome", "firstpost"]], forKey: "campus.medal-pins.v1")
+        let disk = InMemoryAchievementPersistence()
+        let store = CampusAchievementStore(persistence: disk)
+        disk.failWrites = true
+        _ = MedalJournal(defaults: defaults, device: store)
+        XCTAssertNotNil(defaults.dictionary(forKey: "campus.medals.v1")?["device"])
+        XCTAssertNil(store.date(for: "welcome"))
+        disk.failWrites = false
+        _ = MedalJournal(defaults: defaults, device: store)
+        XCTAssertEqual(store.date(for: "welcome"), legacyDate)
+        XCTAssertNil(store.date(for: "firstpost"))
+        XCTAssertEqual(store.journal.pins, ["welcome"])
+        XCTAssertNil(defaults.dictionary(forKey: "campus.medals.v1")?["device"])
+    }
+
     @MainActor func testInvalidDeviceJournalCannotOverwriteUnreadableStoredAwards() {
         let disk = InMemoryAchievementPersistence()
         disk.journal = CampusAchievementJournal(version: 1, stamps: ["firstpost": Date()], pins: [])

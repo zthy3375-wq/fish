@@ -2,16 +2,22 @@ import SwiftUI
 import Combine
 
 struct RootView: View {
+    @EnvironmentObject var tree:TreeholeStore
     @EnvironmentObject var store: CampusStore
+    @Environment(\.accessibilityReduceMotion) private var reduce
+    @AppStorage("medal.reduce") private var localReduce = false
     var body: some View {
         TabView(selection: $store.selectedTab) {
-            NavigationStack { HomeView() }.tabItem { Label("首页", systemImage: "house") }.tag(AppTab.home)
-            NavigationStack { ScheduleView() }.tabItem { Label("课表", systemImage: "calendar") }.tag(AppTab.schedule)
-            NavigationStack { TreeholeView() }.tabItem { Label("社区", systemImage: "bubble.left.and.bubble.right") }.tag(AppTab.community)
-            NavigationStack { TasksView() }.tabItem { Label("待办", systemImage: "checklist") }.tag(AppTab.tasks)
-            NavigationStack { ProfileView() }.tabItem { Label("我的", systemImage: "person") }.tag(AppTab.profile)
+            CampusNavigation { HomeView().modifier(reveal(.home)).background(tabChrome) }.tabItem { Label("首页", image: "tab-House") }.tag(AppTab.home)
+            CampusNavigation { ScheduleView().modifier(reveal(.schedule)).background(tabChrome) }.tabItem { Label("课表", image: "tab-CalendarDays") }.tag(AppTab.schedule)
+            CampusNavigation { TreeholeView().modifier(reveal(.community)).background(tabChrome) }.tabItem { Label("社区", image: "tab-MessagesSquare") }.tag(AppTab.community)
+            CampusNavigation { TasksView().modifier(reveal(.tasks)).background(tabChrome) }.tabItem { Label("待办", image: "tab-ListTodo") }.tag(AppTab.tasks)
+            CampusNavigation { ProfileView().modifier(reveal(.profile)).background(tabChrome) }.tabItem { Label("我的", image: "tab-UserRound") }.tag(AppTab.profile)
         }
 
+        .overlay(alignment:.top) { MedalOverlay() }
+        .task { await tree.restoreCachedIdentity() }
+        .onAppear { MedalJournal.shared.unlock("welcome") }
         .tint(CampusTheme.primary)
         .foregroundStyle(CampusTheme.text)
         .environment(\.calendar, CampusTheme.calendar)
@@ -20,6 +26,12 @@ struct RootView: View {
             Button("知道了", role: .cancel) { store.message = nil }
         } message: { Text(store.message ?? "") }
     }
+    private func reveal(_ tab: AppTab) -> CampusPageReveal {
+        CampusPageReveal(active: store.selectedTab == tab, reduce: reduce || localReduce)
+    }
+    private var tabChrome: some View {
+        CampusTabChrome(selection: store.selectedTab, reduceMotion: reduce || localReduce).frame(width: 0, height: 0)
+    }
 }
 
 struct HomeView: View {
@@ -27,57 +39,114 @@ struct HomeView: View {
     @EnvironmentObject var learning: LearningStore
     @EnvironmentObject var quzhi: QuzhiStore
     @EnvironmentObject var pangguai: PangguaiStore
-    @EnvironmentObject var achievements: CampusAchievementStore
-    @State private var fishTaps = 0
     @Environment(\.scenePhase) private var scenePhase
     @State private var now = Date()
+    @State private var timelineOpen=false
+    @AppStorage("home.announcements.enabled") private var announcementsEnabled = true
+    @AppStorage("home.announcements.welcomeRead") private var welcomeRead = false
+    @ScaledMetric(relativeTo: .body) private var heroHeight: CGFloat = 224
+    @State private var paused = false
+    @State private var swimStarted: Date?
+    @State private var swimElapsed: TimeInterval = 0
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var systemReduce
+    @AppStorage("medal.reduce") private var reduceMotion=false
+    private var allowsSwimming:Bool { scenePhase == .active && store.selectedTab == .home && !systemReduce && !reduceMotion && !paused }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                hero
-                if let focus = HomeCourseFocus.select(courses: store.courses, personalStart: store.semesterStart, schoolStart: store.schoolSemesterStart, now: now) {
-                    NavigationLink { CourseDetailView(course: focus.course, occurrenceDate: focus.start) } label: { focusCard(focus) }.buttonStyle(.plain)
-                }
-                HStack {
-                    Text("今日课程").font(.headline)
-                    Spacer()
-                    Button("查看课表 ›") { store.selectedTab = .schedule }.font(.subheadline)
-                }
-                let courses = store.courses(on: now)
-                if courses.isEmpty {
-                    CampusEmpty(title: "今天暂无课程", detail: store.isConnected ? "享受自己的校园时光" : "连接教务系统，或在课表中添加个人课程", symbol: "sun.max")
-                } else {
-                    VStack(spacing: 10) { ForEach(courses) { course in NavigationLink { CourseDetailView(course: course) } label: { CourseRow(course: course) }.buttonStyle(.plain) } }
-                }
-                todayTasks
-                upcomingExams
-                Text("校园生活").font(.headline)
-                VStack(spacing: 10) {
-                    HStack(spacing: 10) {
-                        NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", "洗澡 · 余额与充值", "drop", CampusTheme.walletPurple) }
-                        NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", "饮水 · 洗衣 · 扫码", "washer", CampusTheme.walletGreen) }
-                    }
-                    HStack(spacing: 10) {
-                        NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
-                        NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
-                    }
-                }.buttonStyle(.plain)
-                Text("学习与教务").font(.headline)
+        GeometryReader { screen in
+            ScrollView {
                 VStack(spacing: 0) {
-                    NavigationLink { AcademicRecordsView() } label: { Label("成绩与考试", systemImage: "graduationcap").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12) }
-                    Divider()
-                    NavigationLink { LearningCenterView(store: learning) } label: { HStack { Label("学习通", systemImage: "books.vertical"); Spacer(); Text("作业 · 考试").font(.caption).foregroundStyle(CampusTheme.muted) }.padding(.vertical, 12) }
-                }.campusCard()
-            }.padding(20).frame(maxWidth: 680)
-        }.background(CampusTheme.background).toolbar(.hidden, for: .navigationBar)
-            .task(id: scenePhase) {
-                guard scenePhase == .active else { return }
+                    hero(safeTop: screen.safeAreaInsets.top)
+                    VStack(alignment: .leading, spacing: 14) {
+                        coursePanel
+                        Text("校园生活").font(.headline)
+                        VStack(spacing: 10) {
+                            HStack(spacing: 10) {
+                                NavigationLink { QuzhiWalletView(store: quzhi) } label: { wallet("趣智校园", "洗澡余额", showerBalance, showerDetail, "drop", CampusTheme.walletPurple) }
+                                NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen) }
+                            }
+                            HStack(spacing: 10) {
+                                NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多", "shippingbox") }
+                                NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }
+                            }
+                        }.buttonStyle(CampusPressStyle())
+                        todayTasks
+                        upcomingExams
+                    }.padding(.horizontal, 16).padding(.vertical, 12).frame(maxWidth: 680)
+                }
+            }.ignoresSafeArea(.container, edges: .top)
+        }.background(CampusTheme.background).campusNavigationBarHidden()
+            .task(id: scenePhase == .active && store.selectedTab == .home) {
+                guard scenePhase == .active, store.selectedTab == .home else { return }
                 while !Task.isCancelled {
                     now = Date()
-                    do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { break }
+                    do { try await Task.sleep(nanoseconds: 15_000_000_000) } catch { break }
                 }
             }
-            .onAppear { now = Date() }
+            .onAppear { now = Date(); setSwimming(allowsSwimming) }
+            .onChange(of: allowsSwimming) { setSwimming($0) }
+            .onDisappear { setSwimming(false) }
+    }
+    private func setSwimming(_ enabled: Bool) {
+        if enabled && swimStarted == nil { swimStarted = Date() }
+        if !enabled, let started = swimStarted {
+            swimElapsed += max(0, Date().timeIntervalSince(started))
+            swimStarted = nil
+        }
+    }
+    private var coursePanel: some View {
+        let today = store.courses(on: now)
+        return VStack(spacing: 0) {
+            if let focus = HomeCourseFocus.select(courses: store.courses, personalStart: store.semesterStart, schoolStart: store.schoolSemesterStart, now: now) {
+                NavigationLink { CourseDetailView(course: focus.course, occurrenceDate: focus.start) } label: {
+                    focusCard(focus)
+                }.buttonStyle(.plain)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("暂时没有后续课程").font(.system(size: 20, weight: .bold))
+                    if !store.isConnected && store.courses.isEmpty {
+                        Text("连接学校后，可在这里查看课程安排。").font(.caption).foregroundStyle(CampusTheme.muted)
+                        Button("连接学校 ›") { store.selectedTab = .profile }
+                            .font(.subheadline).frame(minHeight: 44).disabled(store.isBusy)
+                    }
+                }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CampusTheme.tint)
+            }
+            HStack {
+                if today.isEmpty { Text("今天没有课程").foregroundStyle(CampusTheme.muted) }
+                else {
+                    Button {
+                        withAnimation(systemReduce || reduceMotion ? nil : .easeInOut(duration: 0.2)) { timelineOpen.toggle() }
+                    } label: {
+                        HStack { Text("今日课程 · \(today.count) 节"); Image(systemName: timelineOpen ? "chevron.up" : "chevron.down") }
+                    }.accessibilityValue(timelineOpen ? "已展开" : "已收起")
+                }
+                Spacer()
+                Button("查看课表") { store.selectedDate = now; store.selectedTab = .schedule }
+                    .accessibilityIdentifier("home-open-schedule")
+            }.font(.subheadline).frame(minHeight: 44).padding(.horizontal, 14)
+            if timelineOpen {
+                ForEach(today) { course in
+                    NavigationLink { CourseDetailView(course: course, occurrenceDate: now) } label: {
+                        CourseRow(course: course)
+                    }.buttonStyle(.plain)
+                }
+            }
+            Divider()
+            HStack(spacing: 0) {
+                NavigationLink { LearningCenterView(store: learning) } label: {
+                    Label("学习通", systemImage: "books.vertical").frame(maxWidth: .infinity, minHeight: 44)
+                }
+                Divider().frame(height: 20)
+                NavigationLink { AcademicRecordsView() } label: {
+                    Label("成绩与学业", systemImage: "graduationcap").frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }.font(.subheadline.weight(.medium))
+        }
+        .background(CampusTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(CampusTheme.border, lineWidth: 0.5).allowsHitTesting(false))
     }
     private func focusCard(_ focus: HomeCourseFocus) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -86,8 +155,12 @@ struct HomeView: View {
                 Spacer()
                 Text(focus.isCurrent(at: now) ? "进行中" : CampusTheme.date(focus.start, format: "M月d日 HH:mm")).font(.caption)
             }.foregroundStyle(CampusTheme.primary)
-            Text(focus.course.name).font(.title3.weight(.semibold))
-            Text([focus.course.room.isEmpty ? "教室待定" : focus.course.room, focus.course.teacher, focus.course.start + "–" + focus.course.end].filter { !$0.isEmpty }.joined(separator: " · "))
+            HStack(alignment:.firstTextBaseline,spacing:12) {
+                VStack(alignment:.leading) { Text(focus.course.start).font(.title2.monospacedDigit().weight(.semibold)); Text("至 " + focus.course.end).font(.caption).foregroundStyle(.secondary) }
+                Text(focus.course.name).font(.title3.weight(.semibold)).frame(maxWidth:.infinity,alignment:.leading)
+                Image(systemName:"chevron.right").font(.caption).foregroundStyle(.secondary)
+            }
+            Text([focus.course.room.isEmpty ? "教室待定" : focus.course.room, focus.course.teacher].filter { !$0.isEmpty }.joined(separator: " · "))
                 .font(.caption).foregroundStyle(CampusTheme.muted)
             if focus.isCurrent(at: now) {
                 ProgressView(value: focus.progress(at: now)).tint(CampusTheme.primary)
@@ -95,7 +168,7 @@ struct HomeView: View {
                     .accessibilityValue("剩余 \(focus.remainingMinutes(at: now)) 分钟")
                 Text("剩余 \(focus.remainingMinutes(at: now)) 分钟").font(.caption).foregroundStyle(CampusTheme.muted)
             }
-        }.frame(maxWidth: .infinity, alignment: .leading).campusCard()
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(CampusTheme.tint)
     }
     @ViewBuilder private var todayTasks: some View {
         let pending = TaskRules.select(store.tasks, filter: TaskFilter(scope: .today), now: now)
@@ -133,49 +206,87 @@ struct HomeView: View {
             }.campusCard()
         }
     }
-    private var hero: some View {
-        ZStack(alignment: .topLeading) {
-            GeometryReader { proxy in
+    private func hero(safeTop: CGFloat) -> some View {
+        let ink = scheme == .dark ? Color.white : Color(hex: 0x302044)
+        let badge = scheme == .dark ? Color(hex: 0x2e223c).opacity(0.82) : Color.white.opacity(0.68)
+        let height = heroHeight + safeTop
+        return GeometryReader { bounds in
+            ZStack(alignment: .topLeading) {
+                let artHeight = max(height, bounds.size.width * 2 / 3)
                 Image("campus-autumn").resizable().scaledToFill()
-                    .frame(width: proxy.size.width, height: 275).clipped()
-            }.accessibilityHidden(true)
-            LinearGradient(colors: [.white.opacity(0.5), .clear, .black.opacity(0.25)], startPoint: .top, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("邯院通").font(.system(size: 28, weight: .bold))
-                Text("学习 · 生活 · 校园").font(.caption)
-                Spacer()
-                Text("校园里的事，\n简单一点。").font(.system(size: 24, weight: .semibold)).lineSpacing(5)
-                Spacer()
-                HStack { Text(CampusTheme.date(now)); Spacer(); Text("第\(store.week(for: now))周") }.font(.caption).foregroundStyle(.white)
-            }.padding(22)
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    CampusHeroFish().frame(width: 108, height: 68)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            fishTaps += 1
-                            if fishTaps >= 5 { achievements.record("puff"); fishTaps = 0 }
+                    .frame(width: bounds.size.width, height: artHeight)
+                    .offset(y: -(artHeight - height) * 0.7)
+                    .frame(width: bounds.size.width, height: height, alignment: .top).clipped()
+                    .accessibilityHidden(true)
+                LinearGradient(colors: [scheme == .dark ? .black.opacity(0.65) : Color(hex: 0xfff6fc).opacity(0.42), .clear],
+                               startPoint: .leading, endPoint: .trailing)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("邯院通").font(.custom("Songti SC", size: 37, relativeTo: .largeTitle)).fontWeight(.bold).tracking(1)
+                            Capsule().fill(Color(hex: 0x7553a6)).frame(width: 76, height: 2).rotationEffect(.degrees(-5)).padding(.leading, 30)
+                            Text("学习 · 生活 · 校园").font(.system(size: 10)).tracking(3).padding(.top, 8)
                         }
-                        .onLongPressGesture(minimumDuration: 3) { achievements.record("dream") }
-                        .accessibilityLabel("首页小金鱼")
-                        .accessibilityAddTraits(.isButton)
+                        Spacer()
+                        NavigationLink { HomeAnnouncementView(enabled: $announcementsEnabled, read: $welcomeRead) } label: {
+                            Image(systemName: "bell").font(.system(size: 20)).frame(width: 44, height: 44)
+                                .background(badge, in: Circle()).overlay(alignment: .topTrailing) {
+                                    if announcementsEnabled && !welcomeRead { Circle().fill(Color(hex: 0xb14f55)).frame(width: 6, height: 6).padding(9) }
+                                }
+                        }.accessibilityLabel("通知设置")
+                    }
+                    Text("校园里的事，\n简单一点。").font(.custom("Songti SC", size: 15, relativeTo: .body))
+                        .tracking(2).lineSpacing(4).padding(.top, 15)
+                    Spacer()
+                    Text(CampusTheme.date(now, format: "M月d日 · EEE") + "   " + teachingWeek)
+                        .font(.caption2).padding(.horizontal, 9).padding(.vertical, 5).background(badge, in: Capsule())
+                }.padding(.horizontal, 24).padding(.top, safeTop + 20).padding(.bottom, 9)
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !allowsSwimming)) { timeline in
+                    let t = swimElapsed + (swimStarted.map { max(0, timeline.date.timeIntervalSince($0)) } ?? 0)
+                    let cycle = t.truncatingRemainder(dividingBy: 17) / 17
+                    let bob = cos(t * 2 * .pi / 2.9)
+                    DiscoverySurface("puff", label: "首页小金鱼", taps: 5, canDream: true) {
+                        VStack(spacing: -6) {
+                            CampusHeroFish().frame(width: 94, height: 60)
+                            Ellipse().stroke(.white.opacity(0.6), lineWidth: 1).frame(width: 61, height: 7)
+                        }
+                    }.rotationEffect(.degrees(-2 * bob)).scaleEffect(x: cycle < 0.48 || cycle >= 0.98 ? 1 : -1, y: 1)
+                        .offset(x: bounds.size.width * 0.35 + CGFloat(18 * cos(2 * .pi * cycle)), y: height - 95 + CGFloat(2 * bob))
                 }
-            }.padding(.trailing, 14).padding(.bottom, 48)
-        }.frame(height: 275).clipShape(RoundedRectangle(cornerRadius: 22))
+                if !systemReduce && !reduceMotion {
+                    Button { paused.toggle() } label: {
+                        Image(systemName: paused ? "play.fill" : "pause.fill").font(.caption2)
+                            .padding(5).background(badge, in: Circle()).frame(width: 44, height: 44)
+                    }.accessibilityLabel(paused ? "播放小鱼动画" : "暂停小鱼动画")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(.trailing, 8)
+                }
+            }.foregroundStyle(ink).buttonStyle(CampusPressStyle()).clipped()
+        }.frame(height: height)
     }
-    private func wallet(_ name: String, _ label: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
+    private var teachingWeek: String {
+        let week = store.week(for: now)
+        return (1...(store.isConnected ? 30 : max(1, store.personalWeekCount))).contains(week) ? "第 \(week) 教学周" : "学期外"
+    }
+    private func wallet(_ name: String, _ label: String, _ balance: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(name, systemImage: icon).font(.subheadline.weight(.semibold))
             Text(label).font(.caption).foregroundStyle(CampusTheme.muted)
-            Text(walletBalance(name)).font(.title2.bold())
+            Text(balance).font(.title2.bold()).monospacedDigit().privacySensitive()
             Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(14).background(color, in: RoundedRectangle(cornerRadius: 20))
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(14).background(LinearGradient(colors: [color, CampusTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18))
     }
-    private func walletBalance(_ name: String) -> String {
-        if name == "趣智校园" { return quzhi.expired ? "登录已过期" : quzhi.connected ? quzhi.balanceText : "未连接" }
-        return pangguai.expired ? "登录已过期" : pangguai.connected ? (pangguai.snapshot.balance.map { "¥" + $0 } ?? "未读取") : "未连接"
+    private var showerBalance: String {
+        guard quzhi.connected else { return "连接账户" }
+        return quzhi.snapshot.wallet == nil ? "待查询" : "¥" + quzhi.balanceText
+    }
+    private var showerDetail: String {
+        if quzhi.expired { return "登录已失效 · 请重新连接" }
+        return quzhi.connected ? "上次查询 · 充值与记录" : "洗澡 · 余额与充值"
+    }
+    private var waterDetail: String {
+        if pangguai.expired { return "登录已失效 · 请重新连接" }
+        if pangguai.snapshot.water?.terminal == false { return "查看当前接水记录" }
+        return pangguai.connected ? "上次查询 · 饮水与洗衣" : "饮水 · 洗衣 · 扫码"
     }
     private func utility(_ title: String, _ detail: String, _ icon: String) -> some View {
         HStack { Image(systemName: icon).foregroundStyle(CampusTheme.primary); VStack(alignment: .leading, spacing: 4) { Text(title).font(.subheadline.weight(.semibold)); Text(detail).font(.caption2).foregroundStyle(CampusTheme.muted) } }.frame(maxWidth: .infinity, alignment: .leading).padding(12).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -206,8 +317,8 @@ struct PendingServiceView: View {
 }
 
 /// Fixed native rendering of CampusHero.vue's original 180 × 112 fish SVG.
-/// Deliberately static: there is no continuous motion, including with Reduce Motion enabled.
-private struct CampusHeroFish: View {
+/// Motion is applied to this artwork by the hero timeline.
+struct CampusHeroFish: View {
     var body: some View {
         Canvas { context, size in
             context.scaleBy(x: size.width / 180, y: size.height / 112)
@@ -239,5 +350,39 @@ private struct CampusHeroFish: View {
             sparks.move(to: CGPoint(x: 45, y: 27)); sparks.addLine(to: CGPoint(x: 47, y: 15))
             context.stroke(sparks, with: .color(ink), style: StrokeStyle(lineWidth: 3, lineCap: .round))
         }
+    }
+}
+
+
+private struct HomeAnnouncementView: View {
+    @EnvironmentObject var store: CampusStore
+    @Binding var enabled: Bool
+    @Binding var read: Bool
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 0) {
+                    Button { enabled.toggle() } label: {
+                        Text("应用内提醒")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                    Toggle("应用内提醒", isOn: $enabled).labelsHidden()
+                }
+                .accessibilityRepresentation { Toggle("应用内提醒", isOn: $enabled) }
+                NavigationLink("设置课程提醒与系统权限") { NativeReminderSettingsView(reminders: store.reminders) }
+            }
+            if enabled {
+                Section("项目公告") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("欢迎使用邯院通").font(.headline)
+                        Text("连接学校后可以同步课表，离线时可查看上次保存的课程。学校公告请前往学校官网查看。")
+                        Text(read ? "已读" : "未读").font(.caption).foregroundStyle(CampusTheme.muted)
+                    }.padding(.vertical, 4)
+                    if !read { Button("全部标为已读") { read = true } }
+                }
+            }
+        }.navigationTitle("通知设置").navigationBarTitleDisplayMode(.inline)
     }
 }

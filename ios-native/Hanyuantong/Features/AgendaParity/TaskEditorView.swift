@@ -50,7 +50,7 @@ struct TaskEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red).accessibilityIdentifier("task-save-error") } }
                 basicSection
@@ -82,10 +82,10 @@ struct TaskEditorView: View {
 
     private var basicSection: some View {
         Section("要做什么") {
-            TextField("待办内容", text: $draft.title, axis: .vertical).lineLimit(2...5).accessibilityIdentifier("task-title-editor")
+            CampusMultilineField("待办内容", text: $draft.title, minimum: 2, maximum: 5).accessibilityIdentifier("task-title-editor")
             if draft.title.count > 200 { Text("请将待办内容控制在200字以内").font(.caption).foregroundStyle(.red) }
             TextField("关联课程（可不填）", text: $draft.course).accessibilityLabel("关联课程").accessibilityIdentifier("task-course-editor")
-            TextField("待办备注", text: $draft.notes, axis: .vertical).lineLimit(3...8).accessibilityIdentifier("task-notes-editor")
+            CampusMultilineField("待办备注", text: $draft.notes, minimum: 3, maximum: 8).accessibilityIdentifier("task-notes-editor")
             if isNew {
                 Menu("从常用模板创建") {
                     template("作业", title: "完成课程作业", minutes: 60, steps: ["梳理要求", "完成题目", "检查并提交"])

@@ -2,25 +2,17 @@ import SwiftUI
 import UIKit
 
 struct CampusMapView: View {
-    @EnvironmentObject private var achievements: CampusAchievementStore
     @State private var campus = 0
     var body: some View {
         VStack(spacing: 16) {
             Picker("校区", selection: $campus) { Text("东校区").tag(0); Text("西校区").tag(1) }.pickerStyle(.segmented).padding(.horizontal, 20)
             Text("双指缩放，拖动查看完整平面图").font(.caption).foregroundStyle(CampusTheme.muted)
             ZoomableCampusMap(imageName: campus == 0 ? "east-campus-plan" : "west-campus-plan").id(campus)
+                .overlay(alignment:.bottomTrailing) { if UIImage(named:campus == 0 ? "east-campus-plan" : "west-campus-plan") != nil {
+                    DiscoverySurface("mapfish",label:"地图上的小金鱼") { Text("🐠").font(.caption) }.padding(18)
+                } }
                 .accessibilityLabel(campus == 0 ? "东校区平面图，可双指缩放" : "西校区平面图，可双指缩放")
-                .overlay(alignment: .bottomTrailing) {
-                    Button { achievements.record("mapfish") } label: {
-                        Image(systemName: "fish.fill").font(.system(size: 15))
-                            .foregroundStyle(CampusTheme.muted.opacity(0.45))
-                            .frame(width: 44, height: 44)
-                    }.buttonStyle(.plain).accessibilityLabel("地图里的小金鱼")
-                        .accessibilityIdentifier("map-hidden-fish")
-                        .padding(.trailing, 5).padding(.bottom, 8)
-                }
         }.padding(.top, 12).background(CampusTheme.background)
-            .onAppear { if UIImage(named: "east-campus-plan") != nil { achievements.record("map") } }
             .navigationTitle("校园平面图").navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -31,6 +23,7 @@ private struct ZoomableCampusMap: UIViewRepresentable {
         let scroll = MapScrollView()
         scroll.delegate = context.coordinator
         scroll.imageView.image = UIImage(named: imageName)
+        if scroll.imageView.image != nil { Task { @MainActor in MedalJournal.shared.unlock("map") } }
         return scroll
     }
     func updateUIView(_ uiView: MapScrollView, context: Context) {}

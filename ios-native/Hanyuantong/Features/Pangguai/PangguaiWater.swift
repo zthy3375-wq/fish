@@ -97,6 +97,7 @@ extension PangguaiStore {
         }
     }
     func readWater(_ source: PGWaterSession, epoch: UUID) async throws -> PGWaterSession {
+        if source.isLocallyArchived { return source }
         var s = source
         do {
             if s.terminal || ["ended", "settling"].contains(s.phase) {
@@ -151,20 +152,6 @@ extension PangguaiStore {
                 guard try await self.post("goods/endWater", ["goodsId":s.deviceID], epoch: epoch).yes else { throw PGFailure.waterPhysicalEnd }
                 _ = try await self.readWater(s, epoch: epoch)
             } catch { try self.recordWaterError(id: s.id, error: error, epoch: epoch); throw error }
-        }
-    }
-    /// Explicit physical-stop recovery has no path to an end, create-bill or pay command.
-    func confirmPhysicalWaterEnd(sessionID: UUID) async {
-        await perform { epoch in
-            guard let s = self.snapshot.water, s.id == sessionID else { throw PGFailure.orderMismatch }
-            if s.terminal { return }
-            let reading = try await self.waterReading(skuID: s.skuID, epoch: epoch)
-            let basis: String
-            if reading == nil { basis = "physical_confirmed" }
-            else if let number = s.orderNo, !(reading?["identify"].text ?? "").isEmpty, reading?["identify"].text != number { basis = "order_replaced" }
-            else if reading?["status"].text == "5", reading?["workStatus"].text == "1" { basis = "device_idle" }
-            else { throw reading?["identify"].text == s.orderNo ? PGFailure.waterStillActive : PGFailure.waterWait }
-            _ = try self.closeWater(s, basis: basis, epoch: epoch)
         }
     }
     /// A separate, user-requested bill review precedes settlement. Polling never calls this method.

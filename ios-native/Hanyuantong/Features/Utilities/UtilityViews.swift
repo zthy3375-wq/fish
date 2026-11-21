@@ -5,6 +5,7 @@ enum NativeDestinations {
     static let taobao = URL(string: "https://pages-fast.m.taobao.com/wow/z/uniapp/1011717/last-mile-fe/end-collect-platform/identity-code")!
     static let pinduoduo = URL(string: "https://mobile.yangkeduo.com/")!
     static let community = "434217654"
+    static let communityCard = URL(string: "mqqapi://card/show_pslcard?src_type=internal&version=1&uin=\(community)&card_type=group&source=qrcode")!
 }
 struct ParcelShortcutsView: View {
     @State private var message: String?
@@ -58,18 +59,35 @@ struct NativeReminderSettingsView: View {
         Task { await reminders.update(value); store.refreshReminders() }
     }
 }
+struct CommunityGroupSection: View {
+    @Environment(\.openURL) private var openURL
+    @State private var status: String?
+
+    var body: some View {
+        Section("交流") {
+            Button {
+                openURL(NativeDestinations.communityCard) { opened in
+                    status = opened ? "已请求打开 QQ。如未显示群资料，可复制群号搜索。" : "当前无法打开 QQ，可复制群号后在 QQ 搜索。"
+                }
+            } label: { Label("加入 QQ 交流群", systemImage: "person.2") }
+            HStack {
+                Text(NativeDestinations.community).monospacedDigit().textSelection(.enabled)
+                Spacer()
+                Button("复制群号") {
+                    UIPasteboard.general.string = NativeDestinations.community
+                    status = "群号已复制"
+                }.buttonStyle(.borderless).frame(minHeight: 44)
+            }
+            if let status { Text(status).font(.footnote).foregroundStyle(.secondary) }
+        }
+    }
+}
 struct NativeHelpView: View {
     @EnvironmentObject var store: CampusStore
-    @State private var copied = false
     var body: some View {
         List {
-            Section("邯院通交流群") {
-                Text("QQ 群：\(NativeDestinations.community)").textSelection(.enabled)
-                Button("复制群号") { UIPasteboard.general.string = NativeDestinations.community; copied = true }
-                Text("请在 QQ 中搜索群号加入；不会自动入群或发送消息。").font(.footnote).foregroundStyle(.secondary)
-            }
             Section("同步问题反馈") {
-                ShareLink(item: diagnostic) { Label("分享脱敏状态", systemImage: "square.and.arrow.up") }
+                CampusShareLink(item: diagnostic) { Label("分享脱敏状态", systemImage: "square.and.arrow.up") }
                 Text("仅包含版本、平台、教务连接状态和记录数量，不包含账号、密码、会话、课程名称或待办内容。请在系统分享面板选择接收方。").font(.footnote).foregroundStyle(.secondary)
             }
             Section("使用说明") {
@@ -77,7 +95,6 @@ struct NativeHelpView: View {
                 Text("iPhone 开发版不使用 Android 的安装包或在线更新配置。尚需真实账号、真机与第三方官方 App 联调验收。")
             }
         }.navigationTitle("帮助与反馈").navigationBarTitleDisplayMode(.inline)
-            .alert("群号已复制", isPresented: $copied) { Button("好", role: .cancel) {} }
     }
     private var diagnostic: String {
         "邯院通 iPhone 原生版\n版本：\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知")\n教务已连接：\(store.isConnected ? "是" : "否")\n课程条数：\(store.courses.count)\n成绩条数：\(store.grades.count)\n考试条数：\(store.exams.count)\n未包含账号、课程名称或凭证。"
@@ -87,7 +104,6 @@ struct NativeHelpView: View {
 /// Previous Android release notes are shown as historical app milestones, not as a
 /// claim that those Android APK builds were shipped on iPhone.
 struct NativeReleaseHistoryView: View {
-    @EnvironmentObject private var achievements: CampusAchievementStore
     private let entries: [(version: String, note: String)] = [
         ("1.3.0", "校园社区上线，支持发帖、评论和私信。在「我的」可以查看荣誉收藏，也可以直接加入 QQ 交流群。"),
         ("1.3.0-test.30", "在「我的」和社区主页翻看荣誉展柜，点开徽章可以看看它的来历。"),
@@ -117,7 +133,7 @@ struct NativeReleaseHistoryView: View {
                     Divider()
                 }
                 Button {
-                    achievements.record("lastline")
+                    MedalJournal.shared.unlock("lastline")
                 } label: {
                     Text("— 小金鱼，记于邯院")
                         .font(.caption).foregroundStyle(CampusTheme.muted)

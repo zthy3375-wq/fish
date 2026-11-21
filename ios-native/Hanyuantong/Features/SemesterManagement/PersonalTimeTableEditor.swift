@@ -19,7 +19,7 @@ struct PersonalTimeTableEditor: View {
     }
 
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("选择作息方案") {
                     Picker("已有方案", selection: $selectedID) { ForEach(state.timeTables) { Text($0.name).tag($0.id) } }

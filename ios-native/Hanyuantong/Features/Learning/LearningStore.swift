@@ -152,6 +152,7 @@ final class LearningStore: ObservableObject {
         }
         next.session = "valid"; next.lastAttempt = Date(); next.issues.removeValue(forKey: "connection")
         try persist(next)
+        if result.complete && !result.courses.isEmpty { MedalJournal.shared.unlock("learning",scope:result.account) }
     }
     private func ensureStorage() -> Bool {
         if storageReady { return true }

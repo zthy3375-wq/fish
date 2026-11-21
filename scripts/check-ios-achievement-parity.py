@@ -49,9 +49,10 @@ native_hidden = re.search(r"static let hiddenCapacity\s*=\s*(\d+)", ios_hall)
 if not hidden or not native_hidden or hidden.group(1) != native_hidden.group(1):
     errors.append("The number of undiscovered community achievements differs")
 for title in ["首页", "课表", "社区", "待办", "我的"]:
-    if f'Label("{title}", systemImage:' not in root_view:
+    if not re.search(rf'\.tabItem \{{ Label\("{title}", (?:systemImage|image):', root_view):
         errors.append(f"Missing native tab: {title}")
-if "CampusAchievementCollectionView()" not in profile:
+honor_shelf = (root / "ios-native/Hanyuantong/Features/Honors/HonorViews.swift").read_text(encoding="utf-8")
+if "if personal { CampusAchievementCollectionView(" not in honor_shelf or "personal: true" not in profile:
     errors.append("Global achievement hall is absent from iOS personal page")
 if '"honors.hall"' not in service or '"collection.profile"' not in service:
     errors.append("Native community honor actions missing")

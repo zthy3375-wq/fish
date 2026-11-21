@@ -27,7 +27,7 @@ for title, files in [('Sources',app_files),('Tests',unit_files),('UITests',ui_fi
     entries=[]
     for file in files:
         path=file.relative_to(ROOT).as_posix()
-        kind='sourcecode.swift' if file.suffix=='.swift' else 'folder.assetcatalog' if file.suffix=='.xcassets' else 'text.xml' if file.suffix=='.xcprivacy' else 'sourcecode.javascript'
+        kind='sourcecode.swift' if file.suffix=='.swift' else 'folder.assetcatalog' if file.suffix=='.xcassets' else 'text.xml' if file.suffix=='.xcprivacy' else 'text.json' if file.suffix=='.json' else 'sourcecode.javascript'
         entries.append(add(path,'PBXFileReference',lastKnownFileType=kind,path=path,sourceTree='<group>'))
         add('build:'+path,'PBXBuildFile',fileRef=ref(path))
     groups.append(add(title,'PBXGroup',children=entries,name=title,sourceTree='<group>'))
