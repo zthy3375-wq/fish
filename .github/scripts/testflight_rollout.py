@@ -149,10 +149,12 @@ def group_has_build(group_id, build_id):
 def check(app_id, number):
     builds = ios_builds(app_id)
     candidate = find_build(builds, number)
-    if candidate and (os.environ.get("GITHUB_RUN_ATTEMPT", "1") == "1"
-                      or candidate["attributes"]["processingState"] in {"FAILED", "INVALID"}
+    resume = os.environ.get("TF_RESUME_ONLY") == "true" or os.environ.get("GITHUB_RUN_ATTEMPT", "1") != "1"
+    if candidate and (not resume or candidate["attributes"]["processingState"] in {"FAILED", "INVALID"}
                       or candidate["attributes"].get("expired")):
         raise RuntimeError(f"Build {number} already exists or cannot be resumed")
+    if not candidate and os.environ.get("TF_RESUME_ONLY") == "true":
+        raise RuntimeError(f"Already uploaded build {number} could not be found")
     if any(version_key(row["attributes"]["version"]) > version_key(number) for row in builds):
         raise RuntimeError(f"A newer build already exists in this release train than {number}")
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as file:
@@ -180,10 +182,36 @@ def beta_state(build_id):
     return api(f"builds/{build_id}/buildBetaDetail")["data"]["attributes"]
 
 
+def resolve_compliance(current, previous):
+    current_id = current["id"]
+    deadline = time.monotonic() + 4 * 60
+    applied = False
+    while time.monotonic() < deadline:
+        state = beta_state(current_id)
+        internal = state.get("internalBuildState")
+        print(f"Pre-distribution beta status: internal={internal}, external={state.get('externalBuildState')}",
+              flush=True)
+        if internal in {"READY_FOR_BETA_TESTING", "IN_BETA_TESTING"}:
+            return
+        if internal == "MISSING_EXPORT_COMPLIANCE" and not applied:
+            if not previous or previous["attributes"].get("usesNonExemptEncryption") is not False:
+                raise RuntimeError("Export compliance is required and no verified exemption is recorded for the previous build.")
+            api(f"builds/{current_id}", method="PATCH", data={"data": {
+                "type": "builds", "id": current_id, "attributes": {"usesNonExemptEncryption": False}
+            }})
+            applied = True
+            summary("Applied the same recorded export-compliance exemption as the preceding iOS build.")
+        if internal in {"PROCESSING_EXCEPTION", "EXPIRED", "IN_EXPORT_COMPLIANCE_REVIEW"}:
+            raise RuntimeError(f"New build uploaded; testing awaits App Store Connect action ({internal}).")
+        time.sleep(15)
+    raise RuntimeError("The new build is still unavailable for testing; the previous build remains available.")
+
+
 def rollout(app_id, number):
     builds, current = wait_for_processing(app_id, number)
     previous = select_previous(builds, current)
     current_id = current["id"]
+    resolve_compliance(current, previous)
     group_fields = {"fields[betaGroups]": "isInternalGroup,hasAccessToAllBuilds"}
     tester_fields = {"fields[betaTesters]": "inviteType"}
     all_groups = all_rows("betaGroups", {"filter[app]": app_id, **group_fields, "limit": 200})[0]
@@ -194,8 +222,14 @@ def rollout(app_id, number):
     old_testers = related(previous["id"], "individualTesters", tester_fields) if previous else []
     missing_groups = {row["id"] for row in old_groups if not group_has_build(row["id"], current_id)}
     for group_id in sorted(missing_groups):
-        api(f"betaGroups/{group_id}/relationships/builds", method="POST",
-            data={"data": [{"type": "builds", "id": current_id}]})
+        try:
+            api(f"betaGroups/{group_id}/relationships/builds", method="POST",
+                data={"data": [{"type": "builds", "id": current_id}]})
+        except AppleError as error:
+            if error.status not in {409, 422} or not group_has_build(group_id, current_id):
+                group = next(row for row in old_groups if row["id"] == group_id)
+                kind = "internal" if group["attributes"]["isInternalGroup"] else "external"
+                raise RuntimeError(f"Apple denied the existing {kind} tester group. {error}") from None
     tester_ids = {row["id"] for row in old_testers}
     missing_testers = tester_ids - related_ids(current_id, "individualTesters", tester_fields) if tester_ids else set()
     if missing_testers:
@@ -204,23 +238,13 @@ def rollout(app_id, number):
     external = any(not row["attributes"]["isInternalGroup"] for row in old_groups) or any(
         row["attributes"].get("inviteType") not in {"INTERNAL", "INTERNAL_TESTER"} for row in old_testers
     )
-    reused_compliance = False
     review_requested = False
     deadline = time.monotonic() + 12 * 60
     while time.monotonic() < deadline:
         state = beta_state(current_id)
         internal, outside = state.get("internalBuildState"), state.get("externalBuildState")
         print(f"Beta availability: internal={internal}, external={outside}", flush=True)
-        if internal == "MISSING_EXPORT_COMPLIANCE" and previous and not reused_compliance and (
-                previous["attributes"].get("usesNonExemptEncryption") is False):
-            api(f"builds/{current_id}", method="PATCH", data={"data": {
-                "type": "builds", "id": current_id, "attributes": {"usesNonExemptEncryption": False}
-            }})
-            reused_compliance = True
-            summary("Applied the same recorded encryption exemption as the preceding iOS build.")
-            time.sleep(10)
-            continue
-        if internal in {"PROCESSING_EXCEPTION", "EXPIRED"} or internal == "MISSING_EXPORT_COMPLIANCE" and not reused_compliance:
+        if internal in {"MISSING_EXPORT_COMPLIANCE", "PROCESSING_EXCEPTION", "EXPIRED"}:
             raise RuntimeError(f"Build uploaded; testing requires App Store Connect action ({internal}). Previous build kept.")
         audiences_ready = all(group_has_build(row["id"], current_id) for row in old_groups) and (
             not tester_ids or tester_ids <= related_ids(current_id, "individualTesters", tester_fields)

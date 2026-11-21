@@ -43,17 +43,19 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: 3
       - name: Check approved application source and installed SDK
         run: |
           set -eu
-          test "$(git rev-parse HEAD^)" = 37a9780c5cec123208e0768d3c8a0d8aac1e9fa6
+          test "$(git rev-parse HEAD^)" = eef5217d640139f88faa402ecc09b7fdcebd3342
+          test "$(git rev-parse HEAD~2)" = 37a9780c5cec123208e0768d3c8a0d8aac1e9fa6
           test "$(git rev-parse HEAD:ios-native)" = dab64718f137ad9d958c3ec2a1da8ba1124b5de4
           git diff --exit-code HEAD^ HEAD -- ios-native android src
           xcodebuild -version
           sdk=$(xcrun --sdk iphoneos --show-sdk-version)
           test "${sdk%%.*}" -ge 26
           echo "TF_BUILD=2.0.0" >> "$GITHUB_ENV"
+          echo "TF_RESUME_ONLY=true" >> "$GITHUB_ENV"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/hyt-sign/upload.p8" >> "$GITHUB_ENV"
           mkdir -m 700 "$RUNNER_TEMP/hyt-sign"
       - name: Check App Store Connect access and existing build
