@@ -6,20 +6,26 @@ struct TreeholeResponses: View {
     var disabled = false
     let choose: (String) -> Void
     var kinds = ["same","hug","useful"]
-    private var choices:[(String,String,String)] { ([("joy","欢乐","😄"),("same", "我也一样", "🤝"), ("hug", "抱抱", "🫂"), ("useful", "有用", "💡")]).filter { kinds.contains($0.0) } }
+    private let choices = [("useful", "有用", "lightbulb"), ("joy", "欢乐", "face.smiling"), ("hug", "抱抱", "heart")]
     var body: some View {
-        CampusAdaptiveRow { HStack(spacing: 8) { buttons } } fallback: { VStack(alignment: .leading, spacing: 8) { buttons } }.accessibilityElement(children: .contain).accessibilityLabel("轻量回应").disabled(disabled)
-    }
-    @ViewBuilder private var buttons: some View {
-        ForEach(choices, id: \.0) { key, label, icon in
-            Button { choose(key) } label: {
-                HStack(spacing: 4) { Text(icon).accessibilityHidden(true); Text(label); if let count = post.responseCounts?[key], count > 0 { Text("\(count)").monospacedDigit() } }
-                    .font(.caption).padding(.horizontal, 10).frame(minHeight: 44)
-                    .foregroundStyle(post.myResponse == key ? TreeholeTheme.primary : TreeholeTheme.muted)
-                    .background(post.myResponse == key ? TreeholeTheme.tint : TreeholeTheme.background, in: Capsule())
-                    .overlay(Capsule().stroke(post.myResponse == key ? TreeholeTheme.primary : .clear, lineWidth: 1))
-            }.buttonStyle(.plain).accessibilityLabel(label).accessibilityValue(post.myResponse == key ? "已选择" : "未选择")
-        }
+        let current = choices.first { $0.0 == post.myResponse }
+        let total = choices.reduce(0) { $0 + (post.responseCounts?[$1.0] ?? 0) }
+        let count = current.map { post.responseCounts?[$0.0] ?? 0 } ?? total
+        return Menu {
+            ForEach(choices, id: \.0) { key, label, icon in
+                Button { choose(key) } label: {
+                    Label(label, systemImage: post.myResponse == key ? "checkmark" : icon)
+                }.disabled(!kinds.contains(key))
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: current?.2 ?? "face.smiling")
+                Text(current?.1 ?? "回应")
+                if count > 0 { Text(String(count)).monospacedDigit() }
+            }.font(.subheadline).frame(minHeight: 44)
+        }.foregroundStyle(current == nil ? TreeholeTheme.muted : TreeholeTheme.primary)
+            .accessibilityLabel("选择回应").accessibilityValue(current?.1 ?? "回应").disabled(disabled)
+
     }
 }
 struct TreeholeAvatarEditor: View {

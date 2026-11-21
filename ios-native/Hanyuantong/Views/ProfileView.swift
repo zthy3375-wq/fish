@@ -297,7 +297,10 @@ struct AcademicRecordsView: View {
         List {
             Section { Picker("教务记录", selection: $selection) { Text("成绩").tag(0); Text("考试").tag(1) }.pickerStyle(.segmented) }.listRowBackground(Color.clear).listRowInsets(EdgeInsets())
             if selection == 0 { NativeGradeAnalysisView(grades: store.grades, profile: store.academicProfile) }
-            else { NativeExamRecordsView(exams: store.exams).onAppear { if !store.exams.isEmpty { MedalJournal.shared.unlock("exam",scope:store.schoolMedalScope) } } }
+            else { NativeExamRecordsView(exams: store.exams)
+                .task(id: store.exams.isEmpty ? nil : store.schoolMedalScope) {
+                    if !store.exams.isEmpty { MedalJournal.shared.unlock("exam", scope: store.schoolMedalScope) }
+                } }
             if !store.isConnected { Button("连接教务系统") { store.connectSchool() }.disabled(store.isBusy) }
         }.campusScrollBackground().background(CampusTheme.background).navigationTitle("成绩与考试").navigationBarTitleDisplayMode(.inline)
             .toolbar { if store.isConnected { Button { store.refreshSchool() } label: { if store.isBusy { ProgressView() } else { Image(systemName: "arrow.clockwise") } }.disabled(store.isBusy).accessibilityLabel("更新教务数据") } }

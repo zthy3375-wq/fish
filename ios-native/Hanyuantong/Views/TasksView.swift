@@ -37,6 +37,12 @@ struct TasksView: View {
         return (personal + entries.map { $0.projection }, Dictionary(entries.map { ($0.projection.id, $0.item) }, uniquingKeysWith: { first, _ in first }))
     }
 
+    private var canDiscoverEmptyList: Bool {
+        store.personalDataAvailable && learning.canConfirmTaskList && actionError == nil &&
+        source == .all && filter.search.isEmpty && filter.course.isEmpty && filter.priority == -1 &&
+        filter.scope != .completed && !taskSelection(scope: .all).tasks.contains { !$0.completed }
+    }
+
     private var newTaskDay: String? {
         if agenda { return TaskClock.day(agendaDay) }
         return filter.scope == .today ? TaskClock.day(Date()) : nil
@@ -140,7 +146,7 @@ struct TasksView: View {
             }
             if groups.isEmpty {
                 VStack(spacing: 8) {
-                    if store.personalDataAvailable && store.tasks.isEmpty && learning.cache.items.isEmpty && source != .learning && filter.search.isEmpty {
+                    if canDiscoverEmptyList {
                         DiscoverySurface("emptyfish", label: "清单里的小金鱼") { CampusHeroFish().frame(width: 36, height: 25) }
                     } else { Image(systemName: "checkmark").foregroundStyle(CampusTheme.muted) }
                     Text(filter.search.isEmpty ? "这里暂时没有任务" : "没有匹配任务").font(.subheadline.weight(.semibold))

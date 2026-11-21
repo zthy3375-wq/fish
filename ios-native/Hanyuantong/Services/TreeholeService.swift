@@ -283,7 +283,7 @@ enum TreeholePresentation {
         if elapsed >= 60 && elapsed < 3600 { return "\(Int(elapsed / 60)) 分钟前" }
         if elapsed >= 3600 && elapsed < 86400 { return "\(Int(elapsed / 3600)) 小时前" }
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN")
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai"); formatter.dateFormat = "M月d日 HH:mm"
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai"); formatter.dateFormat = "M/d HH:mm"
         return formatter.string(from: parsed)
     }
 }

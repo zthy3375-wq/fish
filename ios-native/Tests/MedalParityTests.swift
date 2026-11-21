@@ -32,6 +32,20 @@ final class MedalParityTests:XCTestCase {
         XCTAssertEqual(j.pinned(school:"alpha",learning:nil),["schedule"])
         XCTAssertTrue(j.pinned(school:"beta",learning:nil).isEmpty)
     }
+    func testTaskMedalWhenSecondStepOrParentIsCompletedLast() {
+        var before = CampusTask(title: "自建待办", date: Date())
+        before.originalID = "personal-backup-id"
+        before.steps = [TaskStep(title: "一", completed: true), TaskStep(title: "二", completed: true), TaskStep(title: "三")]
+        var done = before
+        done.completed = true; done.completedAt = Date()
+        XCTAssertTrue(TaskRules.earnedStepsMedal(previous: before, saved: done))
+        before = done
+        before.steps[1].completed = false
+        XCTAssertTrue(TaskRules.earnedStepsMedal(previous: before, saved: done))
+        XCTAssertFalse(TaskRules.earnedStepsMedal(previous: done, saved: done))
+        XCTAssertFalse(TaskRules.earnedStepsMedal(previous: done, saved: before))
+    }
+
     func testTapSequenceRequiresConsecutiveGestures() {
         var counter=TapSequence(); let start=Date()
         for i in 0..<4 { XCTAssertFalse(counter.tap(target:5,at:start.addingTimeInterval(Double(i)/10))) }

@@ -3,31 +3,43 @@ import SwiftUI
 struct TreeholeDiscoveryBar: View {
     @ObservedObject var tree: TreeholeStore
     let select: (String, String) -> Void
-    private var sections: [(String, String)] { [("all", "全部")] + (tree.discoveryEnabled ? TreeholeCategories.sections : TreeholeCategories.all) }
-    private var selected: String { tree.discoveryEnabled ? TreeholeCategories.section(tree.category) : tree.category }
+    private let primary = [("all", "全部"), ("daily", "校园"), ("study", "学习"), ("entertainment", "兴趣"), ("buddies", "搭子"), ("treehole", "树洞")]
+    private var selected: String { tree.category == "help" ? "daily" : tree.category }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CampusAdaptiveRow { HStack(spacing: 0) { sectionButtons } } fallback: { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 18) { sectionButtons } } }.accessibilityElement(children: .contain).accessibilityLabel("帖子分区")
-            if tree.discoveryEnabled, selected == "daily" {
-                chips([("daily", "全部日常"), ("help", "提问求助"), ("study", "学习交流")], selected: tree.category) { select($0, "") }
+        VStack(alignment: .leading, spacing: 2) {
+            if tree.discoveryEnabled {
+                HStack(spacing: 2) {
+                    ForEach(primary, id: \.0) { id, label in
+                        Button { if selected != id { select(id, "") } } label: {
+                            Text(label).font(.subheadline.weight(selected == id ? .bold : .medium))
+                                .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                                .overlay(alignment: .bottom) {
+                                    if selected == id { Capsule().fill(TreeholeTheme.primary).frame(width: 16, height: 2).padding(.bottom, 5) }
+                                }
+                        }.accessibilityAddTraits(selected == id ? .isSelected : [])
+                    }
+                }.accessibilityElement(children: .contain).accessibilityLabel("帖子分区")
+                if selected == "daily" {
+                    chips([("daily", "日常"), ("help", "校园互助")], selected: tree.category) { select($0, "") }
+                } else if selected == "study", tree.boardsEnabled {
+                    chips([("", "全部学习"), ("graduate", "考研")], selected: tree.interest) { select("study", $0) }
+                } else if selected == "entertainment" {
+                    HStack {
+                        chips([("", "全部兴趣")] + (tree.boardsEnabled ? [("reading", "读书"), ("fitness", "健身")] : []), selected: tree.interest) { select("entertainment", $0) }
+                        Menu {
+                            ForEach(TreeholeCategories.interests, id: \.0) { id, name in Button(name) { select("entertainment", id) } }
+                        } label: { Label(TreeholeCategories.interests.first { $0.0 == tree.interest }?.1 ?? "更多", systemImage: "chevron.down") }
+                        .fixedSize().accessibilityLabel("更多兴趣")
+                    }.font(.caption)
+                }
+            } else {
+                Menu(tree.category == "all" ? "全部分区" : TreeholeCategories.name(tree.category)) {
+                    Button("全部分区") { select("all", "") }
+                    ForEach(TreeholeCategories.all, id: \.0) { id, name in Button(name) { select(id, "") } }
+                }.frame(minHeight: 44).accessibilityLabel("帖子分区")
             }
-            if tree.discoveryEnabled, selected == "entertainment" || (tree.category == "study" && tree.boardsEnabled) {
-                chips([("", "全部兴趣")] + TreeholeCategories.topics(tree.category,boards:tree.boardsEnabled), selected: tree.interest) { select(tree.category, $0) }
-            }
-            if tree.discoveryEnabled, let text = TreeholeCategories.description(tree.category) {
-                Text(text).font(.caption).foregroundStyle(TreeholeTheme.muted).fixedSize(horizontal: false, vertical: true)
-            }
-        }.padding(.vertical, 4).disabled(tree.busy)
-    }
-    private var sectionButtons: some View {
-        ForEach(sections, id: \.0) { id, label in
-            Button { select(id, "") } label: {
-                VStack(spacing: 6) {
-                    Text(label).font(.subheadline.weight(selected == id ? .semibold : .regular)).fixedSize()
-                    Capsule().fill(selected == id ? TreeholeTheme.primary : .clear).frame(height: 3)
-                }.frame(maxWidth: .infinity, minHeight: 44)
-            }.buttonStyle(.plain).foregroundStyle(selected == id ? TreeholeTheme.text : TreeholeTheme.muted).accessibilityAddTraits(selected == id ? .isSelected : [])
-        }
+            Divider()
+        }.buttonStyle(.plain).disabled(tree.busy)
     }
     private func chips(_ items: [(String, String)], selected: String, choose: @escaping (String) -> Void) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {

@@ -197,3 +197,9 @@ Apple implementation references: [local notification scheduling](https://develop
 The previous Pro Max and SE screenshots differ from Android on all five tabs. The owner independently observed the same on iPhone 13 with iOS 15.4. The visual branch uses the Android 1.3.0 header, home artwork, Lucide tab icons, period labels, task quick entry and four-column academic shortcuts as references. The screenshot regression now targets iPhone 13 hardware geometry and records the actual simulator runtime. An unsigned device build at minimum deployment 15.4 checks API availability. Neither that build nor a newer simulator establishes physical iOS 15.4 acceptance.
 
 On commit 0000176, Android 1.3.0 and iPhone 13 simulator screenshots confirmed all five tab highlights moved to the correct fifth of the screen. A geometry assertion on both simulator sizes confirmed the four profile shortcuts occupy a single row. The seven-page comparison exposed a proportional-minute gap over lunch and a longer settings front page. The follow-up maps teaching periods, occupied breaks and empty breaks with Android’s timetable axis rules, puts quick entry in the task list flow and groups the secondary settings. The visual test waits for a terminal community connection state before capture and exercises an empty period opening its course editor.
+
+## 2026-11-21 TestFlight 2.0.0 真机反馈
+
+同帖双机照片暴露了旧验收没有覆盖的登录后广场。以 Android 1.3.1 实际组件为参照，本次调整广场入口、排序、分区、卡片互动与发帖按钮。扩展 iPhone UI 回归，使用合成账号经过广场、学习分区、继续聊、帖子和回复重试，并保留广场截图。
+
+待办完成证据覆盖先完成主任务、先完成子任务和从安卓备份恢复的个人任务。课表从周视图打开空课日、保有已完成记录的空清单、立即离开彩蛋页、启动时已有教务和学习通缓存分别处理。学校缓存限当前已验证的本机账号，社区荣誉仍以服务端授予为准。此记录不代表两个实体设备的全流程验收。

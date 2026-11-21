@@ -72,7 +72,7 @@ struct ScheduleView: View {
                 .onChange(of: bounds.size.height) { viewportHeight = $0 }
         }).background(CampusTheme.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .overlay(alignment:.top) { if let surprise { Text(surprise == "freeday" ? "今天属于你自己。" : "回到本周了。").padding(10).background(.thinMaterial,in:Capsule()).allowsHitTesting(false) } }
-            .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; MedalJournal.shared.unlock(code); surprise=nil }
+            .task(id:surprise) { guard let code=surprise else { return }; do { try await Task.sleep(nanoseconds:450_000_000) } catch { return }; if surprise == code { surprise=nil } }
             .onAppear {
                 if store.lastSynced != nil && store.courses.contains(where: { $0.source != "personal" }) {
                     offline.start(scope: store.schoolMedalScope)
@@ -205,7 +205,9 @@ struct ScheduleView: View {
         if week != boundedWeek(for: store.selectedDate) { jump(to: boundedWeek(for: store.selectedDate)) }
     }
     private func resetTermSelection() {
+        firstWeekContext = nil
         goToCurrentWeek()
+        firstWeekContext = nil
         calibrationWeek = boundedWeek(for: Date())
         calibrationMessage = nil
     }
@@ -230,7 +232,7 @@ struct ScheduleView: View {
             guard !store.isConnected else { return }
             cell = ScheduleCell(date: date, slot: slot)
         }, editable: !store.isConnected) { date in
-            select(date, checkDay: false)
+            select(date, checkDay: true)
             mode = 1
         }
     }
@@ -239,10 +241,23 @@ struct ScheduleView: View {
         let week=store.week(for:date), today=store.week(for:Date())
         let previous=store.week(for:store.selectedDate)
         store.selectedDate=date
-        guard today > 0 && today <= store.scheduleWeekCount, !store.courses.isEmpty else { return }
-        if week == 1 && today > 1 && previous != 1 { firstWeekContext=start }
-        if week == today && previous != today && firstWeekContext == start { surprise="timewalk"; firstWeekContext=nil }
-        else if checkDay && week > 0 && week <= store.scheduleWeekCount && store.courses(on:date).isEmpty { mode=1; surprise="freeday" }
+        guard !store.isBusy, !store.courses.isEmpty else { return }
+        if !checkDay, (1...store.scheduleWeekCount).contains(today) {
+            if week == 1 && today > 1 && previous != 1 { firstWeekContext = start }
+            if week == today && previous != today && firstWeekContext == start {
+                MedalJournal.shared.unlock("timewalk")
+                surprise = "timewalk"; firstWeekContext = nil
+            }
+        }
+        if checkDay, (1...store.scheduleWeekCount).contains(week), store.courses(on: date).isEmpty {
+            let practiceThisWeek = store.practice.contains { item in
+                (try? CourseImportEngine.parseWeeks(item.weeks, maximum: store.scheduleWeekCount).contains(week)) ?? true
+            }
+            if !practiceThisWeek {
+                MedalJournal.shared.unlock("freeday")
+                mode = 1; surprise = "freeday"
+            }
+        }
     }
 }
 

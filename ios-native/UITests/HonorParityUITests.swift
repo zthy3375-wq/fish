@@ -91,6 +91,16 @@ final class HonorParityUITests:XCTestCase {
         app.tabBars.buttons["社区"].tap()
         let title = app.buttons["快捷回复测试帖"]
         XCTAssertTrue(title.waitForExistence(timeout: 12))
+        for label in ["广场", "关注", "继续聊", "全部", "校园", "学习", "兴趣", "搭子", "树洞", "帖子排序", "选择回应"] {
+            XCTAssertTrue(app.buttons[label].exists, label)
+        }
+        capture("community-signed-in-feed", app)
+        app.buttons["学习"].tap()
+        XCTAssertTrue(app.buttons["考研"].waitForExistence(timeout: 5))
+        app.buttons["继续聊"].tap()
+        XCTAssertTrue(app.buttons["关注的讨论"].waitForExistence(timeout: 5))
+        app.buttons["广场"].tap()
+        XCTAssertTrue(app.buttons["学习"].waitForExistence(timeout: 5))
         title.tap()
         let entry = app.buttons["community-quick-reply"]
         XCTAssertTrue(entry.waitForExistence(timeout: 8))
@@ -157,11 +167,12 @@ final class HonorParityUITests:XCTestCase {
         ]
         let member: [String: Any] = ["id": "D815C068-2752-4B3B-A6C9-EEB1B7A245CF", "username": "fixture", "nickname": "测试用户", "role": "member"]
         let configuration = try response([
-            "user": member, "config": ["engagementEnabled": true, "commentImagesEnabled": true],
+            "user": member, "config": ["engagementEnabled": true, "commentImagesEnabled": true, "followingEnabled": true, "discoveryEnabled": true, "boardsEnabled": true, "responsesEnabled": true, "responseKinds": ["useful", "joy", "hug"]],
             "posts": [post]
         ])
         let fixture = [
             "me": [configuration],
+            "posts.list": Array(repeating: try response(["posts": [post]]), count: 3),
             "posts.get": [try response(["post": post, "comments": []]), try response(["post": updated, "comments": [comment]])],
             "comments.create": [try response(["error": "network_unavailable"], status: 503), try response(["comment": comment])]
         ]

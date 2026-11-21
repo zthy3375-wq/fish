@@ -37,15 +37,19 @@ struct DiscoverySurface<Content: View>: View {
                 }
             }).accessibilityElement(children:.ignore).accessibilityLabel(label).accessibilityAddTraits(.isButton)
             .accessibilityAction { tapped() }
+            .accessibilityActions { if canDream { Button("长按小金鱼") { discover("dream") } } }
             .animation(systemReduce || reduce ? nil : .easeInOut(duration:0.20),value:effect)
             .task(id:effect) {
                 guard let id=effect else { return }
                 do { try await Task.sleep(nanoseconds:350_000_000) } catch { return }
-                MedalJournal.shared.unlock(id); effect=nil
+                effect=nil
             }
     }
     private func tapped() { if sequence.tap(target:taps) { discover(code) } }
-    private func discover(_ id:String) { if effect == nil { effect=id } }
+    private func discover(_ id: String) {
+        MedalJournal.shared.unlock(id)
+        effect = id
+    }
 }
 
 struct CampusVersionPage: View {

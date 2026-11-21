@@ -106,6 +106,14 @@ final class CampusStore: ObservableObject {
         guard let scope else { return }
         if let saved = try storage?.read("academic", as: AcademicSnapshot.self), saved.scope == scope {
             snapshot = saved; isConnected = true; apply(saved)
+            let journal = MedalJournal.shared
+            journal.unlock("identity", scope: scope, at: saved.updatedAt, historical: true)
+            if saved.courses?.isEmpty == false {
+                journal.unlock("schedule", scope: scope, at: saved.moduleUpdatedAt["timetable"] ?? saved.updatedAt, historical: true)
+            }
+            if saved.grades?.isEmpty == false {
+                journal.unlock("grade", scope: scope, at: saved.moduleUpdatedAt["grades"] ?? saved.updatedAt, historical: true)
+            }
         } else { try storage?.remove("academic") }
     }
 
@@ -307,14 +315,16 @@ final class CampusStore: ObservableObject {
             value.seriesOriginalID = previous.seriesOriginalID
             value.updatedAt = Date(); next[index] = value
         } else { value.updatedAt = Date(); next.append(value) }
+        let previous = tasks.first { $0.id == value.id }
         try commitPersonal(courses: personalCourses, tasks: next, semesterStart: semesterStart, schedule: personalSchedule)
+        if let previous, TaskRules.earnedStepsMedal(previous: previous, saved: value) { MedalJournal.shared.unlock("tasks") }
     }
     func toggleTask(_ id: UUID) {
         guard let current = tasks.first(where: { $0.id == id }) else { return }
         do {
             let next = try TaskRules.settingCompleted(tasks, id: id, completed: !current.completed)
             try commitPersonal(courses: personalCourses, tasks: next, semesterStart: semesterStart, schedule: personalSchedule)
-            if let done=next.first(where:{$0.id == id}), done.completed, done.originalID == nil, done.steps.count >= 2, done.steps.allSatisfy({$0.completed}) { MedalJournal.shared.unlock("tasks") }
+            if let done = next.first(where: { $0.id == id }), TaskRules.earnedStepsMedal(previous: current, saved: done) { MedalJournal.shared.unlock("tasks") }
         } catch { message = error.localizedDescription }
     }
     func addTask(title: String, date: Date) {
