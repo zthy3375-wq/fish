@@ -82,6 +82,7 @@ struct TreeholeEnvelope: Decodable {
 
     var updatedIdentity: CampusIdentityUpdate?
     var honorCollectionEnabled: Bool?
+    var combinedUnread: Bool?
     var autoAchievementsEnabled: Bool?
     var collection: CampusCollectionProfile?
     var honorArchive: [CampusHonorItem]?

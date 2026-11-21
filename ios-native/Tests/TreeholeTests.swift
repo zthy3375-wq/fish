@@ -426,6 +426,8 @@ final class TreeholeTests: XCTestCase {
         await store.refreshUnread(); await store.refreshUnread()
         XCTAssertEqual(calls, 1); XCTAssertEqual(store.unreadCount, 7)
         instant = instant.addingTimeInterval(31); await store.refreshUnread()
+        XCTAssertEqual(calls, 1)
+        instant = instant.addingTimeInterval(150); await store.refreshUnread()
         XCTAssertEqual(calls, 2)
         await store.refreshUnread(force: true); XCTAssertEqual(calls, 3)
         store.clear(); store.user = member; await store.refreshUnread()

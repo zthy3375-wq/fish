@@ -3,6 +3,7 @@ import Combine
 
 @MainActor final class TreeholeStore: ObservableObject {
     @Published var honorsEnabled=false
+    private var combinedUnread = false
     @Published var messageUnread:Int?
     @Published var messagesEnabled=false
     @Published var boardsEnabled=false
@@ -196,6 +197,7 @@ import Combine
 
     private func applyConfiguration(_ config:TreeholeEnvelope) {
         honorCollectionEnabled = config.honorCollectionEnabled == true
+        combinedUnread = config.combinedUnread == true
         autoAchievementsEnabled = config.autoAchievementsEnabled == true
         self.boardsEnabled=config.boardsEnabled == true; self.responseKinds=config.responseKinds ?? ["same","hug","useful"]
         self.honorsEnabled = config.honorsEnabled == true; self.messagesEnabled = config.messagesEnabled == true; self.moderationEnabled = config.moderationEnabled == true
@@ -314,10 +316,19 @@ import Combine
     func refreshUnread(force: Bool = false) async {
         guard engagementEnabled, user != nil, !unreadBusy else { return }
         let instant = now()
-        guard force || lastUnreadEpoch != epoch || instant.timeIntervalSince(lastUnreadAt) >= 30 else { return }
+        guard force || lastUnreadEpoch != epoch || instant.timeIntervalSince(lastUnreadAt) >= 180 else { return }
         lastUnreadAt = instant; lastUnreadEpoch = epoch
         let generation = epoch; unreadBusy = true; defer { unreadBusy = false }
-        do { let r = try await api.request("notifications.unread"); guard generation == epoch else { return }; unreadCount = r.unreadCount ?? 0; messageUnread=r.messageUnreadCount }
+        do {
+            let r = try await api.request("notifications.unread", combinedUnread ? ["withMessages": true] : [:])
+            guard generation == epoch else { return }
+            unreadCount = r.unreadCount ?? 0
+            if let count = r.messageUnreadCount { messageUnread = count }
+            else if messagesEnabled {
+                let dm = try await api.request("messages.unread")
+                if generation == epoch { messageUnread = dm.messageUnreadCount ?? 0 }
+            }
+        }
         catch { if generation == epoch, let e = error as? TreeholeError, e.code == "session_expired" { clear() } }
     }
     func loadInbox(more: Bool = false) async {
@@ -326,6 +337,7 @@ import Combine
         inboxLoading = true; inboxError = nil
         defer { if generation == epoch && revision == inboxRevision { inboxLoading = false } }
         var body: [String: Any] = ["filter": inboxFilter]
+        if combinedUnread { body["withMessages"] = true }
         if more { inboxNext?.forEach { body[$0.key] = $0.value } }
         do {
             let r = try await api.request("notifications.list", body)
@@ -333,6 +345,7 @@ import Combine
             var ids = Set(notifications.map(\.id))
             notifications = more ? notifications + (r.notifications ?? []).filter { ids.insert($0.id).inserted } : r.notifications ?? []
             inboxNext = r.next; unreadCount = r.unreadCount ?? 0
+            if let count = r.messageUnreadCount { messageUnread = count }
         } catch {
             guard generation == epoch, revision == inboxRevision else { return }
             if let e = error as? TreeholeError, e.code == "session_expired" { clear() }

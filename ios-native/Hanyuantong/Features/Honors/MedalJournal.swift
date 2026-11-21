@@ -117,8 +117,7 @@ enum MedalDates {
         if key == "device", let device {
             objectWillChange.send()
             let hadLife = device.date(for: "life") != nil
-            device.record(code)
-            guard device.date(for: code) != nil else { return }
+            guard device.record(code) else { return }
             enqueue(medal)
             if code != "life", !hadLife, device.date(for: "life") != nil, let life = CampusMedal.byCode["life"] { enqueue(life) }
             return

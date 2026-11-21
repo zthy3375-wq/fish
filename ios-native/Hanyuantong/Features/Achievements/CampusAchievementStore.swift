@@ -125,7 +125,7 @@ final class CampusAchievementStore: ObservableObject {
             persistence = vault; loaded = true; error = nil
             return vault
         } catch {
-            error = CampusAchievementFailure.invalid.localizedDescription
+            self.error = CampusAchievementFailure.invalid.localizedDescription
             return nil
         }
     }
@@ -158,11 +158,11 @@ final class CampusAchievementStore: ObservableObject {
     }
 
     /// Save before updating the view. A read/save failure must never overwrite prior awards.
-    func record(_ code: String, at: Date = Date()) {
+    @discardableResult func record(_ code: String, at: Date = Date()) -> Bool {
         guard let definition = CampusAchievementCatalog.byCode[code],
               definition.source == "device", let persistence = readablePersistence(), journal.stamps[code] == nil,
               at.timeIntervalSince1970 > 0, at <= Date().addingTimeInterval(86400),
-              code != "life" || CampusAchievementCatalog.lifeCodes.isSubset(of: journal.stamps.keys) else { return }
+              code != "life" || CampusAchievementCatalog.lifeCodes.isSubset(of: journal.stamps.keys) else { return false }
         var next = journal
         next.stamps[code] = at
         if CampusAchievementCatalog.lifeCodes.isSubset(of: Set(next.stamps.keys)),
@@ -172,8 +172,10 @@ final class CampusAchievementStore: ObservableObject {
         do {
             try persistence.save(try next.validated())
             journal = next; error = nil
+            return true
         } catch {
             self.error = "荣誉收藏保存失败，原有记录保持不变。"
+            return false
         }
     }
 

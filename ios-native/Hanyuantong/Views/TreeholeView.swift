@@ -241,7 +241,7 @@ struct TreeholeView: View {
         .onChange(of: pickedPhotos) { items in loadPhotos(items) }
         .onChange(of: pickedReplyPhotos) { items in loadReplyPhotos(items) }
         .fullScreenCover(item: $gallery) { TreeholeGallery(selection: $0, api: tree.api) }
-        .onChange(of: tree.user?.id) { identity in buddyRosterPost = nil; continueScope = "participated"; if identity == nil { auth = "login"; routes = [] }; draft.bind(identity); resetReply(); password = ""; newPassword = ""; accountPage = "overview"; screen = "feed"; openRequestedAccount() }
+        .onChange(of: tree.user?.id) { identity in buddyRosterPost = nil; continueScope = "participated"; if identity == nil { auth = "login"; routes = []; registrationRecovery = nil }; draft.bind(identity); resetReply(); password = ""; newPassword = ""; accountPage = "overview"; screen = "feed"; openRequestedAccount() }
         .sheet(isPresented: Binding(get: { tree.recovery != nil }, set: { if !$0 { tree.recovery = nil } })) {
             VStack(alignment: .leading, spacing: 20) {
                 Label("保存你的账号恢复码", systemImage: "checkmark.shield").font(.title2.bold())
