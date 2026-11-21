@@ -37,7 +37,7 @@ struct CampusHonorItem: Codable, Identifiable, Equatable {
 
 struct CampusCollectionProfile: Codable {
     let id: String, nickname: String
-    let items: [CampusHonorItem]
+    var items: [CampusHonorItem]
     let badges: MemberBadges
     let identities: [String]
     let customTitle: String?

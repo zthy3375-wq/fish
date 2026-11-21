@@ -165,6 +165,54 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["社区"].isSelected)
     }
 
+    func testCommunityAchievementProgressAndOfflineReopen() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        let owner = UUID().uuidString
+        func openHall(account: String, offline: Bool) throws {
+            let member: [String: Any] = ["id": account, "username": "gallery", "nickname": "收藏测试", "role": "member"]
+            let item: [String: Any] = ["id": "definition", "code": "campus-observer", "name": "今天的邯院",
+                "category": "contribution", "rarity": "common", "displayKind": "achievement",
+                "archived": false, "publicHidden": false, "awardId": "earned", "at": "2026-11-01T10:00:00Z"]
+            let hall: [String: Any] = ["id": account, "nickname": "收藏测试", "badges": [:], "honors": [],
+                "showcase": [], "total": 0, "awards": [:], "progress": ["posts": 2]]
+            let collection: [String: Any] = ["id": account, "nickname": "收藏测试", "items": [item],
+                "badges": [:], "identities": [], "useTitle": false, "total": 1, "rarities": ["common": 1], "unseen": []]
+            func response(_ json: [String: Any], status: Int = 200) throws -> [[String: Any]] {
+                [["status": status, "json": String(decoding: try JSONSerialization.data(withJSONObject: json), as: UTF8.self)]]
+            }
+            let unavailable = try response(["error": "temporarily_unavailable"], status: 503)
+            let fixture = [
+                "me": try response(["user": member, "config": ["honorCollectionEnabled": true], "posts": []]),
+                "honors.hall": offline ? unavailable : try response(["hall": hall]),
+                "collection.profile": offline ? unavailable : try response(["collection": collection])
+            ]
+            app.launchEnvironment["HYT_REPLY_UI_FIXTURE"] = String(decoding: try JSONSerialization.data(withJSONObject: fixture), as: UTF8.self)
+            app.launch()
+            app.tabBars.buttons["社区"].tap()
+            XCTAssertTrue(app.buttons["发帖"].waitForExistence(timeout: 8))
+            app.tabBars.buttons["我的"].tap()
+            app.buttons["open-achievement-hall"].tap()
+            app.scrollViews.buttons["社区"].firstMatch.tap()
+        }
+        try openHall(account: owner, offline: false)
+        let badge = app.buttons["achievement-campus-observer"]
+        let earned = NSPredicate(format: "label CONTAINS %@", "已解锁")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: earned, object: badge)], timeout: 8), .completed)
+        app.buttons["achievement-sprout"].tap()
+        let progress = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "2 / 5", "2 / 5")
+        ).firstMatch
+        XCTAssertTrue(progress.waitForExistence(timeout: 5))
+        app.terminate()
+        try openHall(account: owner, offline: true)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: earned, object: badge)], timeout: 8), .completed)
+        app.terminate()
+        try openHall(account: UUID().uuidString, offline: true)
+        XCTAssertTrue(badge.waitForExistence(timeout: 5))
+        XCTAssertTrue(badge.label.contains("待同步"))
+    }
+
     private func serveCampusPhoto() throws -> NWListener {
         let resource = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "campus-autumn", withExtension: "jpg"))
         let jpeg = try Data(contentsOf: resource)

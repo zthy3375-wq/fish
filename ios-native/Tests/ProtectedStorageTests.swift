@@ -235,6 +235,29 @@ final class CampusAchievementTests: XCTestCase {
         XCTAssertNil(defaults.dictionary(forKey: "campus.medals.v1")?["device"])
     }
 
+    @MainActor func testRestoreVerifiedCompletedTaskKeepsDateAndDoesNotReplayBanner() throws {
+        let key = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: key))
+        defer { defaults.removePersistentDomain(forName: key) }
+        let disk = InMemoryAchievementPersistence()
+        let device = CampusAchievementStore(persistence: disk)
+        let journal = MedalJournal(defaults: defaults, device: device)
+        let completed = Date(timeIntervalSince1970: 1_700_000_000)
+        var task = CampusTask(title: "旧版个人待办", date: completed, completed: true)
+        task.completedAt = completed
+        task.updatedAt = completed.addingTimeInterval(120)
+        task.steps = [TaskStep(title: "一", completed: true), TaskStep(title: "二", completed: false)]
+        XCTAssertNil(TaskRules.stepsMedalEvidence(task))
+        task.steps[1].completed = true
+        let verified = try XCTUnwrap(TaskRules.stepsMedalEvidence(task))
+        XCTAssertEqual(verified, task.updatedAt)
+        journal.unlock("tasks", at: verified, historical: true)
+        journal.unlock("tasks")
+        XCTAssertEqual(CampusAchievementStore(persistence: disk).date(for: "tasks"), verified)
+        XCTAssertNil(journal.notice)
+        XCTAssertEqual(disk.writes, 1)
+    }
+
     @MainActor func testTemporaryReadFailureRetriesWithExistingJournal() {
         let disk = InMemoryAchievementPersistence()
         let earned = Date()

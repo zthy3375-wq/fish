@@ -88,6 +88,7 @@ final class CampusStore: ObservableObject {
             }
             courses = personalCourses
             loadedPersonal = true
+            restoreTaskMedal()
             refreshReminders()
         } catch { message = "本机加密数据暂时无法读取。请解锁设备后重试；不会用空数据覆盖原记录。" }
     }
@@ -360,11 +361,18 @@ final class CampusStore: ObservableObject {
         let backup = PersonalBackup(courses: personalCourses, tasks: tasks, semesterStart: semesterStart, personalSchedule: personalSchedule)
         try backup.validate(); return backup
     }
+    private func restoreTaskMedal() {
+        let now = Date()
+        let verifiedAt = tasks.lazy.compactMap(TaskRules.stepsMedalEvidence).filter { $0 <= now }.min()
+        if let verifiedAt { MedalJournal.shared.unlock("tasks", at: verifiedAt, historical: true) }
+    }
+
     func restorePersonalBackup(_ backup: PersonalBackup) throws {
         try backup.validate()
         // A v1 snapshot can remain in legacy form if its dates/weeks cannot be migrated without changes.
         let state = try backup.personalSchedule?.validated()
         try commitPersonal(courses: backup.courses, tasks: backup.tasks, semesterStart: backup.semesterStart, schedule: state)
+        restoreTaskMedal()
     }
     func restoreAndroidSchedule(_ plan: AndroidScheduleImportPlan, semesterID: String) throws {
         var next = try plan.state.validated()
@@ -374,6 +382,7 @@ final class CampusStore: ObservableObject {
     func mergeAndroidTasks(_ plan: AndroidTaskImportPlan) throws -> AndroidTaskMergePreview {
         let result = try plan.merge(into: tasks)
         try commitPersonal(courses: personalCourses, tasks: result.tasks, semesterStart: semesterStart, schedule: personalSchedule)
+        restoreTaskMedal()
         return result
     }
     func refreshReminders() {
