@@ -45,7 +45,10 @@ struct PangguaiWalletView: View {
             .sheet(isPresented: $loginPresented) { PangguaiLoginView(store: store) }
             .sheet(isPresented: $scannerPresented) { PangguaiScannerView { code in Task { await store.readDevice(code) } } }
             .alert(item: $confirmation) { item in alert(item) }
-            .onChange(of: store.device?.id) { _ in selection = "" }
+            .onChange(of: store.device?.id) { _ in
+                selection = ""
+                if store.device?.category == "08" { achievements.record("water") }
+            }
             .onChange(of: store.maskedPhone) { _ in selection = ""; confirmation = nil; pollFailures = 0 }
             .onChange(of: store.snapshot.water?.id) { _ in pollFailures = 0 }
             .onChange(of: store.snapshot.laundry?.id) { _ in pollFailures = 0 }
