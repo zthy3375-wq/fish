@@ -53,6 +53,19 @@ final class MedalParityTests:XCTestCase {
         for i in 1...3 { XCTAssertFalse(counter.tap(target:5,at:start.addingTimeInterval(8+Double(i)/10))) }
         XCTAssertTrue(counter.tap(target:5,at:start.addingTimeInterval(8.4)))
     }
+    func testCommunityCatalogDistinguishesEarnableMilestonesAndGrantedHonors() throws {
+        func item(_ code: String, _ kind: String, category: String = "contribution", earned: Bool = false) throws -> CampusHonorItem {
+            var data: [String: Any] = ["id": "fixture", "code": code, "name": "测试", "rarity": "rare", "category": category, "displayKind": kind, "archived": false, "publicHidden": false]
+            if earned { data["awardId"] = "grant" }
+            return try JSONDecoder().decode(CampusHonorItem.self, from: JSONSerialization.data(withJSONObject: data))
+        }
+        XCTAssertTrue(try item("campus-observer", "achievement").appearsInAchievementHall)
+        XCTAssertFalse(try item("seed", "honor", earned: true).appearsInAchievementHall)
+        XCTAssertFalse(try item("architect", "achievement").appearsInAchievementHall)
+        XCTAssertTrue(try item("architect", "achievement", earned: true).appearsInAchievementHall)
+        XCTAssertFalse(try item("crossed-paths", "achievement", category: "hidden").appearsInAchievementHall)
+    }
+
     func testIdentityProjectionAndLegacyPayload() throws {
         let old=try JSONDecoder().decode(TreeholeAuthor.self,from:Data(#"{"name":"校友","mine":false,"anonymous":false}"#.utf8))
         XCTAssertNil(old.badges)

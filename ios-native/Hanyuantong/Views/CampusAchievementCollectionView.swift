@@ -49,23 +49,24 @@ struct CampusAchievementCollectionView: View {
         let known = CampusAchievementCatalog.entries
         let extras: [CampusAchievement] = currentItems.compactMap { item in
             guard CampusAchievementCatalog.byCode[item.code] == nil,
-                  item.awardId != nil, item.category != "identity" else { return nil }
-            let category = item.archived ? "已停发" : item.category == "hidden" ? "隐藏" : "社区"
-            return CampusAchievement(item.code, item.name, category,
+                  item.appearsInAchievementHall else { return nil }
+            let category = item.retiredAchievement ? "已停发" : item.category == "hidden" ? "隐藏" : "社区"
+            return CampusAchievement(item.code, item.caption, category,
                                      ["common": "普通", "fine": "普通", "rare": "稀有",
                                       "epic": "史诗", "legendary": "传奇"][item.rarity] ?? "普通",
-                                     "community", "seal", item.criteria ?? "社区荣誉",
+                                     "community", CommunityAchievementPlaceholders.milestones.first { $0.code == item.code }?.symbol ?? "seal", item.criteria ?? "社区成就",
                                      item.story ?? item.criteria ?? "已获得的社区荣誉。")
         }
         let confirmed = Dictionary(grouping: extras, by: \.code).compactMap { $0.value.first }
-        let confirmedCodes = Set(confirmed.map(\.code))
-        let pendingMilestones = CommunityAchievementPlaceholders.milestones.filter { !confirmedCodes.contains($0.code) }
         let revealedHidden = confirmed.filter { $0.hidden }.count
         let hiddenPlaceholders: [CampusAchievement] = (0..<max(0, CommunityAchievementPlaceholders.hiddenCapacity - revealedHidden)).map { i in
             CampusAchievement("community-mystery-" + String(i), "隐藏成就", "隐藏", "稀有",
                               "community", "questionmark", "", "还没有发现的校园秘密。")
         }
-        return known + pendingMilestones + confirmed.sorted { $0.name < $1.name } + hiddenPlaceholders
+        let byCode = Dictionary(uniqueKeysWithValues: confirmed.map { ($0.code, $0) })
+        let milestones = CommunityAchievementPlaceholders.milestones.map { byCode[$0.code] ?? $0 }
+        let milestoneCodes = Set(milestones.map(\.code))
+        return known + milestones + confirmed.filter { !milestoneCodes.contains($0.code) }.sorted { $0.name < $1.name } + hiddenPlaceholders
     }
     private var activeEntries: [CampusAchievement] { entries.filter { $0.group != "已停发" } }
     private var active: [CampusAchievement] { group == "全部" ? activeEntries : entries.filter { $0.group == group } }

@@ -25,7 +25,32 @@ struct TreeholeImageGrid: View {
                 HStack { Text("左右滑动查看"); Spacer(); Text("\(page + 1) / \(images.count)") }.font(.caption2).foregroundStyle(.secondary)
             }
         } else {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: images.count == 2 || images.count == 4 ? 2 : 3), spacing: 5) { ForEach(Array(images.prefix(9).enumerated()), id: \.element.id) { index, image in imageButton(index, image: image, ratio: 1, fit: false) } }
+            Group {
+                if images.count == 3 {
+                    Color.clear.aspectRatio(1.6, contentMode: .fit).overlay {
+                        GeometryReader { geometry in
+                            let primary = (geometry.size.width - 6) * 0.6
+                            let secondary = geometry.size.width - 6 - primary
+                            let row = max(0, (geometry.size.height - 6) / 2)
+                            HStack(spacing: 6) {
+                                imageButton(0, image: images[0], ratio: primary / max(1, geometry.size.height), fit: false)
+                                VStack(spacing: 6) {
+                                    ForEach(1..<3, id: \.self) { index in
+                                        imageButton(index, image: images[index], ratio: secondary / max(1, row), fit: false)
+                                    }
+                                }.frame(width: secondary)
+                            }
+                        }
+                    }
+                } else {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: images.count == 2 || images.count == 4 ? 2 : 3), spacing: 6) {
+                        ForEach(Array(images.prefix(9).enumerated()), id: \.element.id) { index, image in imageButton(index, image: image, ratio: 1, fit: false) }
+                    }
+                }
+            }.overlay(alignment: .bottomTrailing) {
+                Text("\(images.count) 张").font(.caption2).foregroundStyle(.white).padding(4)
+                    .background(.black.opacity(0.55), in: Capsule()).padding(6).allowsHitTesting(false)
+            }
         }
     }
     private func imageButton(_ index: Int, image: TreeholeImage, ratio: CGFloat, fit: Bool) -> some View {
@@ -33,7 +58,7 @@ struct TreeholeImageGrid: View {
             Color.clear.aspectRatio(ratio, contentMode: .fit).overlay { TreeholeRemoteImage(postId: postId, image: image, api: api, fit: fit) }.clipped()
                 .overlay(alignment: .bottomTrailing) { if !full && images.count == 1 && self.ratio < 0.6 { Text("长图").font(.system(size: 10)).padding(4).foregroundStyle(.white).background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 3)).padding(6) } }
                 .background(TreeholeTheme.background).clipShape(RoundedRectangle(cornerRadius: 9))
-        }.buttonStyle(.plain).accessibilityLabel(full ? "查看第 \(index + 1) 张图片" : "打开帖子，配图 \(index + 1)")
+        }.buttonStyle(.plain).accessibilityLabel("\(full ? "查看图片" : "查看配图") \(index + 1)，共 \(images.count) 张")
     }
 }
 struct TreeholeRemoteImage: View {

@@ -19,6 +19,17 @@ struct CampusHonorItem: Codable, Identifiable, Equatable {
     let publicHidden: Bool
     let memberId: String?
     let nickname: String?
+    var displayKind: String? = nil
+    private var definitionCode: String {
+        code.replacingOccurrences(of: "-[0-9]{4}$", with: "", options: .regularExpression)
+    }
+    private static let retired: Set<String> = ["bug-hunter", "architect", "first-feature", "gold-creator", "developer-noticed", "welcome-guide", "graduation-keepsake"]
+    private static let achievements: Set<String> = ["first-hundred", "campus-observer", "good-company", "answer-guide", "campus-photographer", "community-classic", "landmark-post", "hundred-likes", "full-page", "archivist", "before-dawn", "world-lines", "crossed-paths", "no-island"]
+    var retiredAchievement: Bool { Self.retired.contains(definitionCode) }
+    var appearsInAchievementHall: Bool {
+        let isAchievement = displayKind.map { $0 == "achievement" } ?? (category == "hidden" || retiredAchievement || Self.achievements.contains(definitionCode))
+        return isAchievement && (awardId != nil || (category != "hidden" && !retiredAchievement))
+    }
     var archiveId: String { awardId ?? id }
     var earned: Bool { awardId != nil || memberId != nil }
     var caption: String { year.map { String($0) + " · " + name } ?? name }
@@ -67,7 +78,7 @@ struct CampusHonorByline: View {
     var badges: MemberBadges?
     var body: some View {
         HStack(spacing: 5) {
-            if let role = badges?.official, let name = campusIdentityNames[role.code] {
+            if let role = badges?.official, ["developer", "moderator"].contains(role.code), let name = campusIdentityNames[role.code] {
                 Label(name, systemImage: role.code == "developer" ? "crown" : "shield")
                     .foregroundStyle(role.code == "developer" ? Color.orange : .blue)
             }
@@ -77,9 +88,10 @@ struct CampusHonorByline: View {
                     .foregroundStyle(badge.rarity == "legendary" || badge.rarity == "epic" ? Color.orange : .purple)
                     .accessibilityLabel(badge.name)
             } else if let worn = badges?.worn, let name = campusIdentityNames[worn.code] {
-                Label(name, systemImage: "seal").foregroundStyle(.purple).lineLimit(1)
+                let style = HonorByline.style(worn.code)
+                Label(style.0, systemImage: style.1).foregroundStyle(style.2).lineLimit(1).accessibilityLabel(name)
             }
-        }.font(.system(size: 10, weight: .semibold))
+        }.font(.system(size: 11, weight: .semibold))
     }
 }
 
