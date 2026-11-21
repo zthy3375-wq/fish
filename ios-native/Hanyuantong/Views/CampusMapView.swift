@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct CampusMapView: View {
+    @EnvironmentObject private var achievements: CampusAchievementStore
     @State private var campus = 0
     var body: some View {
         VStack(spacing: 16) {
@@ -9,7 +10,9 @@ struct CampusMapView: View {
             Text("双指缩放，拖动查看完整平面图").font(.caption).foregroundStyle(CampusTheme.muted)
             ZoomableCampusMap(imageName: campus == 0 ? "east-campus-plan" : "west-campus-plan").id(campus)
                 .accessibilityLabel(campus == 0 ? "东校区平面图，可双指缩放" : "西校区平面图，可双指缩放")
-        }.padding(.top, 12).background(CampusTheme.background).navigationTitle("校园平面图").navigationBarTitleDisplayMode(.inline)
+        }.padding(.top, 12).background(CampusTheme.background)
+            .onAppear { if UIImage(named: "east-campus-plan") != nil { achievements.record("map") } }
+            .navigationTitle("校园平面图").navigationBarTitleDisplayMode(.inline)
     }
 }
 
