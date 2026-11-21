@@ -27,18 +27,28 @@ struct DiscoverySurface<Content: View>: View {
         self.code=code; self.label=label; self.taps=taps; self.content=content
     }
     var body: some View {
-        Button(action: tapped) {
-            content().scaleEffect(effect != nil && !systemReduce && !reduce ? 1.05 : 1)
-                .overlay(alignment: .topTrailing) {
-                    if effect != nil { Image(systemName: "sparkles").foregroundStyle(Color(hex: 0xaa771e)).accessibilityHidden(true) }
-                }.frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityLabel(label)
+        Group {
+            if taps > 1 {
+                artwork.accessibilityHidden(true).overlay {
+                    DiscoveryTouchTarget(label: label, identifier: "discovery-" + code, tap: tapped,
+                                         cancel: { sequence = TapSequence() })
+                }
+            } else {
+                Button(action: tapped) { artwork }.buttonStyle(.plain).accessibilityLabel(label)
+            }
+        }
             .animation(systemReduce || reduce ? nil : .easeInOut(duration:0.20),value:effect)
             .task(id:effect) {
                 guard effect != nil else { return }
                 do { try await Task.sleep(nanoseconds:350_000_000) } catch { return }
                 effect=nil
             }
+    }
+    private var artwork: some View {
+        content().scaleEffect(effect != nil && !systemReduce && !reduce ? 1.05 : 1)
+            .overlay(alignment: .topTrailing) {
+                if effect != nil { Image(systemName: "sparkles").foregroundStyle(Color(hex: 0xaa771e)).accessibilityHidden(true) }
+            }.frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
     }
     private func tapped() { if sequence.tap(target:taps) { discover(code) } }
     private func discover(_ id: String) {
@@ -47,44 +57,49 @@ struct DiscoverySurface<Content: View>: View {
     }
 }
 
-/// The hit target stays still while the fish artwork swims within its bounds.
-struct HomeFishTouchTarget: UIViewRepresentable {
-    let lastResponse: String?
-    let pressing: (Bool) -> Void
+/// Counts each completed touch independently, including rapid taps inside a scrolling page.
+struct DiscoveryTouchTarget: UIViewRepresentable {
+    let label: String
+    let identifier: String
+    var lastResponse: String? = nil
+    var pressing: ((Bool) -> Void)? = nil
     let tap: () -> Void
-    let dream: () -> Void
+    var longPress: (() -> Void)? = nil
     let cancel: () -> Void
-    func makeUIView(context: Context) -> FishControl {
-        let control = FishControl()
+    func makeUIView(context: Context) -> TouchControl {
+        let control = TouchControl()
         control.isAccessibilityElement = true
         control.accessibilityTraits = .button
-        control.accessibilityIdentifier = "home-mascot"
-        control.accessibilityLabel = "首页小金鱼"
-        control.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "长按小金鱼") { [weak control] _ in
-            control?.dream?(); return true
-        }]
+        control.accessibilityIdentifier = identifier
+        control.accessibilityLabel = label
+        if longPress != nil {
+            control.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "长按小金鱼") { [weak control] _ in
+                control?.longPress?(); return true
+            }]
+        }
         return control
     }
-    func updateUIView(_ control: FishControl, context: Context) {
+    func updateUIView(_ control: TouchControl, context: Context) {
         control.accessibilityValue = lastResponse
-        control.pressing = pressing; control.tap = tap; control.dream = dream; control.cancel = cancel
+        control.pressing = pressing; control.tap = tap; control.longPress = longPress; control.cancel = cancel
     }
 
-    final class FishControl: UIControl {
+    final class TouchControl: UIControl {
         var pressing: ((Bool) -> Void)?
         var tap: (() -> Void)?
-        var dream: (() -> Void)?
+        var longPress: (() -> Void)?
         var cancel: (() -> Void)?
         private var start: CGPoint?
         private var hold: DispatchWorkItem?
-        private var didDream = false
+        private var didHold = false
 
         override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
-            start = touch.location(in: window); didDream = false
+            start = touch.location(in: window); didHold = false
             pressing?(true)
+            guard longPress != nil else { return true }
             let action = DispatchWorkItem { [weak self] in
                 guard let self, self.start != nil else { return }
-                self.didDream = true; self.dream?()
+                self.didHold = true; self.longPress?()
             }
             hold = action
             DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: action)
@@ -98,7 +113,7 @@ struct HomeFishTouchTarget: UIViewRepresentable {
             return false
         }
         override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
-            let shouldTap = start != nil && !didDream
+            let shouldTap = start != nil && !didHold
             release()
             if shouldTap { tap?() }
         }
@@ -118,14 +133,24 @@ struct HomeFishTouchTarget: UIViewRepresentable {
 
 struct CampusVersionPage: View {
     var body: some View {
-        List {
-            Section("关于邯院通") {
-                DiscoverySurface("goldfish",label:"版本号",taps:7) {
-                    HStack { Text("版本号"); Spacer(); Text(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "—").foregroundStyle(.secondary) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("关于邯院通").font(.headline)
+                DiscoverySurface("goldfish", label: "版本号", taps: 7) {
+                    HStack {
+                        Text("版本号")
+                        Spacer()
+                        Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")
+                            .foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity)
                 }
-            }
-            Section { NavigationLink("更新日志") { NativeReleaseHistoryView() } }
-        }.navigationTitle("关于邯院通")
+                Divider()
+                NavigationLink { NativeReleaseHistoryView() } label: {
+                    HStack { Text("更新日志"); Spacer(); Image(systemName: "chevron.right").accessibilityHidden(true) }
+                        .frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }.campusCard().padding(16)
+        }.background(CampusTheme.background).navigationTitle("关于邯院通")
     }
 }
 @MainActor final class OfflineScheduleCheck: ObservableObject {

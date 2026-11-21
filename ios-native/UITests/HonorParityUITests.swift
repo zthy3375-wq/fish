@@ -233,7 +233,7 @@ final class HonorParityUITests:XCTestCase {
         for id in ["puff", "dream"] {
             let badge = app.buttons["achievement-" + id]
             XCTAssertTrue(badge.waitForExistence(timeout: 5))
-            XCTAssertTrue(badge.label.contains("已解锁"), badge.label)
+            XCTAssertTrue(badge.label.contains("已解锁"), id + " " + badge.label)
         }
     }
 
@@ -271,7 +271,7 @@ final class HonorParityUITests:XCTestCase {
             for id in ids {
                 let badge = app.buttons["achievement-" + id]
                 XCTAssertTrue(badge.waitForExistence(timeout: 5))
-                XCTAssertTrue(badge.label.contains("已解锁"), badge.label)
+                XCTAssertTrue(badge.label.contains("已解锁"), id + " " + badge.label)
             }
         }
     }

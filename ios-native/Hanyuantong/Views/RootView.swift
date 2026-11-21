@@ -270,11 +270,11 @@ struct HomeView: View {
                             .scaleEffect(fishPressed && !systemReduce && !reduceMotion ? 0.94 : 1)
                             .offset(x: CGFloat(18 * cos(2 * .pi * cycle)), y: CGFloat(2 * bob))
                     }.allowsHitTesting(false).accessibilityHidden(true)
-                    HomeFishTouchTarget(lastResponse: lastFishResponse, pressing: { fishPressed = $0 }, tap: {
+                    DiscoveryTouchTarget(label: "首页小金鱼", identifier: "home-mascot", lastResponse: lastFishResponse, pressing: { fishPressed = $0 }, tap: {
                         if fishTaps.tap(target: 5) {
                             MedalJournal.shared.unlock("puff"); showFishCue("别戳啦！")
                         } else { showFishCue("咕噜") }
-                    }, dream: {
+                    }, longPress: {
                         fishTaps = TapSequence()
                         MedalJournal.shared.unlock("dream"); showFishCue("呼……")
                     }, cancel: { fishTaps = TapSequence() })
