@@ -70,6 +70,8 @@ jobs:
           exit 1
       - run: ./gradlew --no-daemon --init-script ../scripts/apk-evidence.init.gradle testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease :app:writeDebugApkEvidenceExpectation
         working-directory: android
+        env:
+          JAVA_TOOL_OPTIONS: -Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2
       - name: Package unsigned release for private offline signing
         run: |
           mkdir -p "$RUNNER_TEMP/release-signing"
