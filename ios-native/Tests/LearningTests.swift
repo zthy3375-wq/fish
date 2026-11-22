@@ -1,5 +1,6 @@
 import XCTest
 import WebKit
+import UIKit
 @testable import Hanyuantong
 
 final class LearningTests: XCTestCase {
@@ -43,6 +44,44 @@ final class LearningTests: XCTestCase {
         XCTAssertFalse(LearningPolicy.isLoginLanding(URL(string: "https://mooc1.chaoxing.com/antispider/show")))
         XCTAssertFalse(LearningPolicy.isLoginLanding(URL(string: "https://example.com/")))
     }
+    @MainActor func testPhoneLoginReturnsFromOfficialLandingWithVerifiedAccount() async throws {
+        let service = "hanyuantong.tests.learning." + UUID().uuidString
+        let session = LearningSession(vaultService: service, makeReadConfiguration: {
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [LearningCourseFixture.self]
+            return config
+        }, loadOfficialPage: { web, initial in
+            XCTAssertEqual(initial.url, LearningPolicy.loginURL)
+            Task { @MainActor in
+                let cookie = HTTPCookie(properties: [.domain: ".chaoxing.com", .path: "/", .name: "_uid", .value: "321", .secure: "TRUE"])!
+                await web.configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
+                web.loadSimulatedRequest(URLRequest(url: LearningPolicy.homeURL), responseHTML: "<p>我的课程</p>")
+            }
+        })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let oldWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let presenter = UIViewController()
+        window.rootViewController = presenter
+        window.makeKeyAndVisible()
+        session.attachPresenter(presenter)
+        defer {
+            try? session.logout()
+            window.isHidden = true
+            oldWindow?.makeKeyAndVisible()
+        }
+        let completed = expectation(description: "Official login automatically returns the course list")
+        let task = Task {
+            defer { completed.fulfill() }
+            let result = try await session.login()
+            XCTAssertEqual(result.courses.first?.name, "合成课程")
+            XCTAssertEqual(try session.savedAccount(), result.account)
+        }
+        await fulfillment(of: [completed], timeout: 15)
+        task.cancel()
+        try await task.value
+    }
+
     func testReadPolicyDoesNotAuthorizeSubmission() {
         XCTAssertTrue(LearningPolicy.safeRead("https://mooc1.chaoxing.com/mooc2/work/task?workId=78"))
         XCTAssertFalse(LearningPolicy.safeRead("https://mooc1.chaoxing.com/work/submit"))
@@ -208,4 +247,23 @@ final class LearningTests: XCTestCase {
             XCTAssertEqual(parsed.rejected, 1); XCTAssertFalse(parsed.complete)
         }
     }
+}
+
+private final class LearningCourseFixture: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard request.url == LearningPolicy.coursesURL,
+              request.value(forHTTPHeaderField: "Cookie")?.contains("_uid=321") == true else {
+            client?.urlProtocol(self, didFailWithError: URLError(.userAuthenticationRequired))
+            return
+        }
+        let response = HTTPURLResponse(url: LearningPolicy.coursesURL, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "application/json"])!
+        let body = #"{"result":true,"channelList":[{"content":{"id":34,"cpi":"56","course":{"data":[{"id":"12","name":"合成课程"}]}}}]}"#
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }

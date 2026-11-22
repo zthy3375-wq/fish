@@ -13,7 +13,10 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
     private var screen: UIViewController?
     private var parser: WKWebView?
     private var cookies: [HTTPCookie] = []
-    private let vault = LearningSessionVault()
+    private let vault: LearningSessionVault
+    private let makeReadConfiguration: () -> URLSessionConfiguration
+    private let loadOfficialPage: @MainActor (WKWebView, URLRequest) -> Void
+
     private var restored = false
     private var generation = 0
     private var lastRequest: Date?
@@ -21,6 +24,7 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
     private var pageReply: CheckedContinuation<Void, Error>?
     private var pageTask: Task<Void, Never>?
     private var loginMode = false
+    private var accountAtPresentation: String?
     private var lastAutoProbe: (url: URL, account: String)?
     private var probing = false
     private var proof: LearningVerification?
@@ -29,6 +33,14 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
     private var verifiedCourses: CourseList?
 
     struct CourseList { let account: String; let courses: [LearningCourse]; let complete: Bool }
+    init(vaultService: String = "org.handancampus.ios.learning.session.v1",
+         makeReadConfiguration: @escaping () -> URLSessionConfiguration = { .ephemeral },
+         loadOfficialPage: @escaping @MainActor (WKWebView, URLRequest) -> Void = { view, request in _ = view.load(request) }) {
+        vault = LearningSessionVault(service: vaultService)
+        self.makeReadConfiguration = makeReadConfiguration
+        self.loadOfficialPage = loadOfficialPage
+        super.init()
+    }
     func attachPresenter(_ controller: UIViewController) { if screen == nil { presenter = controller } }
     func savedAccount() throws -> String? { try vault.restore()?.account }
     func restore() throws {
@@ -136,7 +148,7 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
             }
             let read = LearningHTTPRead()
             activeRead = read
-            let (data, response) = try await read.run(request)
+            let (data, response) = try await read.run(request, configuration: makeReadConfiguration())
             activeRead = nil
             try check(token)
             let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, pair in result[String(describing: pair.key)] = String(describing: pair.value) }
@@ -287,7 +299,10 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
         for cookie in cookies { await config.websiteDataStore.httpCookieStore.setCookie(cookie) }
         try check(token)
         web = view; loginMode = login; probing = false; lastAutoProbe = nil
-        if login { config.websiteDataStore.httpCookieStore.add(self) }
+        if login {
+            accountAtPresentation = try? account()
+            config.websiteDataStore.httpCookieStore.add(self)
+        }
         let controller = UIViewController(); controller.view.backgroundColor = .systemBackground
         let close = UIButton(type: .system); close.setTitle(login ? "取消" : "返回并刷新", for: .normal); close.addTarget(self, action: #selector(closePage), for: .touchUpInside)
         let label = UILabel(); label.text = "学习通官方页面\nchaoxing.com"; label.numberOfLines = 2; label.font = .systemFont(ofSize: 12); pageMessage = label
@@ -302,7 +317,7 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
                 presenter.present(controller, animated: true)
                 var request = URLRequest(url: url)
                 if let proof, login { request.setValue(proof.referer.absoluteString, forHTTPHeaderField: "Referer") }
-                view.load(request)
+                loadOfficialPage(view, request)
                 pageTask = Task { [weak self] in
                     do { try await Task.sleep(nanoseconds: 300_000_000_000) } catch { return }
                     guard let self, token == self.generation else { return }
@@ -335,7 +350,11 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
     private func probeLogin(automatic: Bool) {
         guard loginMode, pageReply != nil, !probing, let web else { return }
         let landing = web.url
-        guard !automatic || LearningPolicy.isLoginLanding(landing) else { return }
+        let onLanding = LearningPolicy.isLoginLanding(landing)
+        if automatic {
+            guard proof == nil, let landing, LearningPolicy.allowed(landing),
+                  !LearningPolicy.challenge(landing.absoluteString, body: "") else { return }
+        }
         probing = true
         let token = generation
         Task { [weak self] in
@@ -343,9 +362,11 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
             do {
                 let current = await web.configuration.websiteDataStore.httpCookieStore.allCookies()
                 try self.check(token)
-                let key = try Self.account(in: current)
+                let key: String
+                do { key = try Self.account(in: current) }
+                catch where automatic { self.probing = false; return }
                 if automatic {
-                    guard let landing, web.url == landing,
+                    guard let landing, web.url == landing, onLanding || key != self.accountAtPresentation,
                           self.lastAutoProbe?.url != landing || self.lastAutoProbe?.account != key else {
                         self.probing = false
                         return
@@ -358,8 +379,10 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
                 self.expectedAccount = key
                 if !same { self.proof = nil }
                 if let proof = self.proof { _ = try await self.read(proof.read, form: proof.form, referer: proof.referer) }
-                self.verifiedCourses = try await self.fetchCourses()
-                try self.check(token); self.proof = nil; try self.save()
+                let result = try await self.fetchCourses()
+                try self.check(token)
+                self.verifiedCourses = result
+                self.proof = nil; try self.save()
                 self.finishPage(.success(()))
             } catch {
                 guard token == self.generation, self.pageReply != nil else { return }
@@ -367,7 +390,9 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
                 let code = (error as? LearningError)?.code ?? "NETWORK"
                 if ["AUTH", "VERIFY", "RATE_LIMIT", "NETWORK", "COURSES_SCHEMA"].contains(code) {
                     switch code {
-                    case "AUTH": self.pageMessage?.text = "请先完成官方登录"
+                    case "AUTH":
+                        self.lastAutoProbe = nil
+                        self.pageMessage?.text = "请先完成官方登录"
                     case "VERIFY": self.pageMessage?.text = "请在官方页面完成验证\n再点顶部继续"
                     case "RATE_LIMIT": self.pageMessage?.text = "平台访问较频繁，请稍后继续"
                     default: self.pageMessage?.text = "课程列表暂未读取，点继续重试"
@@ -409,7 +434,13 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) { decisionHandler(LearningPolicy.allowed(navigationResponse.response.url) ? .allow : .cancel) }
     func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) { completionHandler(.performDefaultHandling, nil) }
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) { decisionHandler(.deny) }
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? { nil }
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if web === webView, navigationAction.targetFrame == nil, navigationAction.sourceFrame.isMainFrame,
+           LearningPolicy.allowed(navigationAction.request.url) {
+            webView.load(navigationAction.request)
+        }
+        return nil
+    }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { finishPage(.failure(LearningError(code: "NATIVE"))) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if (error as NSError).code != NSURLErrorCancelled { finishPage(.failure(LearningError(code: "NETWORK"))) } }
 }
@@ -418,6 +449,8 @@ struct LearningPartialFailure: Error { let code: String; let items: [LearningIte
 private struct LearningVerification: Codable { let show: URL; let read: URL; let form: [String: String]?; let referer: URL }
 
 private final class LearningSessionVault {
+    private let service: String
+    init(service: String) { self.service = service }
     struct Cookie: Codable {
         let name: String; let value: String; let domain: String; let path: String; let secure: Bool; let httpOnly: Bool; let expires: Date?
         init(_ cookie: HTTPCookie) { name = cookie.name; value = cookie.value; domain = cookie.domain; path = cookie.path; secure = cookie.isSecure; httpOnly = cookie.isHTTPOnly; expires = cookie.expiresDate }
@@ -434,7 +467,7 @@ private final class LearningSessionVault {
         }
     }
     struct Record: Codable { let account: String; let cookies: [Cookie]; let verification: LearningVerification? }
-    private var query: [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "org.handancampus.ios.learning.session.v1", kSecAttrAccount as String: "chaoxing", kSecAttrSynchronizable as String: false] }
+    private var query: [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "chaoxing", kSecAttrSynchronizable as String: false] }
     func restore() throws -> Record? {
         var query = query; query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
@@ -464,13 +497,12 @@ private final class LearningHTTPRead: NSObject, URLSessionDataDelegate, @uncheck
     private var session: URLSession?
     private var task: URLSessionDataTask?
     private var cancelled = false
-    func run(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    func run(_ request: URLRequest, configuration config: URLSessionConfiguration) async throws -> (Data, HTTPURLResponse) {
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 lock.lock()
                 if cancelled { lock.unlock(); continuation.resume(throwing: CancellationError()); return }
                 reply = continuation
-                let config = URLSessionConfiguration.ephemeral
                 config.httpCookieStorage = nil; config.httpShouldSetCookies = false; config.urlCache = nil; config.urlCredentialStorage = nil
                 config.timeoutIntervalForRequest = 20; config.timeoutIntervalForResource = 30
                 let queue = OperationQueue(); queue.maxConcurrentOperationCount = 1

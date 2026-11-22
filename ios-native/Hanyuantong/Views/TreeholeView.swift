@@ -84,7 +84,7 @@ struct TreeholeView: View {
     }
     var body: some View {
         ScrollViewReader { proxy in
-            lifecycle(scrolling(proxy))
+            CommunityScreen { lifecycle(CommunityScreen { scrolling(proxy) }) }
                 .blur(radius: replyOverlayVisible && !reduceTransparency ? 2.5 : 0)
                 .allowsHitTesting(!replyOverlayVisible)
                 .accessibilityHidden(replyOverlayVisible)
@@ -100,6 +100,22 @@ struct TreeholeView: View {
                 }
         }
     }
+    @ViewBuilder private func signedInPage(_ user: TreeholeMember, proxy: ScrollViewProxy) -> some View {
+        switch screen {
+        case "compose": CommunityScreen { composer }
+        case "detail": if let post = tree.current { CommunityScreen { discussion(post) } }
+        case "account": CommunityScreen { account(user) }
+        case "moderate": CommunityScreen { moderation }
+        case "inbox": TreeholeInboxView(tree: tree, open: openNotification)
+        case "profile": CommunityScreen { publicProfile }
+        case "following": TreeholeFollowingView(tree: tree, open: showProfile, browse: { accountFeed("all") })
+        default:
+            CommunityScreen { feed }.onChange(of: tree.feedRevision) { _ in
+                feedAnchor = nil
+                proxy.scrollTo("feed-top", anchor: .top)
+            }
+        }
+    }
     private func scrolling(_ proxy: ScrollViewProxy) -> some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 16) {
@@ -112,18 +128,9 @@ struct TreeholeView: View {
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                         .background(CampusTheme.adaptive(light: 0xfff1e9, dark: 0x3a302b), in: RoundedRectangle(cornerRadius: 14))
                 }
-                if tree.ready && tree.user == nil { authentication }
+                if tree.ready && tree.user == nil { CommunityScreen { authentication } }
                 if let user = tree.user {
-                    switch screen {
-                    case "compose": composer
-                    case "detail": if let post = tree.current { discussion(post) }
-                    case "account": account(user)
-                    case "moderate": moderation
-                    case "inbox": TreeholeInboxView(tree: tree, open: openNotification)
-                    case "profile": publicProfile
-                    case "following": TreeholeFollowingView(tree: tree, open: showProfile, browse: { accountFeed("all") })
-                    default: feed
-                    }
+                    CommunityScreen { signedInPage(user, proxy: proxy) }
                 }
             }.offset(x: pageOffset).padding(.horizontal, 18).padding(.top, screen == "feed" ? 0 : 8).padding(.bottom, screen == "feed" ? 88 : 24).frame(maxWidth: 680).frame(maxWidth: .infinity).disabled(tree.busy)
         }
@@ -144,7 +151,6 @@ struct TreeholeView: View {
         }
         .onPreferenceChange(TreeholeFeedEndOffset.self) { value in feedEndOffset = value; requestNextFeedPage() }
         .onChange(of: tree.busy) { value in if !value { requestNextFeedPage() } }
-        .onChange(of: tree.feedRevision) { _ in feedAnchor = nil; if screen == "feed" { DispatchQueue.main.async { proxy.scrollTo("feed-top", anchor: .top) } } }
         .onChange(of: screen) { next in
             if previousScreen == "feed" { feedAnchor = visibleFeedPost }
             previousScreen = next
@@ -157,9 +163,17 @@ struct TreeholeView: View {
             }
             if next == "feed" {
                 let target = tree.feedNeedsRefresh ? "feed-top" : feedAnchor ?? "feed-top"
-                DispatchQueue.main.async { proxy.scrollTo(target, anchor: .top) }
+                DispatchQueue.main.async {
+                    guard communityVisible, screen == next, tree.user != nil else { return }
+                    let present = tree.posts.contains { $0.id == target }
+                    proxy.scrollTo(present ? target : "feed-top", anchor: .top)
+                }
             } else if next == "detail" {
-                DispatchQueue.main.async { proxy.scrollTo(initialDetailTarget, anchor: .top); detailTab = ["comments", "context"].contains(initialDetailTarget) ? "comments" : "body" }
+                DispatchQueue.main.async {
+                    guard communityVisible, screen == next, tree.current != nil else { return }
+                    proxy.scrollTo(initialDetailTarget, anchor: .top)
+                    detailTab = ["comments", "context"].contains(initialDetailTarget) ? "comments" : "body"
+                }
             }
         }
         .simultaneousGesture(DragGesture(minimumDistance: 20).onChanged { value in
@@ -1309,6 +1323,18 @@ struct TreeholeView: View {
     }
     static let rules = "尊重同学，勿发布他人隐私、辱骂、骚扰、垃圾广告或违法内容。可以举报、删除自己的内容和注销账号。匿名会对其他用户隐藏昵称与账号，后台保留账号关联用于处理举报；不同帖子使用不同匿名代号，同一帖子内的匿名发言可关联。请留意文字本身是否暴露身份。账号服务保存登录账号、昵称、密码加密摘要、帖子、互动与举报记录，用于登录及社区服务。教务账号与课表不会上传到社区。可以在账号设置中注销。"
 }
+// Build each routed screen in its own SwiftUI body. This keeps inactive pages
+// and the scroll container out of the value copied by each presentation modifier.
+private struct CommunityScreen: View {
+    private let render: () -> AnyView
+
+    init<Content: View>(@ViewBuilder _ content: @escaping () -> Content) {
+        render = { AnyView(content()) }
+    }
+
+    var body: some View { render() }
+}
+
 private struct TreeholeRouteFrame {
     let screen: String
     let detailTab: String
