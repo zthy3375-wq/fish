@@ -1,0 +1,33 @@
+name: Community release simulator reproduction
+on:
+  push:
+    branches: [qa/ios-community-release-20261122]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Open the community tab on a release-optimized app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for k,ds in sorted(json.load(sys.stdin)["devices"].items(),reverse=True) if "iOS-" in k for d in ds if "iPhone" in d["name"]))')
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcodebuild -quiet -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG SWIFT_ENABLE_OPAQUE_TYPE_ERASURE=NO CODE_SIGN_IDENTITY=- -resultBundlePath "$RUNNER_TEMP/Community.xcresult" -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabAfterExpiredSession -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabWithRestoredSession test
+      - name: Show simulator crash backtraces
+        if: failure()
+        run: |
+          find "$HOME/Library/Logs/DiagnosticReports" -name 'Hanyuantong*.ips' -exec python3 -c 'import sys,json; f=open(sys.argv[1]); f.readline(); d=json.load(f); print(d.get("exception"),d.get("termination")); t=d["threads"][d.get("faultingThread",0)]; print([(x.get("symbol"),x.get("imageOffset")) for x in t.get("frames",[])[:55]])' {} \;
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: community-release-test
+          path: ${{ runner.temp }}/Community.xcresult
+          retention-days: 3
