@@ -19,6 +19,14 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphonesimulator --show-sdk-version
           device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for k,ds in sorted(json.load(sys.stdin)["devices"].items(),reverse=True) if "iOS-" in k for d in ds if "iPhone" in d["name"]))')
+          python3 - <<'PYBUILD'
+          from pathlib import Path
+          p = Path("ios-native/Hanyuantong.xcodeproj/project.pbxproj")
+          s = p.read_text()
+          old = '"OTHER_LDFLAGS" = ( "$(inherited)", "-lz" );'
+          assert s.count(old) == 2
+          p.write_text(s.replace(old, '"OTHER_LDFLAGS" = ( "$(inherited)", "-lz", "-Wl,-stack_size,0x100000" );'))
+          PYBUILD
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
           xcodebuild -quiet -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG SWIFT_ENABLE_OPAQUE_TYPE_ERASURE=NO CODE_SIGN_IDENTITY=- -resultBundlePath "$RUNNER_TEMP/Community.xcresult" -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabAfterExpiredSession -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabWithRestoredSession test
