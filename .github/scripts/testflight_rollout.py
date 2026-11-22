@@ -1,4 +1,4 @@
-"""Upload verification and replacement of the previous TestFlight build for this app."""
+"""Verify the upload and distribute the new TestFlight build to existing testers."""
 import base64
 import json
 import os
@@ -195,6 +195,26 @@ def beta_state(build_id):
     return api(f"builds/{build_id}/buildBetaDetail")["data"]["attributes"]
 
 
+def prepare_feedback(build_id):
+    notes = os.environ.get("TF_WHAT_TO_TEST")
+    if not notes:
+        return
+    try:
+        locales = related(build_id, "betaBuildLocalizations")
+        row = next((item for item in locales if item["attributes"]["locale"] == "zh-Hans"), None)
+        if row:
+            if row["attributes"].get("whatsNew") != notes:
+                api(f"betaBuildLocalizations/{row['id']}", method="PATCH", data={"data": {
+                    "type": "betaBuildLocalizations", "id": row["id"], "attributes": {"whatsNew": notes}}})
+        else:
+            api("betaBuildLocalizations", method="POST", data={"data": {
+                "type": "betaBuildLocalizations", "attributes": {"locale": "zh-Hans", "whatsNew": notes},
+                "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
+        summary("Chinese TestFlight testing notes are available.")
+    except AppleError as error:
+        summary(f"Testing notes could not be written: {error}. Continuing distribution.")
+
+
 def resolve_compliance(current, previous):
     current_id = current["id"]
     deadline = time.monotonic() + 4 * 60
@@ -225,19 +245,37 @@ def rollout(app_id, number):
     previous = release_reference(builds)
     current_id = current["id"]
     resolve_compliance(current, previous)
+    prepare_feedback(current_id)
     group_fields = {"fields[betaGroups]": "isInternalGroup,hasAccessToAllBuilds"}
     tester_fields = {"fields[betaTesters]": "inviteType"}
     all_groups = all_rows("betaGroups", {"filter[app]": app_id, **group_fields, "limit": 200})[0]
     automatic = {row["id"] for row in all_groups
                  if row["attributes"].get("isInternalGroup") and row["attributes"].get("hasAccessToAllBuilds")}
+    earlier = find_build(builds, os.environ.get("TF_EARLIER_GROUP_BUILD"))
+    sources = [previous["id"]]
+    if earlier and not earlier["attributes"].get("expired"):
+        sources.append(earlier["id"])
     old_groups = [row for row in all_groups if row["id"] not in automatic
-                  and previous and group_has_build(row["id"], previous["id"])]
+                  and any(group_has_build(row["id"], source) for source in sources)]
     old_testers = related(previous["id"], "individualTesters", tester_fields) if previous else []
     missing_groups = {row["id"] for row in old_groups if not group_has_build(row["id"], current_id)}
+    summary(f"Eligible audiences: {len(automatic)} automatic internal group(s), "
+            f"{sum(not row['attributes']['isInternalGroup'] for row in old_groups)} existing external group(s).")
+    external = any(not row["attributes"]["isInternalGroup"] for row in old_groups) or any(
+        row["attributes"].get("inviteType") not in {"INTERNAL", "INTERNAL_TESTER"} for row in old_testers
+    )
+    if external:
+        detail = api(f"builds/{current_id}/buildBetaDetail")["data"]
+        if not detail["attributes"].get("autoNotifyEnabled"):
+            try:
+                api(f"buildBetaDetails/{detail['id']}", method="PATCH", data={"data": {
+                    "type": "buildBetaDetails", "id": detail["id"], "attributes": {"autoNotifyEnabled": True}}})
+            except AppleError as error:
+                summary(f"Automatic tester notification could not be enabled: {error}. Continuing distribution.")
     for group_id in sorted(missing_groups):
         try:
-            api(f"betaGroups/{group_id}/relationships/builds", method="POST",
-                data={"data": [{"type": "builds", "id": current_id}]})
+            api(f"builds/{current_id}/relationships/betaGroups", method="POST",
+                data={"data": [{"type": "betaGroups", "id": group_id}]})
         except AppleError as error:
             if error.status not in {409, 422} or not group_has_build(group_id, current_id):
                 group = next(row for row in old_groups if row["id"] == group_id)
@@ -248,15 +286,13 @@ def rollout(app_id, number):
     if missing_testers:
         api(f"builds/{current_id}/relationships/individualTesters", method="POST",
             data={"data": [{"type": "betaTesters", "id": item} for item in sorted(missing_testers)]})
-    external = any(not row["attributes"]["isInternalGroup"] for row in old_groups) or any(
-        row["attributes"].get("inviteType") not in {"INTERNAL", "INTERNAL_TESTER"} for row in old_testers
-    )
     review_requested = False
     deadline = time.monotonic() + 12 * 60
     while time.monotonic() < deadline:
         state = beta_state(current_id)
         internal, outside = state.get("internalBuildState"), state.get("externalBuildState")
-        print(f"Beta availability: internal={internal}, external={outside}", flush=True)
+        print(f"Beta availability: internal={internal}, external={outside}, autoNotify={state.get('autoNotifyEnabled')}",
+              flush=True)
         if internal in {"MISSING_EXPORT_COMPLIANCE", "PROCESSING_EXCEPTION", "EXPIRED"}:
             raise RuntimeError(f"Build uploaded; testing requires App Store Connect action ({internal}). Previous build kept.")
         audiences_ready = all(group_has_build(row["id"], current_id) for row in old_groups) and (
@@ -268,18 +304,6 @@ def rollout(app_id, number):
         if audiences_ready and (internal_ready or external and outside == "IN_BETA_TESTING") and (
                 not external or outside == "IN_BETA_TESTING"):
             summary(f"TestFlight is available for {VERSION} ({number}) for the existing testers.")
-            if previous and not previous["attributes"].get("expired"):
-                old_id = previous["id"]
-                if old_id == current_id:
-                    raise RuntimeError("Refusing to expire the replacement build")
-                expired = api(f"builds/{old_id}", method="PATCH", data={"data": {
-                    "type": "builds", "id": old_id, "attributes": {"expired": True}
-                }})["data"]["attributes"]["expired"]
-                if not expired:
-                    raise RuntimeError("Previous build expiry has not been verified")
-                summary(f"Expired previous iOS TestFlight build {VERSION} ({previous['attributes']['version']}).")
-            elif previous:
-                summary(f"Previous iOS build {VERSION} ({previous['attributes']['version']}) is already expired.")
             return
         if external and outside == "READY_FOR_BETA_SUBMISSION" and not review_requested:
             api("betaAppReviewSubmissions", method="POST", data={"data": {

@@ -47,14 +47,15 @@ jobs:
       - name: Check approved application source and installed SDK
         run: |
           set -eu
-          test "$(git rev-parse HEAD^)" = ec2c193366ed888b8c58c6dea4e455fba80c3f0a
-          test "$(git rev-parse HEAD:ios-native)" = 848cc57c836bf323732b1ab2f3405c7e42f66cc2
+          test "$(git rev-parse HEAD^)" = 8458aa93f3dfa773c4e0bf1171edf88252fad289
+          test "$(git rev-parse HEAD:ios-native)" = d80bdf2509a2f11b6cdc27e4c465a90dc5cb74a5
           git diff --exit-code HEAD^ HEAD -- ios-native .github/scripts/testflight_signing.py android src
           xcodebuild -version
           sdk=$(xcrun --sdk iphoneos --show-sdk-version)
           test "${sdk%%.*}" -ge 26
-          echo "TF_REFERENCE_BUILD=2.0.0" >> "$GITHUB_ENV"
-          echo "TF_BUILD=2.0.2" >> "$GITHUB_ENV"
+          echo "TF_REFERENCE_BUILD=2.0.2" >> "$GITHUB_ENV"
+          echo "TF_EARLIER_GROUP_BUILD=2.0.0" >> "$GITHUB_ENV"
+          echo "TF_BUILD=2.0.3" >> "$GITHUB_ENV"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/hyt-sign/upload.p8" >> "$GITHUB_ENV"
           mkdir -m 700 "$RUNNER_TEMP/hyt-sign"
       - name: Check App Store Connect access and existing build
@@ -130,10 +131,11 @@ jobs:
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Hanyuantong.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/hyt-sign/ExportOptions.plist" -exportPath "$RUNNER_TEMP/hyt-export" \
             -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-      - name: Verify TestFlight availability and retire the previous build
+      - name: Distribute to existing testers and verify TestFlight availability
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TF_WHAT_TO_TEST: 请测试反复进入社区、学习通登录后自动返回并显示已连接，以及从「取快递」直达淘宝或拼多多的取件码。
         run: python3 .github/scripts/testflight_rollout.py rollout
       - name: Remove runner signing material
         if: always()
