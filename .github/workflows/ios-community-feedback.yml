@@ -1,0 +1,47 @@
+name: Check submitted community crash signatures
+on:
+  push:
+    branches: [qa/ios-community-feedback-20261122]
+permissions:
+  contents: read
+jobs:
+  feedback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d98a939405965bc480e2eea4619798156bf4787e
+          persist-credentials: false
+      - name: Count crash signatures for Hanyuantong TestFlight 2.0.2
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import collections, os, re, sys, tempfile
+          sys.path.insert(0, ".github/scripts")
+          from testflight_rollout import BUNDLE_ID, api, ios_builds, find_build, AppleError
+          signatures = ["EXC_BAD_ACCESS", "SIGSEGV", "SIGABRT", "SIGTRAP", "stack overflow", "Stack Guard", "AttributeGraph", "TreeholeView", "TreeholeEnvelope", "TreeholeService", "ScrollViewProxy", "swift_getTypeByMangledName", "swift_getAssociatedTypeWitness", "assertionFailure", "swift_beginAccess", "Dictionary", "UIGraphics", "ImageIO", "EXC_RESOURCE", "Terminated due to memory"]
+          with tempfile.NamedTemporaryFile() as key:
+              key.write(os.environ.pop("ASC_PRIVATE_KEY").strip().replace("\\n", "\n").encode())
+              key.flush()
+              os.environ["ASC_KEY_PATH"] = key.name
+              apps = api("apps", {"filter[bundleId]": BUNDLE_ID, "fields[apps]": "bundleId"})["data"]
+              assert len(apps) == 1 and apps[0]["attributes"]["bundleId"] == BUNDLE_ID
+              build = find_build(ios_builds(apps[0]["id"]), "2.0.2")
+              assert build is not None
+              endpoint = "apps/" + apps[0]["id"] + "/betaFeedbackCrashSubmissions"
+              page = api(endpoint, {"fields[betaFeedbackCrashSubmissions]":"build", "include":"build", "fields[builds]":"version", "limit":100})
+              rows = [r for r in page["data"] if (r["relationships"].get("build",{}).get("data") or {}).get("id") == build["id"]]
+              print("Latest matching submissions:", len(rows))
+              for row in rows[:10]:
+                  try:
+                      info = api("betaFeedbackCrashSubmissions/"+row["id"]+"/crashLog")["data"]["attributes"]
+                  except AppleError as error:
+                      print("Crash log read status:",error.status)
+                      continue
+                  raw = str(info).lower()
+                  print("Recognized crash markers:", [s for s in signatures if s.lower() in raw])
+          PY
