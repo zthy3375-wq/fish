@@ -1,0 +1,56 @@
+name: iOS community entry regression
+on:
+  pull_request:
+    paths:
+      - 'ios-native/Hanyuantong/Views/Treehole*.swift'
+      - 'ios-native/Hanyuantong/Services/Treehole*.swift'
+      - 'ios-native/Hanyuantong/Views/RootView.swift'
+      - 'ios-native/Hanyuantong/HanyuantongApp.swift'
+      - 'ios-native/UITests/HonorParityUITests.swift'
+      - '.github/workflows/ios-community-entry.yml'
+permissions:
+  contents: read
+concurrency:
+  group: ios-community-entry-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  community-entry:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test community entry with a 1 MiB app stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available --json | python3 -c '
+          import json, re, sys
+          phones = [(tuple(map(int, runtime.split("iOS-")[-1].split("-"))), device["udid"])
+                    for runtime, devices in json.load(sys.stdin)["devices"].items()
+                    if re.search(r"iOS-\d+(?:-\d+)*$", runtime)
+                    for device in devices if device["isAvailable"] and "iPhone" in device["name"]]
+          print(max(phones)[1])')
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          # Only the app executable gets the phone-sized stack. DEBUG enables our
+          # simulator-only fixture transport while Release keeps Swift optimized.
+          args=(-project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong
+                -configuration Release -destination "platform=iOS Simulator,id=$device"
+                -derivedDataPath "$RUNNER_TEMP/community-build" -parallel-testing-enabled NO
+                SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG SWIFT_ENABLE_OPAQUE_TYPE_ERASURE=NO CODE_SIGN_IDENTITY=-
+                'OTHER_LDFLAGS=$(inherited) $(COMMUNITY_STACK_$(TARGET_NAME))'
+                'COMMUNITY_STACK_Hanyuantong=-Wl,-stack_size,0x100000'
+                -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabAfterExpiredSession
+                -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabWithRestoredSession)
+          xcodebuild -quiet "${args[@]}" build-for-testing
+          app="$RUNNER_TEMP/community-build/Build/Products/Release-iphonesimulator/Hanyuantong.app/Hanyuantong"
+          xcrun otool -l "$app" | awk '$1 == "stacksize" && $2 == 1048576 { found=1 } END { exit !found }'
+          xcodebuild -quiet "${args[@]}" -resultBundlePath "$RUNNER_TEMP/Community.xcresult" test-without-building
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: community-entry-result
+          path: ${{ runner.temp }}/Community.xcresult
+          retention-days: 3
