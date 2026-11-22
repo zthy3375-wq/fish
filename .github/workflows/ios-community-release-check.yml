@@ -17,6 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
           device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for k,ds in sorted(json.load(sys.stdin)["devices"].items(),reverse=True) if "iOS-" in k for d in ds if "iPhone" in d["name"]))')
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
