@@ -225,7 +225,7 @@ private struct ProfileSettingsView: View {
             Section("校园服务") {
                 NavigationLink { QuzhiWalletView(store: quzhi) } label: { Label("趣智校园", systemImage: "drop") }.accessibilityIdentifier("open-quzhi")
                 NavigationLink { PangguaiWalletView(store: pangguai) } label: { Label("胖乖生活", systemImage: "washer") }.accessibilityIdentifier("open-pangguai")
-                NavigationLink { ParcelCenterView() } label: { Label("取快递", systemImage: "shippingbox") }
+                NavigationLink { ParcelShortcutsView() } label: { Label("取快递", systemImage: "shippingbox") }
                 NavigationLink { CampusMapView() } label: { Label("校园平面图", systemImage: "map") }
             }
     }

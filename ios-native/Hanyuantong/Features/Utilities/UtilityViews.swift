@@ -2,31 +2,34 @@ import SwiftUI
 import UIKit
 
 enum NativeDestinations {
-    static let taobao = URL(string: "https://pages-fast.m.taobao.com/wow/z/uniapp/1011717/last-mile-fe/end-collect-platform/identity-code")!
-    static let pinduoduo = URL(string: "https://mobile.yangkeduo.com/")!
     static let community = "434217654"
     static let communityCard = URL(string: "mqqapi://card/show_pslcard?src_type=internal&version=1&uin=\(community)&card_type=group&source=qrcode")!
 }
 struct ParcelShortcutsView: View {
+    @State private var opening: ParcelProvider?
     @State private var message: String?
     var body: some View {
         List {
-            Section {
-                Text("取快递").font(.title2.bold())
-                Text("打开官方入口后，由你在对应平台查看出库码。邯院通不会读取快递账号或出库码。")
+            Section("打开官方取件码") {
+                ForEach(ParcelProvider.allCases) { provider in
+                    Button {
+                        guard opening == nil else { return }
+                        opening = provider
+                        Task { @MainActor in
+                            defer { opening = nil }
+                            let opened = await provider.openPickupCode { await UIApplication.shared.open($0) }
+                            if !opened { message = "无法打开\(provider.title)取件码。请稍后重试，或在官方 App 中查看。" }
+                        }
+                    } label: {
+                        Label(provider == .taobao ? "淘宝取件码" : "拼多多取件码", systemImage: "shippingbox")
+                    }
+                }.disabled(opening != nil)
             }
             Section {
-                Button { open(NativeDestinations.taobao) } label: { Label("淘宝出库码官方页面", systemImage: "shippingbox") }
-                Button { open(NativeDestinations.pinduoduo) } label: { Label("拼多多官方入口", systemImage: "shippingbox.fill") }
-                Text("拼多多当前仅使用经核验的官网入口，进入 App 后需自行打开多多买菜/快递出库码。Android 专用跳转不作为 iPhone 支持承诺。是否打开 App 由 iOS 与平台配置决定。").font(.footnote).foregroundStyle(.secondary)
+                NavigationLink("本机取件记录") { ParcelCenterView() }
             }
         }.navigationTitle("取快递").navigationBarTitleDisplayMode(.inline)
-            .alert("打开官方入口", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) { Button("好", role: .cancel) {} } message: { Text(message ?? "") }
-    }
-    private func open(_ url: URL) {
-        UIApplication.shared.open(url) { success in
-            if !success { message = "当前无法打开，请稍后重试或在官方 App 中查看。" }
-        }
+            .alert("打开取件码", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) { Button("好", role: .cancel) {} } message: { Text(message ?? "") }
     }
 }
 struct NativeReminderSettingsView: View {

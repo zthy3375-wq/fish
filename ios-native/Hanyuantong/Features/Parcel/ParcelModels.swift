@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-/// Only these fixed official destinations are offered. Android schemes are deliberately not reused.
+/// Only fixed provider destinations can be dispatched from the pickup shortcuts.
 enum ParcelProvider: String, Codable, CaseIterable, Identifiable {
     case taobao, pinduoduo
     var id: String { rawValue }
@@ -13,6 +13,21 @@ enum ParcelProvider: String, Codable, CaseIterable, Identifiable {
     }
     var identityURL: URL {
         self == .taobao ? URL(string: "https://pages-fast.m.taobao.com/wow/z/uniapp/1011717/last-mile-fe/end-collect-platform/identity-code")! : parcelURL
+    }
+    var appPickupURL: URL {
+        switch self {
+        case .taobao:
+            var parts = URLComponents(url: identityURL, resolvingAgainstBaseURL: false)!
+            parts.scheme = "taobao"
+            return parts.url!
+        case .pinduoduo:
+            return URL(string: "pinduoduo://com.xunmeng.pinduoduo/mdkd/package?tab=ID_CODE")!
+        }
+    }
+
+    @MainActor func openPickupCode(using open: (URL) async -> Bool) async -> Bool {
+        if await open(appPickupURL) { return true }
+        return await open(identityURL)
     }
     var fallbackURL: URL { self == .taobao ? identityURL : URL(string: "https://mobile.yangkeduo.com/")! }
     var accountURL: URL { URL(string: self == .taobao ? "https://m.taobao.com/" : "https://m.pinduoduo.net/")! }

@@ -7,7 +7,7 @@ import CryptoKit
 /// A native-only connector. Official remote pages never receive an app message bridge.
 /// Cookies live in an ephemeral WebKit store and the device-only Keychain, never UserDefaults.
 @MainActor
-final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate {
+final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver {
     private weak var presenter: UIViewController?
     private var web: WKWebView?
     private var screen: UIViewController?
@@ -21,6 +21,7 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var pageReply: CheckedContinuation<Void, Error>?
     private var pageTask: Task<Void, Never>?
     private var loginMode = false
+    private var lastAutoProbe: (url: URL, account: String)?
     private var probing = false
     private var proof: LearningVerification?
     private var expectedAccount: String?
@@ -40,6 +41,9 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate {
         restored = true
     }
     func account() throws -> String {
+        try Self.account(in: cookies)
+    }
+    private static func account(in cookies: [HTTPCookie]) throws -> String {
         let ids = Set(cookies.filter { Self.cookie($0, matches: LearningPolicy.homeURL) && $0.name == "_uid" }.map(\.value))
         guard ids.count == 1, let id = ids.first, LearningPolicy.numeric(id) else { throw LearningError(code: "AUTH") }
         return SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined().prefix(24).description
@@ -282,7 +286,8 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate {
         view.navigationDelegate = self; view.uiDelegate = self
         for cookie in cookies { await config.websiteDataStore.httpCookieStore.setCookie(cookie) }
         try check(token)
-        web = view; loginMode = login; probing = false
+        web = view; loginMode = login; probing = false; lastAutoProbe = nil
+        if login { config.websiteDataStore.httpCookieStore.add(self) }
         let controller = UIViewController(); controller.view.backgroundColor = .systemBackground
         let close = UIButton(type: .system); close.setTitle(login ? "取消" : "返回并刷新", for: .normal); close.addTarget(self, action: #selector(closePage), for: .touchUpInside)
         let label = UILabel(); label.text = "学习通官方页面\nchaoxing.com"; label.numberOfLines = 2; label.font = .systemFont(ofSize: 12); pageMessage = label
@@ -317,8 +322,20 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate {
             catch { self.finishPage(.failure(error)) }
         }
     }
-    @objc private func continueLogin() {
-        guard !probing, let web else { return }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard web === webView else { return }
+        probeLogin(automatic: true)
+    }
+    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+        guard let web, cookieStore === web.configuration.websiteDataStore.httpCookieStore, !web.isLoading else { return }
+        probeLogin(automatic: true)
+    }
+    @objc private func continueLogin() { probeLogin(automatic: false) }
+
+    private func probeLogin(automatic: Bool) {
+        guard loginMode, pageReply != nil, !probing, let web else { return }
+        let landing = web.url
+        guard !automatic || LearningPolicy.isLoginLanding(landing) else { return }
         probing = true
         let token = generation
         Task { [weak self] in
@@ -326,8 +343,17 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate {
             do {
                 let current = await web.configuration.websiteDataStore.httpCookieStore.allCookies()
                 try self.check(token)
+                let key = try Self.account(in: current)
+                if automatic {
+                    guard let landing, web.url == landing,
+                          self.lastAutoProbe?.url != landing || self.lastAutoProbe?.account != key else {
+                        self.probing = false
+                        return
+                    }
+                    self.lastAutoProbe = (landing, key)
+                }
                 self.cookies = []; try self.merge(current)
-                let key = try self.account()
+                self.pageMessage?.text = "正在确认学习通连接…"
                 let same = self.expectedAccount == key
                 self.expectedAccount = key
                 if !same { self.proof = nil }
@@ -339,8 +365,13 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate {
                 guard token == self.generation, self.pageReply != nil else { return }
                 self.probing = false
                 let code = (error as? LearningError)?.code ?? "NETWORK"
-                if ["AUTH", "VERIFY", "RATE_LIMIT"].contains(code) {
-                    self.pageMessage?.text = code == "AUTH" ? "请先完成官方登录" : "请在官方页面完成验证\n再点顶部继续"
+                if ["AUTH", "VERIFY", "RATE_LIMIT", "NETWORK", "COURSES_SCHEMA"].contains(code) {
+                    switch code {
+                    case "AUTH": self.pageMessage?.text = "请先完成官方登录"
+                    case "VERIFY": self.pageMessage?.text = "请在官方页面完成验证\n再点顶部继续"
+                    case "RATE_LIMIT": self.pageMessage?.text = "平台访问较频繁，请稍后继续"
+                    default: self.pageMessage?.text = "课程列表暂未读取，点继续重试"
+                    }
                     if code == "VERIFY", let proof = self.proof, let web = self.web {
                         do { try await self.copyCookies(to: web, token: token) }
                         catch { if token == self.generation { self.finishPage(.failure(error)) }; return }
@@ -369,6 +400,7 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate {
     private func finishPage(_ result: Result<Void, Error>) {
         guard let reply = pageReply else { return }
         pageReply = nil; generation += 1; activeRead?.cancel(); activeRead = nil; pageTask?.cancel(); pageTask = nil
+        if loginMode { web?.configuration.websiteDataStore.httpCookieStore.remove(self) }
         web?.stopLoading(); web?.navigationDelegate = nil; web?.uiDelegate = nil; web?.removeFromSuperview(); web = nil
         screen?.dismiss(animated: false); screen = nil; pageMessage = nil; probing = false
         reply.resume(with: result)

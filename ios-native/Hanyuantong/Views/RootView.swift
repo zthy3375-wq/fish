@@ -72,7 +72,7 @@ struct HomeView: View {
                                 NavigationLink { PangguaiWalletView(store: pangguai) } label: { wallet("胖乖生活", "饮水余额", pangguai.connected ? pangguai.waterBalanceText : "连接账户", waterDetail, "washer", CampusTheme.walletGreen, CampusTheme.course("green")) }.accessibilityIdentifier("home-pangguai")
                             }.fixedSize(horizontal: false, vertical: true)
                             HStack(spacing: 0) {
-                                NavigationLink { ParcelCenterView() } label: { utility("取快递", "淘宝 · 拼多多出库码", "shippingbox") }
+                                NavigationLink { ParcelShortcutsView() } label: { utility("取快递", "淘宝 · 拼多多出库码", "shippingbox") }
                                 Rectangle().fill(CampusTheme.border).frame(width: 1).accessibilityHidden(true)
                                 NavigationLink { CampusMapView() } label: { utility("校园平面图", "东区 · 西区", "map") }.accessibilityIdentifier("home-campus-map")
                             }.fixedSize(horizontal: false, vertical: true)

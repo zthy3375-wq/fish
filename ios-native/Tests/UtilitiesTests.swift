@@ -33,10 +33,21 @@ final class UtilitiesTests: XCTestCase {
         let tasks = (1...40).map { CampusTask(title: "task \($0)", date: monday.addingTimeInterval(Double($0) * 600)) }
         XCTAssertEqual(NativeReminderPlan.make(courses: courses, tasks: tasks, semesterStart: monday, preferences: ReminderPreferences(courses: true, tasks: true), now: monday).count, 60)
     }
-    func testFixedDestinationsAreHTTPSOnly() {
-        XCTAssertEqual(NativeDestinations.taobao.scheme, "https")
-        XCTAssertEqual(NativeDestinations.taobao.host, "pages-fast.m.taobao.com")
-        XCTAssertEqual(NativeDestinations.pinduoduo.absoluteString, "https://mobile.yangkeduo.com/")
+    @MainActor func testPickupShortcutsUseAppThenExactOfficialPage() async {
+        XCTAssertEqual(ParcelProvider.taobao.appPickupURL.absoluteString, ParcelProvider.taobao.identityURL.absoluteString.replacingOccurrences(of: "https://", with: "taobao://"))
+        XCTAssertEqual(ParcelProvider.pinduoduo.appPickupURL.absoluteString, "pinduoduo://com.xunmeng.pinduoduo/mdkd/package?tab=ID_CODE")
+        XCTAssertEqual(ParcelProvider.pinduoduo.identityURL.absoluteString, "https://m.pinduoduo.net/mdkd/package?tab=ID_CODE")
+        for provider in ParcelProvider.allCases {
+            for accepted in [provider.appPickupURL, provider.identityURL, nil] {
+                var attempts: [URL] = []
+                let opened = await provider.openPickupCode { url in
+                    attempts.append(url)
+                    return url == accepted
+                }
+                XCTAssertEqual(opened, accepted != nil)
+                XCTAssertEqual(attempts, accepted == provider.appPickupURL ? [provider.appPickupURL] : [provider.appPickupURL, provider.identityURL])
+            }
+        }
     }
     func testWidgetWeekAndDayUseShanghai() {
         let monday = date("2026-09-13T16:00:00Z")

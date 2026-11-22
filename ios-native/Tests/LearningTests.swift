@@ -36,6 +36,13 @@ final class LearningTests: XCTestCase {
         for value in ["https://chaoxing.com/", "https://mooc1.chaoxing.com/mooc2/work/list", "https://passport2.chaoxing.com:443/login"] { XCTAssertTrue(LearningPolicy.allowed(value), value) }
         for value in ["http://mooc1.chaoxing.com/", "https://chaoxing.com.evil.test/", "https://notchaoxing.com/", "https://user@chaoxing.com/", "https://user:pass@chaoxing.com/", "https://chaoxing.com:8443/", "file:///tmp/x", "javascript:alert(1)", "https://chaoxing.com\\@evil.test/", "https://chaoxing.com./"] { XCTAssertFalse(LearningPolicy.allowed(value), value) }
     }
+    func testAutomaticLoginConfirmationOnlyOnOfficialLandingPages() {
+        XCTAssertTrue(LearningPolicy.isLoginLanding(LearningPolicy.homeURL))
+        XCTAssertFalse(LearningPolicy.isLoginLanding(nil))
+        XCTAssertFalse(LearningPolicy.isLoginLanding(LearningPolicy.loginURL))
+        XCTAssertFalse(LearningPolicy.isLoginLanding(URL(string: "https://mooc1.chaoxing.com/antispider/show")))
+        XCTAssertFalse(LearningPolicy.isLoginLanding(URL(string: "https://example.com/")))
+    }
     func testReadPolicyDoesNotAuthorizeSubmission() {
         XCTAssertTrue(LearningPolicy.safeRead("https://mooc1.chaoxing.com/mooc2/work/task?workId=78"))
         XCTAssertFalse(LearningPolicy.safeRead("https://mooc1.chaoxing.com/work/submit"))
