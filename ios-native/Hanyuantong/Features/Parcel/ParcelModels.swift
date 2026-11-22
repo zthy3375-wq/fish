@@ -29,7 +29,6 @@ enum ParcelProvider: String, Codable, CaseIterable, Identifiable {
         if await open(appPickupURL) { return true }
         return await open(identityURL)
     }
-    var fallbackURL: URL { self == .taobao ? identityURL : URL(string: "https://mobile.yangkeduo.com/")! }
     var accountURL: URL { URL(string: self == .taobao ? "https://m.taobao.com/" : "https://m.pinduoduo.net/")! }
 }
 

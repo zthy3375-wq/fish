@@ -352,8 +352,9 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
         let landing = web.url
         let onLanding = LearningPolicy.isLoginLanding(landing)
         if automatic {
-            guard proof == nil, let landing, LearningPolicy.allowed(landing),
+            guard let landing, LearningPolicy.allowed(landing),
                   !LearningPolicy.challenge(landing.absoluteString, body: "") else { return }
+            if let proof, !onLanding || landing == proof.show { return }
         }
         probing = true
         let token = generation
@@ -386,14 +387,16 @@ final class LearningSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTT
                 self.finishPage(.success(()))
             } catch {
                 guard token == self.generation, self.pageReply != nil else { return }
-                self.probing = false
+                defer { if token == self.generation { self.probing = false } }
                 let code = (error as? LearningError)?.code ?? "NETWORK"
                 if ["AUTH", "VERIFY", "RATE_LIMIT", "NETWORK", "COURSES_SCHEMA"].contains(code) {
                     switch code {
                     case "AUTH":
                         self.lastAutoProbe = nil
                         self.pageMessage?.text = "请先完成官方登录"
-                    case "VERIFY": self.pageMessage?.text = "请在官方页面完成验证\n再点顶部继续"
+                    case "VERIFY":
+                        self.lastAutoProbe = nil
+                        self.pageMessage?.text = "请在官方页面完成验证\n也可点顶部继续"
                     case "RATE_LIMIT": self.pageMessage?.text = "平台访问较频繁，请稍后继续"
                     default: self.pageMessage?.text = "课程列表暂未读取，点继续重试"
                     }

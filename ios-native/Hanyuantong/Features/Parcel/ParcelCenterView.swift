@@ -48,7 +48,7 @@ struct ParcelCenterView: View {
                         if values.isEmpty { Text(showTaken ? "没有本机已取记录" : "暂无已读取取件码，请在官方页查看。未读取不等于没有包裹。").font(.footnote).foregroundStyle(.secondary) }
                     }
                     Menu("更多") {
-                        Button("系统打开官方入口") { UIApplication.shared.open(provider.fallbackURL) { success in if !success { store.message = "当前无法打开，请使用对应官方 App。" } } }
+                        Button("系统打开取件码网页") { UIApplication.shared.open(provider.identityURL) { success in if !success { store.message = "当前无法打开，请使用对应官方 App。" } } }
                         Button("清除本机登录与记录", role: .destructive) { clearing = provider }
                     }
                 }
@@ -57,7 +57,7 @@ struct ParcelCenterView: View {
                 Toggle("查看本机已取记录", isOn: $showTaken)
                 Text("“我已取件”只是本机标记，不会确认收货。读取不到字段时不会猜测取件码；失败、部分和空页面不会删除历史码。缓存为加密的本人记录，不进入个人备份或统计。")
                     .font(.footnote).foregroundStyle(.secondary)
-                Text("拼多多网页登录可能影响官方 App 会话。iPhone 页面兼容、非空取件码和现场扫码仍需实际验证；系统备用入口为官网，不能保证直达出库码。")
+                Text("拼多多网页登录可能影响官方 App 的登录状态。要直接查看取件码，可以返回上一页打开拼多多。")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
