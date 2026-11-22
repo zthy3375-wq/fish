@@ -155,3 +155,24 @@ it('a failed adjustment write leaves displayed and persisted school data intact'
  await expect(engine.updateCourseAdjustments(c.localScope!,c.selectedTerm!,next=>{next.courseAdjustments=[]})).rejects.toThrow('DISK');
  expect(c).toEqual(before);
 });
+
+it('commits a completed school login and retains its timetable after an offline refresh on older WebViews', async () => {
+  vi.stubGlobal('structuredClone', undefined);
+  try {
+    let cache = emptyAcademicCache();
+    const client = {
+      login: async () => result(),
+      getTimetable: async () => { throw Object.assign(new Error('offline'), {code: 'NETWORK'}); },
+    } as unknown as HandanAcademicClient;
+    const engine = new AcademicSyncEngine(client, () => cache, async next => { cache = next; }, calendar);
+    await engine.sync(undefined, true);
+    expect(cache.connected).toBe(true);
+    const term = cache.selectedTerm!;
+    const timetable = JSON.stringify(cache.terms[term].data);
+    expect(cache.terms[term].data?.courses[0].name).toBe('人工链路测试课');
+    await expect(engine.sync()).rejects.toMatchObject({code: 'NETWORK'});
+    expect(JSON.stringify(cache.terms[term].data)).toBe(timetable);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

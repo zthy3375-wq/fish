@@ -67,5 +67,5 @@ export default defineConfig({
   base,
   plugins: [vue(), offline()],
   server: {allowedHosts: true},
-  build: {target: 'es2020'},
+  build: {target: 'chrome69'},
 });
