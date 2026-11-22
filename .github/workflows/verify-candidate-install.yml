@@ -1,0 +1,83 @@
+name: Verify repaired Android cold launch and school binding
+on:
+  push:
+    branches: [qa/android-install-candidate-20261122]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fb81c50b735157251d40b46dc6923f8598617eaa
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Build the release candidate
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+          cd android && bash gradlew --no-daemon assembleRelease
+      - name: Align the release for private signing
+        run: |
+          mkdir -p "$RUNNER_TEMP/verification"
+          sdk="$ANDROID_HOME/build-tools/35.0.0"
+          "$sdk/zipalign" -f -P 16 4 android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/verification/app-release-unsigned.apk"
+          "$sdk/zipalign" -c -P 16 4 "$RUNNER_TEMP/verification/app-release-unsigned.apk"
+          cp "$sdk/lib/apksigner.jar" "$RUNNER_TEMP/verification"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release-for-signing
+          path: ${{ runner.temp }}/verification
+          retention-days: 3
+      - name: Android native tests on Maven Central
+        env:
+          JAVA_TOOL_OPTIONS: -Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2
+        run: cd android && bash gradlew --no-daemon testDebugUnitTest testReleaseUnitTest
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-unit-reports
+          path: android/app/build/test-results/**/TEST-*.xml
+          retention-days: 2
+  verify:
+    runs-on: ubuntu-24.04
+    needs: build
+    if: always() && !cancelled()
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [28,35]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-release-for-signing
+          path: candidate
+      - name: Prepare an isolated emulator installation
+        run: |
+          sdk="$ANDROID_HOME/build-tools/35.0.0"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/isolated.jks" -storepass emulator -keypass emulator -alias qa -dname CN=EmulatorOnly -keyalg RSA -validity 2
+          "$sdk/apksigner" sign --ks "$RUNNER_TEMP/isolated.jks" --ks-pass pass:emulator --out candidate/192.apk candidate/app-release-unsigned.apk
+          "$sdk/apksigner" verify candidate/192.apk
+          mkdir -p "$RUNNER_TEMP/packages"
+          mv candidate/192.apk "$RUNNER_TEMP/packages"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          script: python3 .github/qa-install/check-candidate.py
