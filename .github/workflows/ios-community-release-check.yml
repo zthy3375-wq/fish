@@ -11,6 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: 42981048135ca82c2c3e94b8710096a82fcc0481
           persist-credentials: false
       - name: Open the community tab on a release-optimized app
         shell: bash
@@ -29,7 +30,8 @@ jobs:
           PYBUILD
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
-          xcodebuild -quiet -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG SWIFT_ENABLE_OPAQUE_TYPE_ERASURE=NO CODE_SIGN_IDENTITY=- -resultBundlePath "$RUNNER_TEMP/Community.xcresult" -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabAfterExpiredSession -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabWithRestoredSession test
+          xcodebuild -quiet -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG SWIFT_ENABLE_OPAQUE_TYPE_ERASURE=NO CODE_SIGN_IDENTITY=- -derivedDataPath "$RUNNER_TEMP/entry-tests" -resultBundlePath "$RUNNER_TEMP/Community.xcresult" -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabAfterExpiredSession -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabWithRestoredSession test
+          xcodebuild -quiet -project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong -configuration Release -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO -derivedDataPath "$RUNNER_TEMP/entry-tests" -resultBundlePath "$RUNNER_TEMP/Connections.xcresult" -only-testing:HanyuantongTests/LearningTests/testPhoneLoginReturnsFromOfficialLandingWithVerifiedAccount -only-testing:HanyuantongTests/UtilitiesTests/testPickupShortcutsUseAppThenExactOfficialPage test-without-building
       - name: Show simulator crash backtraces
         if: failure()
         run: |
@@ -38,5 +40,7 @@ jobs:
         if: always()
         with:
           name: community-release-test
-          path: ${{ runner.temp }}/Community.xcresult
+          path: |
+            ${{ runner.temp }}/Community.xcresult
+            ${{ runner.temp }}/Connections.xcresult
           retention-days: 3
