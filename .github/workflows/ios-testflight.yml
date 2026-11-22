@@ -47,7 +47,7 @@ jobs:
       - name: Check approved application source and installed SDK
         run: |
           set -eu
-          test "$(git rev-parse HEAD^)" = 8458aa93f3dfa773c4e0bf1171edf88252fad289
+          test "$(git rev-parse HEAD^)" = ef0c2c5d48056b082c5e285fb6db18d5be98e4e3
           test "$(git rev-parse HEAD:ios-native)" = d80bdf2509a2f11b6cdc27e4c465a90dc5cb74a5
           git diff --exit-code HEAD^ HEAD -- ios-native .github/scripts/testflight_signing.py android src
           xcodebuild -version
@@ -56,6 +56,7 @@ jobs:
           echo "TF_REFERENCE_BUILD=2.0.2" >> "$GITHUB_ENV"
           echo "TF_EARLIER_GROUP_BUILD=2.0.0" >> "$GITHUB_ENV"
           echo "TF_BUILD=2.0.3" >> "$GITHUB_ENV"
+          echo "TF_RESUME_ONLY=true" >> "$GITHUB_ENV"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/hyt-sign/upload.p8" >> "$GITHUB_ENV"
           mkdir -m 700 "$RUNNER_TEMP/hyt-sign"
       - name: Check App Store Connect access and existing build

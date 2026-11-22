@@ -26,7 +26,11 @@ class AppleError(RuntimeError):
         errors = payload.get("errors", []) if isinstance(payload, dict) else []
         codes = [row["code"] for row in errors if re.fullmatch(r"[A-Z0-9_.]+", row.get("code", ""))]
         self.status = status
-        super().__init__(f"Apple API {status} for {operation}" + (f" ({', '.join(codes)})" if codes else ""))
+        reason = " ".join(str(row.get("detail", "")).lower() for row in errors)
+        categories = [term for term in ("required agreement", "required role", "does not have permission",
+                      "not authorized", "beta review", "review information", "what to test",
+                      "internal only", "already", "not allowed", "forbidden") if term in reason]
+        super().__init__(f"Apple API {status} for {operation}" + (f" ({', '.join(codes + categories)})" if codes or categories else ""))
 
 
 def encoded(data):
@@ -272,6 +276,19 @@ def rollout(app_id, number):
                     "type": "buildBetaDetails", "id": detail["id"], "attributes": {"autoNotifyEnabled": True}}})
             except AppleError as error:
                 summary(f"Automatic tester notification could not be enabled: {error}. Continuing distribution.")
+    review_requested = False
+    if external and os.environ.get("TF_RESUME_ONLY") == "true":
+        summary(f"External rollout check: audience={current['attributes'].get('buildAudienceType')}, "
+                f"state={detail['attributes'].get('externalBuildState')}.")
+        if detail["attributes"].get("externalBuildState") == "READY_FOR_BETA_SUBMISSION":
+            try:
+                api("betaAppReviewSubmissions", method="POST", data={"data": {
+                    "type": "betaAppReviewSubmissions",
+                    "relationships": {"build": {"data": {"type": "builds", "id": current_id}}}}})
+                review_requested = True
+                summary("Apple accepted the external TestFlight beta review submission.")
+            except AppleError as error:
+                summary(f"External beta review submission response: {error}.")
     for group_id in sorted(missing_groups):
         try:
             api(f"builds/{current_id}/relationships/betaGroups", method="POST",
@@ -286,7 +303,6 @@ def rollout(app_id, number):
     if missing_testers:
         api(f"builds/{current_id}/relationships/individualTesters", method="POST",
             data={"data": [{"type": "betaTesters", "id": item} for item in sorted(missing_testers)]})
-    review_requested = False
     deadline = time.monotonic() + 12 * 60
     while time.monotonic() < deadline:
         state = beta_state(current_id)
