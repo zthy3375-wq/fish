@@ -4,18 +4,19 @@ struct TaskEditorView: View {
     @EnvironmentObject var store: CampusStore
     @Environment(\.dismiss) private var dismiss
     @State private var draft: CampusTask
+    @State private var original: CampusTask
     @State private var newStep = ""
     @State private var errorMessage: String?
     @State private var discard = false
     @State private var saving = false
-    private let original: CampusTask
     private let isNew: Bool
 
     init(task: CampusTask? = nil, defaultPlannedDay: String? = nil) {
         var value = task ?? TaskRules.makeTask()
         if task == nil { value.plannedDay = defaultPlannedDay }
         _draft = State(initialValue: value)
-        original = value; isNew = task == nil
+        _original = State(initialValue: value)
+        isNew = task == nil
     }
     private var changed: Bool { draft != original || !newStep.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var titleValid: Bool {

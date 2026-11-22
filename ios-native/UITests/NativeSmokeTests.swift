@@ -23,6 +23,7 @@ final class NativeSmokeTests: XCTestCase {
         screenshot("03-tasks", app)
         app.buttons["添加待办"].tap()
         app.buttons["取消"].tap()
+        XCTAssertFalse(app.buttons["放弃修改"].exists, "An untouched task must dismiss without a discard prompt")
         app.tabBars.buttons["我的"].tap()
         reveal(app.buttons["连接邯郸学院"], in: app)
         XCTAssertTrue(app.buttons["连接邯郸学院"].waitForExistence(timeout: 5))
