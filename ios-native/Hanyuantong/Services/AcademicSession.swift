@@ -127,22 +127,7 @@ final class AcademicSession: NSObject, WKNavigationDelegate, WKUIDelegate {
                 if self.interactive {
                     self.showOfficialPage(captcha: false)
                     guard self.current(token) else { return }
-                    if ProcessInfo.processInfo.environment["HYT_BIND_FIXTURE"] == "home" {
-                        let html = """
-                        <div id="menu">合成首页</div><a id="N2151" href="/kbcx/xskbcx_cxXsgrkbIndex.html">课表</a>
-                        <script>
-                        document.cookie='binding_fixture=synthetic; path=/; Secure';
-                        window.fetch=async (url, init={})=>{
-                            const data=!init.body ? '<select id="xnm"><option selected value="2026">2026</option></select><select id="xqm"><option selected value="3">秋季</option></select>' :
-                                String(url).includes('/kbcx/') ? {kbList:[{kcmc:'合成测试课程',xm:'教师',cdmc:'教室',xqj:'1',jcs:'1-2',zcd:'1-16周'}],sjkList:[]} : {items:[],totalPage:0};
-                            return {ok:true,url:String(url),text:async()=>typeof data==='string'?data:JSON.stringify(data)};
-                        };
-                        </script>
-                        """
-                        web.loadSimulatedRequest(URLRequest(url: Self.homeURL), responseHTML: html)
-                    } else {
-                        web.loadSimulatedRequest(URLRequest(url: Self.loginURL), responseHTML: "<p>合成登录页</p>")
-                    }
+                    web.load(URLRequest(url: Self.loginURL))
                 } else {
                     let restored: AcademicKeychain.Session?
                     do { restored = try self.vault.restore() }

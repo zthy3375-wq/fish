@@ -317,45 +317,6 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(app.buttons["加入 QQ 交流群"].exists)
     }
 
-    func testSchoolBindingCanCancelAndReopen() {
-        continueAfterFailure = false
-        let app = XCUIApplication()
-        app.launchEnvironment["HYT_BIND_FIXTURE"] = "login"
-        app.launch()
-        app.tabBars.buttons["我的"].tap()
-        let start = app.buttons["连接邯郸学院"]
-        for _ in 0..<2 {
-            reveal(start, in: app)
-            start.tap()
-            let cancel = app.buttons["取消"]
-            XCTAssertTrue(cancel.waitForExistence(timeout: 12), app.debugDescription)
-            XCTAssertTrue(app.staticTexts["邯郸学院官方登录\njwgl.hdc.edu.cn"].exists)
-            cancel.tap()
-            let alert = app.alerts["提示"]
-            XCTAssertTrue(alert.waitForExistence(timeout: 7))
-            alert.buttons["知道了"].tap()
-        }
-    }
-
-    func testSchoolBindingReturnsWithAcademicData() {
-        continueAfterFailure = false
-        let app = XCUIApplication()
-        app.launchEnvironment["HYT_BIND_FIXTURE"] = "home"
-        app.launch()
-        app.tabBars.buttons["我的"].tap()
-        let start = app.buttons["连接邯郸学院"]
-        reveal(start, in: app)
-        start.tap()
-        let alert = app.alerts["提示"]
-        XCTAssertTrue(alert.waitForExistence(timeout: 24), app.debugDescription)
-        XCTAssertTrue(alert.staticTexts["学校数据已更新。"].exists || alert.staticTexts["部分模块读取未完成，已保留同账号上次成功记录。"].exists, alert.debugDescription)
-        alert.buttons["知道了"].tap()
-        // The button identifier is stable while its accessibility label changes.
-        XCTAssertEqual(start.label, "刷新教务数据")
-        app.tabBars.buttons["课表"].tap()
-        XCTAssertTrue(app.staticTexts["学校课表"].firstMatch.waitForExistence(timeout: 6))
-    }
-
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<8 { if element.isHittable { return }; app.swipeUp() }
         XCTAssertTrue(element.isHittable)
