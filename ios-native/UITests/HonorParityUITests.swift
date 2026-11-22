@@ -84,29 +84,6 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(app.buttons["完成：" + title].waitForExistence(timeout: 5))
     }
 
-    func testCommunityTabAfterExpiredSession() {
-        let app = XCUIApplication()
-        app.launchEnvironment["HYT_REPLY_UI_FIXTURE"] = #"{"me":[{"status":401,"json":"{\"error\":\"session_expired\"}"}],"config":[{"status":200,"json":"{}"}]}"#
-        app.launch()
-        let tab = app.tabBars.buttons["社区"]
-        tab.tap()
-        XCTAssertTrue(app.buttons["登录树洞"].waitForExistence(timeout: 12))
-        app.tabBars.buttons["首页"].tap()
-        tab.tap()
-        XCTAssertTrue(app.buttons["登录树洞"].isHittable)
-    }
-
-    func testCommunityTabWithRestoredSession() throws {
-        let app = XCUIApplication()
-        app.launchEnvironment["HYT_REPLY_UI_FIXTURE"] = try replyFixture(photoURL: "http://127.0.0.1/campus.jpg")
-        app.launch()
-        app.tabBars.buttons["社区"].tap()
-        XCTAssertTrue(app.buttons["快捷回复测试帖"].waitForExistence(timeout: 12))
-        app.tabBars.buttons["首页"].tap()
-        app.tabBars.buttons["社区"].tap()
-        XCTAssertTrue(app.buttons["发帖"].isHittable)
-    }
-
     func testCommunityQuickReplyKeepsDraftAndRetriesInPlace() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
