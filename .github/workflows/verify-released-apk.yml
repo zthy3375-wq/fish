@@ -1,0 +1,45 @@
+name: Verify released Android packages and school entry
+on:
+  push:
+    branches: [qa/android-install-20261122]
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [28, 35]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify both public production APKs
+        run: |
+          set -euo pipefail
+          base=https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-updates/android
+          mkdir -p "$RUNNER_TEMP/packages"
+          cd "$RUNNER_TEMP/packages"
+          for code in 150 191; do
+            curl --proto '=https' --proto-redir '=https' --retry 3 --retry-all-errors -fsSL --max-time 120 "$base/download/$code?t=$(date +%s)" -o "$code.apk"
+            hash=$(jq -r --argjson n "$code" '.releases[] | select(.versionCode==$n) | .sha256' "$GITHUB_WORKSPACE/cloudbase/functions/updates/releases.json")
+            echo "$hash  $code.apk" | sha256sum -c
+            sdk="$ANDROID_HOME/build-tools/35.0.0"
+            "$sdk/apksigner" verify --verbose --print-certs "$code.apk" | tee "$code.signature"
+            grep -q 'certificate SHA-256 digest: 4be86ec93e000025f12839aa31da16c55ea3c9a7097917226572d3450dca86d9' "$code.signature"
+            "$sdk/aapt" dump badging "$code.apk" | grep -E '^(package:|sdkVersion:|targetSdkVersion:|native-code:)'
+          done
+      - name: Build an isolated Android framework archive-reader test
+        run: bash .github/qa-install/build-probe.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          script: python3 .github/qa-install/check.py
