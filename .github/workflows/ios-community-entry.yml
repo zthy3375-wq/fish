@@ -34,6 +34,8 @@ jobs:
           print(max(phones)[1])')
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
+          # The first-use system keyboard tutorial can cover the reply editor on a fresh simulator.
+          xcrun simctl spawn "$device" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true
           # Only the app executable gets the phone-sized stack. DEBUG enables our
           # simulator-only fixture transport while Release keeps Swift optimized.
           args=(-project ios-native/Hanyuantong.xcodeproj -scheme Hanyuantong
@@ -43,7 +45,8 @@ jobs:
                 'OTHER_LDFLAGS=$(inherited) $(COMMUNITY_STACK_$(TARGET_NAME))'
                 'COMMUNITY_STACK_Hanyuantong=-Wl,-stack_size,0x100000'
                 -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabAfterExpiredSession
-                -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabWithRestoredSession)
+                -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityTabWithRestoredSession
+                -only-testing:HanyuantongUITests/HonorParityUITests/testCommunityQuickReplyKeepsDraftAndRetriesInPlace)
           xcodebuild -quiet "${args[@]}" build-for-testing
           app="$RUNNER_TEMP/community-build/Build/Products/Release-iphonesimulator/Hanyuantong.app/Hanyuantong"
           xcrun otool -l "$app" | awk '$1 == "stacksize" && $2 == 1048576 { found=1 } END { exit !found }'

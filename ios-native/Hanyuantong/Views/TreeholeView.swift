@@ -936,10 +936,7 @@ struct TreeholeView: View {
                     Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle())
                 }.accessibilityLabel("收起回复编辑器").disabled(tree.busy).foregroundStyle(TreeholeTheme.muted)
             }
-            ViewThatFits(in: .vertical) {
-                replyFields(post).fixedSize(horizontal: false, vertical: true)
-                ScrollView { replyFields(post) }
-            }
+            CommunityReplyScroll { replyFields(post) }
             Divider().padding(.top, 7)
             replyFooter(post).padding(.vertical, 7)
         }.buttonStyle(.plain)
@@ -1410,5 +1407,33 @@ private struct TreeholePressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.opacity(configuration.isPressed ? 0.66 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.10), value: configuration.isPressed)
+    }
+}
+
+
+// Keep the focused text field mounted when the keyboard reduces the available height.
+private struct CommunityReplyScroll<Content: View>: View {
+    @State private var contentHeight: CGFloat?
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ScrollView {
+            content()
+                .fixedSize(horizontal: false, vertical: true)
+                .background(GeometryReader { size in
+                    Color.clear.preference(key: Height.self, value: size.size.height)
+                })
+        }
+        .frame(maxHeight: contentHeight)
+        .onPreferenceChange(Height.self) { value in
+            if value > 0 { contentHeight = value }
+        }
+    }
+
+    private struct Height: PreferenceKey {
+        static var defaultValue: CGFloat { 0 }
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
+        }
     }
 }
