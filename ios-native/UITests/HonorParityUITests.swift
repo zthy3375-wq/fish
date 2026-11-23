@@ -147,12 +147,11 @@ final class HonorParityUITests:XCTestCase {
         capture("quick-reply-entry", app)
         entry.tap()
 
-        let replyInput = NSPredicate(format: "identifier == %@ OR label == %@", "community-reply-input", "你的回复")
-        let textView = app.textViews.matching(replyInput).firstMatch
-        let textField = app.textFields.matching(replyInput).firstMatch
-        let inputReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in textView.exists || textField.exists }, object: app)
-        XCTAssertEqual(XCTWaiter.wait(for: [inputReady], timeout: 5), .completed)
-        let input = textView.exists ? textView : textField
+        let replyInput = NSPredicate(format:
+            "(identifier == %@ OR label == %@) AND (elementType == %d OR elementType == %d)",
+            "community-reply-input", "你的回复", XCUIElement.ElementType.textView.rawValue, XCUIElement.ElementType.textField.rawValue)
+        let input = app.descendants(matching: .any).matching(replyInput).firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 20))
         let submit = app.buttons["发布回复"]
         XCTAssertFalse(submit.isEnabled)
         XCTAssertTrue(submit.isHittable)
