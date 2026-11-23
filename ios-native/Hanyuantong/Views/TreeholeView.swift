@@ -1059,21 +1059,35 @@ struct TreeholeView: View {
         }.disabled(!enabled)
     }
 
+    private func postMetadata(_ post: TreeholePost) -> some View {
+        let layout = communityTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(spacing: 6))
+        let interest = TreeholeCategories.interestName(post.interest)
+        return layout {
+            Text(TreeholePresentation.date(post.createdAt) + (post.anonymous ? " · 匿名发布" : ""))
+                .accessibilityIdentifier("community-post-date")
+            Button {
+                selectDiscovery(post.category ?? "daily", interest: post.interest ?? "")
+            } label: {
+                Text("# " + (interest.isEmpty ? TreeholeCategories.name(post.category) : interest))
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(TreeholeTheme.muted)
+    }
+
     private func postCard(_ post: TreeholePost, full: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 authorLink(post) { TreeholeAvatar(name: post.author.name, anonymous: post.anonymous || post.author.anonymous, avatar: post.author.avatar, size: full ? 42 : 36) }
                 VStack(alignment: .leading, spacing: 1) {
                     authorLink(post) { HonorByline(name: post.author.name, badges: post.author.anonymous || post.anonymous ? nil : post.author.badges).font(.subheadline.weight(.semibold)) }
-                    HStack(spacing: 6) {
-                        Text(TreeholePresentation.date(post.createdAt) + (post.anonymous ? " · 匿名发布" : ""))
-                        Button {
-                            selectDiscovery(post.category ?? "daily", interest: post.interest ?? "")
-                        } label: { Text("# " + (TreeholeCategories.interestName(post.interest).isEmpty ? TreeholeCategories.name(post.category) : TreeholeCategories.interestName(post.interest))) }
-                    }.font(.caption).foregroundStyle(TreeholeTheme.muted)
+                    if !communityTypeSize.isAccessibilitySize { postMetadata(post) }
                 }
                 Spacer(minLength: 2); contentMenu(post)
             }.frame(minHeight: 44)
+            if communityTypeSize.isAccessibilitySize { postMetadata(post) }
             VStack(alignment: .leading, spacing: 4) {
                 if full {
                     if let title = post.title, !title.isEmpty { Text(title).font(.title2.weight(.bold)).textSelection(.enabled) }

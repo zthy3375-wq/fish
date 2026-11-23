@@ -98,6 +98,15 @@ final class HonorParityUITests:XCTestCase {
             XCTAssertLessThanOrEqual(button.frame.maxX, viewport.maxX + 1, label)
         }
         XCTAssertGreaterThan(app.buttons["树洞"].firstMatch.frame.midY, app.buttons["全部"].firstMatch.frame.midY)
+        let date = app.staticTexts["community-post-date"].firstMatch
+        let topic = app.buttons["# 校园日常"].firstMatch
+        if !topic.exists { app.scrollViews.firstMatch.swipeUp() }
+        XCTAssertTrue(date.waitForExistence(timeout: 8))
+        XCTAssertTrue(topic.waitForExistence(timeout: 8))
+        XCTAssertGreaterThanOrEqual(topic.frame.minY, date.frame.maxY - 1)
+        XCTAssertEqual(topic.frame.minX, date.frame.minX, accuracy: 2)
+        XCTAssertGreaterThanOrEqual(date.frame.minX, viewport.minX)
+        XCTAssertLessThanOrEqual(topic.frame.maxX, viewport.maxX)
         capture("community-accessibility", app)
     }
 
