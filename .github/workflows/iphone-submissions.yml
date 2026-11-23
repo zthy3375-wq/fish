@@ -35,12 +35,12 @@ jobs:
               recent=sorted(ios_builds(apps[0]["id"]),key=lambda x:x["attributes"]["uploadedDate"],reverse=True)[:3]
               for b in recent:
                   try:
-                      pages=api("builds/"+b["id"]+"/metrics/betaBuildUsages", {"limit": 1}).get("data",[])
+                      pages=api("builds/"+b["id"]+"/metrics/betaBuildUsages").get("data",[])
                       for g in pages:
                           for point in g.get("dataPoints",[])[:8]:
                               print("Build metrics:",b["attributes"]["version"],point.get("start","")[:10],point.get("end","")[:10],{k:point.get("values",{}).get(k) for k in ["crashCount","sessionCount","installCount"]})
                       if not pages: print("Metrics unavailable:",b["attributes"]["version"])
-                  except AppleError as err: print("Build metrics status:",err.status)
+                  except AppleError as err: print("Build metrics status:",err.status, str(err).partition("(")[2][:140])
               assert build is not None
               endpoint = "apps/" + apps[0]["id"] + "/betaFeedbackCrashSubmissions"
               page = api(endpoint, {"fields[betaFeedbackCrashSubmissions]":"build", "include":"build", "fields[builds]":"version", "limit":100})
