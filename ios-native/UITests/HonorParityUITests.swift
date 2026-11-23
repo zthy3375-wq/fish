@@ -145,13 +145,26 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(entry.waitForExistence(timeout: 8))
         XCTAssertEqual(entry.label, "说点什么吧…")
         capture("quick-reply-entry", app)
+        print("ENTRY state", entry.exists, entry.isEnabled, entry.isHittable)
         entry.tap()
 
         let replyInput = NSPredicate(format: "identifier == %@ OR label == %@", "community-reply-input", "你的回复")
         let textView = app.textViews.matching(replyInput).firstMatch
         let textField = app.textFields.matching(replyInput).firstMatch
         let inputReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in textView.exists || textField.exists }, object: app)
-        XCTAssertEqual(XCTWaiter.wait(for: [inputReady], timeout: 5), .completed)
+        let waitResult = XCTWaiter.wait(for: [inputReady], timeout: 5)
+        if waitResult != .completed {
+            let attachment = XCTAttachment(string: app.debugDescription)
+            attachment.name = "Synthetic reply hierarchy"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            print("SYNTHETIC_REPLY state", app.state.rawValue, "close", app.buttons["收起回复编辑器"].exists,
+                  "submit", app.buttons["发布回复"].exists, "keyboard", app.keyboards.firstMatch.exists,
+                  "entry", entry.exists, entry.isEnabled, entry.isHittable)
+            print("SYNTHETIC_INPUTS", app.textViews.allElementsBoundByIndex.map { [$0.label,$0.identifier] },
+                  app.textFields.allElementsBoundByIndex.map { [$0.label,$0.identifier] })
+        }
+        XCTAssertEqual(waitResult, .completed)
         let input = textView.exists ? textView : textField
         let submit = app.buttons["发布回复"]
         XCTAssertFalse(submit.isEnabled)
