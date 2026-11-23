@@ -259,6 +259,43 @@ final class NativeSmokeTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["编辑待办"].waitForExistence(timeout: 5))
         return persistedIdentity
     }
+    func testRemoveFocusedLastPersonalTimeSlot() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["profile-settings"].tap()
+        func scrollTo(_ element: XCUIElement, within list: XCUIElement) {
+            for _ in 0..<12 {
+                if element.isHittable { break }
+                list.swipeUp()
+            }
+            XCTAssertTrue(element.isHittable)
+        }
+        let semester = app.buttons["open-personal-schedule"]
+        scrollTo(semester, within: app)
+        semester.tap()
+        app.buttons["作息"].tap()
+        let manage = app.buttons["管理作息方案"]
+        scrollTo(manage, within: app)
+        manage.tap()
+        XCTAssertTrue(app.navigationBars["作息时间表"].waitForExistence(timeout: 8))
+        let remove = app.buttons["移除最后一节"]
+        scrollTo(remove, within: app)
+        let last = app.textFields.matching(NSPredicate(format: "label ENDSWITH %@", "节结束时间")).allElementsBoundByIndex.last(where: { $0.isHittable })
+        let field = try XCTUnwrap(last)
+        let label = field.label
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let list = app.collectionViews.firstMatch
+        scrollTo(remove, within: list.exists ? list : app)
+        remove.tap()
+        XCTAssertTrue(app.navigationBars["作息时间表"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textFields[label].exists)
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.navigationBars["个人课表管理"].waitForExistence(timeout: 5))
+    }
+
     func testSemesterBackupAndDisplayScreens() throws {
         let app = XCUIApplication(); app.launch()
         app.tabBars.buttons["我的"].tap()
