@@ -84,6 +84,58 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(app.buttons["完成：" + title].waitForExistence(timeout: 5))
     }
 
+    func testCommunityFeedFitsAccessibilityText() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchEnvironment["HYT_REPLY_UI_FIXTURE"] = try replyFixture(photoURL: "http://127.0.0.1/test.jpg")
+        app.launch(); app.tabBars.buttons["社区"].tap()
+        let viewport = app.windows.firstMatch.frame
+        let labels = ["广场","关注","继续聊","帖子排序","刷新树洞","全部","校园","学习","兴趣","搭子","树洞"]
+        for label in labels {
+            let button = app.buttons[label].firstMatch
+            XCTAssertTrue(button.waitForExistence(timeout: 8), label)
+            XCTAssertGreaterThanOrEqual(button.frame.minX, viewport.minX - 1, label)
+            XCTAssertLessThanOrEqual(button.frame.maxX, viewport.maxX + 1, label)
+        }
+        XCTAssertGreaterThan(app.buttons["树洞"].firstMatch.frame.midY, app.buttons["全部"].firstMatch.frame.midY)
+        capture("community-accessibility", app)
+    }
+
+    func testCommunityShelfEquipsAndRemovesLegacyHonor() throws {
+        let app = XCUIApplication()
+        func response(_ obj: [String: Any]) throws -> [String: Any] {
+            ["status":200, "json": String(decoding: try JSONSerialization.data(withJSONObject: obj), as: UTF8.self)]
+        }
+        let id = "E318AD70-E65F-4F18-ADB1-1DEEC28C249F"
+        let member = ["id":id,"role":"member","username":"fixture","nickname":"测试同学"]
+        let seed = ["code":"seed"]
+        let achievement: [String: Any] = ["id":"a","code":"first-hundred","name":"开服第一批","rarity":"rare",
+            "category":"contribution","awardId":"grant","archived":false,"publicHidden":false]
+        func profile(worn: Bool) throws -> [String: Any] {
+            let data: [String: Any] = ["id":id,"nickname":"测试同学","items":[achievement],
+                "badges":worn ? ["worn":seed] : [:],"identities":["seed"],"legacyHonors":[seed],
+                "customTitle":"校园手记","useTitle":false,"total":1,"rarities":[:],"unseen":[],"layoutVersion":3,"showcase":[]]
+            return try response(["collection":data])
+        }
+        let fixture = ["me":[try response(["user":member,"config":["honorsEnabled":true,"honorCollectionEnabled":true],"posts":[]])],
+                       "collection.profile":[try profile(worn:false),try profile(worn:true),try profile(worn:false)],
+                       "collection.wear":[try response([:])]]
+        app.launchEnvironment["HYT_REPLY_UI_FIXTURE"] = String(decoding: try JSONSerialization.data(withJSONObject: fixture), as: UTF8.self)
+        app.launch(); app.tabBars.buttons["社区"].tap()
+        let account = app.buttons["我的社区"]
+        XCTAssertTrue(account.waitForExistence(timeout: 8)); account.tap()
+        app.buttons["open-honor-shelf"].tap()
+        let item = app.buttons["community-collectible-seed"]
+        XCTAssertTrue(item.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["community-collectible-creator"].exists)
+        XCTAssertFalse(app.buttons["community-collectible-first-hundred"].exists)
+        capture("community-wearable-honors", app)
+        item.tap()
+        XCTAssertTrue(app.buttons["佩戴荣誉"].waitForExistence(timeout: 5)); app.buttons["佩戴荣誉"].tap()
+        XCTAssertTrue(app.buttons["取下荣誉"].waitForExistence(timeout: 5)); app.buttons["取下荣誉"].tap()
+        XCTAssertTrue(app.buttons["佩戴荣誉"].waitForExistence(timeout: 5))
+    }
+
     func testCommunityTabAfterExpiredSession() {
         let app = XCUIApplication()
         app.launchEnvironment["HYT_REPLY_UI_FIXTURE"] = #"{"me":[{"status":401,"json":"{\"error\":\"session_expired\"}"}],"config":[{"status":200,"json":"{}"}]}"#

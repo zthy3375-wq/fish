@@ -6,9 +6,14 @@ struct HonorByline: View {
     let name: String
     let badges: MemberBadges?
     var body: some View {
-        HStack(alignment:.firstTextBaseline,spacing:5) {
-            Text(name).lineLimit(2).layoutPriority(1)
-            CampusHonorByline(badges: badges)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(name); CampusHonorByline(badges: badges)
+            }.fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name).fixedSize(horizontal: false, vertical: true)
+                CampusHonorByline(badges: badges)
+            }
         }
     }
     static func style(_ code:String) -> (String,String,Color) {
@@ -42,6 +47,7 @@ struct HonorShelfLink: View {
     let pins: [String]
     let collection: [CampusHonorItem]
     var memberID: String? = nil
+    var openCollection: (() -> Void)?
     var personal=false
     @EnvironmentObject private var campus:CampusStore
     @EnvironmentObject private var learning:LearningStore
@@ -61,13 +67,13 @@ struct HonorShelfLink: View {
         return Array(codes.compactMap {CampusMedal.byCode[$0]}.prefix(3))
     }
     init(badges: MemberBadges?, pins: [String], collection: [CampusHonorItem] = [],
-         memberID: String? = nil, personal: Bool = false) {
+         memberID: String? = nil, personal: Bool = false, openCollection: (() -> Void)? = nil) {
         self.badges = badges; self.pins = pins; self.collection = collection
-        self.memberID = memberID; self.personal = personal
+        self.memberID = memberID; self.personal = personal; self.openCollection = openCollection
     }
     var body:some View {
         VStack(alignment:.leading,spacing:10) {
-            Button { selectedCode = nil; opened = true } label: {
+            Button { if let openCollection { openCollection() } else { selectedCode = nil; opened = true } } label: {
                 HStack(spacing: 8) {
                     Text("荣誉殿堂").font(.headline)
                     if let badge = badges?.visible.first { Text(HonorByline.style(badge.code).0).font(.caption2) }

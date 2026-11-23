@@ -3,15 +3,17 @@ import SwiftUI
 struct TreeholeDiscoveryBar: View {
     @ObservedObject var tree: TreeholeStore
     let select: (String, String) -> Void
+    @ScaledMetric(relativeTo: .subheadline) private var boardWidth: CGFloat = 46
     private let primary = [("all", "全部"), ("daily", "校园"), ("study", "学习"), ("entertainment", "兴趣"), ("buddies", "搭子"), ("treehole", "树洞")]
     private var selected: String { tree.category == "help" ? "daily" : tree.category }
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             if tree.discoveryEnabled {
-                HStack(spacing: 2) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: boardWidth), spacing: 2)], spacing: 0) {
                     ForEach(primary, id: \.0) { id, label in
                         Button { if selected != id { select(id, "") } } label: {
                             Text(label).font(.subheadline.weight(selected == id ? .bold : .medium))
+                                .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
                                 .overlay(alignment: .bottom) {
                                     if selected == id { Capsule().fill(TreeholeTheme.primary).frame(width: 16, height: 2).padding(.bottom, 5) }
