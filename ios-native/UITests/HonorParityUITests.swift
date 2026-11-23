@@ -107,6 +107,31 @@ final class HonorParityUITests:XCTestCase {
         XCTAssertTrue(app.buttons["发帖"].isHittable)
     }
 
+    func testOpenComposerAndOwnCommunityAccount() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["HYT_REPLY_UI_FIXTURE"] = try replyFixture(photoURL: "http://127.0.0.1/campus.jpg")
+        app.launch()
+        app.tabBars.buttons["社区"].tap()
+        let compose = app.buttons["发帖"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 12))
+        compose.tap()
+        XCTAssertTrue(app.buttons["发布"].waitForExistence(timeout: 8))
+        app.buttons["返回社区"].tap()
+        let account = app.buttons["我的社区"]
+        XCTAssertTrue(account.waitForExistence(timeout: 6))
+        account.tap()
+        let settings = app.buttons["社区设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 6))
+        settings.tap()
+        XCTAssertTrue(app.buttons["返回社区"].waitForExistence(timeout: 6))
+        app.buttons["返回社区"].tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 6))
+        app.buttons["返回社区"].tap()
+        XCTAssertTrue(compose.waitForExistence(timeout: 6))
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
     func testCommunityQuickReplyKeepsDraftAndRetriesInPlace() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
