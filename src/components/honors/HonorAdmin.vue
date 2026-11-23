@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { uid } from "../../domain/schedule";
 import OfficialBadges from "./OfficialBadges.vue";
 import {computed,onMounted,ref,watch} from 'vue';
 import {badges,capNames,honorDate,operations,type BadgeCode,type AdminMember,type HonorLog} from '../../domain/communityHonors';
@@ -22,7 +23,7 @@ watch(op,()=>{if(!kinds.value.includes(kind.value))kind.value=kinds.value[0]||'c
 async function list(){const r=await props.request('honors.manage',{query:query.value.trim()});members.value=r.members||[];audit.value=r.audit||[];}
 async function search(){if(busy.value)return;busy.value=true;error.value='';subject.value=undefined;try{await list();}catch(e){error.value=treeholeError(e);}finally{busy.value=false;}}
 async function submit(){if(!subject.value||busy.value||reason.value.trim().length<2)return;
- if(!confirmation.value){requestId.value=crypto.randomUUID();confirmation.value='确认对「'+subject.value.nickname+'」执行「'+operations[op.value]+'」？';return;}
+ if(!confirmation.value){requestId.value=uid();confirmation.value='确认对「'+subject.value.nickname+'」执行「'+operations[op.value]+'」？';return;}
  busy.value=true;error.value='';try{const r=await props.request('honors.change',{memberId:subject.value.id,operation:op.value,kind:kind.value,caps:caps.value,reason:reason.value.trim(),requestId:requestId.value});subject.value=undefined;confirmation.value='';notice.value='操作已记录';emit('changed',r);await list();}catch(e){error.value=treeholeError(e);}finally{busy.value=false;}}
 onMounted(search);
 </script>

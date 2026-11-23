@@ -1,3 +1,4 @@
+import { uid } from "../domain/schedule";
 import type {TreeholeImage,TreeholePollDraft,TreeholeBuddyDraft} from './treehole';
 export interface DraftImage {id:string;data:string;width:number;height:number;remote?:TreeholeImage}
 export interface TreeholeDraft {buddy?:TreeholeBuddyDraft|null;poll?:TreeholePollDraft|null;title:string;body:string;category:string;interest?:string;anonymous:boolean;requestId:string;images:DraftImage[]}
@@ -14,6 +15,6 @@ export async function prepareTreeholeImage(file:File,avatar=false):Promise<Draft
   const side=Math.min(bitmap.width,bitmap.height),scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));const canvas=document.createElement('canvas');canvas.width=avatar?Math.min(512,side):Math.max(1,Math.round(bitmap.width*scale));canvas.height=avatar?canvas.width:Math.max(1,Math.round(bitmap.height*scale));
   const ctx=canvas.getContext('2d');if(!ctx)throw Error('invalid_image');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);if(avatar)ctx.drawImage(bitmap,(bitmap.width-side)/2,(bitmap.height-side)/2,side,side,0,0,canvas.width,canvas.height);else ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
   let data='';for(const quality of [.82,.7,.55,.4]){data=canvas.toDataURL('image/jpeg',quality).split(',')[1];if(data.length<=1_600_000)break;}
-  if(!data||data.length>1_600_000)throw Error('image_too_large');return {id:crypto.randomUUID(),data,width:canvas.width,height:canvas.height};
+  if(!data||data.length>1_600_000)throw Error('image_too_large');return {id:uid(),data,width:canvas.width,height:canvas.height};
  }finally{bitmap.close();}
 }
