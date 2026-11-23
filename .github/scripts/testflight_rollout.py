@@ -268,6 +268,7 @@ def rollout(app_id, number):
     external = any(not row["attributes"]["isInternalGroup"] for row in old_groups) or any(
         row["attributes"].get("inviteType") not in {"INTERNAL", "INTERNAL_TESTER"} for row in old_testers
     )
+    review_requested = False
     if external:
         detail = api(f"builds/{current_id}/buildBetaDetail")["data"]
         if not detail["attributes"].get("autoNotifyEnabled"):
@@ -276,8 +277,6 @@ def rollout(app_id, number):
                     "type": "buildBetaDetails", "id": detail["id"], "attributes": {"autoNotifyEnabled": True}}})
             except AppleError as error:
                 summary(f"Automatic tester notification could not be enabled: {error}. Continuing distribution.")
-    review_requested = False
-    if external and os.environ.get("TF_RESUME_ONLY") == "true":
         summary(f"External rollout check: audience={current['attributes'].get('buildAudienceType')}, "
                 f"state={detail['attributes'].get('externalBuildState')}.")
         if detail["attributes"].get("externalBuildState") == "READY_FOR_BETA_SUBMISSION":
