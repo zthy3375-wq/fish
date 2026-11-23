@@ -232,3 +232,5 @@ On commit 0000176, Android 1.3.0 and iPhone 13 simulator screenshots confirmed a
 ## 社区页面适配与可佩戴荣誉（2026-11-23）
 
 本轮基于 TestFlight 2.0.4 的应用源码。社区回归覆盖 iPhone 13 mini、iPhone 16 Pro Max 的大字号分区和从社区展柜佩戴、取下旧荣誉。原生用例覆盖 320–430 点宽的图片旋转缩放、旧版接口的展柜保留，以及成就和身份的佩戴边界。测试使用合成账号与图片，真机反馈未包含型号或显示设置。
+
+[iPhone 13 mini 和 16 Pro Max 社区专项验证](https://github.com/zthy3375-wq/fish/actions/runs/45141193720)已通过。iPhone 13 的 11 项界面用例及 iOS 16.0 最低版本编译也已通过；首次整机任务在写出测试结果后达到 12 分钟时限。保留全套用例，给模拟器启动、测试和收尾共 20 分钟。
