@@ -29,7 +29,8 @@ class AppleError(RuntimeError):
         reason = " ".join(str(row.get("detail", "")).lower() for row in errors)
         categories = [term for term in ("required agreement", "required role", "does not have permission",
                       "not authorized", "beta review", "review information", "what to test",
-                      "internal only", "already", "not allowed", "forbidden") if term in reason]
+                      "internal only", "already", "not allowed", "forbidden", "api key", "privilege",
+                      "permission", "security reasons", "24 hours", "app manager", "account holder") if term in reason]
         super().__init__(f"Apple API {status} for {operation}" + (f" ({', '.join(codes + categories)})" if codes or categories else ""))
 
 
@@ -290,10 +291,10 @@ def rollout(app_id, number):
                 summary(f"External beta review submission response: {error}.")
     for group_id in sorted(missing_groups):
         try:
-            api(f"builds/{current_id}/relationships/betaGroups", method="POST",
-                data={"data": [{"type": "betaGroups", "id": group_id}]})
+            api(f"betaGroups/{group_id}/relationships/builds", method="POST",
+                data={"data": [{"type": "builds", "id": current_id}]})
         except AppleError as error:
-            if error.status not in {409, 422} or not group_has_build(group_id, current_id):
+            if error.status not in {403, 409, 422} or not group_has_build(group_id, current_id):
                 group = next(row for row in old_groups if row["id"] == group_id)
                 kind = "internal" if group["attributes"]["isInternalGroup"] else "external"
                 raise RuntimeError(f"Apple denied the existing {kind} tester group. {error}") from None
