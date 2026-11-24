@@ -27,6 +27,59 @@ private final class TreeholeTestProtocol: URLProtocol {
     override func stopLoading() { }
 }
 final class TreeholeTests: XCTestCase {
+    func testWearableCollectionMatchesAndroidForBothServerVersions() throws {
+        func item(_ code: String, _ category: String = "contribution", _ kind: String? = nil) -> CampusHonorItem {
+            CampusHonorItem(id: "definition-" + code, code: code, name: code, category: category,
+                rarity: "rare", year: nil, archived: false, criteria: nil, awardId: "grant-" + code,
+                at: nil, story: nil, publicHidden: true, memberId: nil, nickname: nil, displayKind: kind)
+        }
+        let rows = [item("early-resident"), item("first-hundred"), item("before-dawn","hidden"),
+                    item("campus-legend"), item("person-of-year-2026","limited"), item("custom","contribution","achievement")]
+        var json: [String: Any] = ["id":"viewer","nickname":"同学","items":[],"badges":["worn":["code":"seed"]],
+            "identities":["contributor"],"legacyHonors":[["code":"seed"]],"useTitle":false,"total":0,
+            "rarities":[:],"unseen":[],"showcase":["firstpost"],"layoutVersion":3]
+        func decode() throws -> CampusCollectionProfile {
+            try JSONDecoder().decode(CampusCollectionProfile.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        let profile = try decode()
+        let cards = profile.wearableItems(in: rows, own: true, complete: true)
+        XCTAssertEqual(cards.map(\.code), ["seed","creator","contributor","early-resident","person-of-year-2026","creator-of-year","photo-of-year","warmth-of-year"])
+        XCTAssertEqual(profile.wearableItems(in: rows, own: false, complete: true).map(\.code), ["seed","contributor","early-resident","person-of-year-2026"])
+        XCTAssertFalse(profile.wearableItems(in: rows, own: true, complete: false).contains(where: \.isAnnualTemplate))
+        let seed = try XCTUnwrap(cards.first)
+        let (action, wear) = try XCTUnwrap(profile.wearRequest(for: seed, remove: false, useTitle: true))
+        XCTAssertEqual(action, "collection.wear"); XCTAssertEqual(wear["legacyCode"] as? String, "seed")
+        XCTAssertTrue(wear["awardId"] is NSNull); XCTAssertEqual(wear["organized"] as? Bool, true)
+        XCTAssertTrue(try XCTUnwrap(profile.wearRequest(for: seed, remove: true, useTitle: false)).1["legacyCode"] is NSNull)
+        XCTAssertEqual(profile.wearRequest(for: rows[0], remove: false, useTitle: true)?.1["awardId"] as? String, rows[0].awardId)
+        for item in [cards[1], rows[1], rows[2], rows[3], rows[5], cards.last!] {
+            XCTAssertNil(profile.wearRequest(for: item, remove: false, useTitle: false), item.code)
+        }
+        json.removeValue(forKey: "layoutVersion")
+        let legacy = try decode()
+        let (oldAction, oldBody) = try XCTUnwrap(legacy.wearRequest(for: seed, remove: false, useTitle: false))
+        XCTAssertEqual(oldAction, "honors.wear"); XCTAssertEqual(oldBody["showcase"] as? [String], ["firstpost"])
+    }
+
+    @MainActor func testPhotoZoomRefitsAndPreservesMagnificationWhenRotated() {
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 400)).image { _ in }
+        let widths: [CGFloat] = [320, 375, 390, 430]
+        for width in widths {
+            let view = CommunityPhotoScrollView(frame: CGRect(x: 0, y: 0, width: width, height: 740))
+            view.display(photo); view.layoutIfNeeded()
+            XCTAssertEqual(view.minimumZoomScale, CGFloat(width)/800, accuracy: 0.001)
+            XCTAssertEqual(view.contentSize.width, CGFloat(width), accuracy: 1)
+            XCTAssertGreaterThan(view.contentInset.top, 0)
+            view.setZoomScale(view.minimumZoomScale * 2.5, animated: false)
+            view.frame = CGRect(x: 0, y: 0, width: 740, height: width); view.layoutIfNeeded()
+            XCTAssertEqual(view.minimumZoomScale, min(740/800, CGFloat(width)/400), accuracy: 0.001)
+            XCTAssertEqual(view.zoomScale / view.minimumZoomScale, 2.5, accuracy: 0.001)
+            view.setZoomScale(view.minimumZoomScale, animated: false)
+            XCTAssertLessThanOrEqual(view.contentSize.width, 741)
+            XCTAssertLessThanOrEqual(view.contentSize.height, CGFloat(width)+1)
+        }
+    }
+
     func testLegacyDeletedThreadsHideAuthorsAndKeepLiveDescendants() {
         func comment(_ id: String, deleted: Bool = false, replyTo: String? = nil) -> TreeholeComment {
             TreeholeComment(id: id, postId: "post", body: id, createdAt: "", replyTo: replyTo,

@@ -142,22 +142,75 @@ private struct TreeholeZoomImage: View {
 }
 private struct TreeholeZoomScroll: UIViewRepresentable {
     let bitmap: UIImage
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    func makeUIView(context: Context) -> UIScrollView {
-        let scroll = UIScrollView(); scroll.minimumZoomScale = 1; scroll.maximumZoomScale = 4; scroll.delegate = context.coordinator
-        scroll.showsVerticalScrollIndicator = false; scroll.showsHorizontalScrollIndicator = false
-        let image = UIImageView(image: bitmap); image.contentMode = .scaleAspectFit; image.isUserInteractionEnabled = true; scroll.addSubview(image); context.coordinator.image = image
-        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.toggle(_:))); doubleTap.numberOfTapsRequired = 2; scroll.addGestureRecognizer(doubleTap)
-        return scroll
+    func makeUIView(context: Context) -> CommunityPhotoScrollView { CommunityPhotoScrollView() }
+    func updateUIView(_ view: CommunityPhotoScrollView, context: Context) { view.display(bitmap) }
+}
+
+final class CommunityPhotoScrollView: UIScrollView, UIScrollViewDelegate {
+    private let photo = UIImageView()
+    private var viewport = CGSize.zero
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        delegate = self
+        contentInsetAdjustmentBehavior = .never
+        showsHorizontalScrollIndicator = false
+        showsVerticalScrollIndicator = false
+        photo.contentMode = .scaleAspectFit
+        addSubview(photo)
+        let tap = UITapGestureRecognizer(target: self, action: #selector(doubleTap(_:)))
+        tap.numberOfTapsRequired = 2
+        addGestureRecognizer(tap)
     }
-    func updateUIView(_ scroll: UIScrollView, context: Context) {
-        context.coordinator.image?.image = bitmap
-        if scroll.zoomScale == 1 { context.coordinator.image?.frame = scroll.bounds; scroll.contentSize = scroll.bounds.size }
-        DispatchQueue.main.async { if scroll.zoomScale == 1 { context.coordinator.image?.frame = scroll.bounds; scroll.contentSize = scroll.bounds.size } }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+    func display(_ bitmap: UIImage) {
+        guard photo.image !== bitmap else { return }
+        viewport = .zero
+        minimumZoomScale = min(1, minimumZoomScale)
+        maximumZoomScale = max(1, maximumZoomScale)
+        setZoomScale(1, animated: false)
+        photo.image = bitmap
+        photo.frame = CGRect(origin: .zero, size: bitmap.size)
+        contentSize = bitmap.size
+        setNeedsLayout()
     }
-    final class Coordinator: NSObject, UIScrollViewDelegate {
-        weak var image: UIImageView?
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? { image }
-        @objc func toggle(_ gesture: UITapGestureRecognizer) { guard let scroll = gesture.view as? UIScrollView else { return }; scroll.setZoomScale(scroll.zoomScale > 1 ? 1 : 2.5, animated: true) }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let size = bounds.size
+        guard size != viewport, size.width > 0, size.height > 0, let image = photo.image,
+              image.size.width > 0, image.size.height > 0 else { return }
+        let relative = viewport == .zero ? 1 : zoomScale / minimumZoomScale
+        let focus = viewport == .zero ? CGPoint(x: image.size.width / 2, y: image.size.height / 2) :
+            CGPoint(x: (contentOffset.x + viewport.width / 2) / zoomScale,
+                    y: (contentOffset.y + viewport.height / 2) / zoomScale)
+        viewport = size
+        let fit = min(size.width / image.size.width, size.height / image.size.height)
+        maximumZoomScale = max(maximumZoomScale, fit * 4)
+        minimumZoomScale = fit
+        maximumZoomScale = fit * 4
+        setZoomScale(fit * min(4, max(1, relative)), animated: false)
+        centerPhoto()
+        let x = max(-contentInset.left, min(focus.x * zoomScale - size.width / 2, contentSize.width - size.width + contentInset.right))
+        let y = max(-contentInset.top, min(focus.y * zoomScale - size.height / 2, contentSize.height - size.height + contentInset.bottom))
+        setContentOffset(CGPoint(x: x, y: y), animated: false)
+    }
+
+    private func centerPhoto() {
+        let x = max(0, (bounds.width - photo.frame.width) / 2)
+        let y = max(0, (bounds.height - photo.frame.height) / 2)
+        let insets = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
+        if contentInset != insets { contentInset = insets }
+    }
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { photo }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { centerPhoto() }
+    @objc private func doubleTap(_ gesture: UITapGestureRecognizer) {
+        if zoomScale > minimumZoomScale * 1.01 { setZoomScale(minimumZoomScale, animated: true); return }
+        let point = gesture.location(in: photo)
+        let target = minimumZoomScale * 2.5
+        let size = CGSize(width: bounds.width / target, height: bounds.height / target)
+        zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2,
+                        width: size.width, height: size.height), animated: true)
     }
 }

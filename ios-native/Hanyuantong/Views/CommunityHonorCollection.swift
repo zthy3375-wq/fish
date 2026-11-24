@@ -6,6 +6,7 @@ struct CampusWornBadge: Codable, Equatable, Identifiable {
     let name: String
     let rarity: String
     let title: String?
+    var year: Int? = nil
 }
 
 struct CampusHonorItem: Codable, Identifiable, Equatable {
@@ -20,16 +21,24 @@ struct CampusHonorItem: Codable, Identifiable, Equatable {
     let memberId: String?
     let nickname: String?
     var displayKind: String? = nil
-    private var definitionCode: String {
+    var definitionCode: String {
         code.replacingOccurrences(of: "-[0-9]{4}$", with: "", options: .regularExpression)
     }
     private static let retired: Set<String> = ["bug-hunter", "architect", "first-feature", "gold-creator", "developer-noticed", "welcome-guide", "graduation-keepsake"]
     private static let achievements: Set<String> = ["first-hundred", "campus-observer", "good-company", "answer-guide", "campus-photographer", "community-classic", "landmark-post", "hundred-likes", "full-page", "archivist", "before-dawn", "world-lines", "crossed-paths", "no-island"]
     var retiredAchievement: Bool { Self.retired.contains(definitionCode) }
-    var appearsInAchievementHall: Bool {
-        let isAchievement = displayKind.map { $0 == "achievement" } ?? (category == "hidden" || retiredAchievement || Self.achievements.contains(definitionCode))
-        return isAchievement && (awardId != nil || (category != "hidden" && !retiredAchievement))
+    var kind: String { Self.kind(code: code, category: category, displayKind: displayKind) }
+    static func kind(code: String, category: String, displayKind: String? = nil) -> String {
+        let definitionCode = code.replacingOccurrences(of: "-[0-9]{4}$", with: "", options: .regularExpression)
+        if let displayKind { return displayKind }
+        if ["that-person", "campus-legend"].contains(code) { return "history" }
+        return category == "hidden" || retired.contains(definitionCode) || achievements.contains(definitionCode) ? "achievement" : "honor"
     }
+    var appearsInAchievementHall: Bool {
+        kind == "achievement" && (awardId != nil || (category != "hidden" && !retiredAchievement))
+    }
+    var legacyWearable: Bool { id == code && CampusCollectionProfile.legacyCodes.contains(code) }
+    var isAnnualTemplate: Bool { category == "limited" && year == nil && id == code && awardId == nil }
     var archiveId: String { awardId ?? id }
     var earned: Bool { awardId != nil || memberId != nil }
     var caption: String { year.map { String($0) + " · " + name } ?? name }
@@ -48,10 +57,48 @@ struct CampusCollectionProfile: Codable {
     let layoutVersion: Int?
     let showcase: [String]?
     let baseAwards: [String: String]?
-    var legacyCount: Int {
-        if let code = badges.official?.code { return Set(identities + [code]).count }
-        return identities.count
+    var legacyHonors: [HonorStamp]? = nil
+    static let legacyCodes = ["seed","creator","contributor"]
+    private static let annual = [("person-of-year","年度人物","legendary"),("creator-of-year","年度最佳创作者","epic"),("photo-of-year","年度摄影师","epic"),("warmth-of-year","年度最温暖的人","epic")]
+
+    func wearableItems(in loaded: [CampusHonorItem], own: Bool, complete: Bool) -> [CampusHonorItem] {
+        var rows = Self.legacyCodes.compactMap { code -> CampusHonorItem? in
+            let grant = legacyHonors?.first { $0.code == code }
+            let earned = grant != nil || identities.contains(code)
+            guard own || earned, let name = campusIdentityNames[code] else { return nil }
+            return CampusHonorItem(id: code, code: code, name: name, category: "identity", rarity: "rare",
+                year: nil, archived: false, criteria: "由开发者授予", awardId: earned ? code : nil, at: grant?.at,
+                story: nil, publicHidden: false, memberId: nil, nickname: nil)
+        }
+        rows += loaded.filter { $0.kind == "honor" && (own || $0.awardId != nil) }
+        if own && complete {
+            let known = Set(loaded.map(\.definitionCode))
+            for (code, name, rarity) in Self.annual where !known.contains(code) {
+                rows.append(CampusHonorItem(id: code, code: code, name: name, category: "limited", rarity: rarity,
+                    year: nil, archived: false, criteria: "发行对应年份后可获得。", awardId: nil, at: nil,
+                    story: nil, publicHidden: false, memberId: nil, nickname: nil))
+            }
+        }
+        return rows
     }
+
+    func isWearing(_ item: CampusHonorItem) -> Bool {
+        guard item.kind == "honor", let grant = item.awardId else { return false }
+        return item.legacyWearable ? badges.worn?.code == item.code : badges.collection?.id == grant
+    }
+
+    func wearRequest(for item: CampusHonorItem, remove: Bool, useTitle: Bool) -> (String, [String: Any])? {
+        guard item.kind == "honor", let grant = item.awardId, !remove || isWearing(item) else { return nil }
+        if item.legacyWearable && (layoutVersion ?? 0) < 2 {
+            var payload: [String: Any] = ["honor": remove ? NSNull() as Any : item.code]
+            if let showcase { payload["showcase"] = showcase }
+            return ("honors.wear", payload)
+        }
+        return ("collection.wear", ["awardId": remove || item.legacyWearable ? NSNull() as Any : grant,
+            "legacyCode": !remove && item.legacyWearable ? item.code as Any : NSNull(),
+            "useTitle": !remove && !item.legacyWearable && useTitle, "organized": true])
+    }
+
 }
 
 struct CampusIdentityUpdate: Codable {
@@ -82,16 +129,16 @@ struct CampusHonorByline: View {
                 Label(name, systemImage: role.code == "developer" ? "crown" : "shield")
                     .foregroundStyle(role.code == "developer" ? Color.orange : .blue)
             }
-            if let badge = badges?.collection {
-                Label(badge.title ?? badge.name, systemImage: badge.rarity == "legendary" ? "sparkles" : "seal")
-                    .lineLimit(1).frame(maxWidth: 75, alignment: .leading)
+            if let badge = badges?.collection, CampusHonorItem.kind(code: badge.code, category: "contribution") == "honor" {
+                Label((badge.year.map { String($0) + " · " } ?? "") + (badge.title ?? badge.name), systemImage: badge.rarity == "legendary" ? "sparkles" : "seal")
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(badge.rarity == "legendary" || badge.rarity == "epic" ? Color.orange : .purple)
-                    .accessibilityLabel(badge.name)
+                    .accessibilityLabel(badge.title ?? badge.name)
             } else if let worn = badges?.worn, let name = campusIdentityNames[worn.code] {
                 let style = HonorByline.style(worn.code)
                 Label(style.0, systemImage: style.1).foregroundStyle(style.2).lineLimit(1).accessibilityLabel(name)
             }
-        }.font(.system(size: 11, weight: .semibold))
+        }.font(.caption2.weight(.semibold))
     }
 }
 
@@ -120,7 +167,7 @@ private struct CommunityMedallion: View {
         default: return .gray
         }
     }
-    private var symbol: String { ["identity":"building.columns","contribution":"leaf","legend":"crown","limited":"seal","hidden":"sparkles"][item.category] ?? "seal" }
+    private var symbol: String { if item.legacyWearable { return HonorByline.style(item.code).1 }; return ["identity":"building.columns","contribution":"leaf","legend":"crown","limited":"seal","hidden":"sparkles"][item.category] ?? "seal" }
     var body: some View {
         let gradient = LinearGradient(colors: [tint, tint.opacity(0.35), tint], startPoint: .topLeading, endPoint: .bottomTrailing)
         ZStack {
@@ -143,7 +190,8 @@ struct CampusHonorCollectionView: View {
     @State private var profile: CampusCollectionProfile?
     @State private var items: [CampusHonorItem] = []
     @State private var section = "legend"
-    @State private var category = "all"
+    @State private var category = "honor"
+    @ScaledMetric(relativeTo: .caption) private var tileWidth: CGFloat = 100
     @State private var years: [Int] = []
     @State private var year: Int?
     @State private var selected: CampusHonorItem?
@@ -162,7 +210,11 @@ struct CampusHonorCollectionView: View {
     private var isArchive: Bool { memberId == nil }
     private var isOwn: Bool { memberId != nil && memberId == tree.user?.id }
     private var filterKey: String { (memberId ?? "archive") + section + String(year ?? 0) }
-    private var shown: [CampusHonorItem] { isArchive || category == "all" ? items : items.filter { $0.category == category } }
+    private var wearable: [CampusHonorItem] { profile?.wearableItems(in: items, own: isOwn, complete: !more) ?? [] }
+    private var shown: [CampusHonorItem] {
+        if isArchive { return items }
+        return category == "honor" ? wearable : items.filter { $0.kind == category && (!$0.retiredAchievement || $0.earned) }
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -195,9 +247,8 @@ struct CampusHonorCollectionView: View {
             Text(isArchive ? "社区荣誉殿堂" : isOwn ? "我的荣誉收藏" : (profile?.nickname ?? "同学") + "的荣誉收藏").font(.title3.weight(.semibold))
             if isArchive { Text("收藏历届荣誉，阅读获奖者留下的校园故事。").font(.footnote).foregroundStyle(Color(red: 0.91, green: 0.82, blue: 0.73)) }
             if let profile, !isArchive {
-                Text("已收藏 \(profile.total + profile.legacyCount) 枚").font(.footnote).foregroundStyle(.secondary)
+                if isOwn, let title = profile.customTitle { Text("我的专属称号 · " + title).font(.footnote) }
                 CampusHonorByline(badges: profile.badges)
-                Text(profile.identities.filter { $0 != profile.badges.official?.code }.compactMap { campusIdentityNames[$0] }.joined(separator: " · ")).font(.footnote)
             }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(isArchive ? 22 : 14)
          .foregroundStyle(isArchive ? Color(red: 1, green: 0.95, blue: 0.84) : .primary)
@@ -225,29 +276,38 @@ struct CampusHonorCollectionView: View {
     }
     private var collectionFilters: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let profile {
-                HStack { ForEach(campusHonorRarities) { pair in
-                    VStack { Text(String((profile.rarities[pair.id] ?? 0) + (pair.id == "common" ? profile.legacyCount : 0))).fontWeight(.semibold); Text(pair.label).font(.caption2) }.frame(maxWidth: .infinity)
-                } }
-            }
-            Picker("荣誉分类", selection: $category) {
-                Text("全部").tag("all")
-                ForEach(campusHonorCategories) { Text($0.label).tag($0.id) }
+            Picker("收藏分类", selection: $category) {
+                Text("可佩戴荣誉").tag("honor")
+                Text("社区成就").tag("achievement")
+                if items.contains(where: { $0.kind == "history" }) { Text("历史收藏").tag("history") }
             }.pickerStyle(.menu)
+            if shown.contains(where: \.earned) {
+                DisclosureGroup("稀有度分布") {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: tileWidth))], alignment: .leading) {
+                        ForEach(campusHonorRarities) { tier in
+                            Text(tier.label + " · " + String(shown.filter { $0.earned && $0.rarity == tier.id }.count))
+                        }
+                    }.font(.footnote)
+                }
+            }
+            if category == "honor", profile != nil {
+                Text("已获得 \(wearable.filter(\.earned).count) 枚").font(.footnote).foregroundStyle(.secondary)
+            }
         }
     }
     private var grid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 7), count: 3), spacing: 7) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: tileWidth), spacing: 7)], spacing: 7) {
             ForEach(shown) { item in
                 Button { show(item) } label: {
                     VStack(spacing: 5) {
                         CommunityMedallion(item: item)
-                        Text(item.name).font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2)
+                        Text(item.name).font(.caption.weight(.semibold)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                        Text(item.isAnnualTemplate ? "待开放" : item.earned ? "已获得" : "未获得").font(.caption2)
                         Text(item.year.map { String($0) + " · " } ?? "").font(.caption2) +
                         Text(campusHonorRarities.first { $0.id == item.rarity }?.label ?? "").font(.caption2)
                     }.padding(8).frame(maxWidth: .infinity, minHeight: 118)
                      .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 11))
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).accessibilityIdentifier("community-collectible-" + item.code)
             }
         }
     }
@@ -275,14 +335,18 @@ struct CampusHonorCollectionView: View {
                 if let date = item.at { Text(String(date.prefix(10))).font(.caption).foregroundStyle(.secondary) }
                 if item.archived { Text("已绝版").font(.caption).foregroundStyle(.secondary) }
                 if isOwn, let id = item.awardId {
-                    if item.category == "hidden" { Button(item.publicHidden ? "对他人隐藏" : "公开隐藏荣誉") { Task { await apply("collection.visibility", ["awardId":id,"public":!item.publicHidden]) } } }
-                    if item.category != "hidden" || item.publicHidden {
-                        Toggle(profile.flatMap { $0.customTitle }.map { "使用称号「\($0)」" } ?? "使用称号", isOn: $useTitle)
-                        Button(profile?.badges.collection?.id == id ? "更新佩戴" : "佩戴荣誉") { Task { await apply("collection.wear", ["awardId":id,"useTitle":useTitle]) } }
+                    if item.kind == "achievement" && item.category == "hidden" {
+                        Button(item.publicHidden ? "对他人隐藏" : "公开隐藏成就") { Task { await apply("collection.visibility", ["awardId":id,"public":!item.publicHidden]) } }
                     }
-                    if profile?.badges.collection?.id == id { Button("取下荣誉") { Task { await apply("collection.wear", ["awardId":NSNull()]) } } }
+                    if item.kind == "honor", let profile {
+                        if !item.legacyWearable {
+                            Toggle(profile.customTitle.map { "使用称号「\($0)」" } ?? "使用称号", isOn: $useTitle)
+                        }
+                        Button(profile.isWearing(item) ? "更新佩戴" : "佩戴荣誉") { wear(item, remove: false) }
+                        if profile.isWearing(item) { Button("取下荣誉") { wear(item, remove: true) } }
+                    }
                 }
-                if let person = item.memberId { Button("打开荣誉档案") { selected = nil; memberId = person; category = "all" } }
+                if let person = item.memberId { Button("打开荣誉档案") { selected = nil; memberId = person; category = "honor" } }
                 if let error { Text(error).font(.footnote).foregroundStyle(.red) }
                 Button("完成") { selected = nil }
             }.buttonStyle(.bordered).padding(22).disabled(loading)
@@ -291,6 +355,10 @@ struct CampusHonorCollectionView: View {
             if reduceMotion || unlocked == nil { reveal = true }
             else { withAnimation(.spring(response: 0.48, dampingFraction: 0.75)) { reveal = true } }
          }
+    }
+    private func wear(_ item: CampusHonorItem, remove: Bool) {
+        guard isOwn, let (action, body) = profile?.wearRequest(for: item, remove: remove, useTitle: useTitle) else { return }
+        Task { await apply(action, body) }
     }
     private func show(_ item: CampusHonorItem) {
         reveal = reduceMotion || unlocked == nil
@@ -310,13 +378,14 @@ struct CampusHonorCollectionView: View {
         revision += 1; let request = revision
         let target = memberId
         loading = true; error = nil
-        if !append { items = []; more = false }
+        if !append && profile?.id != target { profile = nil; items = []; more = false }
+        if isArchive && !append { items = []; more = false }
         defer { if revision == request { loading = false } }
         do {
             if let target {
                 let content = try await tree.loadHonorCollection(member: target, offset: append ? items.count : 0, fresh: !showReward)
                 guard revision == request else { return }
-                profile = content; items += content.items.prefix(40); more = content.items.count > 40
+                profile = content; items = (append ? items : []) + Array(content.items.prefix(40)); more = content.items.count > 40
                 if showReward, isOwn, selected == nil,
                    let reward = items.first(where: { value in value.awardId.map { content.unseen.contains($0) && !rendered.contains($0) } == true }) {
                     unlocked = reward.awardId; show(reward)
@@ -336,10 +405,18 @@ struct CampusHonorCollectionView: View {
         let prior = selected?.id
         defer { loading = false }
         do {
-            let response = try await tree.api.request(action, body)
+            var payload = body
+            if action == "honors.wear" && payload["showcase"] == nil {
+                guard let memberId, let hall = try await tree.api.request("honors.hall", ["memberId":memberId]).hall,
+                      hall.id == memberId else { throw TreeholeError(code: "invalid_response") }
+                payload["showcase"] = hall.showcase
+            }
+            let response = try await tree.api.request(action, payload)
             if let identity = response.updatedIdentity { tree.applyCollectionIdentity(identity) }
+            else if let hall = response.hall { tree.applyBadges(hall.id, hall.badges, hall.showcase) }
+            else if let user = response.user, let badges = user.badges { tree.applyBadges(user.id, badges, user.showcase) }
             await load(showReward: false)
-            if let updated = items.first(where: { $0.id == prior }) { selected = updated }
+            if let updated = (wearable + items).first(where: { $0.id == prior }) { selected = updated }
         } catch { self.error = error.localizedDescription }
     }
 }

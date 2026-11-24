@@ -47,15 +47,14 @@ jobs:
       - name: Check approved application source and installed SDK
         run: |
           set -eu
-          test "$(git rev-parse HEAD^)" = ace860f801b29fd7fdc6eee6bb4c243e5eb370e3
-          test "$(git rev-parse HEAD:ios-native)" = e577454e2b52b7907230de387a25b1dc09ee927f
-          git diff --exit-code HEAD^ HEAD -- ios-native .github/scripts/testflight_signing.py android src
+          test "$(git rev-parse HEAD^)" = 306f5492d5c986a571d174e4cdc277c4a33a1e49
+          test "$(git rev-parse HEAD:ios-native)" = bef8c41d5a246b037f288fa25dc22eb15ec8bb1c
+          git diff --exit-code HEAD^ HEAD -- .github/scripts/testflight_signing.py .github/scripts/testflight_rollout.py android src
           xcodebuild -version
           sdk=$(xcrun --sdk iphoneos --show-sdk-version)
           test "${sdk%%.*}" -ge 26
-          echo "TF_REFERENCE_BUILD=2.0.3" >> "$GITHUB_ENV"
-          echo "TF_BUILD=2.0.4" >> "$GITHUB_ENV"
-          echo "TF_RESUME_ONLY=true" >> "$GITHUB_ENV"
+          echo "TF_REFERENCE_BUILD=2.0.4" >> "$GITHUB_ENV"
+          echo "TF_BUILD=2.0.5" >> "$GITHUB_ENV"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/hyt-sign/upload.p8" >> "$GITHUB_ENV"
           mkdir -m 700 "$RUNNER_TEMP/hyt-sign"
       - name: Check App Store Connect access and existing build
@@ -135,7 +134,7 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          TF_WHAT_TO_TEST: 本次更新改善了社区快捷回复的稳定性。请在帖子里输入评论，收起键盘再打开，确认草稿仍在；发布后检查评论是否出现，也可以试试匿名回复。
+          TF_WHAT_TO_TEST: 社区可佩戴勋章已与安卓对齐，可在荣誉收藏里佩戴或取下，再去个人主页查看。社区帖子和图片适配了不同屏幕与大字号。接水时确认按用量结算后，结束用水会自动核对本次账单；旧订单可在原记录中确认金额。
         run: python3 .github/scripts/testflight_rollout.py rollout
       - name: Remove runner signing material
         if: always()

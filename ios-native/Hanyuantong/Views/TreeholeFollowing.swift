@@ -41,14 +41,19 @@ struct TreeholeFollowingView: View {
 
 struct TreeholeFeedScopes: View {
     @ObservedObject var tree: TreeholeStore
+    @ScaledMetric(relativeTo: .subheadline) private var tabWidth: CGFloat = 64
+    var wrap = false
     let continueScope: String
     let select: (String) -> Void
     var body: some View {
-        HStack(spacing: 12) {
+        if wrap {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: tabWidth))], alignment: .leading) { tabs }
+        } else { HStack(spacing: 12) { tabs } }
+    }
+    @ViewBuilder private var tabs: some View {
             tab("广场", "all")
             if tree.followingEnabled { tab("关注", "following") }
             tab("继续聊", continueScope)
-        }
     }
     private func tab(_ label: String, _ id: String) -> some View {
         let active = tree.scope == id

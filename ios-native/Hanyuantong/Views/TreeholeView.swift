@@ -3,6 +3,7 @@ import PhotosUI
 
 struct TreeholeView: View {
     @EnvironmentObject var tree: TreeholeStore
+    @Environment(\.dynamicTypeSize) private var communityTypeSize
     @State private var honorRoute: CampusHonorRoute?
     @State private var showHonorManagement = false
     @State private var buddyRosterPost: TreeholePost?
@@ -206,7 +207,7 @@ struct TreeholeView: View {
                         Image(systemName: "pencil.line").font(.system(size: 18))
                         Text("发帖").font(.subheadline.weight(.semibold)).fixedSize()
                             .frame(maxWidth: composeCollapsed ? 0 : nil).opacity(composeCollapsed ? 0 : 1).clipped()
-                    }.padding(.horizontal, composeCollapsed ? 14 : 16).frame(height: 46)
+                    }.padding(.horizontal, composeCollapsed ? 14 : 16).frame(minHeight: 46)
                 }.buttonStyle(CampusPressStyle())
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: composeCollapsed)
                     .foregroundStyle(TreeholeTheme.onPrimary).background(TreeholeTheme.primary, in: Capsule())
@@ -477,15 +478,12 @@ struct TreeholeView: View {
         guard tree.sort != value else { return }
         tree.sort = value; reloadFeed()
     }
-    private var feed: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: 0).id("feed-top").background(GeometryReader { bounds in
-                Color.clear.preference(key: TreeholeFeedScrollY.self, value: -bounds.frame(in: .named("treehole-scroll")).minY)
-            })
-            HStack(spacing: 8) {
-                if tree.engagementEnabled { TreeholeFeedScopes(tree: tree, continueScope: continueScope, select: accountFeed) }
-                else { Text("广场").font(.headline) }
-                Spacer(minLength: 0)
+    @ViewBuilder private func feedScopes(wrap: Bool = false) -> some View {
+        if tree.engagementEnabled { TreeholeFeedScopes(tree: tree, wrap: wrap, continueScope: continueScope, select: accountFeed) }
+        else { Text("广场").font(.headline) }
+    }
+    private var feedTools: some View {
+        HStack(spacing: 8) {
                 if browsing {
                     Menu {
                         Button("最新") { changeSort("latest") }
@@ -494,6 +492,19 @@ struct TreeholeView: View {
                     .accessibilityLabel("帖子排序")
                 }
                 Button { tree.perform { try await tree.feed(); await tree.refreshUnread(force: true) } } label: { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }.accessibilityLabel("刷新树洞")
+        }
+    }
+    private var feed: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear.frame(height: 0).id("feed-top").background(GeometryReader { bounds in
+                Color.clear.preference(key: TreeholeFeedScrollY.self, value: -bounds.frame(in: .named("treehole-scroll")).minY)
+            })
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { feedScopes(); Spacer(minLength: 0); feedTools }
+                VStack(alignment: .leading, spacing: 0) {
+                    feedScopes(wrap: true)
+                    feedTools.frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }.buttonStyle(.plain)
             if draft.value.hasContent { Button(action: startPost) { HStack { Label("继续编辑草稿", systemImage: "doc.text"); Spacer(); Image(systemName: "chevron.right") }.font(.caption).padding(12).background(TreeholeTheme.tint, in: RoundedRectangle(cornerRadius: 10)) } }
             if searchOpen {
@@ -1048,21 +1059,35 @@ struct TreeholeView: View {
         }.disabled(!enabled)
     }
 
+    private func postMetadata(_ post: TreeholePost) -> some View {
+        let layout = communityTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(spacing: 6))
+        let interest = TreeholeCategories.interestName(post.interest)
+        return layout {
+            Text(TreeholePresentation.date(post.createdAt) + (post.anonymous ? " · 匿名发布" : ""))
+                .accessibilityIdentifier("community-post-date")
+            Button {
+                selectDiscovery(post.category ?? "daily", interest: post.interest ?? "")
+            } label: {
+                Text("# " + (interest.isEmpty ? TreeholeCategories.name(post.category) : interest))
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(TreeholeTheme.muted)
+    }
+
     private func postCard(_ post: TreeholePost, full: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 authorLink(post) { TreeholeAvatar(name: post.author.name, anonymous: post.anonymous || post.author.anonymous, avatar: post.author.avatar, size: full ? 42 : 36) }
                 VStack(alignment: .leading, spacing: 1) {
                     authorLink(post) { HonorByline(name: post.author.name, badges: post.author.anonymous || post.anonymous ? nil : post.author.badges).font(.subheadline.weight(.semibold)) }
-                    HStack(spacing: 6) {
-                        Text(TreeholePresentation.date(post.createdAt) + (post.anonymous ? " · 匿名发布" : ""))
-                        Button {
-                            selectDiscovery(post.category ?? "daily", interest: post.interest ?? "")
-                        } label: { Text("# " + (TreeholeCategories.interestName(post.interest).isEmpty ? TreeholeCategories.name(post.category) : TreeholeCategories.interestName(post.interest))) }
-                    }.font(.caption).foregroundStyle(TreeholeTheme.muted)
+                    if !communityTypeSize.isAccessibilitySize { postMetadata(post) }
                 }
                 Spacer(minLength: 2); contentMenu(post)
             }.frame(minHeight: 44)
+            if communityTypeSize.isAccessibilitySize { postMetadata(post) }
             VStack(alignment: .leading, spacing: 4) {
                 if full {
                     if let title = post.title, !title.isEmpty { Text(title).font(.title2.weight(.bold)).textSelection(.enabled) }
@@ -1074,9 +1099,21 @@ struct TreeholeView: View {
                 if let poll = post.poll { TreeholePollCard(poll: poll, enabled: tree.pollsEnabled && !post.locked, pending: tree.pendingVotes.contains(post.id)) { option in Task { await tree.vote(post, optionId: option) } } }
                 if let images = post.images, !images.isEmpty { TreeholeImageGrid(postId: post.id, images: images, full: full, api: tree.api) { index in gallery = TreeholeGallerySelection(postId: post.id, images: images, index: index) } }
                 if !full, let count = post.newReplyCount, count > 0 { Button("\(count) 条新回复 · 接着聊") { open(post, comments: true) }.font(.caption).frame(minHeight: 40) }
-                HStack(spacing: 4) {
-                    if tree.responsesEnabled { TreeholeResponses(post: post, disabled: tree.pendingResponses.contains(post.id), choose: { tree.respond(post, kind: $0) }, kinds: tree.responseKinds) }
-                    Spacer(minLength: 0)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 4) { postResponses(post); Spacer(minLength: 0); postActions(post, full: full) }
+                    VStack(alignment: .leading, spacing: 0) { postResponses(post); postActions(post, full: full) }
+                }.font(.caption).foregroundStyle(TreeholeTheme.muted).buttonStyle(TreeholePressStyle())
+            }.padding(.leading, full || communityTypeSize.isAccessibilitySize ? 0 : 46)
+        }.padding(.top, full ? 18 : 12).padding(.bottom, full ? 14 : 6)
+            .background {
+                if !full { Button { open(post) } label: { Color.clear.contentShape(Rectangle()) }.buttonStyle(.plain).accessibilityHidden(true) }
+            }
+    }
+    @ViewBuilder private func postResponses(_ post: TreeholePost) -> some View {
+        if tree.responsesEnabled { TreeholeResponses(post: post, disabled: tree.pendingResponses.contains(post.id), choose: { tree.respond(post, kind: $0) }, kinds: tree.responseKinds) }
+    }
+    private func postActions(_ post: TreeholePost, full: Bool) -> some View {
+        HStack(spacing: 4) {
                     if post.locked { Image(systemName: "lock").accessibilityLabel("已暂停回复") }
                     if !full {
                         Button { open(post, comments: true) } label: { HStack(spacing: 5) {
@@ -1090,12 +1127,7 @@ struct TreeholeView: View {
                             .accessibilityLabel(post.liked ? "取消点赞" : "点赞").accessibilityValue(String(post.likeCount))
                             .disabled(tree.pendingReactions.contains(post.id + ":like"))
                     }
-                }.font(.caption).foregroundStyle(TreeholeTheme.muted).buttonStyle(TreeholePressStyle())
-            }.padding(.leading, full ? 0 : 46)
-        }.padding(.top, full ? 18 : 12).padding(.bottom, full ? 14 : 6)
-            .background {
-                if !full { Button { open(post) } label: { Color.clear.contentShape(Rectangle()) }.buttonStyle(.plain).accessibilityHidden(true) }
-            }
+        }
     }
     @ViewBuilder private func authorLink<Content: View>(_ post: TreeholePost, @ViewBuilder content: () -> Content) -> some View {
         if tree.engagementEnabled, let id = post.author.id, !post.anonymous, !post.author.anonymous {
@@ -1157,7 +1189,8 @@ struct TreeholeView: View {
                 Spacer()
             }.padding(.vertical,12)
             ProfileSocialBar(member:user,following:showFollowing,open:showProfile)
-            HonorShelfLink(badges: user.badges, pins: user.showcase ?? [], collection: user.collectionShowcase ?? [])
+            HonorShelfLink(badges: user.badges, pins: user.showcase ?? [], collection: user.collectionShowcase ?? [],
+                          openCollection: tree.honorCollectionEnabled ? { honorRoute = CampusHonorRoute(memberId: user.id) } : nil)
             if tree.honorCollectionEnabled {
                 settingsRow("荣誉档案与佩戴", symbol: "seal") { honorRoute = CampusHonorRoute(memberId: user.id) }
             }
@@ -1284,7 +1317,8 @@ struct TreeholeView: View {
             VStack(spacing: 12) {
                 TreeholeAvatar(name: profile.nickname, avatar: profile.avatar, size: 64)
                 HonorByline(name:profile.nickname,badges:profile.badges).font(.title2.bold())
-                HonorShelfLink(badges: profile.badges, pins: profile.showcase ?? [], collection: profile.collectionShowcase ?? [], memberID: profile.id)
+                HonorShelfLink(badges: profile.badges, pins: profile.showcase ?? [], collection: profile.collectionShowcase ?? [], memberID: profile.id,
+                              openCollection: tree.honorCollectionEnabled ? { honorRoute = CampusHonorRoute(memberId: profile.id) } : nil)
                 if tree.messagesEnabled, let me=tree.user, me.id != profile.id { NavigationLink { NativeMessages(viewer:me.id,member:profile.id) } label: { Label("发私信",systemImage:"envelope") } }
                 Text(profile.bio.isEmpty ? "还没有填写简介" : profile.bio).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Text("\(profile.postCount) 条公开帖子").font(.caption).foregroundStyle(.secondary)

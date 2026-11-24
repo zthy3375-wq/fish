@@ -65,14 +65,14 @@ struct PangguaiWalletView: View {
             }
             .task {
                 if valid { await store.refresh() }
-                // Foreground-only read-only polling with bounded retries, never a payment trigger.
+                // Resume the current order only while the wallet is visible.
                 var ticks = 0
                 while !Task.isCancelled {
                     do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { break }
                     ticks += 1
                     guard scenePhase == .active, valid, !store.busy, pollFailures < 3 else { continue }
                     let water = store.snapshot.water
-                    let activeWater = ["starting", "using", "ending"].contains(water?.phase ?? "") && water?.orderNo != nil && water?.error != .waterOwnership && confirmation == nil
+                    let activeWater = water?.shouldPoll == true && confirmation == nil && store.settlementQuote == nil
                     let activeLaundry = store.snapshot.laundry?.terminal == false && ticks % 5 == 0
                     guard activeWater || activeLaundry else { continue }
                     await store.pollSessions(laundry: activeLaundry, water: activeWater)
@@ -99,12 +99,25 @@ struct PangguaiWalletView: View {
             Button { scannerPresented = true } label: { Label("扫码识别设备", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked)
         }.campusCard()
         if store.snapshot.issues["tickets"] != nil { notice("直饮水余额未更新，保留上次结果。") }
-        if let water = store.snapshot.water, !water.isLocallyArchived { waterSession(water) }
+        if let water = store.snapshot.water, !water.terminal { waterSession(water) }
         if let laundry = store.snapshot.laundry { laundrySession(laundry) }
         if let q = store.waterQuote { waterReview(q) }
         else if let q = store.laundryQuote { laundryReview(q) }
-        else if let d = store.device { deviceCard(d) }
-        if let q = store.settlementQuote { settlementReview(q) }
+        else if let d = store.device, d.category != "04" || store.snapshot.water?.terminal != false || store.snapshot.water?.deviceID != d.id {
+            deviceCard(d)
+        }
+        if let water = store.snapshot.water, water.terminal, !water.isLocallyArchived {
+            DisclosureGroup {
+                waterSession(water)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(water.title).font(.headline)
+                    Text(water.deviceName + " · " + water.outlet).font(.caption)
+                }
+                Spacer()
+                if water.phase == "settled" { Text("¥" + PangguaiProtocol.amount(water.amount)).bold() }
+            }.campusCard()
+        }
         Picker("胖乖钱包内容", selection: $tab) { Text("商户钱包").tag(0); Text("最近消费").tag(1) }.pickerStyle(.segmented)
         if tab == 0 { merchantList } else { orderList }
         DisclosureGroup("账户与帮助") {
@@ -155,7 +168,8 @@ struct PangguaiWalletView: View {
         }
     }
     private func deviceCard(_ d: PGDevice) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let waterInProgress = d.category == "04" && store.snapshot.water?.terminal == false
+        return VStack(alignment: .leading, spacing: 12) {
             HStack { Text(d.name).font(.headline); Spacer(); Button("收起") { store.dismissDevice() }.disabled(store.busy) }
             Text(d.operatorName).font(.caption).foregroundStyle(CampusTheme.muted)
             if !d.issue.isEmpty { notice(d.issue) }
@@ -166,10 +180,10 @@ struct PangguaiWalletView: View {
                         VStack(alignment: .leading, spacing: 5) { Text(sku.name); Text(sku.feature).font(.caption).foregroundStyle(CampusTheme.muted) }
                         Spacer(); Text(sku.price.map { "¥" + PangguaiProtocol.amount($0) } ?? "价格待查询").font(.subheadline)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
-                }.buttonStyle(.plain).disabled(blocked || !sku.available)
+                }.buttonStyle(.plain).disabled(blocked || waterInProgress || !sku.available)
             }
             if ["00", "04"].contains(d.category), d.isBluetooth == "0" {
-                Button(d.category == "04" ? "核对接水费用":"查看洗衣费用") { Task { if d.category == "04" { await store.prepareWater(skuID: selection) } else { await store.quoteLaundry(skuID: selection) } } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || selection.isEmpty)
+                Button(d.category == "04" ? (waterInProgress ? "请先处理当前接水记录" : "接水") : "查看洗衣费用") { Task { if d.category == "04" { await store.prepareWater(skuID: selection) } else { await store.quoteLaundry(skuID: selection) } } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || waterInProgress || selection.isEmpty)
                 Text(d.category == "04" ? "请核对热水／常温水出水口，并先放好杯子。":"请放好衣物、关紧机门，费用以确认页为准。").font(.caption).foregroundStyle(CampusTheme.muted)
             } else { notice("此类设备仅支持识别，请按机身和官方端提示使用。") }
         }.campusCard()
@@ -197,10 +211,10 @@ struct PangguaiWalletView: View {
             Text(q.feature)
             Text("平台标价 \(PangguaiProtocol.amount(q.price))，不是本次总价；计费单位以设备说明为准。").font(.caption)
             Text("扣费方式：" + q.paymentName)
-            Text("胖乖账户 \(store.maskedPhone)。确认后启动本次用水，结束后按实际使用量计费。已开通的免密付款以官方签约为准；本次不使用广告优惠。").font(.subheadline)
+            Text("胖乖账户 \(store.maskedPhone)。确认开始后，结束用水时将通过上述方式按实际用量自动结算。本次不使用广告优惠。").font(.subheadline)
             notice(q.remoteEnd ? "支持在此结束接水；若设备未停止，请立即按机身「结算」。":"接完请按机身「结算」，应用会查询状态和账单。")
             if !q.canStart { notice(q.reason) }
-            Button("确认开始接水") { Task { await store.startWater(confirmedQuoteID: q.id) } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || !q.canStart || q.expiresAt < Date())
+            Button("确认接水并按用量结算") { Task { await store.startWater(confirmedQuoteID: q.id) } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || !q.canStart || q.expiresAt < Date())
             if q.expiresAt < Date() { notice(PGFailure.quoteExpired.message) }
         }.campusCard()
     }
@@ -230,16 +244,28 @@ struct PangguaiWalletView: View {
                 notice(s.endSent ? "已请求结束，尚待设备确认；仍在出水请立即按机身「结算」。":"接完请按机身「结算」。暂停请使用机身按钮。")
             }
             if s.phase == "starting" { notice("尚未确认启动，不要重复扫码开水。请查看机身状态。") }
-            if let error = s.error { notice(error.message) }
+            if let error = s.error, error != .waterBill { notice(error.message) }
+            if s.phase == "ended_zero" { Text("设备回报本次用量为零，费用以最近消费为准。").font(.caption) }
             if s.phase == "closed_unknown" { Text("旧记录已移出，未确认账单仍需在最近消费或官方端核对。").font(.caption) }
             if s.endBasis == "session_closed" { notice("平台不再返回本次会话。若仍在出水，请立即按机身「结算」。") }
-            if ["ended", "settling"].contains(s.phase), !s.settleSent { Button("生成并核对结算账单") { Task { await store.prepareWaterSettlement(sessionID: s.id) } }.buttonStyle(.bordered).disabled(blocked) }
+            if s.awaitingBill {
+                if s.settleAtEnd != true && !s.settleSent {
+                    if let q = store.settlementQuote, q.sessionID == s.id {
+                        settlementReview(q)
+                    } else {
+                        Button("核对并结算本次用水") { Task { await store.prepareWaterSettlement(sessionID: s.id) } }
+                            .buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked)
+                    }
+                } else {
+                    Text("正在查询本次订单的实付金额，可稍后点「查询状态」或查看最近消费。").font(.caption)
+                }
+            }
             if s.canArchiveAfterStop { Button("已在机身结算，恢复扫码") { confirmation = .physicalWater(s.id) }.disabled(store.busy) }
             if let number = s.orderNo { Text("订单 " + number).font(.caption).textSelection(.enabled) }
             Text(s.paymentName + " · 查询于 " + updated(s.updatedAt)).font(.caption).foregroundStyle(CampusTheme.muted)
         }.campusCard()
     }
-    private func settlementReview(_ q: PGWaterSettlement) -> some View {
+    @ViewBuilder private func settlementReview(_ q: PGWaterSettlement) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("确认本次用水结算").font(.headline)
             Text(q.deviceName + " · 账户 " + store.maskedPhone)
@@ -247,7 +273,7 @@ struct PangguaiWalletView: View {
             Text("付款方式：" + q.paymentName + "。本次一次性结算，不会再次开水。")
             Button("确认结算 ¥" + PangguaiProtocol.amount(q.amount)) { Task { await store.settleWater(confirmedQuoteID: q.id) } }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).disabled(blocked || q.expiresAt < Date())
             Button("取消") { store.settlementQuote = nil }.disabled(store.busy)
-        }.campusCard()
+        }
     }
     private func queryButton(water: Bool) -> some View { Button("查询状态") { pollFailures = 0; Task { await store.pollSessions(laundry: !water, water: water) } }.font(.subheadline).disabled(blocked) }
     private func notice(_ text: String) -> some View { Text(text).font(.subheadline).foregroundStyle(CampusTheme.text).frame(maxWidth: .infinity, alignment: .leading).padding(12).background(CampusTheme.tint, in: RoundedRectangle(cornerRadius: 12)).accessibilityAddTraits(.isStaticText) }

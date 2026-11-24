@@ -186,12 +186,21 @@ struct PGWaterSession: Codable, Identifiable, Equatable {
     var id = UUID(); var deviceID: String; var deviceName: String; var skuID: String; var outlet: String; var feature: String; var paymentName: String
     var remoteEnd: Bool; var phase = "starting"; var orderNo: String?; var orderID: String?; var updatedAt = Date(); var startedAt: Date?; var endedAt: Date?
     var amount: String?; var billPayable = false; var endSent = false; var afterPaySent = false; var settleSent = false; var deviceEnded = false; var emptyReads = 0; var endBasis: String?; var error: PGFailure?
+    // Missing in older snapshots, whose start screen required a separate payment confirmation.
+    var settleAtEnd: Bool?
+    var awaitingBill: Bool { deviceEnded && ["ended", "settling"].contains(phase) }
+    var shouldPoll: Bool {
+        orderNo != nil && !terminal && error != .waterOwnership && error != .orderMismatch &&
+            (canArchiveAfterStop || awaitingBill)
+    }
     var canArchiveAfterStop: Bool { ["starting", "using", "ending"].contains(phase) }
     var isLocallyArchived: Bool {
         phase == "archived_unverified" || (phase == "closed_unknown" && endBasis == "physical_confirmed")
     }
     var terminal: Bool { isLocallyArchived || ["settled", "ended_zero", "closed_unknown"].contains(phase) }
-    var title: String { ["starting":"正在确认设备启动", "using":"接水中", "ending":"等待设备结束", "ended":"用水已结束，账单待核对", "settling":"用水已结束，账单待核对", "settled":"本次接水已结算", "ended_zero":"用水已结束", "closed_unknown":"接水记录已结束，账单待核对"][phase] ?? "用水状态待核对" }
+    var title: String {
+        if awaitingBill && (settleAtEnd == true || settleSent) { return "用水已结束，正在核对账单" }
+        return ["starting":"正在确认设备启动", "using":"接水中", "ending":"等待设备结束", "ended":"用水已结束，账单待核对", "settling":"用水已结束，账单待核对", "settled":"本次接水已结算", "ended_zero":"用水已结束", "closed_unknown":"接水记录已结束，账单待核对"][phase] ?? "用水状态待核对" }
 }
 struct PGSnapshot: Codable, Equatable {
     var balance: String?; var walletUpdatedAt: Date?; var tickets: [PGTicket] = []; var ticketsUpdatedAt: Date?
