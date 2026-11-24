@@ -56,6 +56,7 @@ extension PangguaiStore {
             guard self.now() <= q.expiresAt else { throw PGFailure.quoteExpired }
             _ = try await self.post("payChannelRoute/addUserAfterPayChannel", ["method":"15"], epoch: epoch)
             var s = PGWaterSession(deviceID: device.id, deviceName: fresh.deviceName, skuID: q.skuID, outlet: fresh.outlet, feature: fresh.feature, paymentName: fresh.paymentName, remoteEnd: fresh.remoteEnd)
+            s.settleAtEnd = true
             s.updatedAt = self.now(); try self.saveWater(s, epoch: epoch)
             do {
                 let rows = ["-6", "-7", "-8"].map { type in ["assetId":"0", "oldPromotionId":type == "-8" ? "0":"", "orgId":"0", "promotionId":"0", "promotionType":type] }
@@ -70,6 +71,12 @@ extension PangguaiStore {
         try alive(epoch)
         if var current = snapshot.water, current.id == id { current.error = PGFailure.mapped(error); current.updatedAt = now(); try saveWater(current, epoch: epoch) }
     }
+    private func displacedSessionBasis(_ s: PGWaterSession, reading: PGJSON) -> String? {
+        guard s.startedAt != nil || ["using", "ending"].contains(s.phase) else { return nil }
+        if !reading["identify"].text.isEmpty { return "order_replaced" }
+        if reading["status"].text == "5", reading["workStatus"].text == "1" { return "device_idle" }
+        return nil
+    }
     private func closeWater(_ source: PGWaterSession, basis: String, epoch: UUID) throws -> PGWaterSession {
         var s = source; s.phase = "closed_unknown"; s.deviceEnded = true; s.endBasis = basis; s.remoteEnd = false; s.endedAt = s.endedAt ?? now(); s.updatedAt = now(); s.error = .waterBill
         try saveWater(s, epoch: epoch); return s
@@ -79,46 +86,96 @@ extension PangguaiStore {
         guard let number = source.orderNo else { throw PGFailure.waterUnknown }
         var s = source
         let d = try await post("order/detail", ["orderNo":number], epoch: epoch)
+        if d == .null || d.object?.isEmpty == true { throw PGFailure.service }
+        guard d["orderNo"].text == number else { throw PGFailure.orderMismatch }
         let rows = try (d["tradeOrderItem"].array != nil ? d["tradeOrderItem"] : d["lineItems"]).rows()
         let id = try d.required("id")
-        guard d["orderNo"].text == number, rows.count == 1, rows[0]["goodsId"].text == s.deviceID, rows[0]["skuId"].text == s.skuID,
+        guard rows.count == 1, rows[0]["goodsId"].text == s.deviceID, rows[0]["skuId"].text == s.skuID,
               s.orderID == nil || s.orderID == id else { throw PGFailure.orderMismatch }
-        s.orderID = id; s.amount = try PangguaiProtocol.price(d["payPrice"]); s.updatedAt = now()
+        s.orderID = id
+        s.updatedAt = now()
         s.billPayable = d["orderStatus"].text == "0"
-        if ["2", "3"].contains(d["orderStatus"].text), s.deviceEnded { s.phase = "settled"; s.error = nil }
+        s.amount = PangguaiProtocol.money(d["payPrice"])
+        if ["2", "3"].contains(d["orderStatus"].text), s.deviceEnded {
+            guard s.amount != nil else { throw PGFailure.price }
+            s.phase = "settled"
+            s.error = nil
+        } else if s.awaitingBill {
+            s.error = .waterBill
+        }
         try saveWater(s, epoch: epoch); return s
     }
     private func optionalWaterBill(_ source: PGWaterSession, epoch: UUID) async throws -> PGWaterSession {
         do { return try await waterBill(source, epoch: epoch) }
         catch {
             try alive(epoch)
-            if [.auth, .account, .orderMismatch].contains(PGFailure.mapped(error)) { throw error }
-            return source
+            if [.service, .format, .price].contains(PGFailure.mapped(error)) { return source }
+            throw error
         }
     }
+    private func settlementBill(_ source: PGWaterSession, epoch: UUID) async throws -> PGWaterSession {
+        guard source.awaitingBill, let number = source.orderNo else { throw PGFailure.waterBill }
+        if source.afterPaySent || source.settleSent { return try await waterBill(source, epoch: epoch) }
+        var s = source
+        do { s = try await waterBill(source, epoch: epoch) }
+        catch PGFailure.service { /* The platform may only expose the bill after creation. */ }
+        if s.phase == "settled" { return s }
+
+        s.afterPaySent = true
+        s.phase = "settling"
+        try saveWater(s, epoch: epoch)
+        let created = try await post("order/afterPay/creating", ["orderNo": number], epoch: epoch)
+        let id = try created.required("orderId")
+        guard created["orderNo"].text == number, s.orderID == nil || s.orderID == id else { throw PGFailure.orderMismatch }
+        s.orderID = id
+        try saveWater(s, epoch: epoch)
+        return try await waterBill(s, epoch: epoch)
+    }
+
+    private func submitWaterBill(_ bill: PGWaterSession, epoch: UUID) async throws -> PGWaterSession {
+        guard bill.awaitingBill, bill.billPayable, !bill.settleSent, let number = bill.orderNo else { throw PGFailure.waterBill }
+        var s = bill
+        s.settleSent = true
+        s.phase = "settling"
+        try saveWater(s, epoch: epoch)
+        let result = try await post("order/sync", ["orderNo": number, "payType": "0"], epoch: epoch)
+        guard result["code"].text == "0" else { throw PGFailure.waterBill }
+        return try await waterBill(s, epoch: epoch)
+    }
+
+    private func reconcileEndedWater(_ s: PGWaterSession, epoch: UUID) async throws -> PGWaterSession {
+        guard s.awaitingBill, s.settleAtEnd == true else { return try await optionalWaterBill(s, epoch: epoch) }
+        let bill = try await settlementBill(s, epoch: epoch)
+        guard bill.billPayable, !bill.settleSent else { return bill }
+        return try await submitWaterBill(bill, epoch: epoch)
+    }
+
     func readWater(_ source: PGWaterSession, epoch: UUID) async throws -> PGWaterSession {
-        if source.isLocallyArchived { return source }
+        if source.terminal {
+            if source.phase == "closed_unknown", !source.isLocallyArchived, source.orderNo != nil {
+                return try await optionalWaterBill(source, epoch: epoch)
+            }
+            return source
+        }
         var s = source
         do {
-            if s.terminal || ["ended", "settling"].contains(s.phase) {
-                if s.orderNo != nil { return try await optionalWaterBill(s, epoch: epoch) }
-                return s
-            }
+            if s.awaitingBill { return try await reconcileEndedWater(s, epoch: epoch) }
             guard let number = s.orderNo else { throw PGFailure.waterUnknown }
             guard let reading = try await waterReading(skuID: s.skuID, epoch: epoch) else {
                 s.emptyReads += 1
                 if s.startedAt != nil, s.emptyReads >= 2 {
                     s.deviceEnded = true; s.phase = "ended"; s.endBasis = "session_closed"; s.endedAt = now(); s.error = .waterBill
-                } else { s.error = .waterWait }
+                    s.updatedAt = now(); try saveWater(s, epoch: epoch)
+                    return try await reconcileEndedWater(s, epoch: epoch)
+                }
+                s.error = .waterWait
                 s.updatedAt = now(); try saveWater(s, epoch: epoch)
                 return try await optionalWaterBill(s, epoch: epoch)
             }
             s.emptyReads = 0
             guard reading["identify"].text == number else {
-                let replaced = !reading["identify"].text.isEmpty
-                let idle = reading["status"].text == "5" && reading["workStatus"].text == "1"
-                if (s.startedAt != nil || ["using", "ending"].contains(s.phase)) && (replaced || idle) {
-                    return try closeWater(s, basis: replaced ? "order_replaced":"device_idle", epoch: epoch)
+                if let basis = displacedSessionBasis(s, reading: reading) {
+                    return try closeWater(s, basis: basis, epoch: epoch)
                 }
                 s.error = .waterOwnership; s.updatedAt = now(); try saveWater(s, epoch: epoch); return s
             }
@@ -126,7 +183,8 @@ extension PangguaiStore {
                 s.deviceEnded = true; s.endedAt = now(); s.endBasis = "device_report"; s.phase = "ended"; s.error = .waterBill
                 if PangguaiProtocol.money(reading["amount"]) == "0" { s.phase = "ended_zero"; s.error = nil }
                 s.updatedAt = now(); try saveWater(s, epoch: epoch)
-                return try await optionalWaterBill(s, epoch: epoch)
+                if s.terminal { return s }
+                return try await reconcileEndedWater(s, epoch: epoch)
             }
             if reading["status"].text == "1", reading["workStatus"].text == "2" {
                 s.phase = s.endSent ? "ending":"using"; s.startedAt = s.startedAt ?? now(); s.error = nil
@@ -141,7 +199,13 @@ extension PangguaiStore {
             if s.terminal || ["ended", "settling"].contains(s.phase) || s.endSent { return }
             guard let number = s.orderNo else { throw PGFailure.waterUnknown }
             guard let reading = try await self.waterReading(skuID: s.skuID, epoch: epoch) else { throw PGFailure.waterWait }
-            guard reading["identify"].text == number else { throw PGFailure.waterOwnership }
+            guard reading["identify"].text == number else {
+                if let basis = self.displacedSessionBasis(s, reading: reading) {
+                    _ = try self.closeWater(s, basis: basis, epoch: epoch)
+                    return
+                }
+                throw PGFailure.waterOwnership
+            }
             guard reading["status"].text == "1", reading["workStatus"].text == "2" else { throw PGFailure.waterWait }
             let d = try await self.post("goods/normal/details", ["goodsId":s.deviceID], epoch: epoch)
             guard d["goodsId"].text == s.deviceID, d["categoryCode"].text == "04" else { throw PGFailure.device }
@@ -159,17 +223,11 @@ extension PangguaiStore {
         await perform { epoch in
             self.settlementQuote = nil
             guard let source = self.snapshot.water, source.id == sessionID else { throw PGFailure.orderMismatch }
-            var s = try await self.readWater(source, epoch: epoch)
-            guard s.deviceEnded, ["ended", "settling"].contains(s.phase), let number = s.orderNo, !s.settleSent else { throw PGFailure.waterBill }
-            if !s.afterPaySent {
-                s.afterPaySent = true; try self.saveWater(s, epoch: epoch)
-                let created = try await self.post("order/afterPay/creating", ["orderNo":number], epoch: epoch)
-                guard created["orderNo"].text == number else { throw PGFailure.orderMismatch }
-                s.orderID = try created.required("orderId"); try self.saveWater(s, epoch: epoch)
-            }
-            s = try await self.waterBill(s, epoch: epoch)
+            guard source.awaitingBill, source.settleAtEnd != true, !source.settleSent else { throw PGFailure.waterBill }
+            let s = try await self.settlementBill(source, epoch: epoch)
             if s.phase == "settled" { return }
             guard s.billPayable, let amount = s.amount else { throw PGFailure.price }
+            _ = try PangguaiProtocol.price(.string(amount))
             self.settlementQuote = PGWaterSettlement(sessionID: s.id, expiresAt: self.now().addingTimeInterval(60), amount: amount, deviceName: s.deviceName, paymentName: s.paymentName)
         }
     }
@@ -177,16 +235,12 @@ extension PangguaiStore {
         await perform { epoch in
             guard let q = self.settlementQuote, q.id == confirmedQuoteID, self.now() <= q.expiresAt else { throw PGFailure.quoteExpired }
             self.settlementQuote = nil
-            guard let source = self.snapshot.water, source.id == q.sessionID, source.deviceEnded, !source.settleSent, let number = source.orderNo else { throw PGFailure.orderMismatch }
-            var s = try await self.waterBill(source, epoch: epoch)
-            if s.phase == "settled" { return }
-            guard s.billPayable, s.amount == q.amount else { throw PGFailure.priceChanged }
-            s.settleSent = true; s.phase = "settling"; try self.saveWater(s, epoch: epoch)
-            do {
-                let result = try await self.post("order/sync", ["orderNo":number, "payType":"0"], epoch: epoch)
-                guard result["code"].text == "0" else { throw PGFailure.waterBill }
-                _ = try await self.waterBill(s, epoch: epoch)
-            } catch { try self.recordWaterError(id: s.id, error: error, epoch: epoch); throw error }
+            guard let source = self.snapshot.water, source.id == q.sessionID, source.awaitingBill, !source.settleSent else { throw PGFailure.orderMismatch }
+            let bill = try await self.waterBill(source, epoch: epoch)
+            if bill.phase == "settled" { return }
+            guard bill.billPayable, bill.amount == q.amount else { throw PGFailure.priceChanged }
+            do { _ = try await self.submitWaterBill(bill, epoch: epoch) }
+            catch { try self.recordWaterError(id: source.id, error: error, epoch: epoch); throw error }
         }
     }
 }
