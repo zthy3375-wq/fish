@@ -214,7 +214,7 @@ final class PangguaiStore: ObservableObject {
             if self.device?.category == "04" { MedalJournal.shared.unlock("water") }
         }
     }
-    /// Polling is deliberately read-only. It must never create, pay, end or start a device.
+    /// Water may finish the metered order authorized at start. Polling never starts or stops a device.
     func pollSessions(laundry: Bool = true, water: Bool = true) async {
         await perform { epoch in
             var firstFailure: Error?
