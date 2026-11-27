@@ -68,7 +68,8 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/course_widget_info"/>
         </receiver>
-        <activity android:name=".life.ParcelDirectoryActivity" android:exported="false" />
+        <activity android:name=".life.ParcelDirectoryActivity" android:exported="false"
+            android:launchMode="singleTop" android:theme="@style/AppTheme.ParcelCenter" />
     </application>
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>

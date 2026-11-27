@@ -126,6 +126,26 @@ class ParcelDirectoryTest {
         assertEquals(3, paths.size)
     }
 
+    @Test fun exposesMaskedPhoneAndArrivalOnlyAfterCompleteSync() {
+        val engine = client()
+        begin(engine)
+        time += 5000
+        token()
+        reply("""{"items":[{"source":"cainiao","carrier":"sf","trackingNumber":"SF123","state":"ready","updatedAt":1000,"arrivedAt":500,"pickupCode":"001"}],
+          "maskedPhone":"130****0000","phoneManagementUri":"https://example.test/phone"}""")
+        val initial = engine.poll()
+        assertEquals("130****0000", initial.getString("maskedPhone"))
+        assertEquals(500L, initial.getJSONArray("items").getJSONObject(0).getLong("arrivedAt"))
+        assertEquals("https://example.test/phone", engine.phoneManagementUri().toString())
+        assertFalse(initial.has("phoneManagementUri"))
+        time += 11_000
+        reply("""{"items":[],"maskedPhone":"13000000000","phoneManagementUri":"https://other.example.test/phone"}""")
+        val restricted = engine.refresh(true)
+        assertFalse(restricted.has("maskedPhone"))
+        assertFalse(restricted.getBoolean("canManagePhone"))
+        assertNull(engine.phoneManagementUri())
+    }
+
     @Test fun refusesUntrustedVerificationOrigin() {
         assertNull(ParcelDirectory.approvedOrigin("https://example.test/elsewhere"))
         assertNull(ParcelDirectory.approvedOrigin("https://user@example.test"))

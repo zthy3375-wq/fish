@@ -1,14 +1,7 @@
 <script setup lang="ts">
-import {Capacitor, registerPlugin} from '@capacitor/core';
 import {onBeforeUnmount, ref} from 'vue';
 import {ArrowUpRight, PackageCheck} from 'lucide-vue-next';
 import {openParcelShortcut, parcelLaunchMessage, parcelProviders, parcelShortcutsSupported, type ParcelProvider, type ParcelOpenMode} from '../services/parcel-shortcuts';
-
-const pilotSupported = Capacitor.isPluginAvailable('ParcelDirectory');
-const pilot = registerPlugin<{open(): Promise<void>}>('ParcelDirectory');
-async function openPilot() {
-  try { await pilot.open(); } catch { message.value = '暂时无法打开取件联调。'; }
-}
 
 const supported = parcelShortcutsSupported();
 const opening = ref<ParcelProvider>();
@@ -35,7 +28,6 @@ async function open(provider: ParcelProvider, mode: ParcelOpenMode = 'app') {
 <template>
   <section class="parcel-shortcuts" aria-label="菜鸟驿站出库码" :aria-busy="!!opening">
     <div class="parcel-heading"><PackageCheck :size="19" aria-hidden="true"/><strong>菜鸟驿站取件</strong><span>官方 App 快捷入口</span></div>
-    <button v-if="pilotSupported" type="button" class="parcel-compat" @click="openPilot">待取包裹联调</button>
     <div class="parcel-actions">
       <button v-for="provider in parcelProviders" :key="provider.id" type="button" :disabled="!supported || !!opening" @click="open(provider.id)">
         <span>{{provider.label}}</span><ArrowUpRight :size="16" aria-hidden="true"/>

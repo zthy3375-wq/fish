@@ -22,4 +22,9 @@
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
         <item name="android:background">@drawable/splash</item>
     </style>
+    <style name="AppTheme.ParcelCenter" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorAccent">#2563EB</item>
+        <item name="android:windowBackground">#F5F7FA</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>
