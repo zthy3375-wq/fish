@@ -42,7 +42,6 @@ import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 class ParcelDirectoryActivity : AppCompatActivity() {
-    private lateinit var toolbar: FrameLayout
     private lateinit var refreshLayout: SwipeRefreshLayout
     private lateinit var scroll: ScrollView
     private lateinit var content: LinearLayout
@@ -78,17 +77,13 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val root = FrameLayout(this).apply { setBackgroundColor(backgroundColor) }
-        val page = column()
-        toolbar = FrameLayout(this).apply { minimumHeight = dp(54) }
-        toolbar.addTo(page)
         content = column().apply {
-            setPadding(dp(10), dp(4), dp(10), dp(18))
+            setPadding(dp(10), 0, dp(10), dp(18))
         }
-        content.addTo(page)
         scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
-            addView(page, FrameLayout.LayoutParams(-1, -2))
+            addView(content, FrameLayout.LayoutParams(-1, -2))
         }
         refreshLayout = SwipeRefreshLayout(this).apply {
             setColorSchemeColors(blue)
@@ -106,7 +101,6 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = back()
         })
-        renderToolbar()
         render()
         if (!settings) scroll.post { scroll.scrollTo(0, mainScroll) }
     }
@@ -137,27 +131,29 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         if (show == settings) return
         if (show) mainScroll = scroll.scrollY
         settings = show
-        renderToolbar()
         render(keepScroll = false)
         if (!show) scroll.post { scroll.scrollTo(0, mainScroll) }
     }
 
-    private fun renderToolbar() {
-        toolbar.removeAllViews()
+    private fun addHeader() {
+        val header = row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(58)
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        }
         val title = text(if (settings) "取件设置" else "校园取件", 25, titleColor, bold = true)
         ViewCompat.setAccessibilityHeading(title, true)
-        title.gravity = Gravity.CENTER_VERTICAL
-        title.minimumHeight = dp(54)
-        toolbar.addView(title, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER_VERTICAL).apply {
-            marginStart = dp(39)
-            marginEnd = dp(53)
+        header.addView(iconButton(R.drawable.parcel_arrow_back, "返回", titleColor) { back() },
+            LinearLayout.LayoutParams(dp(44), dp(48)).apply { marginStart = -dp(10) })
+        header.addView(title, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            marginStart = dp(4)
+            marginEnd = dp(7)
         })
-        toolbar.addView(iconButton(R.drawable.parcel_arrow_back, "返回", titleColor) { back() },
-            FrameLayout.LayoutParams(dp(44), dp(48), Gravity.START or Gravity.CENTER_VERTICAL))
         if (!settings) {
-            toolbar.addView(iconButton(R.drawable.parcel_settings, "设置", titleColor) { showSettings(true) },
-                FrameLayout.LayoutParams(dp(46), dp(48), Gravity.END or Gravity.CENTER_VERTICAL))
+            header.addView(iconButton(R.drawable.parcel_settings, "设置", titleColor) { showSettings(true) },
+                LinearLayout.LayoutParams(dp(46), dp(48)).apply { marginEnd = -dp(10) })
         }
+        header.addTo(content)
         refreshLayout.isEnabled = !settings
     }
 
@@ -229,6 +225,7 @@ class ParcelDirectoryActivity : AppCompatActivity() {
             captureLocked = privateData
         }
         content.removeAllViews()
+        addHeader()
         if (settings) renderSettings() else renderMain()
         scroll.post { scroll.scrollTo(0, offset) }
     }
