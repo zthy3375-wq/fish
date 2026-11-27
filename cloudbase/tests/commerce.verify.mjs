@@ -1,75 +1,12 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {once} from 'node:events';
-import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
-import {PGlite} from '@electric-sql/pglite';
-import jpeg from 'jpeg-js';
-import {createCommerce} from '../functions/community/commerce.mjs';
-import {createCommunity,digest,hashPassword} from '../functions/community/core.mjs';
-import {createServer} from '../functions/community/server.mjs';
+import {digest} from '../functions/community/core.mjs';
+import {fixture} from './fixtures/commerce.mjs';
 
-const root=new URL('../',import.meta.url);
-const png=jpeg.encode({width:2,height:2,data:Buffer.alloc(16,190)},80).data.toString('base64');
 function stamp(days){return new Date(Date.now()+days*86_400_000).toISOString();}
 const range=(start=-.02,end=5)=>({startsAt:stamp(start),endsAt:stamp(end)});
 const settings={adsEnabled:true,iosAdsEnabled:false,reason:'隔离广告测试'};
-const salt='isolated-commerce-fixture-policy-salt-12345';
-const password='isolated-fixture-passphrase';
-
-export async function fixture(){
- const pg=new PGlite();
- await pg.exec('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role');
- for(const migration of ['community-schema.sql','commerce-schema.sql'])await pg.exec(await readFile(new URL(migration,root),'utf8'));
- const db=async(action,body,token)=>(await pg.query('SELECT hyt_commerce.run($1,$2::jsonb,$3) AS result',[action,JSON.stringify(body),token])).rows[0].result;
- const media=new Map();
- const storage={
-  async put(id,bytes){media.set(id,bytes);},
-  async urls(ids){return new Map(ids.filter(id=>media.has(id)).map(id=>[id,'https://example.invalid/'+id]));},
- };
- const commerce=createCommerce({db,storage,salt,adminWebURL:'https://workbench.example.invalid/'});
- const community=createCommunity({db:async(action,body,token)=>(await pg.query('SELECT public.hyt_community($1,$2::jsonb,$3) AS result',[action,JSON.stringify(body),token])).rows[0].result,registrationEnabled:true,rateSalt:salt});
- const users={};
- const hashed=await hashPassword(password);
- async function add(name,developer=false,role='member'){
-  const id=randomUUID(),token=Buffer.from(id.replace(/-/g,'').repeat(2),'hex').toString('base64url');
-  await pg.query(`INSERT INTO public.hyt_members(id,username,nickname,password_hash,recovery_hash,developer_since,role)
-   VALUES($1,$2,$2,$3,'fixture',CASE WHEN $4 THEN now() ELSE NULL END,$5)`,[id,name,hashed,developer,role]);
-  await pg.query("INSERT INTO public.hyt_sessions(hash,member_id,expires_at) VALUES($1,$2,now()+interval '1 day')",[digest(token),id]);
-  return users[name]={id,token};
- }
- for(const name of ['owner','business','merchant','merchant2','merchant3','merchant4','student','student2','student3','moderator'])await add(name,name==='owner',name==='owner'||name==='moderator'?'moderator':'member');
- const server=createServer(community,{commerce,allowedOrigins:['http://localhost:4173','http://127.0.0.1:4173']});
- server.listen(0,'127.0.0.1');await once(server,'listening');
- const base='http://127.0.0.1:'+server.address().port+'/hyt-community/v1/';
- async function call(action,body={},user,peer){
-  const path=action==='login'?action:'commerce.'+action;
-  const response=await fetch(base+path,{
-   method:'POST',headers:{'Content-Type':'application/json',...(user?{Authorization:'Bearer '+users[user].token}:{}),...(peer?{'X-Real-IP':peer}:{})},
-   body:JSON.stringify(body),
-  });
-  return {status:response.status,...await response.json()};
- }
- async function okay(action,body,user){
-  const result=await call(action,body,user);assert.equal(result.status,200,action+': '+JSON.stringify(result));return result;
- }
- async function image(user,purpose){return (await okay('media.upload',{purpose,data:png},user)).id;}
- async function enroll(user,category='food'){
-  const imageId=await image(user,'shop'),qualificationImage=await image(user,'qualification');
-  const draft={name:'隔离门店 '+user,category,description:'可用夹具介绍',hours:'10:00-19:00',phone:'13100000000',address:'东校区测试地址',
-   latitude:36.6,longitude:114.4,legalName:'测试主体 '+user,businessId:'000000000001',legalAddress:'封闭测试地址',legalPhone:'13200000000',
-   qualification:'隔离数据库资质说明',images:[imageId],qualificationImage};
-  const shop=(await okay('merchant.apply',draft,user)).id;
-  await okay('admin.shop',{id:shop,revision:1,decision:'approved',reason:'核验通过'},'owner');
-  return {shop,draft};
- }
- async function submitAd(user){
-  const id=(await okay('merchant.ad',{id:randomUUID(),title:'商家福利',subtitle:'到店可用',image:await image(user,'ad')},user)).id;
-  await okay('admin.ad',{id,decision:'approved',reason:'素材经过核对'},'owner');
-  return id;
- }
- return {pg,server,base,users,call,okay,image,enroll,submitAd,password,close:async()=>{server.close();await once(server,'close');await pg.close();}};
-}
 
 test('隔离数据库与真实 HTTP：资质、广告、授权、核销和隐私',async()=>{
  const f=await fixture();
@@ -146,7 +83,7 @@ test('隔离数据库与真实 HTTP：资质、广告、授权、核销和隐私
   await okay('admin.schedule',{adId:ad,contractId:contract,placement:'banner',...range()},'business');
   await okay('admin.schedule',{adId:ad,contractId:contract,placement:'category',...range()},'business');
   assert.equal((await call('admin.schedule',{adId:ad,contractId:contract,placement:'home',...range()},'business')).error,'schedule_conflict');
-  assert.equal((await call('admin.schedule',{adId:ad,contractId:contract,placement:'home',...range(21,23)},'business')).error,'invalid_period');
+  assert.equal((await call('admin.schedule',{adId:ad,contractId:contract,placement:'home',...range(40,42)},'business')).error,'invalid_period');
   assert.equal((await okay('home')).ads.length,0);
   await okay('admin.settings',settings,'owner');
   assert.equal((await okay('home')).ads.length,0);
@@ -169,7 +106,9 @@ test('隔离数据库与真实 HTTP：资质、广告、授权、核销和隐私
   users[winner].token=Buffer.from(randomUUID().replace(/-/g,'').repeat(2),'hex').toString('base64url');
   await pg.query("INSERT INTO public.hyt_sessions(hash,member_id,expires_at) VALUES($1,$2,now()+interval '1 day')",[digest(users[winner].token),users[winner].id]);
   await okay('metrics',{events},winner);
-  const stats=(await okay('merchant.stats',{},'merchant')).days;
+  const results=await okay('merchant.stats',{},'merchant');
+  assert.equal(results.promotion,true);
+  const stats=results.days;
   assert.deepEqual(Object.fromEntries(stats.map(x=>[x.kind,x.total])),{claim:1,impression:1,redeem:1,visit:1});
   assert.ok(!JSON.stringify(stats).includes(initialSession));
   await okay('report',{shopId:shop,id:ad,reason:'匿名举报测试'});
@@ -184,5 +123,22 @@ test('隔离数据库与真实 HTTP：资质、广告、授权、核销和隐私
   assert.equal(data.items[0].paid,19900);
   assert.equal(data.items[0].receipts.length,1);
   await pg.exec('SELECT hyt_commerce.prune_private()');
+ }finally{await f.close();}
+});
+
+test('公开缓存合并请求，广告严格按到期时间下架',async()=>{
+ const f=await fixture();
+ try{
+  await Promise.all(Array.from({length:24},()=>f.okay('catalog')));
+  assert.equal(f.calls.get('catalog'),1);
+  const {shop}=await f.enroll('merchant');
+  const ad=await f.submitAd('merchant');
+  const contract=(await f.okay('admin.contract',{shopId:shop,plan:'home',kind:'trial',placements:['home'],startsAt:stamp(-.025),reference:'到期验证'},'owner')).id;
+  await f.okay('admin.settings',settings,'owner');
+  const end=new Date(Date.now()+1300).toISOString();
+  await f.okay('admin.schedule',{adId:ad,contractId:contract,placement:'home',startsAt:stamp(-.01),endsAt:end},'owner');
+  assert.equal((await f.okay('home')).ads[0].endsAt.slice(0,19),end.slice(0,19));
+  await new Promise(resolve=>setTimeout(resolve,1450));
+  assert.deepEqual((await f.okay('home')).ads,[]);
  }finally{await f.close();}
 });

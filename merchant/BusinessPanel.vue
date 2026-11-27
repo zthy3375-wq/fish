@@ -78,7 +78,7 @@ function applyContract(){
    attachment.value=undefined;
   }
   await request('admin.contract',{...contract,startsAt:chinaTime(contract.startsAt),
-   endsAt:contract.kind==='trial'?null:chinaTime(contract.endsAt),
+   endsAt:contract.kind==='short'?chinaTime(contract.endsAt):null,
    cents:contract.cents===''?null:Math.round(Number(contract.cents)*100),attachment:contract.attachment||null,
    renewedFrom:contract.renewedFrom||null,
   });
@@ -182,7 +182,8 @@ function detailLabel(row:Schedule){
      <label>合作方式<select v-model="contract.kind" @change="contract.cents=''"><option value="monthly">月度</option><option value="trial">14 天免费试用</option><option value="short" :disabled="!owner">短期推广</option></select></label>
      <label>签约编号或说明<input v-model.trim="contract.reference" required minlength="2" maxlength="200"/></label>
      <label>开始（北京时间）<input v-model="contract.startsAt" type="datetime-local" required/></label>
-     <label v-if="contract.kind!=='trial'">结束（北京时间）<input v-model="contract.endsAt" type="datetime-local" required/></label>
+     <label v-if="contract.kind==='short'">结束（北京时间）<input v-model="contract.endsAt" type="datetime-local" required/></label>
+     <p v-if="contract.kind!=='short'" class="subtle">结束时间按{{contract.kind==='trial'?'14 天':'一个自然月'}}自动计算。</p>
      <label v-if="owner&&contract.kind!=='trial'">自定义金额（元）<input v-model.trim="contract.cents" type="number" placeholder="默认套餐价" min="0" max="100000" step=".01"/></label>
      <label>合同附件（选填）<input type="file" accept="image/jpeg,image/png,image/webp" @change="attachment=($event.target as HTMLInputElement).files?.[0]"/></label>
      <fieldset v-if="slots.length" class="wide"><legend>预留广告位</legend><label v-for="slot in slots" :key="slot" class="check"><input v-model="contract.placements" type="checkbox" :value="slot"/>{{placementName[slot]}}</label></fieldset>

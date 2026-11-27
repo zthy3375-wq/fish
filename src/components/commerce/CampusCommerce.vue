@@ -196,6 +196,7 @@ onMounted(()=>{
    <strong v-else>{{coupon.usedAt?'已核销 · '+dateLabel(coupon.usedAt):'已失效'}}</strong>
   </article>
   <form v-if="screen==='report'" class="commerce-report" @submit.prevent="sendReport">
+   <p v-if="report?.id" class="commerce-body">这张广告按所在页面和门店分类投放。</p>
    <label>举报原因<textarea v-model="reason" required minlength="2" maxlength="500" rows="4" placeholder="请说明遇到的问题，避免填写个人信息"/></label>
    <button :disabled="busy||reason.trim().length<2">提交举报</button>
   </form>

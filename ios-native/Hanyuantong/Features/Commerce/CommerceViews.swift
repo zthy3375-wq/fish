@@ -1,6 +1,16 @@
 import SwiftUI
 import CoreImage.CIFilterBuiltins
 
+private struct CommerceSignInKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+extension EnvironmentValues {
+    var commerceSignIn: () -> Void {
+        get { self[CommerceSignInKey.self] }
+        set { self[CommerceSignInKey.self] = newValue }
+    }
+}
+
 struct CommerceDestination: Hashable, Identifiable {
     enum Kind: Hashable { case catalog, shop(String), report(String, String?, String) }
     let kind: Kind
@@ -36,14 +46,15 @@ private struct CommerceAdDeck: View {
     let rotate: Bool
     let onOpen: (CommerceDestination.Kind) -> Void
     @State private var index = 0
+    @State private var clock = Date()
     @State private var visible = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.scenePhase) private var phase
 
     var body: some View {
-        TimelineView(.periodic(from: Date(), by: 1)) { context in
-            let live = ads.filter { $0.displayUntil > context.date }
+        let live = ads.filter { $0.displayUntil > clock }
+        Group {
             if !live.isEmpty {
                 let shown = rotate ? [live[index % live.count]] : live
                 VStack(spacing: 6) {
@@ -69,7 +80,14 @@ private struct CommerceAdDeck: View {
                         .padding(.leading, 10).padding(.vertical, 6)
                         .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
                         .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
-                        .onAppear { if phase == .active { CommerceMetrics.shared.add("impression", ad.id) } }
+                        .background {
+                            GeometryReader { geometry in
+                                let frame = geometry.frame(in: .global)
+                                let inFrame = phase == .active && frame.height > 0 && frame.intersection(UIScreen.main.bounds).height >= frame.height / 2
+                                Color.clear.onAppear { if inFrame { CommerceMetrics.shared.add("impression", ad.id) } }
+                                    .onChange(of: inFrame) { if $0 { CommerceMetrics.shared.add("impression", ad.id) } }
+                            }
+                        }
                     }
                     if rotate && live.count > 1 {
                         HStack(spacing: 4) {
@@ -86,8 +104,17 @@ private struct CommerceAdDeck: View {
                 }.buttonStyle(.plain)
             }
         }.onAppear { visible = true }.onDisappear { visible = false }
-            .task(id: rotate && !reduceMotion && !voiceOver && visible && phase == .active && ads.count > 1) {
-                guard rotate && !reduceMotion && !voiceOver && visible && phase == .active && ads.count > 1 else { return }
+            .task(id: ads.map(\.endsAt)) {
+                clock = Date()
+                let deadlines = Set(ads.map(\.displayUntil)).filter { $0 > clock }.sorted()
+                for date in deadlines {
+                    let nanoseconds = UInt64(max(0, date.timeIntervalSinceNow) * 1_000_000_000) + 5_000_000
+                    do { try await Task.sleep(nanoseconds: nanoseconds) } catch { return }
+                    clock = Date()
+                }
+            }
+            .task(id: rotate && !reduceMotion && !voiceOver && visible && phase == .active && live.count > 1) {
+                guard rotate && !reduceMotion && !voiceOver && visible && phase == .active && live.count > 1 else { return }
                 while !Task.isCancelled {
                     do { try await Task.sleep(nanoseconds: 6_500_000_000) } catch { return }
                     index += 1
@@ -210,8 +237,7 @@ private struct CommerceShopRow: View {
 
 private struct CommerceShopView: View {
     let shopId: String
-    @EnvironmentObject private var campus: CampusStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.commerceSignIn) private var signIn
     @State private var detail: CommerceDetail?
     @State private var favorited = false
     @State private var error: String?
@@ -227,7 +253,7 @@ private struct CommerceShopView: View {
                 if let error { CommerceFeedback(text: error, retry: detail == nil ? { Task { await load() } } : nil) }
                 if let status { CommerceFeedback(text: status) }
                 if errorCode == "session_expired" {
-                    Button("登录邯院通") { dismiss(); campus.selectedTab = .community }.buttonStyle(.borderedProminent)
+                    Button("登录邯院通") { signIn() }.buttonStyle(.borderedProminent)
                 }
                 if errorCode == "student_verification_required", let verification {
                     Text("请向运营管理员出示学生证和此账号标识，核验后可领券。").foregroundStyle(CampusTheme.muted)
@@ -306,8 +332,7 @@ private struct CommerceShopView: View {
 }
 
 private struct CommerceFavoritesView: View {
-    @EnvironmentObject private var campus: CampusStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.commerceSignIn) private var signIn
     @State private var items: [CommerceShop] = []
     @State private var media: [String: URL] = [:]
     @State private var next: String?
@@ -319,7 +344,7 @@ private struct CommerceFavoritesView: View {
         ScrollView {
             LazyVStack(spacing: 10) {
                 if let error { CommerceFeedback(text: error, retry: needsAccount ? nil : { Task { await load() } }) }
-                if needsAccount { Button("登录邯院通") { dismiss(); campus.selectedTab = .community }.buttonStyle(.borderedProminent) }
+                if needsAccount { Button("登录邯院通") { signIn() }.buttonStyle(.borderedProminent) }
                 if busy { ProgressView() }
                 if !busy && error == nil && items.isEmpty { CommerceFeedback(text: "还没有收藏门店") }
                 ForEach(items) { shop in NavigationLink { CommerceShopView(shopId: shop.id) } label: { CommerceShopRow(shop: shop, media: media) }.buttonStyle(.plain) }
@@ -340,8 +365,7 @@ private struct CommerceFavoritesView: View {
 }
 
 private struct CommerceWalletView: View {
-    @EnvironmentObject private var campus: CampusStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.commerceSignIn) private var signIn
     @State private var items: [CommerceCoupon] = []
     @State private var next: String?
     @State private var error: String?
@@ -352,7 +376,7 @@ private struct CommerceWalletView: View {
         ScrollView {
             LazyVStack(spacing: 10) {
                 if let error { CommerceFeedback(text: error, retry: needsAccount ? nil : { Task { await load() } }) }
-                if needsAccount { Button("登录邯院通") { dismiss(); campus.selectedTab = .community }.buttonStyle(.borderedProminent) }
+                if needsAccount { Button("登录邯院通") { signIn() }.buttonStyle(.borderedProminent) }
                 if busy { ProgressView() }
                 if !busy && error == nil && items.isEmpty { CommerceFeedback(text: "还没有领取优惠券") }
                 ForEach(items) { item in
@@ -439,6 +463,7 @@ private struct CommerceReportView: View {
 
     var body: some View {
         Form {
+            if adId != nil { Section("展示依据") { Text("这张广告按所在页面和门店分类投放。") } }
             Section(subject) {
                 if !sent {
                     TextEditor(text: $reason).frame(minHeight: 95).accessibilityLabel("举报原因")

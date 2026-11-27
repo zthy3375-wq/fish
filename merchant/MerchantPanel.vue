@@ -17,6 +17,7 @@ const review=ref<ShopReview['shop']>(),plans=ref<Plan[]>([]),categories=ref<Cate
 const draft=reactive<Draft>({name:'',category:'',description:'',hours:'',phone:'',address:'',latitude:null,longitude:null,images:[],legalName:'',businessId:'',legalAddress:'',legalPhone:'',qualification:'',qualificationImage:''});
 const media=ref<Record<string,string>>({}),shopFiles=ref<File[]>([]),qualificationFile=ref<File>();
 const offers=ref<OfferRecord[]>([]),ads=ref<AdRecord[]>([]),contracts=ref<Contract[]>([]),days=ref<Daily[]>([]),next=ref<string|null>(null);
+const promotion=ref(false);
 const active=ref(''),starts=localTime(new Date().toISOString());
 const offer=reactive({id:crypto.randomUUID(),title:'',terms:'',quota:30,startsAt:starts,endsAt:''}),editingOffer=ref('');
 const ad=reactive({id:crypto.randomUUID(),title:'',subtitle:''}),adImage=ref<File>();
@@ -38,7 +39,7 @@ async function readShop(){
 }
 async function load(append=false){
  if(tab.value==='shop'){await readShop();return;}
- if(tab.value==='stats'){days.value=(await request<{days:Daily[]}>('merchant.stats')).days;return;}
+ if(tab.value==='stats'){const stats=await request<{days:Daily[];promotion:boolean}>('merchant.stats');days.value=stats.days;promotion.value=stats.promotion;return;}
  if(tab.value==='redeem')return;
  const r=await request<CommercePage<OfferRecord|AdRecord|Contract>>('merchant.'+tab.value,{next:append?next.value:null});
  if(tab.value==='offers')offers.value=[...(append?offers.value:[]),...r.items as OfferRecord[]];
@@ -59,7 +60,7 @@ function submitShop(){
   if(shopFiles.value.length>4)throw Error('invalid_image');
   if(shopFiles.value.length){const photos:string[]=[];for(const file of shopFiles.value)photos.push(await upload(file,'shop'));draft.images=photos;shopFiles.value=[];}
   if(qualificationFile.value){draft.qualificationImage=await upload(qualificationFile.value,'qualification');qualificationFile.value=undefined;}
-  await request('merchant.apply',{...draft});await readShop();status.value='已提交审核';
+  await request('merchant.apply',{...draft,latitude:typeof draft.latitude==='number'?draft.latitude:null,longitude:typeof draft.longitude==='number'?draft.longitude:null});await readShop();status.value='已提交审核';
  });
 }
 function offerEdit(row:OfferRecord){
@@ -156,13 +157,13 @@ function redeem(){
     <form class="stack" @submit.prevent="submitAd">
      <label>素材标题<input v-model.trim="ad.title" required minlength="2" maxlength="36"/></label>
      <label>补充说明<input v-model.trim="ad.subtitle" maxlength="80"/></label>
-     <label>广告图片<input type="file" accept="image/jpeg,image/png,image/webp" :required="!adImage" @change="adImage=chooseFiles($event)[0]"/></label>
+     <label>广告图片<input :key="ad.id" type="file" accept="image/jpeg,image/png,image/webp" :required="!adImage" @change="adImage=chooseFiles($event)[0]"/></label>
      <button class="primary" :disabled="busy">提交素材审核</button>
     </form>
     <h2>已提交素材</h2><p v-if="!ads.length&&!busy" class="empty">暂无广告素材</p>
     <article v-for="row in ads" :key="row.id" class="record"><img v-if="media[row.image]" class="record-image" :src="media[row.image]" alt="广告素材"/><div><h3>{{row.title}}</h3><p>{{row.subtitle}}</p><p class="subtle">{{stateName[row.state]}} {{row.decision}}</p></div></article>
    </template>
-   <Stats v-else-if="tab==='stats'&&!error" :days="days"/>
+   <Stats v-else-if="tab==='stats'&&!error" :days="days" :promotion="promotion"/>
    <template v-else-if="tab==='contracts'">
     <h2>合作有效期</h2><p v-if="!contracts.length&&!busy" class="empty">暂无推广合同。已审核门店可使用基础版。</p>
     <article v-for="row in contracts" :key="row.id" class="record"><h3>{{row.snapshot.name}} · {{stateName[row.kind]}} · {{contractState(row)}}</h3>

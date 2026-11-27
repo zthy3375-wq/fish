@@ -89,7 +89,7 @@ function sanitize(action,b){
   const selected=array(b.placements,v=>one(v,placements),3);
   if(new Set(selected).size!==selected.length||kind==='trial'&&b.cents!=null)invalid();
   return {id:requestId(b.id),shopId:id(b.shopId),plan:one(b.plan,planIds),kind,placements:selected,
-   ...(kind==='trial'?{startsAt:time(b.startsAt)}:period(b,kind==='short'?30:366)),cents:b.cents==null?null:int(b.cents,0,10_000_000),
+   ...(kind==='short'?period(b,30):{startsAt:time(b.startsAt)}),cents:b.cents==null?null:int(b.cents,0,10_000_000),
    attachment:id(b.attachment,true),renewedFrom:id(b.renewedFrom,true),reference:text(b.reference,2,200)};
  }
  case 'admin.receipt':{

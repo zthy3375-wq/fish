@@ -178,7 +178,7 @@ DECLARE
  coupon hyt_commerce.coupons; plan hyt_commerce.plans; contract hyt_commerce.contracts;
  schedule_row hyt_commerce.schedule; reservation hyt_commerce.inventory;
  arg_id uuid := (b->>'id')::uuid; shop_id_arg uuid := (b->>'shopId')::uuid; cursor_id uuid := (b->>'next')::uuid;
- receipt_total integer; data jsonb; extra jsonb; event jsonb; target uuid; item uuid; image uuid; arg_placement text; arg_stats_shop uuid; kind text;
+ receipt_total integer; show_promotion boolean := true; data jsonb; extra jsonb; event jsonb; target uuid; item uuid; image uuid; arg_placement text; arg_stats_shop uuid; kind text;
  placements text[]; available integer; price integer; window_period tstzrange;
  today date := (now() AT TIME ZONE 'Asia/Shanghai')::date;
  ios boolean := coalesce(b->>'platform','android')='ios';
@@ -186,7 +186,7 @@ BEGIN
  IF action='home' THEN RETURN jsonb_build_object('status',200,'ads',hyt_commerce.ad_list('home',ios)); END IF;
  IF action='catalog' THEN
   arg_placement := coalesce(nullif(b->>'category',''),'');
-  SELECT jsonb_agg(hyt_commerce.shop_json(r) ORDER BY r.id) INTO data FROM (
+  SELECT jsonb_agg((hyt_commerce.shop_json(r)||jsonb_build_object('images',jsonb_build_array(r.published->'images'->0))) ORDER BY r.id) INTO data FROM (
    SELECT * FROM hyt_commerce.shops s WHERE s.published IS NOT NULL AND s.state<>'suspended'
    AND (arg_placement='' OR s.published->>'category'=arg_placement)
    AND (cursor_id IS NULL OR s.id>cursor_id)
@@ -205,7 +205,7 @@ BEGIN
   RETURN jsonb_build_object('status',200,'shop',hyt_commerce.shop_json(shop),'offers',data);
  END IF;
  IF action='report' THEN
-  SELECT s.id INTO target FROM hyt_commerce.shops s WHERE s.id=shop_id_arg AND s.published IS NOT NULL AND s.state<>'suspended';
+  SELECT s.id INTO target FROM hyt_commerce.shops s WHERE s.id=shop_id_arg AND s.published IS NOT NULL;
   IF target IS NULL OR (arg_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM hyt_commerce.ads a WHERE a.id=arg_id AND a.shop_id=target))
    THEN RETURN hyt_commerce.error('not_found',404); END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('commerce:report:'||(b->>'reportKey'),0));
@@ -388,7 +388,9 @@ BEGIN
   IF plan.id='basic' AND price<>0 THEN RETURN hyt_commerce.error('invalid_request'); END IF;
   IF kind<>'trial' AND plan.cents>0 AND price=0 AND NOT owner THEN RETURN hyt_commerce.error('owner_price_required',403); END IF;
   window_period:=tstzrange((b->>'startsAt')::timestamptz,
-    CASE WHEN kind='trial' THEN (b->>'startsAt')::timestamptz+interval '336 hours' ELSE (b->>'endsAt')::timestamptz END,'[)');
+    CASE kind WHEN 'trial' THEN (b->>'startsAt')::timestamptz+interval '336 hours'
+    WHEN 'monthly' THEN (((b->>'startsAt')::timestamptz AT TIME ZONE 'Asia/Shanghai')+interval '1 month') AT TIME ZONE 'Asia/Shanghai'
+    ELSE (b->>'endsAt')::timestamptz END,'[)');
   IF upper(window_period)<=now() OR lower(window_period)<now()-interval '1 day' THEN RETURN hyt_commerce.error('invalid_period'); END IF;
   IF kind='trial' AND (plan.cents=0 OR EXISTS(SELECT 1 FROM hyt_commerce.contracts c WHERE c.shop_id=shop.id AND c.kind='trial'))
    THEN RETURN hyt_commerce.error('trial_used',409); END IF;
@@ -474,7 +476,7 @@ BEGIN
  ELSIF action='shop.status' THEN
   RETURN jsonb_build_object('status',200,'favorited',EXISTS(SELECT 1 FROM hyt_commerce.favorites f WHERE f.member_id=actor AND f.shop_id=shop_id_arg));
  ELSIF action='favorites' THEN
-  SELECT jsonb_agg(hyt_commerce.shop_json(x) ORDER BY x.id) INTO data FROM (
+  SELECT jsonb_agg((hyt_commerce.shop_json(x)||jsonb_build_object('images',jsonb_build_array(x.published->'images'->0))) ORDER BY x.id) INTO data FROM (
    SELECT s.* FROM hyt_commerce.favorites f JOIN hyt_commerce.shops s ON s.id=f.shop_id
    WHERE f.member_id=actor AND s.state<>'suspended' AND s.published IS NOT NULL
     AND (cursor_id IS NULL OR s.id>cursor_id) ORDER BY s.id LIMIT 21
@@ -551,16 +553,16 @@ BEGIN
   RETURN '{"status":200}'::jsonb;
  ELSIF action IN ('merchant.stats','admin.stats') THEN
   arg_stats_shop:=CASE WHEN action='merchant.stats' THEN own_shop ELSE shop_id_arg END;
-  IF action='merchant.stats' AND NOT EXISTS (
+  IF action='merchant.stats' THEN SELECT EXISTS (
    SELECT 1 FROM hyt_commerce.contracts c WHERE c.shop_id=arg_stats_shop AND c.cancelled_at IS NULL AND (c.snapshot->>'reports')::boolean
     AND c.period && tstzrange(((today-29)::timestamp AT TIME ZONE 'Asia/Shanghai'),now(),'[]')
-  ) THEN RETURN hyt_commerce.error('report_plan_required',403); END IF;
+  ) INTO show_promotion; END IF;
   IF arg_stats_shop IS NOT NULL AND NOT EXISTS(SELECT 1 FROM hyt_commerce.shops s WHERE s.id=arg_stats_shop) THEN RETURN hyt_commerce.error('not_found',404); END IF;
   SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.day,x.kind),'[]') INTO data FROM (
    SELECT m.day,m.kind,sum(m.total) AS total FROM hyt_commerce.metrics m WHERE (arg_stats_shop IS NULL OR m.shop_id=arg_stats_shop) AND m.day BETWEEN today-29 AND today
-   GROUP BY m.day,m.kind
+   AND (show_promotion OR m.kind IN ('claim','redeem')) GROUP BY m.day,m.kind
   ) x;
-  RETURN jsonb_build_object('status',200,'days',data);
+  RETURN jsonb_build_object('status',200,'days',data,'promotion',show_promotion);
  ELSE RETURN hyt_commerce.error('not_found',404);
  END IF;
  INSERT INTO hyt_commerce.audit(actor,action,subject,details) VALUES(actor,action,target,b);
@@ -573,6 +575,8 @@ CREATE OR REPLACE FUNCTION hyt_commerce.prune_private() RETURNS void
 LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,hyt_commerce AS $$
  DELETE FROM hyt_commerce.metric_seen WHERE day < (now() AT TIME ZONE 'Asia/Shanghai')::date-1;
  DELETE FROM hyt_commerce.audit WHERE action='redeem.attempt' AND created_at<now()-interval '2 days';
+ UPDATE hyt_commerce.shops s SET state='suspended',decision='经营账号已注销',revision=s.revision+1
+  FROM public.hyt_members m WHERE m.id=s.merchant_id AND m.deleted_at IS NOT NULL AND s.state<>'suspended';
  DELETE FROM hyt_commerce.access x USING public.hyt_members m WHERE m.id=x.member_id AND m.deleted_at IS NOT NULL;
  DELETE FROM hyt_commerce.favorites f USING public.hyt_members m WHERE m.id=f.member_id AND m.deleted_at IS NOT NULL;
  UPDATE hyt_commerce.coupons c SET member_id=NULL FROM public.hyt_members m WHERE m.id=c.member_id AND m.deleted_at IS NOT NULL;

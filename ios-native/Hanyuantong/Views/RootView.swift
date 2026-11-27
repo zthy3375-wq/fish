@@ -36,6 +36,7 @@ struct RootView: View {
 
 struct HomeView: View {
     @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var tree: TreeholeStore
     @EnvironmentObject var learning: LearningStore
     @EnvironmentObject var quzhi: QuzhiStore
     @EnvironmentObject var pangguai: PangguaiStore
@@ -97,6 +98,10 @@ struct HomeView: View {
                     destination.content.toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button("关闭") { commerceDestination = nil } }
                     }
+                }.environment(\.commerceSignIn) {
+                    commerceDestination = nil
+                    tree.accountEntryRequested = true
+                    store.selectedTab = .community
                 }
             }
             .task(id: scenePhase == .active && store.selectedTab == .home) {

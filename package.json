@@ -20,7 +20,8 @@
     "test:treehole": "npm run build && node scripts/treehole-browser-check.mjs",
     "merchant:dev": "vite --config merchant/vite.config.ts --host 0.0.0.0",
     "merchant:build": "vue-tsc --noEmit -p merchant/tsconfig.json && vite build --config merchant/vite.config.ts",
-    "check:commerce": "node --test cloudbase/tests/commerce.verify.mjs"
+    "check:commerce": "node --test cloudbase/tests/commerce.verify.mjs",
+    "test:commerce:ui": "npm run build && node scripts/commerce-browser-check.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
