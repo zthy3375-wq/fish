@@ -50,7 +50,7 @@ import {
   onUnmounted,
   nextTick,
 } from "vue";
-import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { App as NativeApp } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
@@ -140,13 +140,24 @@ const {
   section,
   overlay: modal,
   move,
-  open,
+  open: openOverlay,
   close,
   back,
   canBack,
   setOverlayCloseGuard,
   setBeforeBack,
 } = useNavigation();
+const parcelCenter = registerPlugin<{open(): Promise<void>}>('ParcelDirectory');
+let openingParcel = false;
+function open(action: string) {
+  if (action !== 'parcel' || Capacitor.getPlatform() !== 'android') {
+    openOverlay(action);
+    return;
+  }
+  if (openingParcel) return;
+  openingParcel = true;
+  void parcelCenter.open().catch(() => notify('暂时无法打开校园取件，请重试')).finally(() => { openingParcel = false; });
+}
 const prefs = ref(loadPreferences()),
   draft = ref({ name: "", major: "" }),
   selected = ref<Course>(),

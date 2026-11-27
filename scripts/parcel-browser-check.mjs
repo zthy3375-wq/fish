@@ -1,54 +1,23 @@
-/** Synthetic bridge checks only. Does not verify installed provider apps or live identity codes. */
-import path from 'node:path';
-
-export async function checkParcelShortcuts(page, assert, {width, output}) {
+/** Checks the Vue-to-Android navigation contract. Device controls are exercised in Android UI tests. */
+export async function checkParcelShortcuts(page, assert, {width}) {
   const nav = label => page.getByRole('navigation', {name: '主导航'}).getByRole('button', {name: label, exact: true});
-  const shortcuts = page.getByRole('region', {name: '菜鸟驿站出库码'});
-  await page.getByRole('button', {name: /取快递/}).click();
-  await shortcuts.waitFor();
+  await nav('首页').click();
+  const entry = page.getByRole('button', {name: /取快递/});
   const historyLength = await page.evaluate(() => history.length);
-  const storageBefore = await page.evaluate(() => ({school: localStorage.getItem('handan.academic.cache.v050'), personal: localStorage.getItem('handan.personal.tasks.v2')}));
-  assert(await shortcuts.getByRole('button', {name: '淘宝出库码', exact: true}).count() === 1, `${width}: parcel entry labels Taobao explicitly`);
-  assert(await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).count() === 1, `${width}: parcel entry labels Pinduoduo explicitly`);
-  assert(await page.evaluate(() => window.__parcelCalls.length) === 0, `${width}: parcel entry never auto-launches a provider`);
-  await shortcuts.getByRole('button', {name: '淘宝出库码', exact: true}).click();
-  await shortcuts.getByRole('status').filter({hasText: '已请求打开淘宝'}).waitFor();
-  assert(await shortcuts.getByRole('status').innerText() === '已请求打开淘宝，请在官方 App 内查看身份码。返回本应用不代表已出库。', `${width}: parcel launch does not claim verification or pickup success`);
-  assert(await page.evaluate(() => JSON.stringify(window.__parcelCalls[0]) === JSON.stringify({method: 'open', args: {provider: 'taobao'}})), `${width}: parcel native call contains provider only`);
-  await page.evaluate(() => {window.__parcelStatus='system_opened'});
-  await shortcuts.getByRole('button',{name:'没有跳转？系统兼容打开淘宝',exact:true}).click();
-  await shortcuts.getByRole('status').filter({hasText:'已交给系统打开淘宝链接'}).waitFor();
-  assert(await page.evaluate(()=>JSON.stringify(window.__parcelCalls.at(-1).args)===JSON.stringify({provider:'taobao',mode:'system'})),`${width}: compatibility retry passes only a fixed mode and provider`);
-  assert(await shortcuts.innerText().then(t=>t.includes('可能进入官方网页')&&t.includes('当前未确认进入身份码页面')),`${width}: compatibility retry explains system routing without claiming code-page success`);
-  await page.evaluate(()=>{window.__parcelStatus='opened'});
-  const storageAfter = await page.evaluate(() => ({school: localStorage.getItem('handan.academic.cache.v050'), personal: localStorage.getItem('handan.personal.tasks.v2')}));
-  assert(JSON.stringify(storageAfter) === JSON.stringify(storageBefore), `${width}: parcel shortcut does not mutate school or personal caches`);
-  for (const [status, text] of [['not_installed', '未检测到拼多多的安卓版本'], ['unavailable', '暂时无法打开拼多多出库码'], ['cancelled', '已取消打开拼多多']]) {
-    await page.evaluate(value => { window.__parcelStatus = value }, status);
-    await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).click();
-    await shortcuts.getByRole('status').filter({hasText: text}).waitFor();
-    assert(await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).isEnabled(), `${width}: parcel ${status} leaves deliberate retry available`);
-  }
-  const calls = await page.evaluate(() => window.__parcelCalls.length);
-  await page.evaluate(() => { window.__parcelDelayed = true });
-  await shortcuts.getByRole('button', {name: '淘宝出库码', exact: true}).evaluate(button => { button.click(); button.click() });
-  await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).waitFor({state: 'visible'});
-  assert(await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).isDisabled(), `${width}: parcel pending dispatch disables both provider buttons`);
-  assert(await page.evaluate(() => window.__parcelCalls.length) === calls + 1, `${width}: repeated parcel taps dispatch only once`);
-  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await nav('首页').click();
-  await page.getByRole('button',{name:/取快递/}).click();
-  await shortcuts.waitFor();
-  await page.evaluate(() => { window.__parcelFinish(); window.__parcelDelayed = false; window.__parcelStatus = 'opened' });
-  await page.waitForTimeout(30);
-  assert(await shortcuts.getByRole('status').count() === 0, `${width}: old parcel launch reply does not appear after navigation`);
-  await shortcuts.getByRole('button', {name: '拼多多出库码', exact: true}).click();
-  await shortcuts.getByRole('status').filter({hasText: '已请求打开拼多多'}).waitFor();
-  assert(await page.locator('.floating-nav button').count() === 5, `${width}: parcel feature preserves the five navigation tabs`);
-  assert(await page.evaluate(() => history.length) === historyLength, `${width}: parcel launch adds no browser-history entry`);
-  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: parcel card has no horizontal overflow`);
-  await shortcuts.scrollIntoViewIfNeeded();
-  await page.screenshot({path: path.join(output, `parcel-shortcuts-${width}.png`), animations: 'disabled'});
-  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
-  await nav('首页').click();
+  await page.evaluate(() => { window.__parcelCenterDelayed = true; });
+  await entry.evaluate(button => { button.click(); button.click(); });
+  assert(await page.evaluate(() => window.__parcelCenterCalls) === 1, `${width}: parcel entry opens the native center directly once`);
+  assert(await page.getByRole('region', {name: '菜鸟驿站出库码'}).count() === 0, `${width}: Android parcel entry does not open an intermediate sheet`);
+  await page.evaluate(() => {
+    window.__parcelCenterDelayed = false;
+    window.__parcelCenterFinish();
+    window.__parcelCenterFailed = true;
+  });
+  await entry.click();
+  await page.getByText('暂时无法打开校园取件，请重试', {exact: true}).waitFor();
+  await page.evaluate(() => { window.__parcelCenterFailed = false; });
+  await entry.click();
+  assert(await page.evaluate(() => window.__parcelCenterCalls) === 3, `${width}: parcel launch can be retried after a native error`);
+  assert(await page.locator('.floating-nav button').count() === 5, `${width}: parcel entry preserves the five tabs`);
+  assert(await page.evaluate(() => history.length) === historyLength, `${width}: parcel entry leaves the home route in place for Android back`);
 }

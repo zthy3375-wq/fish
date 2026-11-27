@@ -21,6 +21,7 @@ internal class ParcelDirectory(
 ) {
     data class Reply(val status: Int, val body: JSONObject, val retryAfter: Long = 0)
     private class Failure(val state: String) : Exception()
+    private data class Listing(val items: JSONArray, val maskedPhone: String?, val phoneManagement: URI?)
     private data class Challenge(val deviceCode: String, val userCode: String, val uri: URI, val expiry: Long, var interval: Long, var next: Long)
     private var challenge: Challenge? = null
     private var account = load()?.let { runCatching { JSONObject(it) }.getOrNull() }
@@ -41,11 +42,16 @@ internal class ParcelDirectory(
         cached?.let {
             put("items", it.getJSONArray("items"))
             put("updatedAt", it.getLong("updatedAt"))
+            if (it.has("maskedPhone")) put("maskedPhone", it.getString("maskedPhone"))
+            put("canManagePhone", phoneManagementUri() != null)
         }
         challenge?.let { put("userCode", it.userCode) }
     }
 
     fun verificationUri(): URI? = challenge?.takeIf { now() < it.expiry }?.uri
+
+    fun phoneManagementUri(): URI? = account?.optJSONObject("snapshot")
+        ?.optString("phoneManagementUri")?.let(::checkedVerificationUri)
 
     fun begin(): JSONObject = operation {
         if (account != null || (challenge?.expiry ?: 0L) > now()) return@operation
@@ -145,7 +151,7 @@ internal class ParcelDirectory(
             time - (current.optJSONObject("snapshot")?.optLong("updatedAt") ?: 0L) in 0..299_999L) return
         lastAttempt = time
         if (current.optLong("expiresAt") <= time + 30_000L) renew()
-        val items = try { directory() } catch (error: Failure) {
+        val listing = try { directory() } catch (error: Failure) {
             if (error.state != "rejected") throw error
             renew()
             try { directory() } catch (retry: Failure) {
@@ -154,7 +160,10 @@ internal class ParcelDirectory(
             }
         }
         val updated = JSONObject(account.toString())
-        updated.put("snapshot", JSONObject().put("items", items).put("updatedAt", now()))
+        updated.put("snapshot", JSONObject().put("items", listing.items).put("updatedAt", now()).apply {
+            listing.maskedPhone?.let { put("maskedPhone", it) }
+            listing.phoneManagement?.let { put("phoneManagementUri", it.toString()) }
+        })
         persist(updated)
     }
 
@@ -185,16 +194,23 @@ internal class ParcelDirectory(
         account = value
     }
 
-    private fun directory(): JSONArray {
+    private fun directory(): Listing {
         val token = account!!.getString("accessToken")
         val merged = linkedMapOf<String, JSONObject>()
         val seen = mutableSetOf<String>()
         var cursor: String? = null
+        var maskedPhone: String? = null
+        var phoneManagement: URI? = null
         val deadline = now() + 40_000L
         repeat(12) {
             if (now() > deadline) throw Failure("incomplete")
             val path = "/v1/parcels" + (cursor?.let { "?cursor=" + encode(it) } ?: "")
             val page = verified(send(path, bearer = token))
+            if (cursor == null) {
+                maskedPhone = page.opt("maskedPhone").let { it as? String }
+                    ?.takeIf { it.matches(Regex("1[0-9]{2}[*]{4}[0-9]{4}")) }
+                phoneManagement = (page.opt("phoneManagementUri") as? String)?.let(::checkedVerificationUri)
+            }
             val entries = page.getJSONArray("items")
             check(entries.length() <= 250)
             for (index in 0 until entries.length()) {
@@ -209,8 +225,9 @@ internal class ParcelDirectory(
                 merged[key] = preferred
             }
             if (!page.has("nextCursor") || page.isNull("nextCursor")) {
-                return JSONArray(merged.values.filter { it.getString("state") == "ready" }
-                    .sortedWith(compareByDescending<JSONObject> { it.getLong("updatedAt") }.thenBy { it.getString("trackingNumber") }))
+                val items = merged.values.filter { it.getString("state") == "ready" }
+                    .sortedWith(compareByDescending<JSONObject> { it.getLong("updatedAt") }.thenBy { it.getString("trackingNumber") })
+                return Listing(JSONArray(items), maskedPhone, phoneManagement)
             }
             val next = page.required("nextCursor", 1024)
             if (!seen.add(next)) throw Failure("incomplete")
@@ -260,6 +277,9 @@ internal class ParcelDirectory(
             check(source.matches(Regex("[a-z0-9_-]+")))
             return JSONObject().put("carrier", carrier).put("trackingNumber", tracking)
                 .put("state", state).put("source", source).put("updatedAt", updated.toLong()).apply {
+                    val arrived = row.opt("arrivedAt") as? Number
+                    if (arrived != null && arrived.toLong() in 1..4_102_444_800_000L &&
+                        arrived.toDouble() == arrived.toLong().toDouble()) put("arrivedAt", arrived.toLong())
                     for ((name, limit) in listOf("station" to 160, "pickupCode" to 64)) {
                         if (!row.isNull(name)) put(name, row.required(name, limit))
                     }

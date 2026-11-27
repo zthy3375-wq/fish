@@ -22,8 +22,8 @@ try{
   await context.addInitScript(practice=>{window.__practiceFixture=practice},syntheticPractice);
   await context.addInitScript(learning=>{window.__learningFixture=learning},syntheticLearning);
   await context.addInitScript(grades=>{
-   const methods={CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','archiveUnverifiedWater','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelShortcuts:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','openCourse','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
-   window.androidBridge={};window.__parcelCalls=[];window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
+   const methods={CourseWidget:['publish','target','pin','status','openHome'],AppUpdate:['getState','check','download','install'],PangguaiCampus:['getSnapshot','login','refresh','logout','scan','openRecharge','quoteLaundry','startLaundry','pollLaundry','cancelLaundry','prepareWater','startWater','pollWater','endWater','confirmPhysicalWaterEnd','archiveUnverifiedWater','openWaterPaymentSetup'],PangguaiOfficial:['open'],ParcelDirectory:['open'],QuzhiCampus:['getSnapshot','login','refresh','logout','openRecharge','getBathCode'],ChaoxingClient:['login','syncAll','getSessionState','openItem','openPortal','openCourse','logout'],HandanAcademicClient:['login','syncAll','getTimetable','getGrades','getExams','getSessionState','logout'],Preferences:['get','set'],App:['addListener','removeListener','exitApp'],StatusBar:['setStyle','setBackgroundColor'],LocalNotifications:['getPending','cancel','checkPermissions']};
+   window.androidBridge={};window.__parcelCenterCalls=0;window.__academicCalls=[];window.__learningCalls=[];window.__quzhiCalls=[];window.__quzhiState={connected:false,expired:false,phone:''};
    methods.CommunityGroup=['open','copy'];window.__qqGroupCalls=[];
    window.Capacitor={PluginHeaders:Object.entries(methods).map(([name,ms])=>({name,methods:ms.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin,method,args)=>{
     if(plugin==='CommunityGroup'){
@@ -60,10 +60,11 @@ try{
      (window.__pangguaiCalls??=[]).push({method,args});
      return {page:args.page,status:window.__pangguaiStatus||'opened'};
     }
-    if(plugin==='ParcelShortcuts'){
-     window.__parcelCalls.push({method,args});
-     if(window.__parcelDelayed)return new Promise(resolve=>{window.__parcelFinish=()=>resolve({provider:args.provider,status:'opened'})});
-     return {provider:args.provider,status:window.__parcelStatus||'opened'};
+    if(plugin==='ParcelDirectory'){
+     window.__parcelCenterCalls++;
+     if(window.__parcelCenterDelayed)return new Promise(resolve=>{window.__parcelCenterFinish=resolve});
+     if(window.__parcelCenterFailed)throw Error('test startup failure');
+     return {};
     }
     if(plugin==='QuzhiCampus'){
      window.__quzhiCalls.push({method,args});
