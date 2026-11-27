@@ -42,7 +42,7 @@ import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 class ParcelDirectoryActivity : AppCompatActivity() {
-    private lateinit var toolbar: LinearLayout
+    private lateinit var toolbar: FrameLayout
     private lateinit var refreshLayout: SwipeRefreshLayout
     private lateinit var scroll: ScrollView
     private lateinit var content: LinearLayout
@@ -78,12 +78,12 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val root = column().apply { setBackgroundColor(backgroundColor) }
-        toolbar = row().apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(5), 0, dp(5), 0)
-            minimumHeight = dp(54)
-            addTo(root, gap = 0)
+        toolbar = FrameLayout(this).apply {
+            setBackgroundColor(backgroundColor)
+            clipToPadding = false
         }
+        toolbar.minimumHeight = dp(54)
+        root.addView(toolbar, LinearLayout.LayoutParams(-1, -2))
         content = column().apply {
             setPadding(dp(10), dp(4), dp(10), dp(18))
         }
@@ -148,12 +148,15 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         toolbar.removeAllViews()
         val title = text(if (settings) "取件设置" else "校园取件", 25, titleColor, bold = true)
         ViewCompat.setAccessibilityHeading(title, true)
-        toolbar.addView(iconButton(R.drawable.parcel_arrow_back, "返回", titleColor) { back() }, LinearLayout.LayoutParams(dp(44), dp(48)))
-        toolbar.addView(title, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(1) })
+        toolbar.addView(title, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER_VERTICAL).apply {
+            marginStart = dp(43)
+            marginEnd = dp(53)
+        })
+        toolbar.addView(iconButton(R.drawable.parcel_arrow_back, "返回", titleColor) { back() },
+            FrameLayout.LayoutParams(dp(44), dp(48), Gravity.START or Gravity.CENTER_VERTICAL))
         if (!settings) {
-            toolbar.addView(iconButton(R.drawable.parcel_settings, "设置", titleColor) { showSettings(true) }, LinearLayout.LayoutParams(dp(46), dp(48)))
-        } else {
-            toolbar.addView(View(this), LinearLayout.LayoutParams(dp(46), 1))
+            toolbar.addView(iconButton(R.drawable.parcel_settings, "设置", titleColor) { showSettings(true) },
+                FrameLayout.LayoutParams(dp(46), dp(48), Gravity.END or Gravity.CENTER_VERTICAL))
         }
         refreshLayout.isEnabled = !settings
     }
