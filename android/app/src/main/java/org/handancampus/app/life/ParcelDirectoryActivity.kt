@@ -77,13 +77,9 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        val root = column().apply { setBackgroundColor(backgroundColor) }
-        toolbar = FrameLayout(this).apply {
-            setBackgroundColor(backgroundColor)
-            clipToPadding = false
-        }
-        toolbar.minimumHeight = dp(54)
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, -2))
+        val root = FrameLayout(this).apply { setBackgroundColor(backgroundColor) }
+        val toolbarHeight = dp((54 * resources.configuration.fontScale.coerceAtLeast(1f)).roundToInt())
+        toolbar = FrameLayout(this).apply { setBackgroundColor(backgroundColor) }
         content = column().apply {
             setPadding(dp(10), dp(4), dp(10), dp(18))
         }
@@ -97,7 +93,8 @@ class ParcelDirectoryActivity : AppCompatActivity() {
             setOnRefreshListener { refresh() }
             addView(scroll, FrameLayout.LayoutParams(-1, -1))
         }
-        root.addView(refreshLayout, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(refreshLayout, FrameLayout.LayoutParams(-1, -1).apply { topMargin = toolbarHeight })
+        root.addView(toolbar, FrameLayout.LayoutParams(-1, toolbarHeight, Gravity.TOP))
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
