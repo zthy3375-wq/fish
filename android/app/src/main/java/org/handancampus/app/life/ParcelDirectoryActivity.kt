@@ -79,7 +79,12 @@ class ParcelDirectoryActivity : AppCompatActivity() {
 
         val root = FrameLayout(this).apply { setBackgroundColor(backgroundColor) }
         val toolbarHeight = dp((54 * resources.configuration.fontScale.coerceAtLeast(1f)).roundToInt())
-        toolbar = FrameLayout(this).apply { setBackgroundColor(backgroundColor) }
+        toolbar = FrameLayout(this).apply {
+            setBackgroundColor(backgroundColor)
+            elevation = dp(8).toFloat()
+            stateListAnimator = null
+            outlineProvider = null
+        }
         content = column().apply {
             setPadding(dp(10), dp(4), dp(10), dp(18))
         }
@@ -98,7 +103,17 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            root.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            refreshLayout.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
+                leftMargin = bars.left
+                topMargin = bars.top + toolbarHeight
+                rightMargin = bars.right
+                bottomMargin = bars.bottom
+            }
+            toolbar.layoutParams = FrameLayout.LayoutParams(-1, toolbarHeight, Gravity.TOP).apply {
+                leftMargin = bars.left
+                topMargin = bars.top
+                rightMargin = bars.right
+            }
             insets
         }
         ViewCompat.requestApplyInsets(root)
