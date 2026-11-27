@@ -65,6 +65,9 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         settings = savedInstanceState?.getBoolean("settings") ?: false
         mainScroll = savedInstanceState?.getInt("mainScroll") ?: 0
+        // The parcel cards and the compact toolbar share a simple light canvas.
+        // Software rendering avoids a blank first row on older Android renderers.
+        window.decorView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
         @Suppress("DEPRECATION")
         window.statusBarColor = backgroundColor
@@ -139,7 +142,6 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         val header = row().apply {
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(58)
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         }
         val title = text(if (settings) "取件设置" else "校园取件", 25, titleColor, bold = true)
         ViewCompat.setAccessibilityHeading(title, true)
