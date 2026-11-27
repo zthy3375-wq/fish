@@ -43,6 +43,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>ParcelPilotEnabled</key>
+	<string>$(PARCEL_PILOT_ENABLED)</string>
+	<key>ParcelDirectoryOrigin</key>
+	<string>$(PARCEL_DIRECTORY_ORIGIN)</string>
+	<key>ParcelDirectoryClient</key>
+	<string>$(PARCEL_DIRECTORY_CLIENT)</string>
 	<key>WidgetKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)org.handancampus.ios.native.shared</string>
 </dict>

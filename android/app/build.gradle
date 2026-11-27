@@ -1,12 +1,22 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+def parcelPilot = project.findProperty('parcelPilot') == 'true'
+def parcelDirectoryOrigin = (project.findProperty('parcelDirectoryOrigin') ?: '').toString()
+def parcelDirectoryClient = (project.findProperty('parcelDirectoryClient') ?: '').toString()
+if (!(parcelDirectoryOrigin ==~ /[a-zA-Z0-9.\/:_-]*/) || !(parcelDirectoryClient ==~ /[a-zA-Z0-9._-]*/)) {
+    throw new GradleException('Invalid parcel directory configuration')
+}
+
 android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.achievementstatuspreview' : 'org.handancampus.app')
-        manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·收藏测试' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·收藏测试' : '@string/title_activity_main']
+        applicationId (parcelPilot ? 'org.handancampus.app.parcelpilot' : project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.achievementstatuspreview' : 'org.handancampus.app')
+        manifestPlaceholders = [campusLabel: parcelPilot ? '邯院通·取件联调' : project.findProperty('learningPreview') == 'true' ? '邯院通·收藏测试' : '@string/app_name', campusActivityLabel: parcelPilot ? '邯院通·取件联调' : project.findProperty('learningPreview') == 'true' ? '邯院通·收藏测试' : '@string/title_activity_main']
+        buildConfigField 'boolean', 'PARCEL_PILOT', parcelPilot.toString()
+        buildConfigField 'String', 'PARCEL_DIRECTORY_ORIGIN', '"' + (parcelPilot ? parcelDirectoryOrigin : '') + '"'
+        buildConfigField 'String', 'PARCEL_DIRECTORY_CLIENT', '"' + (parcelPilot ? parcelDirectoryClient : '') + '"'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 193
