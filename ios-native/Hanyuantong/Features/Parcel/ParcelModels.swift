@@ -73,7 +73,12 @@ enum ParcelPolicy {
     static func authPage(_ url: URL?) -> Bool {
         guard let url else { return false }
         let text = (url.host ?? "") + url.path
-        return text.range(of: "login|passport|captcha|punish|verify", options: [.regularExpression, .caseInsensitive]) != nil
+        return text.range(of: "login|passport", options: [.regularExpression, .caseInsensitive]) != nil
+    }
+    static func verificationPage(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        let text = (url.host ?? "") + url.path
+        return text.range(of: "captcha|punish|verify", options: [.regularExpression, .caseInsensitive]) != nil
     }
     static func bounded(_ value: String, max: Int, empty: Bool = true) -> Bool {
         (empty || !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && value.utf8.count <= max

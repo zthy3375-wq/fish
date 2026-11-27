@@ -5,6 +5,7 @@ export type ParcelLaunchStatus = 'opened' | 'app_opened' | 'system_opened' | 'we
 export interface ParcelLaunchResult {provider: ParcelProvider; status: ParcelLaunchStatus}
 export type ParcelOpenMode = 'app' | 'system';
 interface ParcelShortcutsPlugin {open(options: {provider: ParcelProvider; mode?: ParcelOpenMode}): Promise<unknown>}
+const launchReplyTimeoutMs = 6000;
 const native = registerPlugin<ParcelShortcutsPlugin>('ParcelShortcuts');
 export const parcelProviders = [
   {id: 'taobao', name: '淘宝', label: '淘宝出库码'},
@@ -17,15 +18,19 @@ export async function openParcelShortcut(provider: ParcelProvider, mode: ParcelO
   if (provider !== 'taobao' && provider !== 'pinduoduo') throw new Error('INVALID_PROVIDER');
   if (mode !== 'app' && mode !== 'system') throw new Error('INVALID_PROVIDER');
   if (!parcelShortcutsSupported()) return {provider, status: 'unsupported'};
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    // No arbitrary URI, account identity, credentials or identity code crosses this bridge.
-    const result = await native.open(mode === 'system' ? {provider, mode} : {provider});
+    // Native dispatch also has a shorter deadline, so a stalled reply can be retried safely.
+    const deadline = new Promise<null>(resolve => { timeout = setTimeout(() => resolve(null), launchReplyTimeoutMs); });
+    const result = await Promise.race([native.open(mode === 'system' ? {provider, mode} : {provider}), deadline]);
     if (result && typeof result === 'object' && 'provider' in result && result.provider === provider && 'status' in result && typeof result.status === 'string' &&
         ['opened', 'app_opened', 'system_opened', 'web_opened', 'not_installed', 'unavailable', 'cancelled'].includes(result.status)) {
       return {provider, status: result.status as ParcelLaunchStatus};
     }
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'CANCELLED') return {provider, status: 'cancelled'};
+  } finally {
+    clearTimeout(timeout);
   }
   return {provider, status: 'unavailable'};
 }

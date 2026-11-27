@@ -1,3 +1,10 @@
+// Older Android WebViews load these modules before the app and its dependencies.
+import 'core-js/actual/global-this';
+import 'core-js/actual/object/from-entries';
+import 'core-js/actual/promise/all-settled';
+import 'core-js/actual/array/at';
+import 'core-js/actual/string/at';
+import 'core-js/actual/string/replace-all';
 import { createApp } from 'vue';
 import App from './App.vue';
 import './style.css';

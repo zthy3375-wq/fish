@@ -4,6 +4,65 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { registerTestAccount } from './community-test-account.mjs';
 
+export async function checkTitleGrant({client, db, api}) {
+  const owner = await client(360);
+  const recipient = await client(390);
+  try {
+    await registerTestAccount(owner.page, 'titleowner', '称号测试开发者');
+    await registerTestAccount(recipient.page, 'titlereader', '收取称号的同学');
+    const ownerId = (await api.execute('me', {}, owner.state.token)).user.id;
+    const memberId = (await api.execute('me', {}, recipient.state.token)).user.id;
+    await db.query("UPDATE hyt_members SET role='moderator',developer_since=now() WHERE id=$1", [ownerId]);
+    const page = owner.page;
+    await page.addInitScript(() => Object.defineProperty(crypto, 'randomUUID', {value:undefined, configurable:true}));
+    await page.reload();
+    await page.locator('.th-nav .th-self:not([disabled])').click();
+    const button = name => page.getByRole('button', {name, exact:true});
+    await button('身份与荣誉管理').click();
+    await button('授予与称号').click();
+    const search = async value => {
+      await page.getByLabel('查找成员').fill(value);
+      await button('搜索').click();
+      await page.getByRole('button', {name:/^收取称号的同学 · /}).click();
+      await page.locator('input[maxlength="16"]:enabled').waitFor();
+    };
+    await search('收取称号的同学');
+    const input = page.getByLabel(/专属称号/);
+    const readTitle = async () => (await api.execute('collection.profile', {}, recipient.state.token)).collection.customTitle;
+    async function save(title) {
+      await input.fill(title);
+      await button('保存称号').click();
+      const confirm = button('确认执行');
+      await confirm.waitFor();
+      await page.waitForFunction(() => {
+        const region=document.querySelector('[aria-label="确认管理操作"]');
+        const box=region?.getBoundingClientRect();
+        return box && box.top>=0 && box.bottom<=window.innerHeight;
+      }, undefined, {timeout:3500});
+      await confirm.click();
+      await confirm.waitFor({state:'detached'});
+      assert.equal(await readTitle(), title || null);
+    }
+    await save('校园手记');
+    await recipient.page.reload();
+    await recipient.page.locator('.th-nav .th-self:not([disabled])').click();
+    await recipient.page.getByRole('button',{name:'查看全部荣誉殿堂藏品',exact:true}).click();
+    await recipient.page.getByText('我的专属称号 · 校园手记', {exact:true}).waitFor();
+    await search('titlereader');
+    assert.equal(await input.inputValue(),'校园手记');
+    await save('新称号');
+    await search(memberId);
+    assert.equal(await input.inputValue(),'新称号');
+    await save('');
+    await assert.rejects(api.execute('collection.change', {operation:'title', memberId, title:'越权测试',
+      reason:'本地回归',requestId:randomUUID()}, recipient.state.token), {code:'forbidden'});
+    console.log('PASS Android title assignment, edit and clear via nickname, login and member ID on a WebView without randomUUID');
+  } finally {
+    await owner.context.close();
+    await recipient.context.close();
+  }
+}
+
 export async function checkCollection({client,db,api,output}) {
   await mkdir(output,{recursive:true});
   const year = Number(new Intl.DateTimeFormat("en", {year:"numeric",timeZone:"Asia/Shanghai"}).format(new Date()));

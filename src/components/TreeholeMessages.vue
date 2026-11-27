@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { uid } from "../domain/schedule";
 import {ref,computed,onMounted,onActivated,onDeactivated,onUnmounted,nextTick} from 'vue';
 import {MessageCircle,Send,RefreshCw,ChevronRight,ArrowDown,ShieldBan} from 'lucide-vue-next';
 import TreeholeAvatar from './TreeholeAvatar.vue';
@@ -12,8 +13,8 @@ const scroller=ref<HTMLElement>(),textarea=ref<HTMLTextAreaElement>(),nearBottom
 const text=ref('');let alive=true,generation=0,polling=false,ackBusy=false,ackSeq='0',timer:ReturnType<typeof setInterval>,lastInteractionAt=Date.now();
 const canSend=computed(()=>text.value.trim().length>0&&text.value.trim().length<=1000&&!sending.value&&!blocked.value&&!loading.value);
 const draft=computed(()=>conversation.value?props.drafts[conversation.value.id]:undefined);
-function saveDraft(){if(!conversation.value)return;props.drafts[conversation.value.id]={body:text.value,requestId:draft.value?.requestId||crypto.randomUUID(),failed:draft.value?.failed};}
-function changed(){if(draft.value?.failed){draft.value.requestId=crypto.randomUUID();draft.value.failed=false;}saveDraft();}
+function saveDraft(){if(!conversation.value)return;props.drafts[conversation.value.id]={body:text.value,requestId:draft.value?.requestId||uid(),failed:draft.value?.failed};}
+function changed(){if(draft.value?.failed){draft.value.requestId=uid();draft.value.failed=false;}saveDraft();}
 function fail(e:unknown){if(!alive)return;if(treeholeErrorCode(e)==='session_expired'){alive=false;emit('expired');return;}error.value=treeholeError(e);if(treeholeErrorCode(e)==='conversation_unavailable')blocked.value=true;}
 async function inbox(more=false,quiet=false){
  if(loading.value||polling||more&&!inboxNext.value)return;const g=generation;if(!quiet)loading.value=true;else polling=true;error.value='';

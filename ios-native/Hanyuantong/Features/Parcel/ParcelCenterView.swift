@@ -83,8 +83,8 @@ struct ParcelCenterView: View {
             Button("取消", role: .cancel) { clearing = nil }
         } message: { Text("只清除邯院通中该平台的登录与记录，不退出官方 App，也不修改平台包裹状态。") }
         .alert("取件中心", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("好", role: .cancel) {} } message: { Text(store.message ?? "") }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in hidden = true; enlarged = nil; store.close() }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in hidden = false }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in hidden = true; enlarged = nil; store.setForeground(false) }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in hidden = false; store.setForeground(true) }
         .onDisappear { enlarged = nil; store.close() }
     }
     private func copy(_ code: String) {
@@ -119,6 +119,11 @@ private struct ParcelOfficialPage: View {
                 Button { session.readCurrent() } label: {
                     Label(session.isReading ? "正在读取…" : "读取当前页取件码", systemImage: "tray.and.arrow.down").frame(maxWidth: .infinity)
                 }.buttonStyle(.borderedProminent).foregroundStyle(CampusTheme.onPrimary).padding().disabled(!session.canRead || session.isLoading || session.isReading)
+            }
+            .disabled(session.isSuspended)
+            .accessibilityHidden(session.isSuspended)
+            .overlay {
+                if session.isSuspended { CampusTheme.background.ignoresSafeArea() }
             }
             .privacySensitive().navigationTitle(session.provider.title + "官方页面").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回") { close() } } }

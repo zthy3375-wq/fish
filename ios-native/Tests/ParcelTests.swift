@@ -31,6 +31,33 @@ final class ParcelTests: XCTestCase {
         XCTAssertFalse(ParcelPolicy.readable(URL(string: "https://m.pinduoduo.net/mdkd/package/other"), provider: .pinduoduo))
         XCTAssertFalse(ParcelPolicy.readable(URL(string: "https://m.pinduoduo.net/login"), provider: .pinduoduo))
     }
+    func testOfficialVerificationAndLoginAreClassifiedSeparately() {
+        let login = URL(string: "https://login.m.taobao.com/login.htm")
+        let verify = URL(string: "https://h5.m.taobao.com/captcha")
+        XCTAssertTrue(ParcelPolicy.authPage(login))
+        XCTAssertFalse(ParcelPolicy.verificationPage(login))
+        XCTAssertTrue(ParcelPolicy.verificationPage(verify))
+        XCTAssertFalse(ParcelPolicy.authPage(verify))
+        XCTAssertFalse(ParcelPolicy.verificationPage(ParcelProvider.taobao.parcelURL))
+    }
+
+    @MainActor
+    func testForegroundRoundTripRetainsSameEphemeralSessionUntilDismissal() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ParcelStore(storage: try ProtectedStorage(directory: directory))
+        store.open(.taobao)
+        let session = try XCTUnwrap(store.activeSession)
+        store.setForeground(false)
+        XCTAssertTrue(session.isSuspended)
+        XCTAssertTrue(store.activeSession === session)
+        store.setForeground(true)
+        XCTAssertFalse(session.isSuspended)
+        XCTAssertTrue(store.activeSession === session)
+        store.close()
+        XCTAssertNil(store.activeSession)
+    }
+
     func testCodeContractPreservesLeadingZerosAndRejectsPhoneTrackingValues() {
         for code in ["01-02-003", "A1 0203", "000123", "1—02—003"] { XCTAssertTrue(ParcelPolicy.code(code)) }
         for code in ["", "A", "ABC", "1234567890", "13912345678", "１２３４", "01\n02", "1<script>", "123456789012345678901234567", "1\t2"] { XCTAssertFalse(ParcelPolicy.code(code), code) }

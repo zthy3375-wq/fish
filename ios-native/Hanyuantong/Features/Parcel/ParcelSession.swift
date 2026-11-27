@@ -14,6 +14,10 @@ final class ParcelSession: NSObject, ObservableObject, Identifiable, WKNavigatio
     @Published private(set) var isLoading = false
     @Published private(set) var isReading = false
     @Published private(set) var canRead = false
+    @Published private(set) var isSuspended = false
+    private var showingIdentity: Bool?
+    private var canReloadCurrentPage = false
+    private var currentNavigation: WKNavigation?
     private var generation = 0
     private var closed = false
     private var knownAccount: String?
@@ -50,29 +54,74 @@ final class ParcelSession: NSObject, ObservableObject, Identifiable, WKNavigatio
             if #available(iOS 16.4, *) { view.isInspectable = false }
             view.navigationDelegate = self; view.uiDelegate = self
             view.allowsLinkPreview = false; view.isOpaque = true; view.backgroundColor = .white
+            view.isHidden = isSuspended
             web = view
             open(identity: identity)
         } catch { status = ParcelFailure.unavailable.localizedDescription }
     }
     func open(identity: Bool) {
-        guard let web, !closed else { return }
-        stopRead()
-        generation += 1; canRead = false
-        web.load(URLRequest(url: identity ? provider.identityURL : provider.parcelURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
+        guard let web, !closed, !(isLoading && showingIdentity == identity) else { return }
+        showingIdentity = identity
+        markLoading()
+        let url = identity ? provider.identityURL : provider.parcelURL
+        watch(web.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)))
     }
     func refresh() {
-        guard let web, !closed, ParcelPolicy.allowed(web.url, provider: provider) else { return }
-        stopRead(); generation += 1; canRead = false; web.reload()
+        guard let web, !closed, !isLoading, !isSuspended else { return }
+        guard canReloadCurrentPage, ParcelPolicy.allowed(web.url, provider: provider) else {
+            open(identity: showingIdentity ?? false)
+            return
+        }
+        markLoading()
+        watch(web.reload())
+    }
+    func setForeground(_ active: Bool) {
+        let suspended = !active
+        guard !closed, isSuspended != suspended else { return }
+        isSuspended = suspended
+        web?.isHidden = suspended
+        if !active && isReading {
+            stopRead()
+            status = "已暂停读取，返回后可继续操作官方页面。"
+        }
+    }
+    private func markLoading() {
+        stopRead()
+        generation += 1
+        canRead = false
+        canReloadCurrentPage = false
+        isLoading = true
+        status = "正在打开官方页面…"
+    }
+    private func watch(_ navigation: WKNavigation?) {
+        currentNavigation = navigation
+        navigationDeadline?.cancel()
+        navigationDeadline = nil
+        guard navigation != nil else {
+            isLoading = false
+            status = ParcelFailure.unavailable.localizedDescription
+            return
+        }
+        let ticket = generation
+        navigationDeadline = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
+            guard let self, self.generation == ticket, !self.closed else { return }
+            self.stop()
+            self.status = ParcelFailure.timeout.localizedDescription
+        }
     }
     func stop() {
         guard !closed else { return }
         stopRead(); generation += 1; navigationDeadline?.cancel(); navigationDeadline = nil
+        currentNavigation = nil
+        canReloadCurrentPage = false
         web?.stopLoading(); isLoading = false; canRead = false
         status = "已停止。本次未读取完成，可重新打开待取包裹页。"
     }
     func close() {
         guard !closed else { return }
         closed = true; generation += 1
+        currentNavigation = nil
         stopRead(); navigationDeadline?.cancel(); navigationDeadline = nil
         web?.isHidden = true; web?.stopLoading()
         web?.navigationDelegate = nil; web?.uiDelegate = nil
@@ -88,7 +137,7 @@ final class ParcelSession: NSObject, ObservableObject, Identifiable, WKNavigatio
         invalidationReported = true; invalidated?()
     }
     func readCurrent() {
-        guard !isReading, !isLoading, !closed, let web,
+        guard !isSuspended, !isReading, !isLoading, !closed, let web,
               ParcelPolicy.readable(web.url, provider: provider) else { status = ParcelFailure.unrecognized.localizedDescription; return }
         let ticket = generation
         isReading = true; status = "正在读取当前官方待取页…"
@@ -128,11 +177,11 @@ final class ParcelSession: NSObject, ObservableObject, Identifiable, WKNavigatio
                     ? "当前官方页面明确显示暂无待取；历史取件记录仍保留，未确认全量包裹状态。"
                     : "已读取当前页 \(batch.items.count) 个取件码。返回可查看原生卡片；未读取全部订单。"
             } catch {
-                guard !self.closed, self.generation == ticket else { return }
+                guard !Task.isCancelled, !self.closed, self.generation == ticket else { return }
                 if let failure = error as? ParcelFailure, failure == .login || failure == .account { self.invalidateAccount() }
                 self.status = (error as? ParcelFailure ?? .unrecognized).localizedDescription
             }
-            guard !self.closed, self.generation == ticket else { return }
+            guard !Task.isCancelled, !self.closed, self.generation == ticket else { return }
             self.isReading = false; self.readDeadline?.cancel(); self.readDeadline = nil; self.readTask = nil
         }
     }
@@ -142,13 +191,19 @@ final class ParcelSession: NSObject, ObservableObject, Identifiable, WKNavigatio
     }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard !closed, ParcelPolicy.allowed(navigationAction.request.url, provider: provider) else {
-            if navigationAction.targetFrame?.isMainFrame != false { status = "已拦截未核验的跳转。可关闭此页，使用固定官方 App / 系统入口。" }
-            decisionHandler(.cancel); return
+            decisionHandler(.cancel)
+            if !closed && navigationAction.targetFrame?.isMainFrame != false {
+                stop()
+                status = ParcelFailure.origin.localizedDescription
+            }
+            return
         }
-        if navigationAction.targetFrame?.isMainFrame == true && ParcelPolicy.authPage(navigationAction.request.url) { invalidateAccount() }
         if navigationAction.targetFrame == nil {
             decisionHandler(.cancel)
-            if navigationAction.navigationType == .linkActivated { webView.load(navigationAction.request) }
+            if navigationAction.navigationType == .linkActivated {
+                markLoading()
+                watch(webView.load(navigationAction.request))
+            }
             return
         }
         decisionHandler(.allow)
@@ -156,44 +211,57 @@ final class ParcelSession: NSObject, ObservableObject, Identifiable, WKNavigatio
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
         let http = navigationResponse.response as? HTTPURLResponse
         let mime = navigationResponse.response.mimeType?.lowercased()
-        guard !closed, ParcelPolicy.allowed(navigationResponse.response.url, provider: provider),
-              navigationResponse.canShowMIMEType, mime == "text/html" || mime == "application/xhtml+xml",
-              http.map({ (200..<400).contains($0.statusCode) }) ?? true else {
-            if http?.statusCode == 401 || http?.statusCode == 403 { invalidateAccount() }
-            status = ParcelFailure.unavailable.localizedDescription
-            isLoading = false; canRead = false; navigationDeadline?.cancel()
-            decisionHandler(.cancel); return
+        let allowed = !closed && ParcelPolicy.allowed(navigationResponse.response.url, provider: provider)
+            && navigationResponse.canShowMIMEType && (mime == "text/html" || mime == "application/xhtml+xml")
+            && (http.map { (200..<400).contains($0.statusCode) } ?? true)
+        if allowed { decisionHandler(.allow); return }
+        decisionHandler(.cancel)
+        if navigationResponse.isForMainFrame && isLoading && !closed {
+            if http?.statusCode == 401 { invalidateAccount() }
+            stop()
+            status = http?.statusCode == 401 ? ParcelFailure.login.localizedDescription :
+                http?.statusCode == 403 ? ParcelFailure.verification.localizedDescription : ParcelFailure.unavailable.localizedDescription
         }
-        decisionHandler(.allow)
     }
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        generation += 1; stopRead(); canRead = false; isLoading = true
-        status = "请在官方页面操作；密码和验证码只输入此页。"
-        navigationDeadline?.cancel()
-        let ticket = generation
-        navigationDeadline = Task { [weak self] in
-            do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
-            guard let self, self.generation == ticket, !self.closed else { return }
-            self.stop(); self.status = ParcelFailure.timeout.localizedDescription
+        guard !closed, let navigation else { return }
+        if currentNavigation !== navigation {
+            markLoading()
+            watch(navigation)
         }
+        status = "请在官方页面操作；密码和验证码只输入此页。"
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        navigationDeadline?.cancel(); navigationDeadline = nil; isLoading = false
+        guard !closed, let navigation, currentNavigation === navigation else { return }
+        navigationDeadline?.cancel(); navigationDeadline = nil; currentNavigation = nil
+        isLoading = false
+        canReloadCurrentPage = true
         canRead = ParcelPolicy.readable(webView.url, provider: provider)
-        status = canRead ? "登录完成并看到待取包裹后，点“读取取件码”。只读取当前页，不保证覆盖全部订单。" : "此处为官方页面。查看身份码无需读取；登录完成后可点“待取包裹”。"
+        if ParcelPolicy.verificationPage(webView.url) {
+            status = ParcelFailure.verification.localizedDescription
+        } else if ParcelPolicy.authPage(webView.url) {
+            if knownAccount != nil { invalidateAccount() }
+            status = "请在官方页面登录，完成后再打开待取包裹。"
+        } else {
+            status = canRead ? "看到待取包裹后，点“读取当前页取件码”。" : "可在此查看官方页面，或切换至待取包裹。"
+        }
+        guard canRead else { return }
         let ticket = generation
         Task { [weak self, weak webView] in
             guard let self, let webView else { return }
             let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
-            guard !self.closed, ticket == self.generation, let known = self.knownAccount else { return }
-            if (try? ParcelPolicy.account(cookies, provider: self.provider)) != known { self.invalidateAccount() }
+            guard !self.closed, ticket == self.generation, let known = self.knownAccount,
+                  let current = try? ParcelPolicy.account(cookies, provider: self.provider) else { return }
+            if current != known { self.invalidateAccount() }
         }
     }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
-    private func failed(_ error: Error) {
-        guard !closed, (error as NSError).code != NSURLErrorCancelled else { return }
-        stop(); status = ParcelFailure.unavailable.localizedDescription
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(navigation, error) }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(navigation, error) }
+    private func failed(_ navigation: WKNavigation?, _ error: Error) {
+        guard !closed, let navigation, currentNavigation === navigation else { return }
+        stop()
+        status = (error as NSError).code == NSURLErrorCancelled
+            ? ParcelFailure.cancelled.localizedDescription : ParcelFailure.unavailable.localizedDescription
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { stop(); status = ParcelFailure.unavailable.localizedDescription }
     func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
