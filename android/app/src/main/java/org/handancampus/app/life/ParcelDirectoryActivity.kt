@@ -4,9 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
@@ -148,28 +146,8 @@ class ParcelDirectoryActivity : AppCompatActivity() {
             navigationContentDescription = "返回"
             setNavigationOnClickListener { back() }
         }
-        val label = if (settings) "取件设置" else "校园取件"
-        val heading = object : View(this) {
-            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = titleColor
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
-                textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 25f, resources.displayMetrics)
-            }
-
-            override fun onMeasure(width: Int, height: Int) {
-                setMeasuredDimension(resolveSize(paint.measureText(label).roundToInt() + dp(4), width),
-                    resolveSize((paint.descent() - paint.ascent()).roundToInt() + dp(8), height))
-            }
-
-            override fun onDraw(canvas: Canvas) {
-                super.onDraw(canvas)
-                canvas.drawText(label, 0f, (height - paint.ascent() - paint.descent()) / 2f, paint)
-            }
-        }.apply {
-            contentDescription = label
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            ViewCompat.setAccessibilityHeading(this, true)
-        }
+        val heading = text(if (settings) "取件设置" else "校园取件", 25, ink)
+        ViewCompat.setAccessibilityHeading(heading, true)
         header.addView(heading, androidx.appcompat.widget.Toolbar.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL))
         if (!settings) {
             val settingAction = header.menu.add("设置").apply {
@@ -577,7 +555,6 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         private val authorizationErrors = setOf("expired", "rejected")
         private val backgroundColor = Color.rgb(244, 246, 250)
         private val overviewColor = Color.rgb(230, 237, 253)
-        private val titleColor = Color.rgb(43, 46, 49)
         private val ink = Color.rgb(35, 56, 89)
         private val muted = Color.rgb(87, 92, 99)
         private val overviewDetail = Color.rgb(75, 107, 161)
