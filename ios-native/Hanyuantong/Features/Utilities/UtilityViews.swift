@@ -10,6 +10,13 @@ struct ParcelShortcutsView: View {
     @State private var message: String?
     var body: some View {
         List {
+#if DEBUG
+            if Bundle.main.object(forInfoDictionaryKey: "ParcelPilotEnabled") as? String == "YES" {
+                Section {
+                    NavigationLink("待取包裹联调") { ParcelDirectoryView() }
+                }
+            }
+#endif
             Section("打开官方取件码") {
                 ForEach(ParcelProvider.allCases) { provider in
                     Button {
