@@ -232,6 +232,10 @@ enum LearningPolicy {
     static func challenge(_ url: String, body: String) -> Bool {
         url.localizedCaseInsensitiveContains("antispider") || body.contains("访问过于频繁") || (body.contains("9010") && body.contains("验证码"))
     }
+    static func isLoginLanding(_ url: URL?) -> Bool {
+        guard let url, allowed(url), !loginPage(url) else { return false }
+        return !challenge(url.absoluteString, body: "")
+    }
     static func query(_ value: String) -> [String: String] {
         guard let raw = URLComponents(string: value)?.percentEncodedQuery else { return [:] }
         var result: [String: String] = [:]

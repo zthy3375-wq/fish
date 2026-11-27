@@ -141,7 +141,7 @@ private struct PersonalBackupPreviewView: View {
     @State private var baseline: PersonalBackupBaseline?
 
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section("文件") {
                     Text(preview.filename).font(.subheadline)
@@ -175,26 +175,26 @@ private struct PersonalBackupPreviewView: View {
         case .native(let backup):
             Section("iPhone 完整个人备份") {
                 if let schedule = backup.personalSchedule {
-                    LabeledContent("个人学期", value: "\(schedule.semesters.count) 个")
-                    LabeledContent("作息方案", value: "\(schedule.timeTables.count) 个")
-                    LabeledContent("全部个人课程", value: "\(schedule.courses.count) 门")
-                    LabeledContent("全部课程安排", value: "\(schedule.courses.reduce(0) { $0 + $1.arrangements.count }) 条")
-                    if let active = schedule.semesters.first(where: { $0.id == schedule.activeSemesterId }) { LabeledContent("恢复后显示学期", value: active.title) }
+                    CampusLabeledValue("个人学期", value: "\(schedule.semesters.count) 个")
+                    CampusLabeledValue("作息方案", value: "\(schedule.timeTables.count) 个")
+                    CampusLabeledValue("全部个人课程", value: "\(schedule.courses.count) 门")
+                    CampusLabeledValue("全部课程安排", value: "\(schedule.courses.reduce(0) { $0 + $1.arrangements.count }) 条")
+                    if let active = schedule.semesters.first(where: { $0.id == schedule.activeSemesterId }) { CampusLabeledValue("恢复后显示学期", value: active.title) }
                 } else {
-                    LabeledContent("个人课程安排", value: "\(backup.courses.count) 条")
+                    CampusLabeledValue("个人课程安排", value: "\(backup.courses.count) 条")
                     Text("此备份未包含多学期管理数据，将按旧版个人课表恢复。").font(.footnote).foregroundStyle(.secondary)
                 }
-                LabeledContent("个人待办", value: "\(backup.tasks.count) 条")
-                LabeledContent("个人第一教学周", value: BackupValue.dayString(backup.semesterStart))
+                CampusLabeledValue("个人待办", value: "\(backup.tasks.count) 条")
+                CampusLabeledValue("个人第一教学周", value: BackupValue.dayString(backup.semesterStart))
                 Text("会替换本机全部个人学期、课程与待办，包括现有其他个人学期。建议先取消并导出当前数据。")
                     .font(.footnote).foregroundStyle(.red)
             }
         case .androidSchedule(let plan):
             Section("Android 个人课表") {
-                LabeledContent("个人学期", value: "\(plan.state.semesters.count) 个")
-                LabeledContent("作息方案", value: "\(plan.state.timeTables.count) 个")
-                LabeledContent("全部个人课程", value: "\(plan.state.courses.count) 门")
-                LabeledContent("全部课程安排", value: "\(plan.state.courses.reduce(0) { $0 + $1.arrangements.count }) 条")
+                CampusLabeledValue("个人学期", value: "\(plan.state.semesters.count) 个")
+                CampusLabeledValue("作息方案", value: "\(plan.state.timeTables.count) 个")
+                CampusLabeledValue("全部个人课程", value: "\(plan.state.courses.count) 门")
+                CampusLabeledValue("全部课程安排", value: "\(plan.state.courses.reduce(0) { $0 + $1.arrangements.count }) 条")
                 Picker("恢复后显示学期", selection: $selectedSemesterID) {
                     Text("请选择学期").tag("")
                     ForEach(plan.state.semesters) { semester in Text(semester.title).tag(semester.id) }
@@ -205,10 +205,10 @@ private struct PersonalBackupPreviewView: View {
             }
             if let selection {
                 Section("所选学期预览") {
-                    LabeledContent("教学周起点", value: selection.semester.weekStartDate)
-                    LabeledContent("教学周数量", value: "\(selection.semester.weekCount) 周")
-                    LabeledContent("作息方案", value: selection.timeTable.name)
-                    LabeledContent("课程安排", value: "\(selection.courses.count) 条")
+                    CampusLabeledValue("教学周起点", value: selection.semester.weekStartDate)
+                    CampusLabeledValue("教学周数量", value: "\(selection.semester.weekCount) 周")
+                    CampusLabeledValue("作息方案", value: selection.timeTable.name)
+                    CampusLabeledValue("课程安排", value: "\(selection.courses.count) 条")
                     ForEach(selection.courses.prefix(8)) { course in
                         VStack(alignment: .leading, spacing: 3) {
                             Text(course.name)
@@ -226,14 +226,14 @@ private struct PersonalBackupPreviewView: View {
             }
         case .androidTasks(let plan):
             Section("Android 个人待办") {
-                LabeledContent("备份待办", value: "\(plan.tasks.count) 条")
-                LabeledContent("含子任务", value: "\(plan.tasks.filter { !$0.steps.isEmpty }.count) 条")
-                LabeledContent("含重复规则", value: "\(plan.tasks.filter { $0.repeatRule != nil }.count) 条")
-                LabeledContent("提醒规则", value: "\(plan.tasks.reduce(0) { $0 + $1.reminders.count }) 条")
+                CampusLabeledValue("备份待办", value: "\(plan.tasks.count) 条")
+                CampusLabeledValue("含子任务", value: "\(plan.tasks.filter { !$0.steps.isEmpty }.count) 条")
+                CampusLabeledValue("含重复规则", value: "\(plan.tasks.filter { $0.repeatRule != nil }.count) 条")
+                CampusLabeledValue("提醒规则", value: "\(plan.tasks.reduce(0) { $0 + $1.reminders.count }) 条")
                 if let taskPreview {
-                    LabeledContent("将新增", value: "\(taskPreview.addedCount) 条")
-                    LabeledContent("重复编号，保留本机", value: "\(taskPreview.duplicateCount) 条")
-                    LabeledContent("合并后共有", value: "\(taskPreview.tasks.count) 条")
+                    CampusLabeledValue("将新增", value: "\(taskPreview.addedCount) 条")
+                    CampusLabeledValue("重复编号，保留本机", value: "\(taskPreview.duplicateCount) 条")
+                    CampusLabeledValue("合并后共有", value: "\(taskPreview.tasks.count) 条")
                     if !taskPreview.conflictingTitles.isEmpty {
                         Text("有 \(taskPreview.conflictingTitles.count) 条同编号记录内容不同，保留本机版本：").font(.footnote).foregroundStyle(.orange)
                         ForEach(Array(taskPreview.conflictingTitles.prefix(8).enumerated()), id: \.offset) { _, title in Text(title).font(.footnote) }

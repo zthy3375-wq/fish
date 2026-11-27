@@ -1,6 +1,6 @@
 {
   "name": "handan-campus",
-  "version": "1.3.1",
+  "version": "1.3.2-test.2",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -10,14 +10,18 @@
     "test": "vitest run",
     "cap:sync": "npm run build && cap sync android",
     "android:add": "cap add android",
-    "check": "npm test && npm run check:shared && npm run check:community && npm run build",
+    "check": "npm test && npm run check:shared && npm run check:community && npm run build && npm run check:commerce && npm run merchant:build",
     "test:watch": "vitest",
     "android:check": "npm run build && cap sync android && node scripts/android.mjs check",
     "android:apk": "npm run build && cap sync android && node scripts/android.mjs apk",
     "test:ui": "npm run build && node scripts/academic-browser-check.mjs",
     "check:shared": "node ios-native/Scripts/check_protocol.mjs && node ios-native/Scripts/check_learning_parser.mjs && node ios-native/Scripts/parcel_reader_check.mjs",
     "check:community": "npm ci --prefix cloudbase/functions/community --ignore-scripts --no-audit --no-fund && node --test --test-concurrency=2 cloudbase/tests/community*.mjs",
-    "test:treehole": "npm run build && node scripts/treehole-browser-check.mjs"
+    "test:treehole": "npm run build && node scripts/treehole-browser-check.mjs",
+    "merchant:dev": "vite --config merchant/vite.config.ts --host 0.0.0.0",
+    "merchant:build": "vue-tsc --noEmit -p merchant/tsconfig.json && vite build --config merchant/vite.config.ts",
+    "check:commerce": "node --test cloudbase/tests/commerce.verify.mjs",
+    "test:commerce:ui": "npm run build && node scripts/commerce-browser-check.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
@@ -28,12 +32,15 @@
     "@capacitor/preferences": "^7.0.0",
     "@capacitor/share": "^7.0.0",
     "@capacitor/status-bar": "^7.0.0",
+    "@zxing/browser": "^0.2.1",
+    "core-js": "3.47.0",
     "exceljs": "^4.4.0",
     "fflate": "^0.8.2",
     "ical.js": "^2.2.1",
     "leaflet": "^1.9.4",
     "lucide-vue-next": "^0.468.0",
     "papaparse": "^5.5.0",
+    "qrcode": "^1.5.4",
     "vue": "^3.5.0"
   },
   "devDependencies": {
@@ -43,6 +50,7 @@
     "@types/jsdom": "^21.1.7",
     "@types/leaflet": "^1.9.21",
     "@types/papaparse": "^5.3.16",
+    "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^5.2.0",
     "fake-indexeddb": "^6.0.0",
     "jpeg-js": "0.4.4",

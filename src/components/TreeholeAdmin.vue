@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { uid } from "../domain/schedule";
 import {ref,computed,nextTick,onMounted,onUnmounted} from 'vue';
 import {Search,ChevronRight,ArrowLeft,RefreshCw,ShieldCheck} from 'lucide-vue-next';
 import {treeholeError,treeholeErrorCode,type TreeholePost,type TreeholeComment,type TreeholeReport,type TreeholeResult,type TreeholeModeration} from '../services/treehole';
@@ -17,16 +18,16 @@ const availableActions=computed(()=>{
 });
 const subject=computed(()=>comment.value?.body||post.value?.title||post.value?.body||'原内容已删除');
 async function restoreQueue(){await nextTick();if(alive)window.scrollTo({top:queueScroll,behavior:'instant'})}
-let alive=true,revision=0,requestId=crypto.randomUUID();
+let alive=true,revision=0,requestId=uid();
 onUnmounted(()=>{alive=false;revision++});
 async function run(work:()=>Promise<void>){if(busy.value)return;busy.value=true;error.value='';try{await work()}catch(e){if(alive){error.value=treeholeError(e);if(treeholeErrorCode(e)==='session_expired'||treeholeErrorCode(e)==='forbidden')emit('expired')}}finally{if(alive)busy.value=false}}
 async function load(append=false){const version=++revision,kind=tab.value,rows=kind==='history'?history.value:posts.value,last=rows.at(-1);const result=await props.request(kind==='reports'?'admin.reports':kind==='content'?'admin.content':'admin.history',{...(kind==='content'?{query:submittedQuery.value}:{}),...(append&&last?{beforeTime:last.createdAt,beforeId:last.id}:{})});if(!alive||version!==revision)return;
  if(kind==='reports'){reports.value=result.reports||[];more.value=false}else if(kind==='content'){const next=result.posts||[];posts.value=append?[...posts.value,...next.filter(p=>!posts.value.some(x=>x.id===p.id))]:next;more.value=next.length===20}else{const next=result.history||[];history.value=append?[...history.value,...next.filter(p=>!history.value.some(x=>x.id===p.id))]:next;more.value=next.length===30}}
 function change(next:typeof tab.value){if(busy.value)return;tab.value=next;notice.value='';void run(()=>load())}
-async function context(next:NonNullable<typeof target.value>){const result=await props.request('admin.context',next);if(!alive)return;if(!target.value)queueScroll=window.scrollY;target.value=next;post.value=result.post||null;comment.value=result.comment||null;comments.value=result.comments||[];parentComment.value=result.context||null;removed.value=!!result.removed;reason.value='';decision.value='';confirm.value=false;requestId=crypto.randomUUID();notice.value='';await nextTick();if(alive)window.scrollTo({top:0,behavior:'instant'})}
+async function context(next:NonNullable<typeof target.value>){const result=await props.request('admin.context',next);if(!alive)return;if(!target.value)queueScroll=window.scrollY;target.value=next;post.value=result.post||null;comment.value=result.comment||null;comments.value=result.comments||[];parentComment.value=result.context||null;removed.value=!!result.removed;reason.value='';decision.value='';confirm.value=false;requestId=uid();notice.value='';await nextTick();if(alive)window.scrollTo({top:0,behavior:'instant'})}
 function open(next:NonNullable<typeof target.value>){void run(()=>context(next))}
 function back(){if(busy.value)return;target.value=null;confirm.value=false;error.value='';void restoreQueue()}
-function changedInput(){confirm.value=false;requestId=crypto.randomUUID()}
+function changedInput(){confirm.value=false;requestId=uid()}
 async function submit(){
  if(!target.value||!confirm.value)return;
  const selected={...target.value},action=decision.value;

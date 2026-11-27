@@ -41,22 +41,28 @@ struct TreeholeFollowingView: View {
 
 struct TreeholeFeedScopes: View {
     @ObservedObject var tree: TreeholeStore
+    @ScaledMetric(relativeTo: .subheadline) private var tabWidth: CGFloat = 64
+    var wrap = false
+    let continueScope: String
     let select: (String) -> Void
-    private var items: [(String, String)] { [("all", "广场")] + (tree.followingEnabled ? [("following", "关注动态")] : []) + [("participated", "我参与的"), ("watching", "关注的讨论")] }
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { buttons }
-            ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 18) { buttons } }
-        }.padding(.bottom, 8).disabled(tree.busy)
+        if wrap {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: tabWidth))], alignment: .leading) { tabs }
+        } else { HStack(spacing: 12) { tabs } }
     }
-    private var buttons: some View {
-        ForEach(items, id: \.0) { id, label in
-            Button { select(id) } label: {
-                VStack(spacing: 4) {
-                    Text(label).font(.system(size: 13, weight: tree.scope == id ? .semibold : .regular)).fixedSize()
-                    Capsule().fill(tree.scope == id ? TreeholeTheme.text : .clear).frame(height: 3)
-                }.frame(maxWidth: .infinity, minHeight: 44)
-            }.buttonStyle(.plain).foregroundStyle(tree.scope == id ? TreeholeTheme.text : TreeholeTheme.muted).accessibilityAddTraits(tree.scope == id ? .isSelected : [])
-        }
+    @ViewBuilder private var tabs: some View {
+            tab("广场", "all")
+            if tree.followingEnabled { tab("关注", "following") }
+            tab("继续聊", continueScope)
+    }
+    private func tab(_ label: String, _ id: String) -> some View {
+        let active = tree.scope == id
+        return Button(label) { select(id) }
+            .font(.subheadline.weight(active ? .bold : .medium))
+            .foregroundStyle(active ? TreeholeTheme.text : TreeholeTheme.muted)
+            .fixedSize().frame(minHeight: 44)
+            .overlay(alignment: .bottom) {
+                if active { Capsule().fill(TreeholeTheme.primary).frame(width: 16, height: 2).padding(.bottom, 5) }
+            }.accessibilityAddTraits(active ? .isSelected : [])
     }
 }

@@ -2,6 +2,18 @@ import XCTest
 @testable import Hanyuantong
 
 final class ScheduleMathTests: XCTestCase {
+    func testCompressedLunchAndCustomCoursesUseTheSameAxis() {
+        let slots = [AndroidTimeSlot(number: 1, start: "11:00", end: "11:45"),
+                     AndroidTimeSlot(number: 2, start: "14:00", end: "14:40")]
+        let regular = SchedulePeriodAxis(slots: slots, events: [])
+        XCTAssertEqual(regular.position(840), 1.35, accuracy: 0.001)
+        XCTAssertEqual(regular.units, 2.35, accuracy: 0.001)
+        let extended = SchedulePeriodAxis(slots: slots, events: [630..<665, 720..<735, 890..<920])
+        XCTAssertEqual(extended.position(660), 30.0 / 45, accuracy: 0.001)
+        XCTAssertEqual(extended.position(735) - extended.position(720), 15.0 / 45, accuracy: 0.001)
+        XCTAssertEqual(extended.position(920) - extended.position(880), 40.0 / 45, accuracy: 0.001)
+    }
+
     func testChineseWeekRangesAndParity() {
         XCTAssertEqual(ScheduleMath.parseRange("1-8周(单),10-14周(双),17周", limit: 30), [1,3,5,7,10,12,14,17])
         XCTAssertEqual(ScheduleMath.parseRange("1－3，5、7", limit: 13), [1,2,3,5,7])

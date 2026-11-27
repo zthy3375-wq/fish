@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {onMounted,computed} from 'vue';
-import {Droplets,WashingMachine,Map,Package,ChevronRight,ArrowUpRight} from 'lucide-vue-next';
+import {Droplets,WashingMachine,Map,Package,Store,ChevronRight,ArrowUpRight} from 'lucide-vue-next';
+import {commerceSupported} from '../services/commerce';
 import {initPangguai,pangguai} from '../composables/pangguai';
 import {initQuzhi,quzhi} from '../composables/quzhi';
 import {quzhiMoney} from '../services/quzhi-client';
@@ -20,6 +21,7 @@ onMounted(()=>{void initQuzhi();void initPangguai()});
    <button class="life-parcel" @click="$emit('open','parcel')"><Package :size="20"/><span><strong>取快递</strong><small>淘宝 · 拼多多出库码</small></span><ChevronRight :size="14"/></button>
    <button class="life-map" @click="$emit('open','campus-map')"><Map :size="20"/><span><strong>校园平面图</strong><small>东区 · 西区</small></span><ChevronRight :size="14"/></button>
   </div>
+  <div v-if="commerceSupported" class="life-utilities life-commerce"><button @click="$emit('open','campus-commerce')"><Store :size="20"/><span><strong>校园周边</strong><small>门店与学生优惠</small></span><ChevronRight :size="14"/></button></div>
  </div>
 </template>
 <style scoped>
@@ -32,7 +34,7 @@ onMounted(()=>{void initQuzhi();void initPangguai()});
 .life-balance-label{margin-top:10px}.life-card>b{font-size:22px;line-height:1.3;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.life-card small{margin-top:auto;padding-top:4px}
 .life-utilities{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-top:8px;border:1px solid var(--color-divider);border-radius:14px;background:var(--color-surface)}
 .life-utilities button{display:flex;align-items:center;gap:9px;min-width:0;min-height:64px;border-radius:0;padding:10px 14px;text-align:left;color:var(--color-text)}
-.life-utilities button+button{border-left:1px solid var(--color-divider)}
+.life-commerce{grid-template-columns:1fr}.life-commerce button{min-height:54px}.life-utilities button+button{border-left:1px solid var(--color-divider)}
 .life-utilities button>span{flex:1;min-width:0}.life-utilities svg{flex-shrink:0;color:var(--color-primary)}.life-utilities svg:last-child{color:var(--color-muted)}
 .life-utilities strong{display:block;font-size:13px;font-weight:600;line-height:1.5}.life-utilities small{display:block;margin-top:2px;font-size:10px;line-height:1.6;color:var(--color-muted)}
 .life-card:active,.life-utilities button:active{background:var(--color-highlight);transform:none}.life-card:focus-visible,.life-utilities button:focus-visible{outline-offset:-3px}

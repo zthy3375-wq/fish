@@ -25,6 +25,15 @@ import CommunityGroup from './components/CommunityGroup.vue';
 import FailureFeedback from './components/FailureFeedback.vue';
 import {defineAsyncComponent} from 'vue';
 const Treehole=defineAsyncComponent(()=>import('./components/Treehole.vue'));
+import {commerceSupported,type Ad as CommerceAd} from './services/commerce';
+const CampusCommerce=defineAsyncComponent(()=>import('./components/commerce/CampusCommerce.vue'));
+const HomeCommerce=defineAsyncComponent(()=>import('./components/commerce/HomeCommerce.vue'));
+const commercePanel=ref<{requestBack:()=>boolean}>();
+const commerceShop=ref<string>(),commerceReport=ref<CommerceAd>();
+function openCommerce(shop?:string,report?:CommerceAd){
+ commerceShop.value=shop;commerceReport.value=report;open('campus-commerce');
+}
+function openCommerceAccount(){close();communityAccountEntry.value=true;nav('community');}
 const communityAccountEntry=ref(false);
 const treeholeRef=ref<{requestBack:()=>boolean;refresh:()=>void}>();
 const treeholeTabNavigation=ref(true);
@@ -282,7 +291,7 @@ watch([globalCollectionRef,requestedMedal,page,section],([collection,code,curren
   if(current!=='profile'||part!=='honors'){requestedMedal.value='';return;}
   if(collection&&code){requestedMedal.value='';collection.openMedal(code);}
 },{flush:'post'});
-setBeforeBack(()=>globalCollectionRef.value?.closeDetail()||(!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false));
+setBeforeBack(()=>(modal.value==='campus-commerce'&&commercePanel.value?.requestBack())||globalCollectionRef.value?.closeDetail()||(!modal.value?(page.value==='community'?treeholeRef.value?.requestBack():taskDetailRef.value?.requestBack())??false:false));
 setOverlayCloseGuard(() => {
   if (modal.value==='course'&&deleteIntent.value) {deleteIntent.value='';return false;}
   if (modal.value==='school-course-adjustment') {if(editorBusy.value)return false;if(adjustmentRef.value?.hasChanges()){adjustmentRef.value.requestCancel();return false;}}
@@ -719,13 +728,14 @@ onUnmounted(() => {
                 <div v-if="todayCourses.length" id="home-timeline-content" v-show="homeTimelineOpen"><HomeCourseTimeline :courses="todayCourses" :now="now" @select="details"/></div>
               <div class="home-study-links"><button @click="go('learning')"><BookOpen :size="19"/><strong>学习通</strong><ChevronRight :size="14"/></button><button @click="go('grades')"><ChartNoAxesColumnIncreasing :size="19"/><strong>成绩与学业</strong><ChevronRight :size="14"/></button></div>
               </section>
-              <section class="home-life-section" aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2></div><LifeServices @open="open"/></section>
+              <HomeCommerce v-if="commerceSupported" @select="openCommerce($event)" @report="openCommerce(undefined,$event)"/>
+              <section class="home-life-section" aria-labelledby="home-life-title"><div class="home-service-heading"><h2 id="home-life-title">校园生活</h2></div><LifeServices @open="$event==='campus-commerce'?openCommerce():open($event)"/></section>
               <TodayTasks :now="now" @open="planLearning" @navigate="go" @create="editDailyTask(undefined,beijingDay(now))"/>
 
 
             </div>
           </template>
-          <template v-else-if="page === 'life'"><LifeServices @open="open"/></template>
+          <template v-else-if="page === 'life'"><LifeServices @open="$event==='campus-commerce'?openCommerce():open($event)"/></template>
           <template v-else-if="page === 'academic' || page === 'schedule' || page === 'tasks'">
             <button v-if="section==='agenda'" class="learning-page-link" @click="go('learning')"><BookOpen :size="20"/><strong>学习通作业</strong><span>按课程查看与安排</span><ChevronRight :size="16"/></button>
             <CampusAgenda v-if="section==='agenda'" @course="details" @navigate="go" @edit="editDailyTask" />
@@ -863,6 +873,7 @@ onUnmounted(() => {
               ? '课程详情'
               : modal === 'quzhi-wallet' ? '趣智校园钱包'
               : modal === 'pangguai-wallet' ? '胖乖生活钱包'
+              : modal === 'campus-commerce' ? '校园周边'
               : modal === 'campus-map' ? '校园平面图'
               : modal === 'parcel' ? '快递出库码'
               : modal === 'course-widget' ? '桌面课表'
@@ -879,6 +890,7 @@ onUnmounted(() => {
           </button>
           <QuzhiWallet v-if="modal === 'quzhi-wallet'"/>
           <PangguaiWallet v-else-if="modal === 'pangguai-wallet'"/>
+          <CampusCommerce v-else-if="modal === 'campus-commerce'" ref="commercePanel" :initial-shop="commerceShop" :initial-report="commerceReport" @account="openCommerceAccount"/>
           <CampusMap v-else-if="modal === 'campus-map'"/>
           <ParcelShortcuts v-else-if="modal === 'parcel'"/>
           <CourseWidgetSetup v-else-if="modal === 'course-widget'"/>

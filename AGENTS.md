@@ -25,7 +25,7 @@ Run checks appropriate to the change. For native/session changes also validate A
 - Keep school caches independent from personal schedules. Preserve storage keys, legacy `school-page-` recognition and backup compatibility.
 - Empty/error/partial responses must not wipe previously successful data. Logout/account changes must not reuse another account's snapshot.
 - Preserve the compact mobile layout and existing light theme. Do not add developer diagnostics or manual school import to the normal user flow.
-- Current owner direction (2026-11-16): develop and polish Android first; defer porting these changes to native Swift/SwiftUI iOS until requested. Preserve the existing `ios-native/` implementation, but do not treat new Android features or validation as iOS work. Keep Vue/Capacitor with Kotlin services on Android; do not reintroduce Flutter or retired classroom queries. Android test signatures are not production release signatures.
+- Current owner direction (2026-11-21): develop Android and native iOS together. For shared features, implement and verify both platform entry points in the same change or document the outstanding work and its verification requirements. Android uses Vue/Capacitor with Kotlin services and iOS uses Swift/SwiftUI with a 16.0 minimum. Keep five tabs in the same order, preserve shared protocol compatibility, and respect platform-specific authorization and publishing. Do not reintroduce Flutter or retired classroom queries.
 
 ## Repository hygiene
 

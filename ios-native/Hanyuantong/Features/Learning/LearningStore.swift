@@ -33,6 +33,27 @@ struct LearningCache: Codable {
     var noticeUpdatedAt: Date?
     var lastAttempt: Date?
     var connected: Bool { !account.isEmpty && session != "disconnected" }
+    func taskListEntries(scope: TaskListScope, now: Date = Date()) -> [(item: LearningItem, projection: CampusTask)] {
+        guard connected else { return [] }
+        let timestamp = ISO8601DateFormatter()
+        return items.compactMap { item in
+            let plan = plans[item.id]
+            if scope == .due {
+                guard LearningDisplay.state(item, now: now).key == "pending" else { return nil }
+            } else if scope != .completed && plan?.plannedDay == nil { return nil }
+            let deadline = LearningDisplay.date(item.deadline)
+            let id = BackupValue.stableID(item.id, namespace: "learning-task/" + account)
+            let firstSeen = item.firstSeenAt.flatMap { timestamp.date(from: $0) } ?? .distantPast
+            var projection = CampusTask(id: id, title: item.title, date: firstSeen,
+                                        completed: item.status == "submitted", notes: plan?.notes ?? "")
+            projection.course = item.course
+            projection.plannedAt = nil
+            projection.plannedDay = plan?.plannedDay
+            projection.deadline = deadline
+            return (item, projection)
+        }
+    }
+
     var remaining: Int { cursor.map { max(0, activeCourses.count - $0) } ?? 0 }
 
     /// Unknown, empty and partial observations never remove successful records or infer submission.
@@ -105,6 +126,9 @@ final class LearningStore: ObservableObject {
         return (try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     }
     var pendingCount: Int { cache.items.filter { LearningDisplay.state($0).key == "pending" }.count }
+    var canConfirmTaskList: Bool {
+        storageReady && !blocked && (!connected || (cache.session == "valid" && cache.issues.isEmpty))
+    }
     var blocked: Bool { isBusy || isOpening }
     var needsLogin: Bool { !connected || cache.session == "expired" || cache.issues["connection"] == "VERIFY" }
     var status: String {
@@ -122,10 +146,16 @@ final class LearningStore: ObservableObject {
             let storage = try storage ?? ProtectedStorage()
             self.storage = storage
             if let account = try session.savedAccount(), let value = try storage.read(Self.filename(account), as: LearningCache.self) {
-                cache = try value.validated(account: account)
+                try restore(value, account: account)
             }
             storageReady = true
         } catch { message = "本机学习通加密数据暂时无法读取。请解锁设备后重试，原记录不会被覆盖。" }
+    }
+    private func restore(_ value: LearningCache, account: String) throws {
+        cache = try value.validated(account: account)
+        if cache.session == "valid", !cache.courses.isEmpty, cache.issues["courses"] == nil, let at = cache.lastAttempt {
+            MedalJournal.shared.unlock("learning", scope: account, at: at, historical: true)
+        }
     }
     func attachPresenter(_ controller: UIViewController) { session.attachPresenter(controller) }
     private static func filename(_ account: String) -> String { "learning-" + account }
@@ -152,12 +182,13 @@ final class LearningStore: ObservableObject {
         }
         next.session = "valid"; next.lastAttempt = Date(); next.issues.removeValue(forKey: "connection")
         try persist(next)
+        if result.complete && !result.courses.isEmpty { MedalJournal.shared.unlock("learning",scope:result.account) }
     }
     private func ensureStorage() -> Bool {
         if storageReady { return true }
         do {
             let storage = try self.storage ?? ProtectedStorage(); self.storage = storage
-            if let account = try session.savedAccount(), let saved = try storage.read(Self.filename(account), as: LearningCache.self) { cache = try saved.validated(account: account) }
+            if let account = try session.savedAccount(), let saved = try storage.read(Self.filename(account), as: LearningCache.self) { try restore(saved, account: account) }
             storageReady = true; return true
         } catch { message = "本机学习通加密数据暂时无法读取。请解锁设备后重试。"; return false }
     }
@@ -288,8 +319,13 @@ final class LearningStore: ObservableObject {
         var next = cache; next.plans[item.id] = value
         do { try persist(next); message = "本机计划已保存，平台截止时间与提交状态不变。" } catch { failed(error) }
     }
+    func setPlannedDay(_ day: String?, for item: LearningItem) {
+        var value = cache.plans[item.id] ?? LearningPlan()
+        value.plannedDay = day
+        plan(item, value: value)
+    }
     func today(_ item: LearningItem) {
-        var value = cache.plans[item.id] ?? LearningPlan(); value.plannedDay = CampusTheme.date(Date(), format: "yyyy-MM-dd"); plan(item, value: value)
+        setPlannedDay(TaskClock.day(Date()), for: item)
     }
     func openCourse(_ course: LearningCourse) {
         guard cache.courses.contains(where: { $0 == course }), let url = URL(string: course.url), LearningPolicy.safeRead(url) else { return }

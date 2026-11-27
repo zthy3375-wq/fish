@@ -1,16 +1,23 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+def commercePreview = project.findProperty('commercePreview') == 'true'
+def commerceService = commercePreview ? (project.findProperty('commerceService') ?: '') : ''
+if (commerceService && !(commerceService ==~ /https:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?\/[a-zA-Z0-9_\/-]+\/v1\//)) {
+    throw new GradleException('commerceService must be an HTTPS community v1 endpoint with a trailing slash')
+}
+
 android {
     namespace "org.handancampus.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId (project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.achievementstatuspreview' : 'org.handancampus.app')
-        manifestPlaceholders = [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·收藏测试' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·收藏测试' : '@string/title_activity_main']
+        applicationId (commercePreview ? 'org.handancampus.app.commercepreview' : project.findProperty('learningPreview') == 'true' ? 'org.handancampus.app.achievementstatuspreview' : 'org.handancampus.app')
+        buildConfigField 'String', 'COMMERCE_TEST_SERVICE', '"' + commerceService + '"'
+        manifestPlaceholders = commercePreview ? [campusLabel: '邯院通·周边测试', campusActivityLabel: '邯院通·周边测试'] : [campusLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·收藏测试' : '@string/app_name', campusActivityLabel: project.findProperty('learningPreview') == 'true' ? '邯院通·收藏测试' : '@string/title_activity_main']
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 191
-        versionName "1.3.1"
+        versionCode 194
+        versionName "1.3.2-commerce.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

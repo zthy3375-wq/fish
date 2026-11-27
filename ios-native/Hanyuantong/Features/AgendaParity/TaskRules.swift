@@ -139,7 +139,7 @@ enum TaskRules {
         a.compare(b, options: .caseInsensitive, locale: Locale(identifier: "zh_CN")) == .orderedAscending
     }
 
-    static func groups(_ tasks: [CampusTask], filter: TaskFilter, now: Date = Date()) -> [TaskDateGroup] {
+    static func groups(_ tasks: [CampusTask], filter: TaskFilter, now: Date = Date(), unknownCompletionDates: Set<UUID> = []) -> [TaskDateGroup] {
         let selected = select(tasks, filter: filter, now: now)
         var groups: [TaskDateGroup] = []
         let today = TaskClock.day(now), tomorrow = TaskClock.shifted(today, days: 1)
@@ -149,11 +149,13 @@ enum TaskRules {
                 key = task.course; title = task.course.isEmpty ? "个人事务" : task.course
             } else {
                 let day: String?
-                if task.completed { day = task.completedAt.map(TaskClock.day) ?? TaskClock.day(task.updatedAt) }
+                if task.completed {
+                    day = unknownCompletionDates.contains(task.id) ? nil : task.completedAt.map(TaskClock.day) ?? TaskClock.day(task.updatedAt)
+                }
                 else if filter.scope == .due { day = task.deadline.map(TaskClock.day) }
                 else { day = plannedDay(task) }
                 key = day ?? "undated"
-                let label = day == today ? "今天" : day == tomorrow ? "明天" : day ?? "未安排"
+                let label = day == today ? "今天" : day == tomorrow ? "明天" : day ?? (task.completed ? "日期未记录" : "未安排")
                 title = task.completed ? "已完成 · \(label)" : label
             }
             let identity = (filter.groupByCourse ? "course/" : task.completed ? "done/" : "plan/") + key
@@ -228,6 +230,17 @@ enum TaskRules {
             return try validated(value)
         }
         throw Failure("未找到有效的下次重复日期，请检查规则")
+    }
+
+    static func stepsMedalEvidence(_ task: CampusTask) -> Date? {
+        guard task.completed, let completed = task.completedAt,
+              task.steps.filter(\.completed).count >= 2 else { return nil }
+        // Steps can be checked after the parent. The saved snapshot proves both conditions by this date.
+        return max(completed, task.updatedAt)
+    }
+
+    static func earnedStepsMedal(previous: CampusTask, saved: CampusTask) -> Bool {
+        previous.id == saved.id && stepsMedalEvidence(previous) == nil && stepsMedalEvidence(saved) != nil
     }
 
     /// Idempotent completion and protected undo. Throws before the caller can replace persisted data.

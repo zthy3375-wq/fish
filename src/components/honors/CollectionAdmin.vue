@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { collectionKind, definitionCode, displayCollectionName, honorCategories, honorName, honorRarities, isRetiredAchievement, type CollectionAudit, type CollectionDefinition, type CollectionGrant, type CollectionMember, type HonorCategory, type HonorRarity } from "../../domain/honorCollection";
+import { uid } from "../../domain/schedule";
 import { badges, honorDate, legacyWearableHonors, type Badge } from "../../domain/communityHonors";
 import { clearHonorCollectionCache } from "../../services/honorCollectionCache";
 import { treeholeError, treeholeErrorCode, type TreeholeResult } from "../../services/treehole";
@@ -13,7 +14,7 @@ const definitions = ref<CollectionDefinition[]>([]);
 const legacyGrants = ref<Badge[]>([]);
 const definitionOffset = ref(0);
 const moreDefinitions = ref(false);
-const members = ref<CollectionMember[]>([]);
+const members = ref<(CollectionMember & {username?:string})[]>([]);
 const grants = ref<CollectionGrant[]>([]);
 const audit = ref<CollectionAudit[]>([]);
 const exceptions = ref(false);
@@ -23,6 +24,8 @@ const grantOffset = ref(0);
 const moreGrants = ref(false);
 const member = ref<CollectionMember>();
 const query = ref("");
+const searched = ref(false);
+const confirmation = ref<HTMLElement>();
 const year = Number(new Intl.DateTimeFormat("en",{year:"numeric",timeZone:"Asia/Shanghai"}).format(new Date()));
 const categories = Object.entries(honorCategories).filter(([code]) => code!=="hidden");
 const managed = computed(() => {
@@ -48,13 +51,20 @@ let last: { key:string; id:string; recommendationId?:string } | undefined;
 
 async function load() {
   const result = await props.request("collection.admin", {
-    query:query.value, memberId:member.value?.id, exceptions:exceptions.value, offset:auditOffset.value,
+    query:member.value?.id ?? query.value.trim(), memberId:member.value?.id, exceptions:exceptions.value, offset:auditOffset.value,
     definitionOffset:definitionOffset.value,grantOffset:grantOffset.value,definitionScope:scope.value,
   });
   if (!result.honorDefinitions || !result.honorAudit || !result.honorMembers) throw Error("invalid_response");
   definitions.value = result.honorDefinitions.slice(0,100).map(d=>({...d,name:displayCollectionName(d)}));
   moreDefinitions.value = result.honorDefinitions.length > 100;
-  members.value = result.honorMembers;
+  if (member.value) {
+    const refreshed = result.honorMembers.find(person => person.id === member.value?.id);
+    if (!refreshed) throw Error("not_found");
+    member.value = refreshed;
+    title.value = refreshed.customTitle ?? "";
+  } else {
+    members.value = result.honorMembers;
+  }
   grants.value = (result.honorGrants ?? []).slice(0,50);
   moreGrants.value = (result.honorGrants?.length ?? 0)>50;
   audit.value = result.honorAudit.slice(0,20);
@@ -81,7 +91,32 @@ function edit(definition?: CollectionDefinition) {
   };
   formOpen.value = true;
 }
+async function searchMembers() {
+  member.value = undefined;
+  members.value = [];
+  grants.value = [];
+  legacyGrants.value = [];
+  grantOffset.value = 0;
+  searched.value = false;
+  notice.value = "";
+  const term = query.value.trim();
+  if (!term) return;
+  if (term.length <= 32) {
+    try {
+      const directory = await props.request("admin.members", {query:term});
+      if (!directory.registeredMembers) throw Error("invalid_response");
+      members.value = directory.registeredMembers;
+      searched.value = true;
+      return;
+    } catch (failure) {
+      if (!["not_found","invalid_request"].includes(treeholeErrorCode(failure) ?? "")) throw failure;
+    }
+  }
+  await load();
+  searched.value = true;
+}
 function choose(person: CollectionMember) {
+  notice.value = ""; evidence.value = ""; awardingStory.value = "";
   member.value = person; title.value = person.customTitle ?? ""; reason.value = "";
   grantOffset.value=0; awardId.value=""; legacyGrants.value=[];
   void run(load);
@@ -100,9 +135,12 @@ function setScope(next: typeof scope.value) {
   formOpen.value=false;
   void run(load);
 }
-function prompt(label: string, payload: Record<string, unknown>, action: ChangeAction = "collection.change") {
+async function prompt(label: string, payload: Record<string, unknown>, action: ChangeAction = "collection.change") {
   error.value = ""; notice.value = "";
   pending.value = { label, payload, action };
+  await nextTick();
+  confirmation.value?.focus();
+  confirmation.value?.scrollIntoView?.({block:"center"});
 }
 function save() {
   const value = fields.value;
@@ -129,7 +167,7 @@ async function confirm() {
   if (!action) return;
   await run(async() => {
     const key = JSON.stringify([action.action,action.payload]);
-    if (last?.key !== key) last = { key, id:crypto.randomUUID() };
+    if (last?.key !== key) last = { key, id:uid() };
     const payload = { ...action.payload, requestId:last.id };
     let result: TreeholeResult;
     try { result = await props.request(action.action, payload); }
@@ -137,7 +175,7 @@ async function confirm() {
       if (action.action!=="honors.change" || action.payload.kind!=="creator" ||
           treeholeErrorCode(error)!=="recommendation_required") throw error;
       // Older servers store the developer's review as a recommendation before granting.
-      last.recommendationId ??= crypto.randomUUID();
+      last.recommendationId ??= uid();
       await props.request("honors.change", {operation:"recommend",memberId:action.payload.memberId,
         reason:action.payload.reason,requestId:last.recommendationId});
       result = await props.request(action.action, payload);
@@ -158,15 +196,16 @@ onMounted(() => run(load));
 <template>
  <section class="hc hc-admin">
   <nav class="hc-tabs" aria-label="社区荣誉管理">
-   <button v-for="(label,key) in {definitions:'荣誉与年度',grants:'授予与称号',audit:'发放记录'}" :key="key" :aria-pressed="mode===key" :disabled="busy" @click="go(key)">{{ label }}</button>
+   <button v-for="(label,key) in {definitions:'荣誉与年度',grants:'授予与称号',audit:'发放记录'}" :key="key" :aria-pressed="mode===key" :disabled="busy || !!pending" @click="go(key)">{{ label }}</button>
   </nav>
   <p v-if="notice" role="status" class="hc-empty">{{notice}}</p>
   <p v-if="error" role="alert" class="hc-empty">{{error}} <button v-if="!pending" class="hc-retry" @click="run(load)">刷新</button></p>
-  <section v-if="pending" class="hc-management-confirm" role="region" aria-label="确认管理操作">
+  <section v-if="pending" ref="confirmation" tabindex="-1" class="hc-management-confirm" role="region" aria-label="确认管理操作">
    <h3>{{ pending.label }}</h3><p>操作会进入管理审计。</p>
    <button class="hc-more" :disabled="busy" @click="pending=undefined">返回编辑</button>
    <button class="hc-more" :disabled="busy" @click="confirm">{{busy ? "正在保存…" : "确认执行"}}</button>
   </section>
+  <template v-else>
   <button v-if="mode==='definitions'" class="hc-more" :disabled="busy" @click="edit()">创建荣誉</button>
    <form v-if="formOpen" @submit.prevent="save">
     <label>编号<input v-model="fields.code" :disabled="!!editing" required pattern="[a-z][a-z0-9-]{1,47}" /></label>
@@ -200,8 +239,9 @@ onMounted(() => run(load));
    <div class="hc-page-controls"><button v-if="definitionOffset>0" class="hc-more" @click="definitionOffset-=100; run(load)">上一页</button><button v-if="moreDefinitions" class="hc-more" @click="definitionOffset+=100; run(load)">下一页定义</button></div>
   </template>
   <template v-else-if="mode==='grants'">
-   <form @submit.prevent="run(load)"><label>查找成员<input v-model="query" placeholder="完整昵称或成员 ID" maxlength="64" required /></label><button class="hc-more" :disabled="busy">搜索</button></form>
-   <button v-for="person in members" :key="person.id" class="hc-more" :disabled="busy" @click="choose(person)">{{person.nickname}} · {{person.id.slice(0,8)}}</button>
+   <form @submit.prevent="run(searchMembers)"><label>查找成员<input v-model="query" :disabled="busy" placeholder="登录账号、昵称或完整成员 ID" maxlength="64" required /></label><button class="hc-more" :disabled="busy">搜索</button></form>
+   <p v-if="searched && !members.length && !busy && !error" class="hc-empty" role="status">没有找到匹配的成员。</p>
+   <button v-for="person in members" :key="person.id" class="hc-more" :disabled="busy" @click="choose(person)">{{person.nickname}} · {{person.username || person.id.slice(0,8)}}</button>
    <template v-if="member">
     <h3>{{member.nickname}}的授予记录</h3>
     <div v-if="scope==='achievement' && annual.some(d=>d.mode==='template')" class="hc-page-controls">
@@ -221,8 +261,9 @@ onMounted(() => run(load));
       <label>管理原因<input v-model="reason" required minlength="2" :maxlength="legacyAward?200:240" /></label>
       <button class="hc-more" :disabled="busy||!awardId">核对并授予</button>
     </form>
-    <form @submit.prevent="prompt('保存专属称号',{operation:'title', memberId:member.id, title, reason:'管理专属称号'})">
-      <label>专属称号（留空清除）<input v-model="title" maxlength="16" /></label><button class="hc-more">保存称号</button>
+    <form @submit.prevent="prompt(title.trim() ? '授予'+member.nickname+'「'+title.trim()+'」' : '清除'+member.nickname+'的专属称号',{operation:'title', memberId:member.id, title:title.trim(), reason:'管理专属称号'})">
+      <p>当前专属称号 · {{ member.customTitle || "未设置" }}</p>
+      <label>专属称号（留空清除）<input v-model="title" :disabled="busy" maxlength="16" /></label><button class="hc-more" :disabled="busy || title.trim()===(member.customTitle ?? '')">保存称号</button>
     </form>
     <ul class="hc-manage-list">
      <li v-for="g in grantOffset===0 ? legacyGrants : []" :key="g.code"><strong>{{badges[g.code].name}}</strong><p>{{g.at?honorDate(g.at)+' · ':''}}有效</p>
@@ -239,6 +280,7 @@ onMounted(() => run(load));
     <ul class="hc-manage-list"><li v-for="row in audit" :key="row.id"><strong>{{operations[row.operation] || row.operation}} · {{row.outcome==='ok'?'成功':treeholeError({code:row.outcome})}}</strong><p>{{honorDate(row.at)}} {{row.nickname}} {{row.reason}}</p><p v-if="row.evidence">{{row.evidence}}</p></li></ul>
     <p v-if="!audit.length&&!busy" class="hc-empty">暂无记录。</p>
     <div class="hc-page-controls"><button v-if="auditOffset>0" class="hc-more" @click="auditOffset-=20; run(load)">上一页</button><button v-if="moreAudit" class="hc-more" @click="auditOffset+=20; run(load)">下一页记录</button></div>
+  </template>
   </template>
  </section>
 </template>

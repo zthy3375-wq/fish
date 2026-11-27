@@ -1,5 +1,6 @@
 package org.handancampus.app.community
 
+import org.handancampus.app.BuildConfig
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
@@ -13,24 +14,29 @@ internal class TreeholeFailure(val code: String) : Exception(code)
 internal class TreeholeClient(private val vault: TreeholeTokenStore, private val transport: TreeholeTransport = TreeholeHttp()) {
     companion object {
         val actions = setOf("collection.profile", "collection.archive", "collection.wear", "collection.visibility", "collection.ack", "collection.showcase", "collection.admin", "collection.change", "honors.hall", "honors.wear", "honors.manage", "honors.change", "honors.ack", "config", "register", "login", "recover", "me", "logout", "profile.update", "password.change", "account.delete", "posts.list", "posts.get", "posts.create", "posts.delete", "comments.create", "comments.delete", "reactions.set", "reports.create", "blocks.set", "blocks.clear", "admin.members", "admin.reports", "admin.resolve", "admin.context", "admin.content", "admin.history", "admin.action", "media.upload", "media.discard", "media.url", "comments.replies", "comments.like", "comments.accept", "comments.context", "threads.watch", "notifications.list", "notifications.unread", "notifications.read", "profile.get", "avatar.set", "responses.set", "follows.set", "follows.list", "polls.vote", "buddies.join", "buddies.close", "buddies.members", "follows.stats", "followers.list", "members.block", "messages.open", "messages.inbox", "messages.unread", "messages.list", "messages.send", "messages.read")
+        private const val commerce = "commerce."
+        private val publicCommerce = setOf("commerce.home", "commerce.catalog", "commerce.shop", "commerce.report")
+        private val commerceActions = publicCommerce + setOf("access", "wallet", "favorites", "favorite", "coupon", "claim", "shop.status", "metrics")
+            .map { commerce + it }
+        fun accepts(action: String) = action in actions || action in commerceActions
         private val auth = setOf("register", "login", "recover")
         private val tokenPattern = Regex("[A-Za-z0-9_-]{43}")
     }
     @Synchronized fun request(action: String, body: JSONObject): JSONObject {
-        if (action !in actions) throw TreeholeFailure("invalid_request")
+        if (!accepts(action)) throw TreeholeFailure("invalid_request")
         if (body.toString().toByteArray().size > (if (action == "media.upload") 1_650_000 else 20000)) throw TreeholeFailure("invalid_request")
-        val token = vault.read()?.takeIf { tokenPattern.matches(it) }
+        val token = if (action in publicCommerce) null else vault.read()?.takeIf { tokenPattern.matches(it) }
         if (action == "logout") {
             // Revoke when reachable, but a network failure must never prevent local sign-out.
             vault.clear()
             if (token != null) runCatching { transport.send(action, JSONObject(), token) }
             return JSONObject()
         }
-        if (action !in auth && action != "config" && token == null) throw TreeholeFailure("session_expired")
+        if (action !in auth && action != "config" && action !in publicCommerce && token == null) throw TreeholeFailure("session_expired")
         val response = transport.send(action, body, if (action in auth) null else token)
         if (response.status !in 200..299) {
             val error = response.body.optString("error", "temporarily_unavailable")
-            if (error == "session_expired") vault.clear()
+            if (error == "session_expired" && !action.startsWith(commerce)) vault.clear()
             throw TreeholeFailure(error.take(80))
         }
         val result = response.body
@@ -49,8 +55,11 @@ internal class TreeholeClient(private val vault: TreeholeTokenStore, private val
 }
 internal class TreeholeHttp : TreeholeTransport {
     override fun send(action: String, body: JSONObject, token: String?): TreeholeResponse {
-        require(action in TreeholeClient.actions)
-        val url = URI("https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-community/v1/$action").toURL()
+        require(TreeholeClient.accepts(action))
+        val base = BuildConfig.COMMERCE_TEST_SERVICE.ifEmpty {
+            "https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-community/v1/"
+        }
+        val url = URI(base + action).toURL()
         val conn = url.openConnection() as HttpURLConnection
         try {
             conn.instanceFollowRedirects = false; conn.connectTimeout = 12000; conn.readTimeout = 25000

@@ -27,7 +27,7 @@ struct QuzhiWalletView: View {
             }.padding(20)
         }
         .background(CampusTheme.background)
-        .navigationTitle("趣智校园").navigationBarTitleDisplayMode(.inline)
+        .onAppear { MedalJournal.shared.unlock("bath") }.navigationTitle("趣智校园").navigationBarTitleDisplayMode(.inline)
         .tint(CampusTheme.primary)
         .refreshable { if store.valid { _ = await store.refresh(month: month) } }
         .task {
@@ -189,7 +189,7 @@ private struct QuzhiLoginView: View {
     @State private var smsConsent = false
     @State private var completed = false
     var body: some View {
-        NavigationStack {
+        CampusNavigation {
             Form {
                 Section {
                     Text("密码登录已有趣智校园账户。短信登录可能由平台创建新账户，请先阅读并确认提示。密码与验证码不保存。")
