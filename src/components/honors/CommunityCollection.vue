@@ -279,6 +279,7 @@ onMounted(async () => { await load(); if (alive) await openInitial(); });
           </span>
           <span v-if="!self && !identityCodes.some(c=>profile?.badges.official?.code===c)">社区成员</span>
         </div>
+        <p v-if="self && profile.customTitle">我的专属称号 · {{ profile.customTitle }}</p>
         <h3>可佩戴荣誉</h3>
       </section>
       <nav v-if="panel==='achievement'" class="hc-tabs" aria-label="社区成就类型">

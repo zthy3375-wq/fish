@@ -13,6 +13,10 @@ export interface AcademicCache {
  profile:CachedModule<SchoolProfile>;grades:CachedModule<SchoolGrade[]>;exams:CachedModule<SchoolExam[]>;
  examsByTerm?:Record<string,CachedModule<SchoolExam[]>>;
 }
+// Academic snapshots contain only values persisted to JSON in Preferences.
+function copySnapshot<T extends AcademicCache | CachedModule<SchoolExam[]>>(snapshot: T): T {
+ return JSON.parse(JSON.stringify(snapshot)) as T;
+}
 export const emptyModule=<T>():CachedModule<T>=>({data:null,updatedAt:null,error:null});
 export const emptyAcademicCache=():AcademicCache=>({version:1,connected:false,session:'disconnected',selectedTerm:null,lastError:null,terms:{},semesters:emptyModule(),profile:emptyModule(),grades:emptyModule(),exams:emptyModule()});
 export const termKey=(t:SchoolTerm)=>`${t.xnm}-${t.xqm}`;
@@ -44,10 +48,10 @@ function normalizeTimetable(value:unknown,calendar:Semester[],previous?:SchoolTe
 }
 function validateArray<T>(raw:unknown,validate:(r:any)=>boolean):T[]{if(!Array.isArray(raw)||raw.length>2000||raw.some(r=>!r||!validate(r)))throw Error('SCHEMA');return raw as T[]}
 export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicResult,calendar:Semester[],requestedTerm?:SchoolTerm):AcademicCache {
- const next=structuredClone(cache);next.session=result.session;next.lastError=result.modules?.timetable?null:cache.lastError;
+ const next=copySnapshot(cache);next.session=result.session;next.lastError=result.modules?.timetable?null:cache.lastError;
  next.examsByTerm??={};
  // Migrate the existing snapshot once; future responses always carry a verified term.
- if(cache.selectedTerm&&!next.examsByTerm[cache.selectedTerm]&&cache.exams.data!==null)next.examsByTerm[cache.selectedTerm]=structuredClone(cache.exams);
+ if(cache.selectedTerm&&!next.examsByTerm[cache.selectedTerm]&&cache.exams.data!==null)next.examsByTerm[cache.selectedTerm]=copySnapshot(cache.exams);
  let examKey:string|undefined;
  try {const term=result.resolvedTerm??(result.modules?.timetable?.data as SchoolTimetable|undefined)?.term??requestedTerm;if(term)examKey=termKey(validTerm(term))}catch{/* Unknown scope must not replace an exam snapshot. */}
  if(result.session==='valid'){next.connected=true;next.localScope??=uid();}
@@ -107,7 +111,7 @@ export function applyAcademicResult(cache:AcademicCache,result:NativeAcademicRes
  }
  if(next.selectedTerm){
   const scoped=next.examsByTerm[next.selectedTerm];
-  if(scoped)next.exams=structuredClone(scoped);
+  if(scoped)next.exams=copySnapshot(scoped);
   else if(next.selectedTerm!==cache.selectedTerm)next.exams={...emptyModule<SchoolExam[]>(),error:'当前学期考试尚未更新'};
  }
  return next;
@@ -131,7 +135,7 @@ export class AcademicSyncEngine {
  updateCourseAdjustments(scope:string,term:string,mutate:(cache:AcademicCache)=>void):Promise<void>{
   const token=this.generation;
   const job=this.writes.catch(()=>{}).then(async()=>{
-   const next=structuredClone(this.read());
+   const next=copySnapshot(this.read());
    if(token!==this.generation||!scope||next.localScope!==scope||next.selectedTerm!==term||!next.connected)throw Error('学校账号或学期已变化，请返回课表重新打开');
    mutate(next);if(next.courseAdjustments)validateSchoolAdjustments(next.courseAdjustments);
    await this.commit(next);
@@ -166,7 +170,7 @@ export class AcademicSyncEngine {
      }
     }
    }catch(e){
-    if(token===this.generation){const next=structuredClone(this.read());if((e as {code?:string}).code!=='CANCELLED'){
+    if(token===this.generation){const next=copySnapshot(this.read());if((e as {code?:string}).code!=='CANCELLED'){
      next.session='unknown';next.lastError=schoolError('NETWORK');if(next.selectedTerm&&next.terms[next.selectedTerm])next.terms[next.selectedTerm].error=schoolError('NETWORK');await this.save(next,token);
     }}throw e;
    }

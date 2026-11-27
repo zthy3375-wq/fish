@@ -204,7 +204,7 @@ actor TreeholeService {
         let token = try vault.read().flatMap { Self.validToken($0) ? $0 : nil }
         if action == "logout" { try vault.clear() }
         if !authenticating && action != "config" && action != "logout" && token == nil { throw TreeholeError(code: "session_expired") }
-        let endpoint = URL(string: "https://hanyuantong-d8gjzt1jh12370215-1527874185.ap-shanghai.app.tcloudbase.com/hyt-community/v1/\(action)")!
+        let endpoint = URL(string: CommerceAPI.serviceBase + action)!
         var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = action == "config" ? "GET" : "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")

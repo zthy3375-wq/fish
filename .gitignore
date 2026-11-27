@@ -28,3 +28,5 @@ playwright-report/
 test-results/
 .idea/
 .DS_Store
+
+/dist-merchant/

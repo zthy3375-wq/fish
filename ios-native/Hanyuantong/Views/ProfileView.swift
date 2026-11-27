@@ -7,6 +7,7 @@ struct ProfileView: View {
     @EnvironmentObject var displayPreferences: DisplayPreferencesStore
     @State private var schoolExpanded = false
     @State private var disconnecting = false
+    @State private var commerceAdmin: URL?
 
     var body: some View {
         ScrollView {
@@ -80,8 +81,18 @@ struct ProfileView: View {
                 NavigationLink { LearningCenterView(store: learning) } label: { profileRow("学习通", icon: "book") }
                     .buttonStyle(CampusPressStyle()).accessibilityIdentifier("open-learning")
                 }.padding(.horizontal, 12).modifier(ProfilePanel())
+                if let commerceAdmin {
+                    Link(destination: commerceAdmin) { profileRow("商业管理", icon: "checkmark.shield") }
+                        .buttonStyle(CampusPressStyle()).padding(.horizontal, 12).modifier(ProfilePanel())
+                }
                 CommunityGroupSection().padding(.horizontal, 12).modifier(ProfilePanel())
             }.padding(.horizontal, 16).padding(.vertical, 8).frame(maxWidth: 680)
+        }
+        .task(id: tree.user?.id) {
+            commerceAdmin = nil
+            guard tree.user != nil else { return }
+            let profile: CommerceProfile? = try? await CommerceAPI.shared.request("access")
+            if !Task.isCancelled, let profile, ["owner", "business"].contains(profile.role) { commerceAdmin = profile.adminUrl }
         }
         .campusScrollBackground().background(CampusTheme.background)
         .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)

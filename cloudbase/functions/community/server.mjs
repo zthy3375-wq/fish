@@ -2,9 +2,10 @@ import http from 'node:http';
 import {pathToFileURL} from 'node:url';
 import {createCommunity,CommunityError} from './core.mjs';
 import {sql} from './database.mjs';
+import {createCommerce} from './commerce.mjs';
 import {cloudMedia} from './media.mjs';
 
-export function createServer(community,{allowedOrigins=[]}={}){
+export function createServer(community,{allowedOrigins=[],commerce}={}){
  return http.createServer(async(req,res)=>{
   const origin=req.headers.origin;
   const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
@@ -17,7 +18,9 @@ export function createServer(community,{allowedOrigins=[]}={}){
   if(req.method==='GET'&&path==='/v1/config')return send(200,community.config());
   if(req.method!=='POST'||!/^\/v1\/[a-z.]+$/.test(path))return send(404,{error:'not_found'});
   if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))return send(415,{error:'json_required'});
-  const maxBody=path==='/v1/media.upload'?1_650_000:20000;
+  const business=path.startsWith('/v1/commerce.');
+  if(business&&!commerce)return send(404,{error:'commerce_unavailable'});
+  const maxBody=['/v1/media.upload','/v1/commerce.media.upload'].includes(path)?1_650_000:20000;
   if(Number(req.headers['content-length']||0)>maxBody)return send(413,{error:'request_too_large'});
   try{
    const chunks=[];let length=0;
@@ -26,7 +29,7 @@ export function createServer(community,{allowedOrigins=[]}={}){
    const auth=req.headers.authorization||'';const bearer=auth.startsWith('Bearer ')?auth.slice(7):'';
    // Trust the provider-injected client IP only in explicitly configured CloudBase deployment.
    const peer=process.env.COMMUNITY_TRUST_PROXY==='cloudbase'?String(req.headers['x-real-ip']||req.socket.remoteAddress||'unknown'):String(req.socket.remoteAddress||'unknown');
-   const result=await community.execute(path.slice(4),data,bearer,peer);
+   const result=business?await commerce.execute(path.slice(13),data,bearer,peer):await community.execute(path.slice(4),data,bearer,peer);
    const {status,...body}=result;send(status,body);
   }catch(e){
    if(e instanceof CommunityError)return send(e.status,{error:e.code});
@@ -38,6 +41,10 @@ export function createServer(community,{allowedOrigins=[]}={}){
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const db=async(action,data,token)=>{const rows=await sql('SELECT public.hyt_community($1,$2::jsonb,$3) AS result',[action,JSON.stringify(data),token]);return rows[0]?.result;};
  const community=createCommunity({db,storage:cloudMedia(),boardsEnabled:process.env.COMMUNITY_BOARDS==='enabled',registrationEnabled:process.env.COMMUNITY_REGISTRATION==='open',rateSalt:process.env.COMMUNITY_RATE_SALT});
+ const commerce=process.env.COMMERCE_ENABLED==='true'?createCommerce({
+  db:async(action,data,token)=>(await sql('SELECT hyt_commerce.run($1,$2::jsonb,$3) AS result',[action,JSON.stringify(data),token]))[0]?.result,
+  storage:cloudMedia({bucket:'hyt-commerce'}),salt:process.env.COMMERCE_METRIC_SALT,adminWebURL:process.env.COMMERCE_ADMIN_URL
+ }):undefined;
  const origins=['https://localhost','capacitor://localhost',...(process.env.COMMUNITY_WEB_ORIGINS||'').split(',').filter(Boolean)];
- createServer(community,{allowedOrigins:origins}).listen(Number(process.env.PORT||9000),'0.0.0.0');
+ createServer(community,{allowedOrigins:origins,commerce}).listen(Number(process.env.PORT||9000),'0.0.0.0');
 }

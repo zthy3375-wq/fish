@@ -42,6 +42,7 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var now = Date()
     @State private var timelineOpen=false
+    @State private var commerceDestination: CommerceDestination?
     @AppStorage("home.announcements.enabled") private var announcementsEnabled = true
     @AppStorage("home.announcements.welcomeRead") private var welcomeRead = false
     @ScaledMetric(relativeTo: .body) private var heroHeight: CGFloat = 224
@@ -65,6 +66,7 @@ struct HomeView: View {
                     hero(safeTop: screen.safeAreaInsets.top)
                     VStack(alignment: .leading, spacing: 14) {
                         coursePanel
+                        HomeCommercePlacement { commerceDestination = CommerceDestination(kind: $0) }
                         Text("校园生活").font(.headline)
                         VStack(spacing: 10) {
                             HStack(spacing: 10) {
@@ -78,6 +80,11 @@ struct HomeView: View {
                             }.fixedSize(horizontal: false, vertical: true)
                                 .background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
                                 .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
+                            Button { commerceDestination = CommerceDestination(kind: .catalog) } label: {
+                                utility("校园周边", "门店与学生优惠", "storefront")
+                            }.background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+                                .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(CampusTheme.border).allowsHitTesting(false) }
+                                .accessibilityIdentifier("home-campus-commerce")
                         }.buttonStyle(CampusPressStyle())
                         todayTasks
                         upcomingExams
@@ -85,6 +92,13 @@ struct HomeView: View {
                 }
             }.ignoresSafeArea(.container, edges: .top)
         }.background(CampusTheme.background).campusNavigationBarHidden()
+            .sheet(item: $commerceDestination) { destination in
+                NavigationStack {
+                    destination.content.toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("关闭") { commerceDestination = nil } }
+                    }
+                }
+            }
             .task(id: scenePhase == .active && store.selectedTab == .home) {
                 guard scenePhase == .active, store.selectedTab == .home else { return }
                 while !Task.isCancelled {
