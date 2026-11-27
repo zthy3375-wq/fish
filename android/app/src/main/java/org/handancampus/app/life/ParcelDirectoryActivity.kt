@@ -65,9 +65,6 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         settings = savedInstanceState?.getBoolean("settings") ?: false
         mainScroll = savedInstanceState?.getInt("mainScroll") ?: 0
-        // The parcel cards and the compact toolbar share a simple light canvas.
-        // Software rendering avoids a blank first row on older Android renderers.
-        window.decorView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
         @Suppress("DEPRECATION")
         window.statusBarColor = backgroundColor
@@ -77,7 +74,7 @@ class ParcelDirectoryActivity : AppCompatActivity() {
             isAppearanceLightStatusBars = true
             isAppearanceLightNavigationBars = true
         }
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.setDecorFitsSystemWindows(window, android.os.Build.VERSION.SDK_INT < 35)
 
         val root = FrameLayout(this).apply { setBackgroundColor(backgroundColor) }
         content = column().apply {
@@ -97,7 +94,9 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            root.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            if (android.os.Build.VERSION.SDK_INT >= 35) {
+                root.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            }
             insets
         }
         ViewCompat.requestApplyInsets(root)
@@ -139,21 +138,24 @@ class ParcelDirectoryActivity : AppCompatActivity() {
     }
 
     private fun addHeader() {
-        val header = row().apply {
-            gravity = Gravity.CENTER_VERTICAL
+        val header = androidx.appcompat.widget.Toolbar(this).apply {
             minimumHeight = dp(58)
+            contentInsetStartWithNavigation = 0
+            setContentInsetsRelative(dp(2), dp(2))
+            setNavigationIcon(R.drawable.parcel_arrow_back)
+            navigationContentDescription = "返回"
+            setNavigationOnClickListener { back() }
+            setTitleTextColor(titleColor)
+            titleMarginStart = dp(1)
+            title = if (settings) "取件设置" else "校园取件"
         }
-        val title = text(if (settings) "取件设置" else "校园取件", 25, titleColor, bold = true)
-        ViewCompat.setAccessibilityHeading(title, true)
-        header.addView(iconButton(R.drawable.parcel_arrow_back, "返回", titleColor) { back() },
-            LinearLayout.LayoutParams(dp(44), dp(48)).apply { marginStart = -dp(10) })
-        header.addView(title, LinearLayout.LayoutParams(0, -2, 1f).apply {
-            marginStart = dp(4)
-            marginEnd = dp(7)
-        })
         if (!settings) {
-            header.addView(iconButton(R.drawable.parcel_settings, "设置", titleColor) { showSettings(true) },
-                LinearLayout.LayoutParams(dp(46), dp(48)).apply { marginEnd = -dp(10) })
+            val settingAction = header.menu.add("设置").apply {
+                setIcon(R.drawable.parcel_settings)
+                setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
+                setOnMenuItemClickListener { showSettings(true); true }
+            }
+            androidx.core.view.MenuItemCompat.setContentDescription(settingAction, "设置")
         }
         header.addTo(content)
         refreshLayout.isEnabled = !settings
@@ -544,13 +546,6 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         imageTintList = ColorStateList.valueOf(color)
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         scaleType = ImageView.ScaleType.FIT_CENTER
-    }
-    private fun iconButton(resource: Int, label: String, color: Int, click: () -> Unit) = FrameLayout(this).apply {
-        contentDescription = label
-        isFocusable = true
-        background = pressable(Color.TRANSPARENT, 12)
-        addView(icon(resource, color), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
-        setOnClickListener { click() }
     }
 
     companion object {
