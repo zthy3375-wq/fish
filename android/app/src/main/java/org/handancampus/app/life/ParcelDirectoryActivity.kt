@@ -4,7 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
@@ -145,10 +147,30 @@ class ParcelDirectoryActivity : AppCompatActivity() {
             setNavigationIcon(R.drawable.parcel_arrow_back)
             navigationContentDescription = "返回"
             setNavigationOnClickListener { back() }
-            setTitleTextColor(titleColor)
-            titleMarginStart = dp(1)
-            title = if (settings) "取件设置" else "校园取件"
         }
+        val label = if (settings) "取件设置" else "校园取件"
+        val heading = object : View(this) {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = titleColor
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 25f, resources.displayMetrics)
+            }
+
+            override fun onMeasure(width: Int, height: Int) {
+                setMeasuredDimension(resolveSize(paint.measureText(label).roundToInt() + dp(4), width),
+                    resolveSize((paint.descent() - paint.ascent()).roundToInt() + dp(8), height))
+            }
+
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                canvas.drawText(label, 0f, (height - paint.ascent() - paint.descent()) / 2f, paint)
+            }
+        }.apply {
+            contentDescription = label
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            ViewCompat.setAccessibilityHeading(this, true)
+        }
+        header.addView(heading, androidx.appcompat.widget.Toolbar.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL))
         if (!settings) {
             val settingAction = header.menu.add("设置").apply {
                 setIcon(R.drawable.parcel_settings)
