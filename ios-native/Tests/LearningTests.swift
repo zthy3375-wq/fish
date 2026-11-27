@@ -1,5 +1,6 @@
 import XCTest
 import WebKit
+import UIKit
 @testable import Hanyuantong
 
 final class LearningTests: XCTestCase {
@@ -9,10 +10,78 @@ final class LearningTests: XCTestCase {
     private func item(_ id: String = "78", status: String = "pending", deadline: String? = "2026-11-12T18:00") -> LearningItem {
         LearningItem(id: "12/34/homework/\(id)", courseId: "12", classId: "34", workId: id, kind: "homework", title: "合成作业", course: "合成课程", status: status, statusText: status == "submitted" ? "已提交" : "未提交", deadline: deadline)
     }
+    func testTaskListProjectsOnlyEligibleLearningItems() throws {
+        var cache = LearningCache()
+        cache.account = "synthetic-account"
+        cache.session = "connected"
+        let planned = item("78", deadline: "2026-11-24T18:00")
+        let urgent = item("79", deadline: "2026-11-25T18:00")
+        let closed = item("80", deadline: "2026-11-20T18:00")
+        let submitted = item("81", status: "submitted", deadline: nil)
+        cache.items = [planned, urgent, closed, submitted]
+        cache.plans[planned.id] = LearningPlan(plannedDay: "2026-11-21", notes: "复习")
+        let now = try XCTUnwrap(LearningDisplay.date("2026-11-21T12:00"))
+        let today = cache.taskListEntries(scope: .today, now: now)
+        XCTAssertEqual(today.map { $0.item.id }, [planned.id])
+        XCTAssertEqual(today.first?.projection.notes, "复习")
+        XCTAssertEqual(cache.taskListEntries(scope: .due, now: now).map { $0.item.id }, [planned.id, urgent.id])
+        let completed = cache.taskListEntries(scope: .completed, now: now).map { $0.projection }
+        let ids = Set(completed.map(\.id))
+        let groups = TaskRules.groups(completed, filter: TaskFilter(scope: .completed), now: now, unknownCompletionDates: ids)
+        XCTAssertEqual(groups.first?.title, "已完成 · 日期未记录")
+        XCTAssertEqual(groups.first?.tasks.map(\.title), [submitted.title])
+        cache.session = "disconnected"
+        XCTAssertTrue(cache.taskListEntries(scope: .due, now: now).isEmpty)
+    }
     func testOfficialHTTPSOriginBoundary() {
         for value in ["https://chaoxing.com/", "https://mooc1.chaoxing.com/mooc2/work/list", "https://passport2.chaoxing.com:443/login"] { XCTAssertTrue(LearningPolicy.allowed(value), value) }
         for value in ["http://mooc1.chaoxing.com/", "https://chaoxing.com.evil.test/", "https://notchaoxing.com/", "https://user@chaoxing.com/", "https://user:pass@chaoxing.com/", "https://chaoxing.com:8443/", "file:///tmp/x", "javascript:alert(1)", "https://chaoxing.com\\@evil.test/", "https://chaoxing.com./"] { XCTAssertFalse(LearningPolicy.allowed(value), value) }
     }
+    func testAutomaticLoginConfirmationOnlyOnOfficialLandingPages() {
+        XCTAssertTrue(LearningPolicy.isLoginLanding(LearningPolicy.homeURL))
+        XCTAssertFalse(LearningPolicy.isLoginLanding(nil))
+        XCTAssertFalse(LearningPolicy.isLoginLanding(LearningPolicy.loginURL))
+        XCTAssertFalse(LearningPolicy.isLoginLanding(URL(string: "https://mooc1.chaoxing.com/antispider/show")))
+        XCTAssertFalse(LearningPolicy.isLoginLanding(URL(string: "https://example.com/")))
+    }
+    @MainActor func testPhoneLoginReturnsFromOfficialLandingWithVerifiedAccount() async throws {
+        let service = "hanyuantong.tests.learning." + UUID().uuidString
+        let session = LearningSession(vaultService: service, makeReadConfiguration: {
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [LearningCourseFixture.self]
+            return config
+        }, loadOfficialPage: { web, initial in
+            XCTAssertEqual(initial.url, LearningPolicy.loginURL)
+            Task { @MainActor in
+                let cookie = HTTPCookie(properties: [.domain: ".chaoxing.com", .path: "/", .name: "_uid", .value: "321", .secure: "TRUE"])!
+                await web.configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
+                web.loadSimulatedRequest(URLRequest(url: LearningPolicy.homeURL), responseHTML: "<p>我的课程</p>")
+            }
+        })
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let oldWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let presenter = UIViewController()
+        window.rootViewController = presenter
+        window.makeKeyAndVisible()
+        session.attachPresenter(presenter)
+        defer {
+            try? session.logout()
+            window.isHidden = true
+            oldWindow?.makeKeyAndVisible()
+        }
+        let completed = expectation(description: "Official login automatically returns the course list")
+        let task = Task {
+            defer { completed.fulfill() }
+            let result = try await session.login()
+            XCTAssertEqual(result.courses.first?.name, "合成课程")
+            XCTAssertEqual(try session.savedAccount(), result.account)
+        }
+        await fulfillment(of: [completed], timeout: 15)
+        task.cancel()
+        try await task.value
+    }
+
     func testReadPolicyDoesNotAuthorizeSubmission() {
         XCTAssertTrue(LearningPolicy.safeRead("https://mooc1.chaoxing.com/mooc2/work/task?workId=78"))
         XCTAssertFalse(LearningPolicy.safeRead("https://mooc1.chaoxing.com/work/submit"))
@@ -178,4 +247,23 @@ final class LearningTests: XCTestCase {
             XCTAssertEqual(parsed.rejected, 1); XCTAssertFalse(parsed.complete)
         }
     }
+}
+
+private final class LearningCourseFixture: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard request.url == LearningPolicy.coursesURL,
+              request.value(forHTTPHeaderField: "Cookie")?.contains("_uid=321") == true else {
+            client?.urlProtocol(self, didFailWithError: URLError(.userAuthenticationRequired))
+            return
+        }
+        let response = HTTPURLResponse(url: LearningPolicy.coursesURL, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "application/json"])!
+        let body = #"{"result":true,"channelList":[{"content":{"id":34,"cpi":"56","course":{"data":[{"id":"12","name":"合成课程"}]}}}]}"#
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }

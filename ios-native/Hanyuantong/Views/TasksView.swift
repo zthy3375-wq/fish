@@ -3,46 +3,134 @@ import SwiftUI
 struct TasksView: View {
     @EnvironmentObject var store: CampusStore
     @EnvironmentObject var learning: LearningStore
-    @State private var completionFilter = 0
-    @State private var filter = TaskFilter()
+    @State private var filter = TaskFilter(scope: .today)
+    @State private var agenda = false
+    @State private var agendaDay = Date()
+    @State private var showFilters = false
+    @State private var source: TaskSource = .all
+    @State private var learningDetail: LearningItem?
+    @State private var quickTitle = ""
+    @Environment(\.accessibilityReduceMotion) private var reduce
     @State private var adding = false
     @State private var editing: CampusTask?
     @State private var deletion: CampusTask?
     @State private var actionError: String?
 
-    private var effectiveFilter: TaskFilter {
-        var value = filter
-        if completionFilter == 1 { value.scope = .completed }
-        if completionFilter == 2 { value.scope = .all }
-        return value
+    private enum TaskSource: String, CaseIterable, Identifiable {
+        case all = "全部来源"
+        case personal = "个人待办"
+        case learning = "学习通"
+        var id: Self { self }
     }
-    private var groups: [TaskDateGroup] { TaskRules.groups(store.tasks, filter: effectiveFilter) }
-    private var courses: [String] { Array(Set(store.tasks.map(\.course).filter { !$0.isEmpty })).sorted() }
+
+    private var courses: [String] {
+        let personal = source == .learning ? [] : store.tasks.map(\.course)
+        let official = source == .personal || !learning.connected ? [] : learning.cache.items.map(\.course)
+        return Set(personal + official).filter { !$0.isEmpty }.sorted()
+    }
+
+    private func taskSelection(scope: TaskListScope) -> (tasks: [CampusTask], official: [UUID: LearningItem]) {
+        let personal = source == .learning ? [] : store.tasks
+        guard source != .personal else { return (personal, [:]) }
+        let personalIDs = Set(personal.map(\.id))
+        let entries = learning.cache.taskListEntries(scope: scope).filter { !personalIDs.contains($0.projection.id) }
+        return (personal + entries.map { $0.projection }, Dictionary(entries.map { ($0.projection.id, $0.item) }, uniquingKeysWith: { first, _ in first }))
+    }
+
+    private var canDiscoverEmptyList: Bool {
+        store.personalDataAvailable && learning.canConfirmTaskList && actionError == nil &&
+        source == .all && filter.search.isEmpty && filter.course.isEmpty && filter.priority == -1 &&
+        filter.scope != .completed && !store.tasks.contains { !$0.completed } &&
+        (!learning.connected || !learning.cache.items.contains { $0.status != "submitted" })
+    }
+
+    private var newTaskDay: String? {
+        if agenda { return TaskClock.day(agendaDay) }
+        return filter.scope == .today ? TaskClock.day(Date()) : nil
+    }
 
     var body: some View {
-        List {
-            Section {
-                NavigationLink { LearningCenterView(store: learning) } label: { Label("学习通作业、考试与通知", systemImage: "books.vertical") }
-            }
-            Section {
-                Picker("待办筛选", selection: $completionFilter) {
-                    Text("未完成").tag(0); Text("已完成").tag(1); Text("全部").tag(2)
-                }.pickerStyle(.segmented)
-                if completionFilter == 0 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach([TaskListScope.pending, .today, .planned, .inbox, .due]) { scope in
-                                Button { filter.scope = scope } label: {
-                                    Text(scope == .pending ? "全部未完成" : scope.label)
-                                        .font(.caption).padding(.horizontal, 12).padding(.vertical, 10)
-                                        .foregroundStyle(filter.scope == scope ? CampusTheme.onPrimary : CampusTheme.text)
-                                        .background(filter.scope == scope ? CampusTheme.primary : CampusTheme.surface, in: Capsule())
-                                }.buttonStyle(.plain).accessibilityAddTraits(filter.scope == scope ? .isSelected : [])
-                            }
-                        }
-                    }
+        VStack(spacing: 0) {
+            VStack(spacing: 12) {
+                NavigationLink { LearningCenterView(store: learning) } label: {
+                    HStack { Image(systemName: "book"); Text("学习通作业").fontWeight(.semibold)
+                        Text("按课程查看与安排").font(.caption).foregroundStyle(CampusTheme.muted)
+                        Spacer(); Image(systemName: "chevron.right").font(.caption2) }
+                        .padding(.horizontal, 14).frame(minHeight: 48).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+                }.buttonStyle(CampusPressStyle())
+                if let message = learning.message, learning.connected {
+                    Text(message).font(.caption).foregroundStyle(CampusTheme.muted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                DisclosureGroup("筛选与排序") {
+                HStack(spacing: 12) {
+                    Picker("待办与日程", selection: $agenda) { Text("任务清单").tag(false); Text("日程").tag(true) }.pickerStyle(.segmented)
+                    Button { adding = true } label: { Image(systemName: "plus").frame(width: 44, height: 44) }.accessibilityLabel("添加待办").disabled(!store.personalDataAvailable)
+                }
+                if !agenda {
+                    HStack(spacing: 3) {
+                        ForEach([TaskListScope.today, .due, .planned, .inbox]) { scope in
+                            let count = TaskRules.select(taskSelection(scope: scope).tasks, filter: TaskFilter(scope: scope)).count
+                            Button { filter.scope = scope } label: {
+                                HStack(spacing: 3) { Text(scope.label); Text(String(count)).font(.caption2.monospacedDigit()) }
+                                    .font(.caption).frame(maxWidth: .infinity, minHeight: 42)
+                                    .background(filter.scope == scope ? CampusTheme.tint : .clear, in: RoundedRectangle(cornerRadius: 10))
+                            }.accessibilityLabel(scope.label).accessibilityValue(String(count))
+                             .accessibilityAddTraits(filter.scope == scope ? .isSelected : [])
+                        }
+                    }.buttonStyle(CampusPressStyle())
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                        TextField("搜索任务、课程或备注", text: $filter.search).accessibilityLabel("搜索任务")
+                        Button("筛选") { withAnimation(reduce ? nil : .easeOut(duration: 0.12)) { showFilters.toggle() } }
+                    }.font(.subheadline).padding(.horizontal, 12).frame(minHeight: 44)
+                        .background(CampusTheme.tint.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
+                }
+            }.padding(.horizontal, 16).padding(.vertical, 10)
+            if agenda { CampusAgendaView(embedded: true, sharedDay: $agendaDay) }
+            else { taskList }
+        }
+        .background(CampusTheme.background)
+        .background(LearningPresenterAnchor { learning.attachPresenter($0) }.frame(width: 0, height: 0))
+        .navigationTitle("我的待办").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
+            ToolbarItem(placement: .navigationBarLeading) { CampusRootTitle(title: "待办", subtitle: "今天、接下来，按自己的节奏") }
+        }
+        .sheet(isPresented: $adding) { TaskEditorView(defaultPlannedDay: newTaskDay) }
+        .sheet(item: $editing) { TaskEditorView(task: $0) }
+        .onChange(of: learning.cache.account) { _ in learningDetail = nil }
+        .sheet(item: $learningDetail) { item in
+            LearningItemDetail(store: learning, item: item) {
+                let account = learning.cache.account
+                learningDetail = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    if learning.cache.account == account { learning.openItem(item) }
+                }
+            }
+        }
+        .confirmationDialog("删除这条待办？", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {
+            Button("删除待办", role: .destructive) { if let task = deletion { store.deleteTask(task.id) }; deletion = nil }
+        }
+        .alert("待办操作未完成", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+            Button("好") { actionError = nil }
+        } message: { Text(actionError ?? "") }
+    }
+
+    private var taskList: some View {
+        let selection = taskSelection(scope: filter.scope)
+        let groups = TaskRules.groups(selection.tasks, filter: filter, unknownCompletionDates: Set(selection.official.keys))
+        return List {
+            if showFilters {
+                Section {
+                    Picker("任务范围", selection: $filter.scope) {
+                        ForEach(TaskListScope.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.menu).accessibilityIdentifier("task-scope-picker")
+                    Picker("任务来源", selection: $source) {
+                        ForEach(TaskSource.allCases) { Text($0.rawValue).tag($0) }
+                    }.onChange(of: source) { _ in
+                        if !courses.contains(filter.course) { filter.course = "" }
+                    }
                     Picker("关联课程筛选", selection: $filter.course) {
                         Text("所有课程").tag("")
                         ForEach(courses, id: \.self) { Text($0).tag($0) }
@@ -58,31 +146,81 @@ struct TasksView: View {
                 }
             }
             if groups.isEmpty {
-                CampusEmpty(title: completionFilter == 1 ? "还没有已完成的待办" : "暂无待办", detail: "把要做的事记下来，一件一件完成。也可以调整筛选。", symbol: "checklist")
-                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                VStack(spacing: 8) {
+                    if canDiscoverEmptyList {
+                        DiscoverySurface("emptyfish", label: "清单里的小金鱼") { CampusHeroFish().frame(width: 36, height: 25) }
+                    } else { Image(systemName: "checkmark").foregroundStyle(CampusTheme.muted) }
+                    Text(filter.search.isEmpty ? "这里暂时没有任务" : "没有匹配任务").font(.subheadline.weight(.semibold))
+                    Text("在下方输入标题即可添加，也可以把学习通作业安排到今天。")
+                        .font(.caption).multilineTextAlignment(.center).foregroundStyle(CampusTheme.muted)
+                }.frame(maxWidth: .infinity).padding(.horizontal, 28).padding(.vertical, 62).listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
             ForEach(groups) { group in
                 Section(group.title) {
-                    ForEach(group.tasks) { task in taskRow(task) }
+                    ForEach(group.tasks) { task in
+                        if let item = selection.official[task.id] { learningRow(item, projection: task) }
+                        else { taskRow(task) }
+                    }
                 }
             }
-        }
-        .searchable(text: $filter.search, prompt: "搜索标题、课程或备注")
-        .scrollContentBackground(.hidden).background(CampusTheme.background)
-        .navigationTitle("我的待办").navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("添加待办")
+            quickEntry.listRowInsets(EdgeInsets()).listRowBackground(Color.clear).listRowSeparator(.hidden)
+        }.listStyle(.plain).campusScrollBackground().background(CampusTheme.background)
+    }
+
+    private var quickEntry: some View {
+        HStack {
+            Image(systemName: "plus").foregroundStyle(CampusTheme.primary)
+            TextField("添加任务，回车保存", text: $quickTitle).submitLabel(.done).onSubmit { saveQuick() }
+                .accessibilityIdentifier("quick-task-title")
+            Button(action: saveQuick) {
+                Image(systemName: "arrow.up").frame(width: 38, height: 38)
+                    .foregroundStyle(CampusTheme.onPrimary).background(CampusTheme.primary, in: RoundedRectangle(cornerRadius: 12))
+            }.accessibilityLabel("快速保存任务").disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }.padding(8).background(CampusTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+            .overlay(RoundedRectangle(cornerRadius: 15).strokeBorder(CampusTheme.border, lineWidth: 1))
+            .padding(.horizontal, 16).padding(.vertical, 8).disabled(!store.personalDataAvailable)
+    }
+    private func saveQuick() {
+        let title = quickTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, store.personalDataAvailable else { return }
+        var task = TaskRules.makeTask(title: title)
+        task.plannedDay = filter.scope == .today ? CampusTheme.date(Date(), format: "yyyy-MM-dd") : nil
+        task.course = filter.course
+        do {
+            try store.saveTask(task)
+            quickTitle = ""
+            if filter.scope != .today { filter.scope = .inbox }
+            if source == .learning { source = .all }
+        } catch { actionError = error.localizedDescription }
+    }
+
+    private func learningRow(_ item: LearningItem, projection: CampusTask) -> some View {
+        Button {
+            learningDetail = item
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(item.title).font(.body).foregroundStyle(CampusTheme.text)
+                    if !item.course.isEmpty { Text(item.course).font(.caption).foregroundStyle(CampusTheme.muted) }
+                    Text(LearningDisplay.state(item).label).font(.caption.weight(.semibold)).foregroundStyle(CampusTheme.primary)
+                    if let day = projection.plannedDay { Text("计划 " + day).font(.caption).foregroundStyle(CampusTheme.muted) }
+                    if projection.deadline != nil { Text(LearningDisplay.deadline(item)).font(.caption).foregroundStyle(CampusTheme.muted) }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8).contentShape(Rectangle())
+            } icon: {
+                Image(systemName: "book").frame(width: 44, height: 44).foregroundStyle(CampusTheme.primary)
             }
-        }
-        .sheet(isPresented: $adding) { TaskEditorView() }
-        .sheet(item: $editing) { TaskEditorView(task: $0) }
-        .confirmationDialog("删除这条待办？", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }), titleVisibility: .visible) {
-            Button("删除待办", role: .destructive) { if let task = deletion { store.deleteTask(task.id) }; deletion = nil }
-        }
-        .alert("待办操作未完成", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
-            Button("好") { actionError = nil }
-        } message: { Text(actionError ?? "") }
+        }.buttonStyle(.plain)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if projection.plannedDay != nil {
+                    Button("取消安排", role: .destructive) { learning.setPlannedDay(nil, for: item) }
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button("今天做") { learning.today(item) }.tint(CampusTheme.primary)
+                if let tomorrow = TaskClock.shifted(TaskClock.day(Date()), days: 1) {
+                    Button("明天做") { learning.setPlannedDay(tomorrow, for: item) }.tint(.orange)
+                }
+            }
     }
 
     private func taskRow(_ task: CampusTask) -> some View {

@@ -46,7 +46,7 @@ enum PGFailure: String, Error, LocalizedError, Codable {
     case auth, account, verify, service, network, format, partial, phone, qr, device, price, priceChanged
     case busy, cancelled, quoteExpired, payChannel, deviceBusy, orderActive, orderMismatch, createUnknown
     case waterActive, waterChannel, waterUnknown, waterWait, waterOwnership, waterPhysicalEnd, waterStillActive, waterBill
-    case officialRequired, storage, consent
+    case officialRequired, storage, consent, waterStateChanged
     var errorDescription: String? { message }
     var message: String {
         switch self {
@@ -64,6 +64,7 @@ enum PGFailure: String, Error, LocalizedError, Codable {
         case .orderActive: return "请先处理当前洗衣订单。"
         case .orderMismatch: return "订单与设备不一致，已停止操作，请在官方端核对。"
         case .createUnknown: return "下单结果未知，不会重复下单。请查询原订单或在官方端核对。"
+        case .waterStateChanged: return "接水记录已更新，请查看当前状态。"
         case .waterActive: return "请先处理当前接水记录。"
         case .waterUnknown: return "启动结果未知，不会重复开水。请查看机身，若已出水请按机身「结算」。"
         case .waterWait: return "设备尚未返回确定状态，请查看机身并稍后查询。"
@@ -185,8 +186,21 @@ struct PGWaterSession: Codable, Identifiable, Equatable {
     var id = UUID(); var deviceID: String; var deviceName: String; var skuID: String; var outlet: String; var feature: String; var paymentName: String
     var remoteEnd: Bool; var phase = "starting"; var orderNo: String?; var orderID: String?; var updatedAt = Date(); var startedAt: Date?; var endedAt: Date?
     var amount: String?; var billPayable = false; var endSent = false; var afterPaySent = false; var settleSent = false; var deviceEnded = false; var emptyReads = 0; var endBasis: String?; var error: PGFailure?
-    var terminal: Bool { ["settled", "ended_zero", "closed_unknown"].contains(phase) }
-    var title: String { ["starting":"正在确认设备启动", "using":"接水中", "ending":"等待设备结束", "ended":"用水已结束，账单待核对", "settling":"用水已结束，账单待核对", "settled":"本次接水已结算", "ended_zero":"用水已结束", "closed_unknown":"接水记录已结束，账单待核对"][phase] ?? "用水状态待核对" }
+    // Missing in older snapshots, whose start screen required a separate payment confirmation.
+    var settleAtEnd: Bool?
+    var awaitingBill: Bool { deviceEnded && ["ended", "settling"].contains(phase) }
+    var shouldPoll: Bool {
+        orderNo != nil && !terminal && error != .waterOwnership && error != .orderMismatch &&
+            (canArchiveAfterStop || awaitingBill)
+    }
+    var canArchiveAfterStop: Bool { ["starting", "using", "ending"].contains(phase) }
+    var isLocallyArchived: Bool {
+        phase == "archived_unverified" || (phase == "closed_unknown" && endBasis == "physical_confirmed")
+    }
+    var terminal: Bool { isLocallyArchived || ["settled", "ended_zero", "closed_unknown"].contains(phase) }
+    var title: String {
+        if awaitingBill && (settleAtEnd == true || settleSent) { return "用水已结束，正在核对账单" }
+        return ["starting":"正在确认设备启动", "using":"接水中", "ending":"等待设备结束", "ended":"用水已结束，账单待核对", "settling":"用水已结束，账单待核对", "settled":"本次接水已结算", "ended_zero":"用水已结束", "closed_unknown":"接水记录已结束，账单待核对"][phase] ?? "用水状态待核对" }
 }
 struct PGSnapshot: Codable, Equatable {
     var balance: String?; var walletUpdatedAt: Date?; var tickets: [PGTicket] = []; var ticketsUpdatedAt: Date?

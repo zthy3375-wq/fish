@@ -14,7 +14,10 @@ final class CampusStore: ObservableObject {
     @Published private(set) var academicProfile: AcademicProfile?
     @Published private(set) var exams: [ExamRecord] = []
     @Published private(set) var semesterStart = ScheduleMath.calendar.date(from: DateComponents(year: 2026, month: 9, day: 14))!
-    @Published private(set) var schoolSemesterStart = ScheduleMath.calendar.date(from: DateComponents(year: 2026, month: 9, day: 14))!
+    private static let defaultSchoolStart = ScheduleMath.calendar.date(from: DateComponents(year: 2026, month: 9, day: 14))!
+    @Published private(set) var schoolSemesterStart = CampusStore.defaultSchoolStart
+    private var legacySchoolStart = CampusStore.defaultSchoolStart
+    private var schoolTermStarts: [String: Date] = [:]
     @Published private(set) var personalSchedule: AndroidScheduleState?
     var personalWeekCount: Int { personalSchedule?.semesters.first { $0.id == personalSchedule?.activeSemesterId }?.weekCount ?? 60 }
     @Published var selectedDate = Date()
@@ -26,8 +29,24 @@ final class CampusStore: ObservableObject {
     @Published private(set) var practice: [AcademicPractice] = []
     @Published private(set) var semesters: [AcademicTerm] = []
     @Published var selectedTerm: AcademicTerm?
+    var displayedSchoolTerm: AcademicTerm? { snapshot?.term }
+    var scheduleWeekCount: Int {
+        guard isConnected else { return personalWeekCount }
+        let scheduled = snapshot?.courses?.flatMap { ScheduleMath.parseRange($0.weeks, limit: 60) }.max() ?? 0
+        return max(schoolCalendar(for: snapshot?.term)?.weekCount ?? 19, scheduled)
+    }
     private var storage: ProtectedStorage?
     private var session: AcademicSession?
+    var schoolMedalScope: String? { isConnected ? snapshot?.scope : nil }
+    var personalDataAvailable: Bool { loadedPersonal }
+    var visiblePeriods: [AndroidTimeSlot] {
+        if isConnected, let snapshot {
+            return SchoolCourseAdjustments.periods(snapshot).map { AndroidTimeSlot(number: $0.number, start: $0.start, end: $0.end) }
+        }
+        if let state = personalSchedule, let semester = try? PersonalSemesterRules.activeSemester(in: state),
+           let table = try? PersonalSemesterRules.table(for: semester, in: state) { return table.slots }
+        return PersonalSemesterRules.standardTimeTable().slots
+    }
     private var snapshot: AcademicSnapshot?
     private var personalCourses: [Course] = []
     private var requestGeneration = 0
@@ -39,6 +58,7 @@ final class CampusStore: ObservableObject {
         let semesterStart: Date
         var personalSchedule: AndroidScheduleState? = nil
         var schoolSemesterStart: Date? = nil
+        var schoolTermStarts: [String: Date]? = nil
     }
     init(storage suppliedStorage: ProtectedStorage? = nil) {
         do {
@@ -49,7 +69,11 @@ final class CampusStore: ObservableObject {
                 guard TaskRules.validDate(saved.schoolSemesterStart ?? saved.semesterStart) else { throw PersonalBackup.Failure.invalid }
                 personalCourses = saved.courses
                 tasks = try TaskRules.validatedTasks(saved.tasks); semesterStart = saved.semesterStart
-                schoolSemesterStart = saved.schoolSemesterStart ?? saved.semesterStart
+                legacySchoolStart = saved.schoolSemesterStart ?? saved.semesterStart
+                schoolSemesterStart = legacySchoolStart
+                schoolTermStarts = (saved.schoolTermStarts ?? [:]).filter {
+                    TaskRules.validDate($0.value) && ScheduleMath.weekday(on: $0.value) == 1
+                }
                 if let state = saved.personalSchedule {
                     personalSchedule = try state.validated()
                     personalCourses = try PersonalSemesterRules.activeCourses(in: state)
@@ -64,6 +88,7 @@ final class CampusStore: ObservableObject {
             }
             courses = personalCourses
             loadedPersonal = true
+            restoreTaskMedal()
             refreshReminders()
         } catch { message = "本机加密数据暂时无法读取。请解锁设备后重试；不会用空数据覆盖原记录。" }
     }
@@ -82,10 +107,32 @@ final class CampusStore: ObservableObject {
         guard let scope else { return }
         if let saved = try storage?.read("academic", as: AcademicSnapshot.self), saved.scope == scope {
             snapshot = saved; isConnected = true; apply(saved)
+            let journal = MedalJournal.shared
+            journal.unlock("identity", scope: scope, at: saved.updatedAt, historical: true)
+            if saved.courses?.isEmpty == false {
+                journal.unlock("schedule", scope: scope, at: saved.moduleUpdatedAt["timetable"] ?? saved.updatedAt, historical: true)
+            }
+            if saved.grades?.isEmpty == false {
+                journal.unlock("grade", scope: scope, at: saved.moduleUpdatedAt["grades"] ?? saved.updatedAt, historical: true)
+            }
         } else { try storage?.remove("academic") }
     }
+
     func connectSchool() { query(interactive: true) }
     func refreshSchool() { query(interactive: false) }
+    func selectSchoolTerm(_ term: AcademicTerm) {
+        guard isConnected, !isBusy, semesters.contains(term), term != displayedSchoolTerm else { return }
+        do { try applyCachedSchoolTerm(term) } catch { message = error.localizedDescription; return }
+        selectedTerm = term
+        refreshSchool()
+    }
+    func applyCachedSchoolTerm(_ term: AcademicTerm) throws {
+        guard let cached = snapshot?.displayingCachedTerm(term) else { return }
+        guard let storage else { throw ProtectedStorage.Failure.unavailable }
+        try storage.write(cached, name: "academic")
+        snapshot = cached
+        apply(cached)
+    }
     func cancelSchool() {
         requestGeneration += 1; session?.cancel(); isBusy = false
     }
@@ -123,6 +170,9 @@ final class CampusStore: ObservableObject {
                 do {
                     guard let storage = self.storage else { throw ProtectedStorage.Failure.unavailable }
                     try storage.write(merged, name: "academic")
+                    MedalJournal.shared.unlock("identity",scope:new.scope)
+                    if !(new.courses ?? []).isEmpty { MedalJournal.shared.unlock("schedule",scope:new.scope) }
+                    if !(new.grades ?? []).isEmpty { MedalJournal.shared.unlock("grade",scope:new.scope) }
                     if self.message == nil { self.message = new.moduleErrors.isEmpty ? "学校数据已更新。" : "部分模块读取未完成，已保留同账号上次成功记录。" }
                 } catch { self.message = "数据已读取，但离线保存失败。请勿将本次结果视为已保存。" }
             case .failure(let error):
@@ -132,7 +182,8 @@ final class CampusStore: ObservableObject {
     }
     @discardableResult private func clearAcademic() -> Bool {
         snapshot = nil; pausedCourseAdjustments = 0; isConnected = false; lastSynced = nil; selectedTerm = nil
-        academicProfile = nil
+        academicProfile = nil; schoolSemesterStart = legacySchoolStart
+
         grades = []; exams = []; practice = []; semesters = []; courses = personalCourses
         let widgetCleared = widget.clearForAccountChange()
         if widgetCleared { refreshWidget() }
@@ -144,6 +195,7 @@ final class CampusStore: ObservableObject {
         catch { message = "学校数据已从当前页面移除，但本机缓存清理未完成，请重试退出。"; return false }
     }
     private func apply(_ value: AcademicSnapshot) {
+        schoolSemesterStart = schoolStart(for: value.term)
         let originals = SchoolCourseAdjustments.originals(value)
         let unmapped = (value.courses?.count ?? 0) - originals.count
         let records: [SchoolCourseAdjustment]
@@ -154,7 +206,11 @@ final class CampusStore: ObservableObject {
         academicProfile = value.profile
         grades = (value.grades ?? []).map { GradeRecord(name: $0.name, score: $0.scoreText, credit: $0.credit.map { String(format: "%g", $0) } ?? "", term: $0.term, kind: $0.kind, schoolGPA: $0.gpa, courseCode: $0.courseCode, recordId: $0.recordId, year: $0.year, termCode: $0.termCode, examType: $0.examType) }
         exams = (value.exams ?? []).map { ExamRecord(name: $0.name, date: $0.date, time: $0.time, room: $0.room, seat: $0.seat) }
-        practice = value.practice ?? []; semesters = value.semesters
+        practice = value.practice ?? []
+        let cachedTerms = (value.cachedTerms ?? [:]).values.map(\.term)
+        semesters = Set(value.semesters + cachedTerms + [value.term].compactMap { $0 }).sorted {
+            $0.xnm == $1.xnm ? $0.xqm < $1.xqm : $0.xnm > $1.xnm
+        }
         lastSynced = value.moduleUpdatedAt["timetable"]
         refreshWidget()
         if unmapped > 0 { message = "有 \(unmapped) 条学校课程的周次或节次暂无法展示，原始同步记录已保留，请对照官方课表。" }
@@ -206,18 +262,46 @@ final class CampusStore: ObservableObject {
             $0.day == day && $0.weeks.contains(ScheduleMath.week(on: date, start: $0.source == "school" ? schoolSemesterStart : semesterStart))
         }.sorted { $0.start < $1.start }
     }
+    private func schoolCalendar(for term: AcademicTerm?) -> AndroidSemester? {
+        guard let term, let year = Int(term.xnm) else { return nil }
+        return personalSchedule?.semesters.first {
+            $0.academicYear.replacingOccurrences(of: "–", with: "-").replacingOccurrences(of: "—", with: "-") == "\(year)-\(year + 1)"
+                && $0.season == (term.xqm == "3" ? "秋季" : "春季")
+        }
+    }
+
+    private func schoolStart(for term: AcademicTerm?) -> Date {
+        guard let term else { return legacySchoolStart }
+        if let calibrated = schoolTermStarts[term.key] { return calibrated }
+        // Older installs only have a single start date. Keep that default when
+        // the student has no matching semester calendar saved locally.
+        if legacySchoolStart == Self.defaultSchoolStart, let calendar = schoolCalendar(for: term) {
+            return BackupValue.dayDate(calendar.weekStartDate)
+        }
+        return legacySchoolStart
+    }
+
     private func commitPersonal(courses nextCourses: [Course], tasks nextTasks: [CampusTask], semesterStart nextStart: Date,
                                 schedule: AndroidScheduleState?, schoolStart: Date? = nil) throws {
         guard loadedPersonal, let storage else { throw ProtectedStorage.Failure.unavailable }
         let nextTasks = try TaskRules.validatedTasks(nextTasks)
         let backup = PersonalBackup(courses: nextCourses, tasks: nextTasks, semesterStart: nextStart, personalSchedule: schedule)
         _ = try backup.encode() // Bound the whole transaction so every stored record remains exportable.
-        let nextSchoolStart = schoolStart ?? schoolSemesterStart
-        guard TaskRules.validDate(nextSchoolStart) else { throw PersonalBackup.Failure.invalid }
+        var nextLegacySchoolStart = legacySchoolStart
+        var nextSchoolTermStarts = schoolTermStarts
+        if let schoolStart {
+            guard TaskRules.validDate(schoolStart), ScheduleMath.weekday(on: schoolStart) == 1 else {
+                throw BackupCompatibilityFailure("学校第一教学周请选星期一。")
+            }
+            if let term = displayedSchoolTerm { nextSchoolTermStarts[term.key] = schoolStart }
+            else { nextLegacySchoolStart = schoolStart }
+        }
         try storage.write(PersonalData(version: 2, courses: nextCourses, tasks: nextTasks, semesterStart: nextStart,
-                                       personalSchedule: schedule, schoolSemesterStart: nextSchoolStart), name: "personal")
+                                       personalSchedule: schedule, schoolSemesterStart: nextLegacySchoolStart,
+                                       schoolTermStarts: nextSchoolTermStarts), name: "personal")
         personalSchedule = schedule; personalCourses = nextCourses; tasks = nextTasks
-        semesterStart = nextStart; schoolSemesterStart = nextSchoolStart
+        legacySchoolStart = nextLegacySchoolStart; schoolTermStarts = nextSchoolTermStarts
+        semesterStart = nextStart; schoolSemesterStart = self.schoolStart(for: displayedSchoolTerm)
         courses = courses.filter { $0.source != "personal" } + nextCourses
         refreshReminders()
     }
@@ -232,13 +316,16 @@ final class CampusStore: ObservableObject {
             value.seriesOriginalID = previous.seriesOriginalID
             value.updatedAt = Date(); next[index] = value
         } else { value.updatedAt = Date(); next.append(value) }
+        let previous = tasks.first { $0.id == value.id }
         try commitPersonal(courses: personalCourses, tasks: next, semesterStart: semesterStart, schedule: personalSchedule)
+        if let previous, TaskRules.earnedStepsMedal(previous: previous, saved: value) { MedalJournal.shared.unlock("tasks") }
     }
     func toggleTask(_ id: UUID) {
         guard let current = tasks.first(where: { $0.id == id }) else { return }
         do {
             let next = try TaskRules.settingCompleted(tasks, id: id, completed: !current.completed)
             try commitPersonal(courses: personalCourses, tasks: next, semesterStart: semesterStart, schedule: personalSchedule)
+            if let done = next.first(where: { $0.id == id }), TaskRules.earnedStepsMedal(previous: current, saved: done) { MedalJournal.shared.unlock("tasks") }
         } catch { message = error.localizedDescription }
     }
     func addTask(title: String, date: Date) {
@@ -274,11 +361,18 @@ final class CampusStore: ObservableObject {
         let backup = PersonalBackup(courses: personalCourses, tasks: tasks, semesterStart: semesterStart, personalSchedule: personalSchedule)
         try backup.validate(); return backup
     }
+    private func restoreTaskMedal() {
+        let now = Date()
+        let verifiedAt = tasks.lazy.compactMap(TaskRules.stepsMedalEvidence).filter { $0 <= now }.min()
+        if let verifiedAt { MedalJournal.shared.unlock("tasks", at: verifiedAt, historical: true) }
+    }
+
     func restorePersonalBackup(_ backup: PersonalBackup) throws {
         try backup.validate()
         // A v1 snapshot can remain in legacy form if its dates/weeks cannot be migrated without changes.
         let state = try backup.personalSchedule?.validated()
         try commitPersonal(courses: backup.courses, tasks: backup.tasks, semesterStart: backup.semesterStart, schedule: state)
+        restoreTaskMedal()
     }
     func restoreAndroidSchedule(_ plan: AndroidScheduleImportPlan, semesterID: String) throws {
         var next = try plan.state.validated()
@@ -288,6 +382,7 @@ final class CampusStore: ObservableObject {
     func mergeAndroidTasks(_ plan: AndroidTaskImportPlan) throws -> AndroidTaskMergePreview {
         let result = try plan.merge(into: tasks)
         try commitPersonal(courses: personalCourses, tasks: result.tasks, semesterStart: semesterStart, schedule: personalSchedule)
+        restoreTaskMedal()
         return result
     }
     func refreshReminders() {
@@ -308,6 +403,22 @@ final class CampusStore: ObservableObject {
         let state = try PersonalSemesterRules.migrateLegacy(courses: personalCourses, semesterStart: start)
         try savePersonalSchedule(state)
     }
+    func calibrateTeachingWeek(_ week: Int, today: Date = Date()) throws {
+        guard let monday = ScheduleMath.firstMonday(for: week, today: today, weekCount: scheduleWeekCount) else {
+            throw BackupCompatibilityFailure("请输入本学期范围内的教学周。")
+        }
+        if isConnected {
+            try commitPersonal(courses: personalCourses, tasks: tasks, semesterStart: semesterStart,
+                               schedule: personalSchedule, schoolStart: monday)
+        } else if let state = personalSchedule {
+            var semester = try PersonalSemesterRules.activeSemester(in: state)
+            semester.weekStartDate = BackupValue.dayString(monday)
+            try savePersonalSchedule(PersonalSemesterRules.saveSemester(semester, in: state))
+        } else {
+            try calibrateLegacyPersonalStart(monday)
+        }
+    }
+
     func calibrateSchoolStart(_ date: Date) {
         guard ScheduleMath.weekday(on: date) == 1 else { message = "学校第一教学周请选星期一。"; return }
         do { try commitPersonal(courses: personalCourses, tasks: tasks, semesterStart: semesterStart, schedule: personalSchedule,

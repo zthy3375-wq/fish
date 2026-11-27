@@ -4,10 +4,16 @@
     const kbList=[],sjkList=[];
     for(const cell of page.querySelectorAll('#kbgrid_table_0 td.td_wrap'))for(const c of cell.querySelectorAll('.timetable_con')){
       const p=c.querySelectorAll('p');
-      const value=n=>(p[n]?.querySelector(':scope > font')?.textContent||p[n]?.textContent||'').trim();
+      const value=n=>{
+        const cell=p[n];
+        if(!cell)return '';
+        const font=cell.querySelector(':scope > font');
+        return ((font && font.textContent)||cell.textContent||'').trim();
+      };
       const m=value(0).match(/[（(](\d{1,2}(?:-\d{1,2})?)节[）)]\s*(.+)$/);
       if(!m)error('COURSE_FIELDS');
-      kbList.push({kcmc:text(c.querySelector('.title')?.textContent).replace(/[●★○■☆◆]/g,''),xm:text(value(2)),cdmc:text(value(1)),xqj:cell.id.split('-')[0],jcs:m[1],zcd:m[2]});
+      const title=c.querySelector('.title');
+      kbList.push({kcmc:text(title && title.textContent).replace(/[●★○■☆◆]/g,''),xm:text(value(2)),cdmc:text(value(1)),xqj:cell.id.split('-')[0],jcs:m[1],zcd:m[2]});
     }
     for(const footer of page.querySelectorAll('#kbgrid_table_0 .timetable_title')){
       const content=footer.textContent.trim();if(!content.startsWith('实践课程：'))continue;
@@ -19,4 +25,12 @@
     return kbList.length||sjkList.length?{kbList,sjkList}:null;
   }
 
-try{const parsed=htmlTimetable(document);const year=document.querySelector('#xnm')?.value,code=document.querySelector('#xqm')?.value;const kbList=parsed?.kbList||[];return JSON.stringify({observation:{termYear:year,termCode:code,invalidCount:0,specialArrangements:false,frameLimit:false},kbList,practice:(parsed?.sjkList||[]).map(p=>({name:p.kcmc,teacher:p.xm,weeks:p.zcd}))})}catch{return JSON.stringify({observation:{invalidCount:1},kbList:[],practice:[]})}})
+try{
+  const parsed=htmlTimetable(document);
+  const year=document.querySelector('#xnm'),code=document.querySelector('#xqm');
+  return JSON.stringify({
+    observation:{termYear:year ? year.value : undefined,termCode:code ? code.value : undefined,invalidCount:0,specialArrangements:false,frameLimit:false},
+    kbList:parsed ? parsed.kbList : [],
+    practice:parsed ? parsed.sjkList.map(p=>({name:p.kcmc,teacher:p.xm,weeks:p.zcd})) : []
+  });
+}catch{return JSON.stringify({observation:{invalidCount:1},kbList:[],practice:[]})}})

@@ -146,3 +146,164 @@ func assertFirstUnlockProtectionWhenObservable(at url: URL,
     XCTAssertEqual(attributes[.protectionKey] as? FileProtectionType,
                    .completeUntilFirstUserAuthentication, file: file, line: line)
 }
+
+private final class InMemoryAchievementPersistence: CampusAchievementPersisting {
+    var journal: CampusAchievementJournal?
+    var failWrites = false
+    var failReads = false
+    var writes = 0
+    func load() throws -> CampusAchievementJournal? {
+        if failReads { throw CampusAchievementFailure.unavailable }
+        return journal
+    }
+    func save(_ value: CampusAchievementJournal) throws {
+        if failWrites { throw CampusAchievementFailure.unavailable }
+        journal = value
+        writes += 1
+    }
+}
+
+final class CampusAchievementTests: XCTestCase {
+    @MainActor func testDeviceAwardsAreIdempotentAndLifeNeedsAllThreeActivities() throws {
+        let disk = InMemoryAchievementPersistence()
+        let store = CampusAchievementStore(persistence: disk)
+        XCTAssertNil(store.date(for: "life"))
+        store.record("bath")
+        store.record("laundry")
+        XCTAssertNil(store.date(for: "life"))
+        store.record("map")
+        XCTAssertNotNil(store.date(for: "life"))
+        XCTAssertEqual(disk.writes, 3)
+        let saved = disk.journal
+        store.record("map")
+        store.record("firstpost") // Community achievements require server evidence.
+        store.record("grade") // School achievements require current verified connection.
+        XCTAssertEqual(disk.writes, 3)
+        XCTAssertEqual(disk.journal, saved)
+        XCTAssertNil(store.date(for: "firstpost"))
+    }
+
+    @MainActor func testShowcaseCanHoldThreeOnlyAndPersistsAfterRecreate() {
+        let disk = InMemoryAchievementPersistence()
+        let store = CampusAchievementStore(persistence: disk)
+        for code in ["welcome", "bath", "laundry", "map"] { store.record(code) }
+        for code in ["welcome", "bath", "laundry"] { store.togglePin(code) }
+        store.togglePin("map")
+        XCTAssertEqual(store.journal.pins, ["welcome", "bath", "laundry"])
+        let reopened = CampusAchievementStore(persistence: disk)
+        XCTAssertEqual(reopened.journal.pins, store.journal.pins)
+        reopened.togglePin("bath")
+        reopened.togglePin("map")
+        XCTAssertEqual(reopened.journal.pins, ["welcome", "laundry", "map"])
+    }
+
+    @MainActor func testSaveFailureNeverPublishesUncommittedUnlocksOrPins() throws {
+        let disk = InMemoryAchievementPersistence()
+        let store = CampusAchievementStore(persistence: disk)
+        store.record("welcome")
+        let saved = try XCTUnwrap(disk.journal)
+        disk.failWrites = true
+        store.record("bath")
+        store.togglePin("welcome")
+        XCTAssertNil(store.date(for: "bath"))
+        XCTAssertEqual(store.journal.pins, [])
+        XCTAssertEqual(disk.journal, saved)
+        XCTAssertNotNil(store.error)
+        disk.failWrites = false
+        store.togglePin("welcome")
+        XCTAssertEqual(store.journal.pins, ["welcome"])
+    }
+
+    @MainActor func testDeviceMigrationRemovesOldRecordsOnlyAfterTheSecureSave() throws {
+        let domain = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let legacyDate = Date(timeIntervalSince1970: 1_700_000_000)
+        defaults.set(["device": ["welcome": legacyDate, "firstpost": legacyDate]], forKey: "campus.medals.v1")
+        defaults.set(["device": ["welcome", "firstpost"]], forKey: "campus.medal-pins.v1")
+        let disk = InMemoryAchievementPersistence()
+        let store = CampusAchievementStore(persistence: disk)
+        disk.failWrites = true
+        _ = MedalJournal(defaults: defaults, device: store)
+        XCTAssertNotNil(defaults.dictionary(forKey: "campus.medals.v1")?["device"])
+        XCTAssertNil(store.date(for: "welcome"))
+        disk.failWrites = false
+        _ = MedalJournal(defaults: defaults, device: store)
+        XCTAssertEqual(store.date(for: "welcome"), legacyDate)
+        XCTAssertNil(store.date(for: "firstpost"))
+        XCTAssertEqual(store.journal.pins, ["welcome"])
+        XCTAssertNil(defaults.dictionary(forKey: "campus.medals.v1")?["device"])
+    }
+
+    @MainActor func testAllPrivateCatalogAwardsPersistWithTheRightOwner() throws {
+        let key = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: key))
+        defer { defaults.removePersistentDomain(forName: key) }
+        let disk = InMemoryAchievementPersistence()
+        let journal = MedalJournal(defaults: defaults, device: CampusAchievementStore(persistence: disk))
+        let local = CampusMedal.catalog.filter { $0.source != "community" }
+        XCTAssertEqual(local.count, 22)
+        let date = Date(timeIntervalSince1970: 1_750_000_000)
+        for medal in local where medal.code != "life" {
+            journal.unlock(medal.code, scope: "owner", at: date)
+        }
+        let reopened = MedalJournal(defaults: defaults, device: CampusAchievementStore(persistence: disk))
+        for medal in local {
+            XCTAssertEqual(reopened.stamp(medal, scope: "owner"), date, medal.code)
+            if medal.source != "device" { XCTAssertNil(reopened.stamp(medal, scope: "other"), medal.code) }
+        }
+        for medal in CampusMedal.catalog where medal.source == "community" {
+            reopened.unlock(medal.code, scope: "owner", at: date)
+            XCTAssertNil(reopened.stamp(medal, scope: "owner"), medal.code)
+        }
+    }
+
+    @MainActor func testRestoreVerifiedCompletedTaskKeepsDateAndDoesNotReplayBanner() throws {
+        let key = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: key))
+        defer { defaults.removePersistentDomain(forName: key) }
+        let disk = InMemoryAchievementPersistence()
+        let device = CampusAchievementStore(persistence: disk)
+        let journal = MedalJournal(defaults: defaults, device: device)
+        let completed = Date(timeIntervalSince1970: 1_700_000_000)
+        var task = CampusTask(title: "旧版个人待办", date: completed, completed: true)
+        task.completedAt = completed
+        task.updatedAt = completed.addingTimeInterval(120)
+        task.steps = [TaskStep(title: "一", completed: true), TaskStep(title: "二", completed: false)]
+        XCTAssertNil(TaskRules.stepsMedalEvidence(task))
+        task.steps[1].completed = true
+        let verified = try XCTUnwrap(TaskRules.stepsMedalEvidence(task))
+        XCTAssertEqual(verified, task.updatedAt)
+        journal.unlock("tasks", at: verified, historical: true)
+        journal.unlock("tasks")
+        XCTAssertEqual(CampusAchievementStore(persistence: disk).date(for: "tasks"), verified)
+        XCTAssertNil(journal.notice)
+        XCTAssertEqual(disk.writes, 1)
+    }
+
+    @MainActor func testTemporaryReadFailureRetriesWithExistingJournal() {
+        let disk = InMemoryAchievementPersistence()
+        let earned = Date()
+        disk.journal = CampusAchievementJournal(stamps: ["welcome": earned])
+        disk.failReads = true
+        let store = CampusAchievementStore(persistence: disk)
+        store.record("bath")
+        XCTAssertEqual(disk.writes, 0)
+        disk.failReads = false
+        store.record("bath")
+        XCTAssertNotNil(store.date(for: "bath"))
+        XCTAssertEqual(store.date(for: "welcome"), earned)
+        XCTAssertEqual(disk.writes, 1)
+    }
+
+    @MainActor func testInvalidDeviceJournalCannotOverwriteUnreadableStoredAwards() {
+        let disk = InMemoryAchievementPersistence()
+        disk.journal = CampusAchievementJournal(version: 1, stamps: ["firstpost": Date()], pins: [])
+        let store = CampusAchievementStore(persistence: disk)
+        XCTAssertNotNil(store.error)
+        let original = disk.journal
+        store.record("welcome")
+        XCTAssertEqual(disk.journal, original)
+        XCTAssertEqual(disk.writes, 0)
+    }
+}

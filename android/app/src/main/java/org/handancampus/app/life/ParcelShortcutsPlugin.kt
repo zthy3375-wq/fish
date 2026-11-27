@@ -1,5 +1,6 @@
 package org.handancampus.app.life
 
+import android.os.SystemClock
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -29,11 +30,13 @@ class ParcelShortcutsPlugin : Plugin() {
             resolve(call, target, ParcelLaunchStatus.CANCELLED)
             return
         }
+        val dispatchBy = SystemClock.elapsedRealtime() + 4_000L
         currentActivity.runOnUiThread {
             try {
                 val launcher = ParcelAndroidLauncher(currentActivity)
                 val host = object : ParcelLaunchHost {
-                    override fun isActive() = !destroyed && !currentActivity.isFinishing && !currentActivity.isDestroyed
+                    override fun isActive() = SystemClock.elapsedRealtime() < dispatchBy &&
+                        !destroyed && !currentActivity.isFinishing && !currentActivity.isDestroyed
                     override fun open(target: ParcelShortcutTarget, route: ParcelLaunchRoute) = launcher.open(target, route)
                 }
                 resolve(call, target, ParcelShortcutContract.launch(target, host))

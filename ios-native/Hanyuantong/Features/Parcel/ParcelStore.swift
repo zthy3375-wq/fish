@@ -39,6 +39,7 @@ final class ParcelStore: ObservableObject {
         runningSession = session; activeSession = session
     }
     func close() { runningSession?.close(); runningSession = nil; activeSession = nil }
+    func setForeground(_ active: Bool) { runningSession?.setForeground(active) }
     private func accept(_ batch: ParcelReadBatch, account: String, cookies: [HTTPCookie]) throws {
         guard let vault, !blocked.contains(batch.provider) else { throw ParcelFailure.storage }
         let provider = batch.provider

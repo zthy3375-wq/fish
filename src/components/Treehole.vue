@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { uid } from "../domain/schedule";
 import {ref,computed,onMounted,onUnmounted,onActivated,onDeactivated,watch,nextTick} from 'vue';
 import {MessageCircle,Bookmark,ArrowLeft,ShieldCheck,Leaf,Search,X,PenLine,RefreshCw,ChevronRight,VenetianMask,LockKeyhole,LogOut,Eye,EyeOff,AlertCircle,Check,ArrowUp,Flag,Trash2,VolumeX,Sparkles,AtSign,ImagePlus,ChevronLeft,Bell,BellOff,MessagesSquare,ChevronDown,ChartNoAxesColumnIncreasing,CalendarPlus,Award,Settings,Users} from 'lucide-vue-next';
 import TreeholeMessages from './TreeholeMessages.vue';
@@ -132,7 +133,7 @@ watch(screen,()=>{fabCollapsed.value=false;feedScrollSample=0;});
 const feedLoadingMore=ref(false),feedPageError=ref(''),feedRevision=ref(0);
 let appliedFeedKey='',feedNeedsRefresh=false;
 const detail=ref<TreeholePost|null>(null),comments=ref<TreeholeComment[]>([]),commentNext=ref<Record<string,string>|null>(null),reply=ref<TreeholeComment|null>(null);
-const body=ref(''),anonymous=ref(false),commentBody=ref(''),commentAnon=ref(false),postKey=ref<string>(crypto.randomUUID()),commentKey=ref<string>(crypto.randomUUID());
+const body=ref(''),anonymous=ref(false),commentBody=ref(''),commentAnon=ref(false),postKey=ref<string>(uid()),commentKey=ref<string>(uid());
 const reports=ref<TreeholeReport[]>([]),newPassword=ref(''),accountAction=ref<'overview'|'profile'|'settings'|'password'|'delete'>('overview');
 const menu=ref<string|null>(null),reportTarget=ref<{postId:string;commentId?:string}|null>(null),reason=ref(''),discard=ref(false);
 const confirmAction=ref<{title:string;run:()=>Promise<void>}|null>(null);
@@ -346,7 +347,7 @@ function openNotification(item:TreeholeNotification){void run(async()=>{
  if(item.commentId){try{context=(await api('comments.context',{postId:item.postId,commentId:item.commentId})).context||null;}catch(e){if(treeholeErrorCode(e)!=='not_found')throw e;notice.value='这条回复已不可用，可以继续查看讨论';}}
  if(!alive||epoch!==accountEpoch)return;
  rememberRoute();detailEpoch++;detail.value=r.post;syncFeedPost(r.post);comments.value=r.comments||[];commentNext.value=r.post.commentCount===0?null:r.next||null;expandedReplies.value={};replyPages.value={};loadedThreads.clear();focusedThread.value=context&&threadHasVisibleContent(context)?context:null;focusedCommentId.value=item.commentId||'';
- commentBody.value='';commentImages.value=[];reply.value=null;commentAnon.value=false;commentKey.value=crypto.randomUUID();screen.value='detail';detailTab.value=item.commentId?'comments':'body';
+ commentBody.value='';commentImages.value=[];reply.value=null;commentAnon.value=false;commentKey.value=uid();screen.value='detail';detailTab.value=item.commentId?'comments':'body';
  try{await markNotifications([item.id]);}catch(e){actionError(e,epoch);}
 });}
 function openProfile(memberId:string){if(!engagementEnabled.value||(screen.value==='profile'&&profile.value?.id===memberId))return;void run(async()=>{
@@ -418,7 +419,7 @@ function authenticate(){void run(async()=>{
  await Promise.all([feed(),restoreDraft()]);void refreshUnread();
 });}
 function changeScope(next:string){if(busy.value)return;scope.value=next;if(next==='all')sort.value='latest';void run(()=>feed());}
-function compose(anon=false){postUpload.value=null;replyExpanded.value=false;reply.value=null;commentBody.value='';commentImages.value=[];commentAnon.value=false;commentKey.value=crypto.randomUUID();if(!body.value&&!postTitle.value&&!images.value.length&&!pollDraft.value&&!buddyDraft.value){anonymous.value=anon||category.value==='treehole';postCategory.value=category.value==='all'?'daily':category.value;postInterest.value=interest.value;postKey.value=crypto.randomUUID();}screen.value='compose';error.value='';}
+function compose(anon=false){postUpload.value=null;replyExpanded.value=false;reply.value=null;commentBody.value='';commentImages.value=[];commentAnon.value=false;commentKey.value=uid();if(!body.value&&!postTitle.value&&!images.value.length&&!pollDraft.value&&!buddyDraft.value){anonymous.value=anon||category.value==='treehole';postCategory.value=category.value==='all'?'daily':category.value;postInterest.value=interest.value;postKey.value=uid();}screen.value='compose';error.value='';}
 
 async function loadDetail(post:TreeholePost,more=false){
  const epoch=accountEpoch,request=++detailRequest;
@@ -441,7 +442,7 @@ function openPost(post:TreeholePost,discussion=false){
  if(busy.value||screen.value==='detail')return;
  rememberRoute();focusedThread.value=null;focusedCommentId.value='';
  detailEpoch++;detail.value={...post};comments.value=[];commentNext.value=null;expandedReplies.value={};replyPages.value={};loadedThreads.clear();
- commentUpload.value=null;screen.value='detail';detailTab.value=discussion?'comments':'body';replyExpanded.value=false;commentBody.value='';commentImages.value=[];reply.value=null;commentAnon.value=false;commentKey.value=crypto.randomUUID();menu.value=null;error.value='';
+ commentUpload.value=null;screen.value='detail';detailTab.value=discussion?'comments':'body';replyExpanded.value=false;commentBody.value='';commentImages.value=[];reply.value=null;commentAnon.value=false;commentKey.value=uid();menu.value=null;error.value='';
  void loadDetail(post);
 }
 function publish(){void run(async()=>{
@@ -453,10 +454,10 @@ function publish(){void run(async()=>{
   if(!await uploadTreeholeImages(images.value,'post',api,p=>postUpload.value=p,current,()=>{void saveDraft();}))return;
   const r=await api('posts.create',{buddy:buddyDraft.value,poll:pollDraft.value,title:postTitle.value,category:postCategory.value,interest:postInterest.value,images:images.value.map(i=>i.remote!.id),body:body.value,anonymous:postCategory.value==='treehole'||anonymous.value,requestId:postKey.value});
   if(!current())return;
-  await clearDraft();postKey.value=crypto.randomUUID();feedNeedsRefresh=true;feedScroll=0;feedAnchor=null;detail.value=r.post!;comments.value=[];screen.value='detail';detailTab.value='body';replyExpanded.value=false;await loadDetail(r.post!);notice.value='已发布';
+  await clearDraft();postKey.value=uid();feedNeedsRefresh=true;feedScroll=0;feedAnchor=null;detail.value=r.post!;comments.value=[];screen.value='detail';detailTab.value='body';replyExpanded.value=false;await loadDetail(r.post!);notice.value='已发布';
  }catch(e){
   if(current()){
-   if(treeholeErrorCode(e)==='image_unavailable'){for(const image of images.value){image.remote=undefined;image.id=crypto.randomUUID();}void saveDraft();}
+   if(treeholeErrorCode(e)==='image_unavailable'){for(const image of images.value){image.remote=undefined;image.id=uid();}void saveDraft();}
    postUpload.value={phase:'failed',completed:images.value.filter(i=>i.remote).length,total:images.value.length,currentId:postUpload.value?.currentId};
   }
   throw e;
@@ -474,13 +475,13 @@ function sendComment(){if(!detail.value)return;const post=detail.value,epoch=acc
   await api('comments.create',{postId:post.id,images:photos.map(i=>i.remote!.id),body:commentBody.value,anonymous:commentAnon.value||forceCommentAnon.value,requestId:commentKey.value,replyTo:reply.value?.id||null});
  }catch(e){
   if(current()){
-   if(treeholeErrorCode(e)==='image_unavailable'){for(const image of photos){image.remote=undefined;image.id=crypto.randomUUID();}}
+   if(treeholeErrorCode(e)==='image_unavailable'){for(const image of photos){image.remote=undefined;image.id=uid();}}
    commentUpload.value={phase:'failed',completed:photos.filter(i=>i.remote).length,total:photos.length,currentId:commentUpload.value?.currentId};
   }
   throw e;
  }
  if(!current())return;
- commentUpload.value=null;closeReply();commentBody.value='';commentImages.value=[];reply.value=null;commentKey.value=crypto.randomUUID();await loadDetail(post);notice.value='回复已发布';
+ commentUpload.value=null;closeReply();commentBody.value='';commentImages.value=[];reply.value=null;commentKey.value=uid();await loadDetail(post);notice.value='回复已发布';
 });}
 
 function applyBuddy(post:TreeholePost,buddy:TreeholeBuddy){

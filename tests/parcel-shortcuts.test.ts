@@ -75,3 +75,22 @@ it.each(['app_opened', 'system_opened', 'web_opened'] as const)('preserves accur
 it('rejects unsupported compatibility modes before native dispatch',async()=>{
  await expect(openParcelShortcut('taobao','browser' as never)).rejects.toThrow('INVALID_PROVIDER');expect(bridge.open).not.toHaveBeenCalled();
 });
+
+it('recovers from a stalled native reply without replaying or carrying over its result', async () => {
+  vi.useFakeTimers();
+  try {
+    let complete!: (value: unknown) => void;
+    bridge.open.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }));
+    const stalled = openParcelShortcut('taobao');
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(await stalled).toEqual({provider: 'taobao', status: 'unavailable'});
+    expect(bridge.open).toHaveBeenCalledTimes(1);
+    bridge.open.mockResolvedValueOnce({provider: 'pinduoduo', status: 'opened'});
+    const next = openParcelShortcut('pinduoduo');
+    complete({provider: 'taobao', status: 'opened'});
+    expect(await next).toEqual({provider: 'pinduoduo', status: 'opened'});
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});

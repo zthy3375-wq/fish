@@ -92,7 +92,7 @@ class HandanAcademicPlugin : Plugin() {
                     }
                     if (renderedResult != null) {
                         // Normal school query control; never call a CAPTCHA success function or fabricate verification.
-                        v.evaluateJavascript("(function(){const b=document.querySelector('#search_go');if(b&&!document.querySelector('#kbgrid_table_0 .timetable_con')&&document.querySelector('#sfxyyzm')?.value!=='1'&&document.querySelector('#sfxyyzm')?.value!=='3')b.click();})()",null)
+                        v.evaluateJavascript("(function(){const b=document.querySelector('#search_go'),check=document.querySelector('#sfxyyzm');if(b&&!document.querySelector('#kbgrid_table_0 .timetable_con')&&(!check || (check.value!=='1' && check.value!=='3')))b.click();})()",null)
                         handler.postDelayed({readRendered(0,generation)},700); return
                     }
                     if (started) return

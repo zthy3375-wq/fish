@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-/// Only these fixed official destinations are offered. Android schemes are deliberately not reused.
+/// Only fixed provider destinations can be dispatched from the pickup shortcuts.
 enum ParcelProvider: String, Codable, CaseIterable, Identifiable {
     case taobao, pinduoduo
     var id: String { rawValue }
@@ -14,7 +14,21 @@ enum ParcelProvider: String, Codable, CaseIterable, Identifiable {
     var identityURL: URL {
         self == .taobao ? URL(string: "https://pages-fast.m.taobao.com/wow/z/uniapp/1011717/last-mile-fe/end-collect-platform/identity-code")! : parcelURL
     }
-    var fallbackURL: URL { self == .taobao ? identityURL : URL(string: "https://mobile.yangkeduo.com/")! }
+    var appPickupURL: URL {
+        switch self {
+        case .taobao:
+            var parts = URLComponents(url: identityURL, resolvingAgainstBaseURL: false)!
+            parts.scheme = "taobao"
+            return parts.url!
+        case .pinduoduo:
+            return URL(string: "pinduoduo://com.xunmeng.pinduoduo/mdkd/package?tab=ID_CODE")!
+        }
+    }
+
+    @MainActor func openPickupCode(using open: (URL) async -> Bool) async -> Bool {
+        if await open(appPickupURL) { return true }
+        return await open(identityURL)
+    }
     var accountURL: URL { URL(string: self == .taobao ? "https://m.taobao.com/" : "https://m.pinduoduo.net/")! }
 }
 
@@ -59,7 +73,12 @@ enum ParcelPolicy {
     static func authPage(_ url: URL?) -> Bool {
         guard let url else { return false }
         let text = (url.host ?? "") + url.path
-        return text.range(of: "login|passport|captcha|punish|verify", options: [.regularExpression, .caseInsensitive]) != nil
+        return text.range(of: "login|passport", options: [.regularExpression, .caseInsensitive]) != nil
+    }
+    static func verificationPage(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        let text = (url.host ?? "") + url.path
+        return text.range(of: "captcha|punish|verify", options: [.regularExpression, .caseInsensitive]) != nil
     }
     static func bounded(_ value: String, max: Int, empty: Bool = true) -> Bool {
         (empty || !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && value.utf8.count <= max

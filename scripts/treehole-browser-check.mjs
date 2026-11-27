@@ -92,10 +92,14 @@ if(process.env.HYT_MEMBER_DIRECTORY_UI){
  process.exit(0);
 }
 
-if(process.env.HYT_COLLECTION_UI){
+if(process.env.HYT_COLLECTION_UI || process.env.HYT_TITLE_UI){
  try{
-  const {checkCollection}=await import('./community-collection-ui.mjs');
-  await checkCollection({client,db,api,output:process.env.HYT_HONOR_SHOTS||'/tmp/hyt-community-collection'});
+  const {checkCollection,checkTitleGrant}=await import('./community-collection-ui.mjs');
+  // The schema permits one developer. Each suite must have its own accounts and audit rows.
+  await db.exec('BEGIN');
+  try { await checkTitleGrant({client,db,api}); }
+  finally { await db.exec('ROLLBACK'); }
+  if(process.env.HYT_COLLECTION_UI) await checkCollection({client,db,api,output:process.env.HYT_HONOR_SHOTS||'/tmp/hyt-community-collection'});
  }finally{
   await browser.close();await new Promise(resolve=>server.close(resolve));await new Promise(resolve=>backend.close(resolve));await db.close();
  }

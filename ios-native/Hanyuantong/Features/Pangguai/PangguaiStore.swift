@@ -36,6 +36,10 @@ final class PangguaiStore: ObservableObject {
         connected = credentials != nil; expired = credentials?.expired ?? false
         maskedPhone = credentials.map { String($0.phone.prefix(3)) + "****" + String($0.phone.suffix(4)) } ?? ""
     }
+    var waterBalanceText: String {
+        let merchant = PangguaiWalletMath.waterTicket(snapshot.tickets)
+        return PangguaiWalletMath.waterAmount(merchant?.balance).map { "¥" + $0 } ?? "暂未获取"
+    }
     func cancelPending() {
         generation = UUID(); operation?.cancel(); operation = nil; busy = false
         laundryQuote = nil; waterQuote = nil; settlementQuote = nil
@@ -80,13 +84,44 @@ final class PangguaiStore: ObservableObject {
         return result
     }
     func save(_ next: PGSnapshot, epoch: UUID) throws {
-        try alive(epoch); let c = try authenticated()
+        try alive(epoch)
+        let account = try authenticated()
+        try persist(next, accountID: account.id)
+    }
+    private func persist(_ next: PGSnapshot, accountID: String) throws {
         guard let p = persistence else { throw PGFailure.storage }
-        do { try p.saveSnapshot(next, accountID: c.id) } catch { throw PGFailure.storage }
+        do { try p.saveSnapshot(next, accountID: accountID) } catch { throw PGFailure.storage }
         snapshot = next
     }
     func saveLaundry(_ session: PGLaundrySession, epoch: UUID) throws { var next = snapshot; next.laundry = session; try save(next, epoch: epoch) }
     func saveWater(_ session: PGWaterSession, epoch: UUID) throws { var next = snapshot; next.water = session; try save(next, epoch: epoch) }
+    /// A confirmed physical stop releases the local lock even when the account's token has expired.
+    func archiveWaterAfterConfirmedStop(sessionID: UUID) {
+        guard !busy else { message = PGFailure.busy.message; return }
+        guard let account = credentials, var session = snapshot.water, session.id == sessionID else {
+            message = PGFailure.waterStateChanged.message
+            return
+        }
+        if session.isLocallyArchived { return }
+        guard session.canArchiveAfterStop else { message = PGFailure.waterStateChanged.message; return }
+
+        session.phase = "archived_unverified"
+        session.endBasis = "user_reported_stop"
+        session.remoteEnd = false
+        session.updatedAt = now()
+        session.error = nil
+        var next = snapshot
+        next.water = session
+        do {
+            try persist(next, accountID: account.id)
+            if device?.category == "04" { device = nil }
+            waterQuote = nil
+            settlementQuote = nil
+            message = expired ? "已移出本机记录。重新连接胖乖后可扫码。" : "已恢复扫码，可在「最近消费」核对账单。"
+        } catch {
+            message = PGFailure.storage.message
+        }
+    }
     func sendCode(phone: String, consent: Bool) async -> Bool {
         await perform { epoch in
             guard consent else { throw PGFailure.consent }
@@ -176,9 +211,10 @@ final class PangguaiStore: ObservableObject {
             let details = try await self.post("goods/normal/details", ["goodsId":id], epoch: epoch)
             let skus = try await self.post("goods/normal/skus", ["goodsId":id], epoch: epoch)
             self.device = try PGDevice.parse(scan: scan, details: details, skus: skus)
+            if self.device?.category == "04" { MedalJournal.shared.unlock("water") }
         }
     }
-    /// Polling is deliberately read-only. It must never create, pay, end or start a device.
+    /// Water may finish the metered order authorized at start. Polling never starts or stops a device.
     func pollSessions(laundry: Bool = true, water: Bool = true) async {
         await perform { epoch in
             var firstFailure: Error?
