@@ -26,11 +26,11 @@
 
 供应商或经供应商批准的适配服务须提供以下 HTTPS 只读契约。该契约是客户端联调接口，源码没有内置可代用的供应商。接入后需按实际的 OAuth 授权方式及接口约定配置或适配。
 
-- `POST /oauth/device/code` 按 [RFC 8628](https://www.rfc-editor.org/rfc/rfc8628) 发送表单 `client_id` 及范围 `parcels.read offline_access`。返回 `device_code`、`user_code`、`verification_uri`、`expires_in` 及可选 `interval`。授权页必须在配置的相同 HTTPS 来源下，由系统浏览器打开。
+- `POST /oauth/device/code` 按 [RFC 8628](https://www.rfc-editor.org/rfc/rfc8628) 发送表单 `client_id` 及范围 `parcels.read offline_access`。返回 `device_code`、`user_code`、`verification_uri`、`expires_in` 及可选 `interval`、`verification_uri_complete`。授权页必须在配置的相同 HTTPS 来源下，由系统浏览器打开。
 - `POST /oauth/token` 实现设备授权和刷新令牌授权。Bearer 业务令牌只留在原生层。用户可以在应用提供的授权页自行验证手机号或登录，凭据由授权方接收。
 - `GET /v1/parcels` 接收 Bearer，按授权账户返回完整目录，分页使用不透明的 `cursor`。JSON 返回 `items` 和可选 `nextCursor`。单项包含 `carrier`（规范快递公司缩写），`trackingNumber`，`source`（如 `cainiao`），`state`（`ready`、`picked_up`、`in_transit`、`unknown`），UTC 毫秒 `updatedAt`，以及可选字符串 `pickupCode`、`station`。返回端须统一同一承运人的别名，并明确标注出库。只可在完整成功后用空数组表示无记录。
 - 两端按承运商和运单号去重。冲突选择最近状态，同时间的出库优先。待取码用字符串原样保存前导零。全部分页成功才写入快照，网络或分页异常保留上次结果。401/403 或授权过期会移除已失效的本机会话和快照。
-- 客户端不允许查询重定向，成功缓存五分钟，手动请求至少间隔十秒，遵守设备 OAuth 轮询间隔及服务端秒数 `Retry-After`。停留在联调页或回到前台时才触发查询，未启用后台周期拉取。断开会删除本机授权及快照。授权方的账户撤权由授权方控制。
+- 客户端不允许查询重定向，成功缓存五分钟，手动请求至少间隔十秒，设备 OAuth 遇到连接异常后增加等待时间，遵守服务端秒数 `Retry-After`。停留在联调页或回到前台时才触发查询，未启用后台周期拉取。断开会删除本机授权及快照。授权方的账户撤权由授权方控制。
 
 ### 构建
 

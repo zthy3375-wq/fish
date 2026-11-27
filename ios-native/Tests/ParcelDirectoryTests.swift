@@ -98,12 +98,34 @@ final class ParcelDirectoryTests: XCTestCase {
         XCTAssertEqual(engine.state, .denied)
     }
 
+    @MainActor
+    func testTimeoutIncreasesPollIntervalAndCompleteURLStaysOnApprovedOrigin() async {
+        let harness = Harness()
+        let engine = harness.engine()
+        harness.add(#"{"device_code":"synthetic","user_code":"ABCD","verification_uri":"https://example.test/authorize","verification_uri_complete":"https://example.test/authorize?code=ABCD","expires_in":120}"#)
+        await engine.begin()
+        XCTAssertEqual(engine.verificationURL?.absoluteString, "https://example.test/authorize?code=ABCD")
+        harness.time += 5
+        harness.timeout = true
+        await engine.poll()
+        XCTAssertEqual(engine.state, .unavailable)
+        harness.time += 9
+        await engine.poll()
+        XCTAssertEqual(harness.paths.count, 2)
+        harness.time += 1
+        harness.add(#"{"error":"authorization_pending"}"#, status: 400)
+        await engine.poll()
+        XCTAssertEqual(engine.state, .pending)
+        XCTAssertEqual(harness.paths.count, 3)
+    }
+
     @MainActor private final class Harness {
         var disk: Data?
         var time = Date(timeIntervalSince1970: 1_800_000_000)
         var paths: [String] = []
         var bearers: [String?] = []
         var cursor: String?
+        var timeout = false
         private var replies: [ParcelDirectory.Reply] = []
 
         func engine() -> ParcelDirectory {
@@ -113,6 +135,10 @@ final class ParcelDirectoryTests: XCTestCase {
                 self.paths.append(url.path)
                 self.bearers.append(bearer)
                 self.cursor = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value
+                if self.timeout {
+                    self.timeout = false
+                    throw URLError(.timedOut)
+                }
                 guard !self.replies.isEmpty else { throw ParcelDirectory.State.unavailable }
                 return self.replies.removeFirst()
             }, now: { self.time })

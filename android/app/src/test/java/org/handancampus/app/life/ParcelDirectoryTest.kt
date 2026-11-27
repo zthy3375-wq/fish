@@ -3,6 +3,7 @@ package org.handancampus.app.life
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import java.net.SocketTimeoutException
 
 class ParcelDirectoryTest {
     private val origin = ParcelDirectory.approvedOrigin("https://example.test")!!
@@ -10,12 +11,17 @@ class ParcelDirectoryTest {
     private val paths = mutableListOf<String>()
     private val bearers = mutableListOf<String?>()
     private var stored: String? = null
+    private var timeout = false
     private var time = 1_800_000_000_000L
 
     private fun client() = ParcelDirectory(origin, "android-test", { stored }, { stored = it }, { stored = null },
         { url, _, bearer ->
             paths += url.file
             bearers += bearer
+            if (timeout) {
+                timeout = false
+                throw SocketTimeoutException()
+            }
             responses.removeFirst()
         }, { time })
 
@@ -101,6 +107,23 @@ class ParcelDirectoryTest {
         time += 1
         reply("""{"error":"access_denied"}""", 400)
         assertEquals("denied", engine.poll().getString("state"))
+    }
+
+    @Test fun timeoutIncreasesPollIntervalAndCompleteUrlStaysOnApprovedOrigin() {
+        val engine = client()
+        reply("""{"device_code":"synthetic","user_code":"ABCD","verification_uri":"https://example.test/verify","verification_uri_complete":"https://example.test/verify?code=ABCD","expires_in":120}""")
+        engine.begin()
+        assertEquals("https://example.test/verify?code=ABCD", engine.verificationUri().toString())
+        time += 5_000
+        timeout = true
+        assertEquals("unavailable", engine.poll().getString("state"))
+        time += 9_999
+        engine.poll()
+        assertEquals(2, paths.size)
+        time += 1
+        reply("""{"error":"authorization_pending"}""", 400)
+        assertEquals("pending", engine.poll().getString("state"))
+        assertEquals(3, paths.size)
     }
 
     @Test fun refusesUntrustedVerificationOrigin() {

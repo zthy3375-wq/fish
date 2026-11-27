@@ -78,6 +78,7 @@ struct DirectoryParcel: Codable, Identifiable {
         let deviceCode: String
         let userCode: String
         let verificationUri: String
+        let verificationUriComplete: String?
         let expiresIn: Int
         let interval: Int?
     }
@@ -156,13 +157,13 @@ struct DirectoryParcel: Codable, Identifiable {
             guard let config, account == nil, (challenge?.expiry ?? .distantPast) <= now() else { return }
             let reply = try await send("/oauth/device/code", form: ["client_id": config.client, "scope": "parcels.read offline_access"])
             let device: DeviceReply = try decode(reply, oauth: true)
-            guard let uri = URL(string: try Self.checked(device.verificationUri, limit: 2048)),
-                  uri.scheme == "https", uri.host?.lowercased() == config.origin.host?.lowercased(),
-                  uri.port == nil, uri.user == nil, uri.password == nil, (1...3600).contains(device.expiresIn) else {
+            guard let baseURI = verificationURL(device.verificationUri, origin: config.origin),
+                  (1...3600).contains(device.expiresIn) else {
                 throw State.unavailable
             }
             guard (1...3600).contains(device.interval ?? 5) else { throw State.unavailable }
             let interval = TimeInterval(max(5, device.interval ?? 5))
+            let uri = device.verificationUriComplete.flatMap { verificationURL($0, origin: config.origin) } ?? baseURI
             challenge = DeviceChallenge(code: try Self.checked(device.deviceCode, limit: 4096),
                                         userCode: try Self.checked(device.userCode, limit: 64), uri: uri,
                                         expiry: now().addingTimeInterval(TimeInterval(device.expiresIn)),
@@ -174,12 +175,20 @@ struct DirectoryParcel: Codable, Identifiable {
         await operation {
             guard let config, var pending = challenge else { return }
             guard now() < pending.expiry else { challenge = nil; throw State.expired }
-            guard now() >= pending.next, now() >= retryAt else { return }
+            guard now() >= retryAt else { throw State.rateLimited }
+            guard now() >= pending.next else { return }
             pending.next = now().addingTimeInterval(pending.interval)
             challenge = pending
-            let reply = try await send("/oauth/token", form: [
-                "client_id": config.client, "grant_type": "urn:ietf:params:oauth:grant-type:device_code", "device_code": pending.code,
-            ])
+            let reply: Reply
+            do {
+                reply = try await send("/oauth/token", form: [
+                    "client_id": config.client, "grant_type": "urn:ietf:params:oauth:grant-type:device_code", "device_code": pending.code,
+                ])
+            } catch let error as URLError {
+                if error.code == .cancelled { throw CancellationError() }
+                delayChallenge(pending)
+                throw error
+            }
             switch oauthError(reply) {
             case "authorization_pending": return
             case "slow_down":
@@ -192,10 +201,29 @@ struct DirectoryParcel: Codable, Identifiable {
                 throw oauthError(reply) == "access_denied" ? State.denied : State.expired
             default: break
             }
+            guard (200...299).contains(reply.status) else {
+                if reply.status >= 500 { delayChallenge(pending) } else { challenge = nil }
+                try checkStatus(reply)
+                return
+            }
             try updateToken(reply, previous: nil)
             challenge = nil
             try await sync(force: true)
         }
+    }
+
+    private func verificationURL(_ value: String, origin: URL) -> URL? {
+        guard let clean = try? Self.checked(value, limit: 2048),
+              let url = URL(string: clean), url.scheme == "https", url.host?.lowercased() == origin.host?.lowercased(),
+              url.port == nil, url.user == nil, url.password == nil else { return nil }
+        return url
+    }
+
+    private func delayChallenge(_ pending: DeviceChallenge) {
+        var delayed = pending
+        delayed.interval = max(pending.interval, min(300, pending.interval * 2))
+        delayed.next = now().addingTimeInterval(delayed.interval)
+        challenge = delayed
     }
 
     func refresh(force: Bool = false) async { await operation { try await sync(force: force) } }
@@ -330,10 +358,14 @@ struct DirectoryParcel: Codable, Identifiable {
         return reply
     }
 
-    private func decode<T: Decodable>(_ reply: Reply, oauth: Bool = false) throws -> T {
+    private func checkStatus(_ reply: Reply) throws {
         if reply.status == 401 { throw State.rejected }
         if reply.status == 403 { throw State.forbidden }
         guard (200...299).contains(reply.status) else { throw State.unavailable }
+    }
+
+    private func decode<T: Decodable>(_ reply: Reply, oauth: Bool = false) throws -> T {
+        try checkStatus(reply)
         let decoder = JSONDecoder()
         if oauth { decoder.keyDecodingStrategy = .convertFromSnakeCase }
         return try decoder.decode(T.self, from: reply.data)

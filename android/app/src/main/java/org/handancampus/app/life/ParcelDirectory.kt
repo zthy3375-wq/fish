@@ -2,6 +2,7 @@ package org.handancampus.app.life
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -51,8 +52,8 @@ internal class ParcelDirectory(
         if (now() < retryAt) throw Failure("rateLimited")
         val reply = send("/oauth/device/code", mapOf("client_id" to clientId, "scope" to "parcels.read offline_access"))
         val body = verified(reply)
-        val uri = URI(body.required("verification_uri", 2048))
-        check(uri.scheme == "https" && uri.host.equals(origin.host, true) && uri.port == origin.port && uri.userInfo == null)
+        val baseUri = checkedVerificationUri(body.required("verification_uri", 2048)) ?: throw Failure("unavailable")
+        val uri = body.optString("verification_uri_complete").takeIf { it.isNotBlank() }?.let(::checkedVerificationUri) ?: baseUri
         val interval = body.optLong("interval", 5).also { check(it in 1..3600) }.coerceAtLeast(5) * 1000
         val expiry = body.optLong("expires_in").also { check(it in 1..3600) } * 1000
         challenge = Challenge(body.required("device_code", 4096), body.required("user_code", 64), uri, now() + expiry, interval, now() + interval)
@@ -64,12 +65,18 @@ internal class ParcelDirectory(
             challenge = null
             throw Failure("expired")
         }
-        if (now() < pending.next || now() < retryAt) return@operation
+        if (now() < retryAt) throw Failure("rateLimited")
+        if (now() < pending.next) return@operation
         pending.next = now() + pending.interval
-        val reply = send("/oauth/token", mapOf(
-            "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
-            "device_code" to pending.deviceCode, "client_id" to clientId,
-        ))
+        val reply = try {
+            send("/oauth/token", mapOf(
+                "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
+                "device_code" to pending.deviceCode, "client_id" to clientId,
+            ))
+        } catch (error: IOException) {
+            delayChallenge(pending)
+            throw error
+        }
         when (reply.body.optString("error")) {
             "authorization_pending" -> return@operation
             "slow_down" -> {
@@ -86,7 +93,22 @@ internal class ParcelDirectory(
             updateToken(reply, null)
             challenge = null
             sync(force = true)
-        } else verified(reply)
+        } else {
+            if (reply.status >= 500) delayChallenge(pending) else challenge = null
+            verified(reply)
+        }
+    }
+
+    private fun checkedVerificationUri(value: String): URI? = runCatching {
+        URI(value).takeIf {
+            value.length <= 2048 && it.scheme == "https" && it.host.equals(origin.host, true) &&
+                it.port == origin.port && it.userInfo == null
+        }
+    }.getOrNull()
+
+    private fun delayChallenge(pending: Challenge) {
+        pending.interval = maxOf(pending.interval, minOf(pending.interval * 2, 300_000L))
+        pending.next = now() + pending.interval
     }
 
     fun refresh(force: Boolean): JSONObject = operation { sync(force) }
