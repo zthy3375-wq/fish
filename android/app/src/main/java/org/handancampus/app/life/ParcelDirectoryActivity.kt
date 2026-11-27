@@ -78,42 +78,28 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val root = FrameLayout(this).apply { setBackgroundColor(backgroundColor) }
-        val toolbarHeight = dp((54 * resources.configuration.fontScale.coerceAtLeast(1f)).roundToInt())
-        toolbar = FrameLayout(this).apply {
-            setBackgroundColor(backgroundColor)
-            elevation = dp(8).toFloat()
-            stateListAnimator = null
-            outlineProvider = null
-        }
+        val page = column()
+        toolbar = FrameLayout(this).apply { minimumHeight = dp(54) }
+        toolbar.addTo(page)
         content = column().apply {
             setPadding(dp(10), dp(4), dp(10), dp(18))
         }
+        content.addTo(page)
         scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
-            addView(content, FrameLayout.LayoutParams(-1, -2))
+            addView(page, FrameLayout.LayoutParams(-1, -2))
         }
         refreshLayout = SwipeRefreshLayout(this).apply {
             setColorSchemeColors(blue)
             setOnRefreshListener { refresh() }
             addView(scroll, FrameLayout.LayoutParams(-1, -1))
         }
-        root.addView(refreshLayout, FrameLayout.LayoutParams(-1, -1).apply { topMargin = toolbarHeight })
-        root.addView(toolbar, FrameLayout.LayoutParams(-1, toolbarHeight, Gravity.TOP))
+        root.addView(refreshLayout, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            refreshLayout.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
-                leftMargin = bars.left
-                topMargin = bars.top + toolbarHeight
-                rightMargin = bars.right
-                bottomMargin = bars.bottom
-            }
-            toolbar.layoutParams = FrameLayout.LayoutParams(-1, toolbarHeight, Gravity.TOP).apply {
-                leftMargin = bars.left
-                topMargin = bars.top
-                rightMargin = bars.right
-            }
+            root.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
         ViewCompat.requestApplyInsets(root)
@@ -160,8 +146,10 @@ class ParcelDirectoryActivity : AppCompatActivity() {
         toolbar.removeAllViews()
         val title = text(if (settings) "取件设置" else "校园取件", 25, titleColor, bold = true)
         ViewCompat.setAccessibilityHeading(title, true)
+        title.gravity = Gravity.CENTER_VERTICAL
+        title.minimumHeight = dp(54)
         toolbar.addView(title, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER_VERTICAL).apply {
-            marginStart = dp(43)
+            marginStart = dp(39)
             marginEnd = dp(53)
         })
         toolbar.addView(iconButton(R.drawable.parcel_arrow_back, "返回", titleColor) { back() },
